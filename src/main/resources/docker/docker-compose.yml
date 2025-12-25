@@ -1,0 +1,119 @@
+services:
+
+  mysql:
+    image: ${MYSQL_CONTAINER_VERSION}
+    container_name: ${MYSQL_CONTAINER_NAME}
+    restart: unless-stopped
+    environment:
+      # Vos variables existantes pour la première BDD (cybertechDB)
+      # AJOUT IMPORTANT: Base de données pour Keycloak
+      # L'image MySQL vous permet d'ajouter plusieurs DBs séparées par des virgules.
+      # L'utilisateur 'rookie' sera automatiquement autorisé à y accéder.
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      # MYSQL_ALLOW_EMPTY_PASSWORD: true
+    ports:
+      - "${MYSQL_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - $PWD/../sql/databaseSchemaInitFile.sql:/docker-entrypoint-initdb.d/1_databaseSchemaInitFile.sql
+    healthcheck: # Ajout d'un healthcheck pour une meilleure gestion des dépendances
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ecommerce-net
+
+  moderation-api:
+    build:
+      context: ../../java/com/novatech/cybertech/api/external/moderation/
+    container_name: moderation-api
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    networks:
+      - ecommerce-net
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Interface web
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "1025" ]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+
+  redis:
+    image: 'redis:latest' # Version stable recommandée, ou specific
+    container_name: ${REDIS_CONTAINER_NAME}
+    ports:
+      - '6379:6379' # Ajout du mappage du port pour l'accès local
+    volumes:
+      - ./docker/redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      - ecommerce-net
+
+  elasticsearch:
+    image: elasticsearch:8.13.4 # Utilisez une version stable et compatible avec votre client Java
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # Désactive la sécurité pour le dev local (plus simple)
+      # Il faut souvent augmenter la mémoire pour Elastic
+      #- ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200" # Le port HTTP de l'API
+    volumes:
+      - esdata:/usr/share/elasticsearch/data # Persistance des données Elastic
+    networks:
+      - ecommerce-net
+    restart: unless-stopped
+
+
+  # ----------------------------------------------------
+  # 5. Serveur d'Authentification : Keycloak
+  # ----------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.3 # Utiliser une version récente et stable
+    container_name: keycloak
+    environment:
+      KC_DB: mysql # Le type de base de données
+      KC_DB_URL: jdbc:mysql://mysql:3306/keycloakDB?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      KC_DB_USERNAME: ${MYSQL_USER}
+      KC_DB_PASSWORD: ${MYSQL_PASSWORD}
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: true
+      KC_HOSTNAME: localhost:8080
+      KC_PROXY_HEADERS: xforwarded
+      KC_PROXY: edge
+
+    ports:
+      - "8080:8080"
+    command: start-dev # Mode de démarrage développement
+    networks:
+      - ecommerce-net
+    depends_on:
+      mysql:
+        condition: service_healthy # Attend que MySQL soit prêt
+    restart: unless-stopped
+
+
+volumes:
+  mysql_data:
+    driver: local
+  esdata:
+    driver: local
+
+networks:
+  ecommerce-net:
+    driver: bridge
