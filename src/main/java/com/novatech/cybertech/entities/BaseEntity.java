@@ -1,6 +1,5 @@
 package com.novatech.cybertech.entities;
 
-import com.novatech.cybertech.annotation.GeneratedUUID;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -28,7 +27,6 @@ public abstract class BaseEntity implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @GeneratedUUID
     @JdbcTypeCode(SqlTypes.BINARY)
     @Column(columnDefinition = "BINARY(16)", name = "uuid", length = 16, nullable = false, unique = true)
     private UUID uuid;
@@ -37,4 +35,10 @@ public abstract class BaseEntity implements Serializable {
     @Column(name = "version", nullable = false)
     private Long version = 0L;
 
+    @PrePersist
+    public void prePersist() {
+        if (this.uuid == null) {
+            this.uuid = UUID.randomUUID();
+        }
+    }
 }

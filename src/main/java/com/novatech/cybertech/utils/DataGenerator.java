@@ -99,7 +99,7 @@ public class DataGenerator {
                 .brand(Brand.DELL)
                 .category(Category.COMPUTER)
                 .photo("https://example.com/images/pc.jpg")
-                .stock(15)
+                .stock(15000)
                 .description("Ordinateur portable performant avec processeur Intel et carte graphique NVIDIA.")
                 .attributes(attributes)
                 .build();
@@ -257,9 +257,9 @@ public class DataGenerator {
     }
 
     public static OrderPlacingRequestDto orderGenerator() {
-        UUID productUID = UUID.fromString("fd615b2b-85d8-43f4-8886-63e7489e5fc3");
+        UUID productUID = UUID.fromString("c6c34ef7-325c-49dd-862d-4fb2dd5c4edf");
         return OrderPlacingRequestDto.builder()
-                .userUuid(UUID.fromString("cba8b420-97fe-4cd9-b63c-69bcfb551dfa"))
+                .userUuid(UUID.fromString("147bdeaa-b2cf-443f-a6eb-c9bd0c3e4e42"))
                 .shippingAddress(FAKER.address().fullAddress())
                 .shippingType(ShippingType.STANDARD)
                 .shippingProvider(ShippingProvider.FEDEX)

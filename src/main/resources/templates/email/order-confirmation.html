@@ -69,9 +69,9 @@
     <p>Bonjour <strong th:text="${userName}">Nom</strong>,</p>
     <p>Merci pour votre commande <span class="order-info">#<span th:text="${orderId}">0001</span></span>.</p>
     <p>Total : <span class="order-info"><span th:text="${amount}">€0.00</span></span></p>
-    <a href="#" class="btn" th:href="@{'/orders/' + ${orderId}}">Voir ma commande</a>
+    <a href="#" class="btn" th:href="@{${baseUrl} + '/orders/' + ${orderId}}">Voir ma commande</a>
     <footer>
-        Société Générale - Merci de votre confiance
+        Cybertech - Merci de votre confiance
     </footer>
 </div>
 </body>

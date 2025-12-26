@@ -10,10 +10,10 @@ import static java.util.Arrays.stream;
 public enum Category {
 
     COMPUTER(1),
-    MONITOR(2);
-    //MACBOOK(3),
-    //KEYBOARD(4),
-    //SMARTPHONE(5);
+    MONITOR(2),
+    MACBOOK(3),
+    KEYBOARD(4),
+    SMARTPHONE(5);
 
     private final Integer code;
 

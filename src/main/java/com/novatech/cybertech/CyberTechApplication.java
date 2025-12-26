@@ -9,8 +9,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.EnableAsync;
 
-import java.util.Arrays;
-
 @Slf4j
 @EnableAsync
 @SpringBootApplication
@@ -25,7 +23,7 @@ public class CyberTechApplication implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        log.info("Inspect the beans provided by Spring Boot:");
-        Arrays.stream(applicationContext.getBeanDefinitionNames()).sorted().forEach(beanName -> log.info("Bean name : {}", beanName));
+        //log.info("Inspect the beans provided by Spring Boot:");
+        //Arrays.stream(applicationContext.getBeanDefinitionNames()).sorted().forEach(beanName -> log.info("Bean name : {}", beanName));
     }
 }

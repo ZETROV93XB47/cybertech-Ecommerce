@@ -9,6 +9,7 @@ import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.services.core.ProductManagementService;
+import com.novatech.cybertech.services.core.ProductSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
     private final ProductMapper productMapper;
     private final ProductRepository productRepository;
+    private final ProductSearchService productSearchService;
     private final ProductValidationService productValidationService;
 
     @Override

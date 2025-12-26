@@ -1,6 +1,7 @@
 package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
+import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,8 +13,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
-
-import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -65,7 +64,7 @@ public interface OrderManagementControllerApiSpec {
             }
     )
     OrderResponseDto cancelOrder(
-            @Parameter(description = "UUID of the order to cancel", required = true) UUID orderUuid,
+            @Parameter(description = "DTO containing the UUID of the order to cancel", required = true) OrderCancellationRequestDto orderCancellationRequestDto,
             @Parameter(hidden = true) Jwt jwt
     );
 }

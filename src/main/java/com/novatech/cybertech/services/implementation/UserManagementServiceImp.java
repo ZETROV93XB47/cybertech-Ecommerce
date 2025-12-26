@@ -55,6 +55,7 @@ public class UserManagementServiceImp implements UserManagementService {
                     .build();
 
             final UserEntity savedUser = userRepository.save(user);
+            log.info("Saved user : {}", savedUser);
 
             BankCardEntity bankCard = BankCardEntity.builder()
                     .cardHolderName(req.getBankCardCreationRequestDto().getCardHolderName())

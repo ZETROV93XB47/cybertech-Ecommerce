@@ -88,7 +88,6 @@ public class UserManagementController implements UserCrudControllerApiSpec {
 
     @PostMapping("/register/auto")
     public ResponseEntity<UserResponseDto> registerAuto() {
-
         return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.create(generateUserCreateRequestDto()));
     }
 

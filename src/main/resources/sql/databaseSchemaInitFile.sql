@@ -1,14 +1,10 @@
-CREATE
-DATABASE IF NOT EXISTS cybertechDB;
-CREATE
-DATABASE IF NOT EXISTS keycloakDB;
-GRANT ALL PRIVILEGES ON keycloakDB.* TO
-'rookie'@'%';
-FLUSH
-PRIVILEGES;
+CREATE DATABASE IF NOT EXISTS cybertechDB;
+CREATE DATABASE IF NOT EXISTS keycloakDB;
+GRANT ALL PRIVILEGES ON keycloakDB.* TO 'rookie'@'%';
 
-use
-cybertechDB;
+FLUSH PRIVILEGES;
+
+use cybertechDB;
 
 CREATE TABLE userTable
 (
@@ -51,7 +47,7 @@ CREATE TABLE productTable
     stock         INTEGER        NOT NULL,
     reservedStock INTEGER        NOT NULL DEFAULT 0,
     description   TEXT,
-    attributes    JSON           NOT NULL DEFAULT '{}',
+    attributes    JSON           NOT NULL,
 
     PRIMARY KEY (id)
 );

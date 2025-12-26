@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
-import org.springframework.data.elasticsearch.annotations.Setting;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -18,7 +17,6 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @Document(indexName = "products")
-@Setting(settingPath = "elasticsearch/analyzer-settings.json")
 public class ProductDocument {
 
     @Id
@@ -26,10 +24,10 @@ public class ProductDocument {
 
     // --- Champs pour la recherche plein texte (analysés) ---
 
-    @Field(type = FieldType.Text, name = "name", analyzer = "french_analyzer")
+    @Field(type = FieldType.Text, name = "name", analyzer = "french")
     private String name;
 
-    @Field(type = FieldType.Text, name = "description", analyzer = "french_analyzer")
+    @Field(type = FieldType.Text, name = "description", analyzer = "french")
     private String description;
 
     // --- Champs pour le filtrage, le tri et les agrégations (non-analysés) ---

@@ -56,8 +56,9 @@ public class StockServiceImp implements StockService {
 
         reservations.stream().map(this::updateStockForCommit).forEach(productRepository::save);
 
-        stockRepository.deleteByOrderUuid(orderUuid);
+        //stockRepository.deleteByOrderUuid(orderUuid);
 
+        log.info("Redis : {}", redisTemplate.opsForValue().get("reservation:order:" + orderUuid));
         redisTemplate.delete("reservation:order:" + orderUuid);
 
         log.info("Stock successfully committed for order {}", orderUuid);

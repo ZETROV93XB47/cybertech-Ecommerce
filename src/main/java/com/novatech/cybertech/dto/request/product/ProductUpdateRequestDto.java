@@ -1,6 +1,7 @@
 package com.novatech.cybertech.dto.request.product;
 
-import com.novatech.cybertech.entities.enums.*;
+import com.novatech.cybertech.entities.enums.Brand;
+import com.novatech.cybertech.entities.enums.Category;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -26,27 +27,11 @@ public class ProductUpdateRequestDto {
     @DecimalMin(value = "0.01", message = "Price must be greater than 0")
     private BigDecimal price;
 
+    @NotNull(message = "Brand cannot be null")
     private Brand brand;
 
+    @NotNull(message = "Category cannot be null")
     private Category category;
-
-    private String cpu;
-
-    @Size(max = 50, message = "GPU information must be at most 50 characters")
-    private String gpu;
-
-    private Ram ram;
-
-    private SSD ssd;
-
-    private DisplayType displayType;
-
-    private DisplaySize displaySize;
-
-    private Os os;
-
-    @Size(max = 255, message = "Connectivity details must be at most 255 characters")
-    private String connectivity;
 
     @Size(max = 255, message = "Photo URL/path must be at most 255 characters")
     private String photo;
@@ -54,5 +39,6 @@ public class ProductUpdateRequestDto {
     @Min(value = 0, message = "Stock cannot be negative")
     private Integer stock; // Utiliser Integer pour permettre la nullité (non mise à jour)
 
+    @NotNull(message = "description cannot be null")
     private String description;
 }

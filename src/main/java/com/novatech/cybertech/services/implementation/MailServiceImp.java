@@ -6,6 +6,7 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -22,18 +23,26 @@ public class MailServiceImp implements MailService {
     private final JavaMailSender javaMailSender;
     private final SpringTemplateEngine templateEngine;
 
+    @Value("${application.frontend.url:http://localhost:4200}")
+    private String frontendUrl;
 
     @Override
     public void sendEmail(final EmailDto emailDto) {
-        Context context = new Context();
+
+
+        final Context context = new Context();
         context.setVariables((Map<String, Object>) emailDto.getContext());
+        // Ajout de la variable baseUrl pour les liens relatifs dans les templates
+        context.setVariable("baseUrl", frontendUrl);
 
-        String content = templateEngine.process("email/order-confirmation.html", context);
+        log.info("EmailDto value : {}", emailDto);
 
-        MimeMessage message = javaMailSender.createMimeMessage();
+        final String content = templateEngine.process("email/order-confirmation", context);
+
+        final MimeMessage message = javaMailSender.createMimeMessage();
 
         try {
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            final MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
             helper.setTo(emailDto.getTo());
             helper.setSubject(emailDto.getSubject());

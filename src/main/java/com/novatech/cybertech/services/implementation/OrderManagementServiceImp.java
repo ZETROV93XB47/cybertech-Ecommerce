@@ -131,7 +131,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
     @Transactional
     public OrderResponseDto cancelOrder(final UUID orderUUID, final String keycloakId) {
 
-        final OrderEntity orderEntity = orderRepository.findByUuid(orderUUID).orElseThrow(() -> new OrderNotFoundException("Order with UUID "));
+        log.info("Order UUD : {}", orderUUID);
+
+        final OrderEntity orderEntity = orderRepository.findByUuid(orderUUID).orElseThrow(() -> new OrderNotFoundException("Order with UUID " + orderUUID + " not found"));
 
         if (orderEntity.getStatus().getCode() < SHIPPED.getCode()) {//Il faudra un autre endpoint pour annuler la commande une fois renvoyée
             if (orderEntity.getUserEntity().getKeycloakId().equals(keycloakId)) {
@@ -198,6 +200,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private void sendOrderShippingEvent(final OrderPlacingRequestDto orderPlacingRequestDto, final UserEntity user, final OrderEntity savedOrder) {
         final ShippingContext shippingContext = ShippingContext.builder()
                 .user(user)
+                .packageId(savedOrder.getUuid().toString())
                 .payload(savedOrder)
                 .shippingType(orderPlacingRequestDto.getShippingType())
                 .shippingProvider(orderPlacingRequestDto.getShippingProvider())

@@ -18,11 +18,6 @@ public class ProductResponseDto {
     private Category category;
     private String cpu;
     private String gpu;
-    private Ram ram;
-    private SSD ssd;
-    private DisplayType displayType;
-    private DisplaySize displaySize;
-    private Os os;
     private String connectivity;
     private String photo;
     private String description;
