@@ -2,7 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import com.novatech.cybertech.entities.ProductDocument;
-import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.enums.Category;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,18 +26,28 @@ public class ProductSearchServiceImp implements ProductSearchService {
     private final ElasticsearchOperations elasticsearchOperations;
 
 
-    public List<ProductDocument> searchByAttributes(List<ProductEntity> products, String category, Map<String, String> filters) {
+    @Override
+    public List<ProductDocument> searchByAttributes(final Category category, final Map<String, String> filters) {
 
         // 1. On commence par filtrer par catégorie
-        BoolQuery.Builder boolQuery = new BoolQuery.Builder().filter(f -> f.term(t -> t.field(CATEGORY).value(category)));
+        final BoolQuery.Builder boolQuery = new BoolQuery.Builder().filter(f -> f.term(t -> t.field(CATEGORY).value(category.toString())));
 
-        // 2. On ajoute dynamiquement les filtres de la Map "attributes"
+        log.info("filters : {}", filters);
+
+//        // 2. On ajoute dynamiquement les filtres de la Map "attributes"
+//        filters.forEach((key, value) -> boolQuery.must(m -> m.term(t -> t
+//                .field(ATTRIBUTES + DOT_SEPARATOR + key) // On accède directement au champ imbriqué
+//                .value(value)
+//        )));
+
         filters.forEach((key, value) -> boolQuery.must(m -> m.term(t -> t
-                .field(ATTRIBUTES + DOT_SEPARATOR + key) // On accède directement au champ imbriqué
+                .field(ATTRIBUTES + "." + key + ".keyword")
                 .value(value)
         )));
 
-        NativeQuery query = NativeQuery.builder()
+
+
+        final NativeQuery query = NativeQuery.builder()
                 .withQuery(q -> q.bool(boolQuery.build()))
                 .build();
 
@@ -45,5 +55,4 @@ public class ProductSearchServiceImp implements ProductSearchService {
                 .map(SearchHit::getContent)
                 .toList();
     }
-
 }

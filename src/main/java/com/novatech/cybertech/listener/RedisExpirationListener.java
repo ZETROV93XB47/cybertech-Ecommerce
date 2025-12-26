@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static com.novatech.cybertech.entities.enums.ReservationStatus.ACTIVE;
-import static com.novatech.cybertech.entities.enums.ReservationStatus.RELEASED;
 
 @Slf4j
 @Component
@@ -49,14 +48,14 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
         stockRepository.deleteByOrderUuid(orderUuid);
     }
 
-    private void releaseProductStockAfterTTLExpiration(StockEntity r) {
-        ProductEntity product = productRepository.lockByUuid(r.getProductUuid()).orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + r.getProductUuid() + " found"));
+    private void releaseProductStockAfterTTLExpiration(StockEntity stockEntity) {
+        ProductEntity product = productRepository.lockByUuid(stockEntity.getProductUuid()).orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + stockEntity.getProductUuid() + " found"));
 
-        if (r.getReservationStatus() != ACTIVE) return;
-        r.setReservationStatus(RELEASED);
+        if (stockEntity.getReservationStatus() != ACTIVE) return;
 
-        product.setReservedStock(product.getReservedStock() - r.getQuantity());
+        product.setReservedStock(product.getReservedStock() - stockEntity.getQuantity());
         productRepository.save(product);
+        stockRepository.deleteByOrderUuid(stockEntity.getOrderUuid());
     }
 }
 

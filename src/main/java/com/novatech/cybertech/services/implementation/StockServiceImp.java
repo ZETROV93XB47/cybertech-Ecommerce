@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.StockEntity;
+import com.novatech.cybertech.entities.enums.ReservationStatus;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.repositories.ProductRepository;
@@ -56,7 +57,7 @@ public class StockServiceImp implements StockService {
 
         reservations.stream().map(this::updateStockForCommit).forEach(productRepository::save);
 
-        //stockRepository.deleteByOrderUuid(orderUuid);
+        stockRepository.deleteByOrderUuid(orderUuid);
 
         log.info("Redis : {}", redisTemplate.opsForValue().get("reservation:order:" + orderUuid));
         redisTemplate.delete("reservation:order:" + orderUuid);

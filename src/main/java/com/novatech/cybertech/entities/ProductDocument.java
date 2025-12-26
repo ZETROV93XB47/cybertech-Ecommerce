@@ -11,6 +11,7 @@ import org.springframework.data.elasticsearch.annotations.FieldType;
 
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -21,6 +22,7 @@ public class ProductDocument {
 
     @Id
     private String id;
+    private UUID uuid;
 
     // --- Champs pour la recherche plein texte (analysés) ---
 
@@ -48,10 +50,10 @@ public class ProductDocument {
 
     // --- Champs dérivés pour la pertinence et le tri ---
 
-    @Field(type = FieldType.Double, name = "averageRating")
-    private Double averageRating;
-
-    @Field(type = FieldType.Integer, name = "reviewCount")
-    private Integer reviewCount;
+//    @Field(type = FieldType.Double, name = "averageRating")
+//    private Double averageRating;
+//
+//    @Field(type = FieldType.Integer, name = "reviewCount")
+//    private Integer reviewCount;
 }
 
