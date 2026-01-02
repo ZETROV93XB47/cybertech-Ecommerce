@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mailpit
+description: Mailpit SMTP server and web UI
+type: application
+version: 0.1.0
+appVersion: "1.14"

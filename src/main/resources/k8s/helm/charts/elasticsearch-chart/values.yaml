@@ -1,0 +1,13 @@
+elasticsearch:
+  image: elasticsearch:8.13.4
+  port: 9200
+
+  heap: "512m"
+
+  persistence:
+    enabled: true
+    size: 5Gi
+
+env:
+  discoveryType: "single-node"
+  xpackSecurity: "false"

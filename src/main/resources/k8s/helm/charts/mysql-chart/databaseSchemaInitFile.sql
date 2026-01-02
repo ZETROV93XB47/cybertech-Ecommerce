@@ -143,7 +143,7 @@ CREATE TABLE reviewTable
     -- Contraintes de clés étrangères
     -- Le nom de la colonne 'reviewId' dans l'entité semble pointer vers un produit
     FOREIGN KEY (reviewId) REFERENCES productTable (id),
-    FOREIGN KEY (userId) REFERENCES userTable (id)
+    FOREIGN KEY (userId) REFERENCES userTable (id),
 
      -- Contrainte pour valider le rating au niveau de la base de données
      CONSTRAINT chk_rating CHECK (rating >= 1 AND rating <= 5)

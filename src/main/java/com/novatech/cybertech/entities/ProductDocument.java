@@ -40,13 +40,13 @@ public class ProductDocument {
     @Field(type = FieldType.Keyword, name = "category")
     private String category;
 
-    @Field(type = FieldType.Object, name = "attributes")
+    @Field(type = FieldType.Flattened, name = "attributes")
     private Map<String, Object> attributes;
 
     // --- Champs numériques pour les filtres de plage et le tri ---
-
     @Field(type = FieldType.Double, name = "price")
     private BigDecimal price;
+}
 
     // --- Champs dérivés pour la pertinence et le tri ---
 
@@ -55,5 +55,3 @@ public class ProductDocument {
 //
 //    @Field(type = FieldType.Integer, name = "reviewCount")
 //    private Integer reviewCount;
-}
-

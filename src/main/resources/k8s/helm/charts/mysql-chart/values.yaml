@@ -1,0 +1,16 @@
+mysql:
+  image: mysql:8.0
+  port: 3306
+
+  rootPassword: ""
+  user: rookie
+  password: pwd
+  database: cybertechDB
+
+  persistence:
+    enabled: true
+    size: 5Gi
+
+initSql:
+  enabled: true
+  filename: databaseSchemaInitFile.sql

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config
+data:
+  discovery.type: "{{ .Values.env.discoveryType }}"
+  xpack.security.enabled: "{{ .Values.env.xpackSecurity }}"
+  ES_JAVA_OPTS: "-Xms{{ .Values.elasticsearch.heap }} -Xmx{{ .Values.elasticsearch.heap }}"

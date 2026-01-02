@@ -1,0 +1,3 @@
+moderationApi:
+  image: moderation-api:latest
+  port: 5000

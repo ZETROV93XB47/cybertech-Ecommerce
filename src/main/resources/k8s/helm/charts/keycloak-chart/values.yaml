@@ -1,0 +1,14 @@
+keycloak:
+  image: quay.io/keycloak/keycloak:24.0.3
+  port: 8080
+
+mysql:
+  host: mysql
+  port: 3306
+  database: keycloakDB
+  user: rookie
+  password: pwd
+
+admin:
+  user: admin
+  password: admin

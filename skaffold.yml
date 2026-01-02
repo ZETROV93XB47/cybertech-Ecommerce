@@ -1,0 +1,24 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: cybertech-app
+build:
+  artifacts:
+    - image: cybertech-app
+      jib:
+        project: .
+
+manifests:
+  rawYaml:
+    - src/main/resources/k8s/cybertech/cybertech-app.yml
+
+deploy:
+  kubectl: {}
+
+portForward:
+  - resourceType: service
+    resourceName: cybertech-app
+    port: 8081
+    localPort: 8081
+
+

@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moderation-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moderation-api
+  template:
+    metadata:
+      labels:
+        app: moderation-api
+    spec:
+      containers:
+        - name: moderation-api
+          image: {{ .Values.moderationApi.image }}
+          ports:
+            - containerPort: {{ .Values.moderationApi.port }}

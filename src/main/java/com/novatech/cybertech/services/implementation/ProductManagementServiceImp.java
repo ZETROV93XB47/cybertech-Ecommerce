@@ -83,7 +83,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
     }
 
     public List<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto) {
-        final List<ProductDocument> productDocuments = productSearchService.searchByAttributes(productSearchRequestDto.getCategory(), productSearchRequestDto.getAttributes());
+        final List<ProductDocument> productDocuments = productSearchService.search(productSearchRequestDto);
         return productDocuments.stream().map(productMapper::mapFromProductDocumentToProductResponseDto).toList();
     }
 

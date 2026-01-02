@@ -1,0 +1,10 @@
+redis:
+  image: redis:7.2
+  port: 6379
+
+  persistence:
+    enabled: true
+    size: 1Gi
+
+config:
+  filename: redis.conf

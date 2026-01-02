@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-config
+data:
+  KC_DB: "mysql"
+  KC_DB_URL: "jdbc:mysql://{{ .Values.mysql.host }}:{{ .Values.mysql.port }}/{{ .Values.mysql.database }}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+  KC_DB_USERNAME: "{{ .Values.mysql.user }}"
+  KEYCLOAK_ADMIN: "{{ .Values.admin.user }}"

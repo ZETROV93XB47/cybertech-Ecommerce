@@ -20,7 +20,7 @@ public class UuidFormatter {
         );
     }
 
-    public static void main(String[] args) {
+    public static void maind(String[] args) {
         String unformatted = "C72E24D08AAF41D3ABF9BD1775E8DD16";
         String formatted = formatUuidString(unformatted);
         System.out.println("UUID non formaté : " + unformatted);

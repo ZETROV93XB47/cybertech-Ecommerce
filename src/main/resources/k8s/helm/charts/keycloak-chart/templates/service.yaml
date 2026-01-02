@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+spec:
+  type: NodePort # <--- On change le type ici
+  selector:
+    app: keycloak
+  ports:
+    - port: {{ .Values.keycloak.port }}      # Port interne au cluster
+      targetPort: {{ .Values.keycloak.port }} # Port sur le Pod
+      nodePort: 30080                        # Port exposé sur ton "nœud" (Minikube)

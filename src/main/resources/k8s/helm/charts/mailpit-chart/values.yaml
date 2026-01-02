@@ -1,0 +1,8 @@
+mailpit:
+  image: axllent/mailpit
+  smtpPort: 1025
+  webPort: 8025
+
+persistence:
+  enabled: true
+  size: 1Gi

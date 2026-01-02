@@ -7,7 +7,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(TestcontainersConfiguration.class)
+//@Import(TestcontainersConfiguration.class)
 class CybertechApplicationTests {
 
     @Test

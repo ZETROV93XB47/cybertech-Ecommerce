@@ -37,5 +37,5 @@ public class ProductSearchRequestDto {
      * Le front-end envoie : {"ram": ["16GB", "32GB"], "ssd": ["512GB"]}
      */
     //private Map<String, List<String>> attributes;
-    private Map<String, String> attributes;
+    private Map<String, List<String>> attributes;
 }

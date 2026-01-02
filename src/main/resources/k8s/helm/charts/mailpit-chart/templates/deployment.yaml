@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailpit
+  template:
+    metadata:
+      labels:
+        app: mailpit
+    spec:
+      containers:
+        - name: mailpit
+          image: {{ .Values.mailpit.image }}
+          ports:
+            - containerPort: {{ .Values.mailpit.smtpPort }}
+            - containerPort: {{ .Values.mailpit.webPort }}
+          env:
+            - name: MP_DATA_FILE
+              value: /data/mailpit.db
+          volumeMounts:
+            - name: mailpit-data
+              mountPath: /data
+      volumes:
+        - name: mailpit-data
+          persistentVolumeClaim:
+            claimName: mailpit-pvc
