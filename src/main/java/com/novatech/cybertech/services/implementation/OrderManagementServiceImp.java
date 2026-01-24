@@ -104,7 +104,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final OrderEntity orderEntity = orderRepository.findByUuid(orderUpdateRequestDto.getOrderUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
         final UserEntity userEntity = orderEntity.getUserEntity();
 
-        if (isCurrentUserOrderInitiator(orderEntity, keycloakId) && isOrderAlreadyShipped(orderEntity)) {
+        if (isCurrentUserOrderInitiator(orderEntity, keycloakId) && !isOrderAlreadyShipped(orderEntity)) {
 
             // 2. Charger les produits
             List<ProductEntity> products = getAllProductsFromRequest(orderUpdateRequestDto.getItemUpdateRequestDtoList());
