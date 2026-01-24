@@ -24,7 +24,7 @@ public class ProductSearchRequestDto {
     @Min(value = 100, message = "Le prix minimum doit être supérieur ou égal à 100")
     private Double priceMin;
 
-    @Max(value = 10000, message = "Le prix maximum doit être supérieur ou égal à 10000")
+    @Max(value = 1000000, message = "Le prix maximum doit être supérieur ou égal à 1000000")
     private Double priceMax;
 
     @NotNull(message = "La catégorie ne peut pas être nulle")

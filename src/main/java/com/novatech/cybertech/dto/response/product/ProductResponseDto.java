@@ -7,11 +7,12 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.util.Map;
 
-@Data // Génère getters, setters, toString, equals, hashCode
+@Data
 @Builder
 @AllArgsConstructor
 public class ProductResponseDto {
     private final String name;
+    private final String uuid;
     private final BigDecimal price;
     private final String brand;
     private final String category;

@@ -13,7 +13,6 @@ import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import com.novatech.cybertech.validator.implementation.ActiveUserValidator;
 import com.novatech.cybertech.validator.implementation.BankCardValidityValidator;
-import com.novatech.cybertech.validator.implementation.StockValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.OAuth2Constants;
@@ -23,6 +22,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
@@ -32,6 +32,7 @@ import java.util.Map;
 
 @Slf4j
 @Configuration
+@EnableJpaAuditing
 @RequiredArgsConstructor
 public class AppConfig {
 
@@ -44,15 +45,13 @@ public class AppConfig {
     @Value("${keycloak.client.user.management.client.secret}")
     private String clientSecret;
 
-    private final StockValidator stockValidator;
     private final ActiveUserValidator activeUserValidator;
     private final BankCardValidityValidator bankCardValidityValidator;
 
     @Bean
     public OrderValidator orderValidatorChain() {
         activeUserValidator
-                .setNext(bankCardValidityValidator)
-                .setNext(stockValidator);
+                .setNext(bankCardValidityValidator);
 
         return activeUserValidator;
     }

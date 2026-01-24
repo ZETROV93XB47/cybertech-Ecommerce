@@ -121,11 +121,11 @@
             <groupId>org.thymeleaf.extras</groupId>
             <artifactId>thymeleaf-extras-springsecurity6</artifactId>
         </dependency>
-        <dependency>
-            <groupId>co.elastic.clients</groupId>
-            <artifactId>elasticsearch-java</artifactId>
-            <version>9.2.3</version>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>co.elastic.clients</groupId>-->
+<!--            <artifactId>elasticsearch-java</artifactId>-->
+<!--            <version>8.13.4</version>-->
+<!--        </dependency>-->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>
@@ -238,6 +238,12 @@
             <artifactId>javafaker</artifactId>
             <version>1.0.2</version>
         </dependency>
+        <dependency>
+            <groupId>net.datafaker</groupId>
+            <artifactId>datafaker</artifactId>
+            <version>2.5.3</version>
+            <scope>compile</scope>
+        </dependency>
 
         <dependency>
             <groupId>com.h2database</groupId>
@@ -270,10 +276,6 @@
             <groupId>io.hypersistence</groupId>
             <artifactId>hypersistence-utils-hibernate-63</artifactId>
             <version>3.14.1</version>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
     </dependencies>
@@ -366,6 +368,11 @@
                 <groupId>com.google.cloud.tools</groupId>
                 <artifactId>jib-maven-plugin</artifactId>
                 <version>3.5.1</version>
+                <configuration>
+                    <to>
+                        <image>cybertech</image>
+                    </to>
+                </configuration>
             </plugin>
         </plugins>
     </build>

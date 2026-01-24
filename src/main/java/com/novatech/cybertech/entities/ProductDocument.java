@@ -22,6 +22,8 @@ public class ProductDocument {
 
     @Id
     private String id;
+
+
     private UUID uuid;
 
     // --- Champs pour la recherche plein texte (analysés) ---

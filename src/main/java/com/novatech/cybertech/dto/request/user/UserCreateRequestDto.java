@@ -38,8 +38,17 @@ public class UserCreateRequestDto {
     @NotNull(message = "Communication chanel cannot be null")
     private CommunicationChanel favoriteCommunicationChanel;
 
-    // L'adresse peut être optionnelle selon tes besoins
-    private String address;
+    @NotBlank(message = "Street cannot be blank")
+    private String street;
+
+    @NotBlank(message = "City cannot be blank")
+    private String city;
+
+    @NotBlank(message = "Zip code cannot be blank")
+    private String zipCode;
+
+    @NotBlank(message = "Country cannot be blank")
+    private String country;
 
     // La date de naissance peut être optionnelle
     @Past(message = "Birth date must be in the past")

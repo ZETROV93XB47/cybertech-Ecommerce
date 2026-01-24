@@ -9,10 +9,10 @@ import org.testcontainers.elasticsearch.ElasticsearchContainer;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
-//@TestConfiguration(proxyBeanMethods = false)
+@TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
 
-    /*
+
     @Bean
     @ServiceConnection
     KafkaContainer kafkaContainer() {
@@ -39,5 +39,5 @@ class TestcontainersConfiguration {
     }
 
 
-     */
+
 }

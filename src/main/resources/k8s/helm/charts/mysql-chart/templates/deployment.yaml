@@ -45,7 +45,7 @@ spec:
         - name: init-db
           configMap:
             name: mysql-init-sql
-  volumeClaimTemplates: # Remplace le fichier pvc.yaml séparé et la section volumes/pvc
+  volumeClaimTemplates: # Remplace le fichier persistentVolumeClaim.yaml séparé et la section volumes/pvc
     - metadata:
         name: mysql-data
       spec:

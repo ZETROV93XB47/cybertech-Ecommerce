@@ -25,11 +25,11 @@ public class ShippingConfirmationNotification extends AbstractNotification {
 
         OrderEntity savedOrder = (OrderEntity) notificationContext.getPayload();
 
-        final Map<String, Object> model = new HashMap<>();
-
-        model.put("userName", savedOrder.getUserEntity().getFirstName());
-        model.put("orderId", savedOrder.getId());
-        model.put("amount", savedOrder.getTotalAmount());
+//        final Map<String, Object> model = new HashMap<>();
+//
+//        model.put("userName", savedOrder.getUserEntity().getFirstName());
+//        model.put("orderId", savedOrder.getId());
+//        model.put("amount", savedOrder.getTotalAmount());
 
         //notificationContext.withNotificationProcessorData(notificationProcessorData);
 

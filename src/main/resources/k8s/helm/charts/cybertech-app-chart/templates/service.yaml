@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cybertech-app
+spec:
+  selector:
+    app: cybertech-app
+  ports:
+    - port: {{ .Values.cybertechApp.port }}
+      targetPort: {{ .Values.cybertechApp.port }}

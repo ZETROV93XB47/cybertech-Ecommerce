@@ -15,5 +15,6 @@ spec:
       containers:
         - name: moderation-api
           image: {{ .Values.moderationApi.image }}
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: {{ .Values.moderationApi.port }}

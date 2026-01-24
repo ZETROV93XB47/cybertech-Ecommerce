@@ -5,4 +5,5 @@ metadata:
 data:
   discovery.type: "{{ .Values.env.discoveryType }}"
   xpack.security.enabled: "{{ .Values.env.xpackSecurity }}"
+  xpack.security.http.ssl.enabled: "{{ .Values.env.xpackSecurityHttpSsl }}"
   ES_JAVA_OPTS: "-Xms{{ .Values.elasticsearch.heap }} -Xmx{{ .Values.elasticsearch.heap }}"

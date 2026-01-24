@@ -8,15 +8,15 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Entity
+//@Entity
 @Getter
 @SuperBuilder
-@EqualsAndHashCode(callSuper = true)
+//@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "cartItemTable")
+//@Table(name = "cartItemTable")
 @ToString(callSuper = true)
-public class CartItemEntity extends BaseEntity {
+public class CartItemEntity {
 
     @Column(name = "quantity", nullable = false)
     private Integer quantity;

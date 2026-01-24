@@ -6,6 +6,7 @@ import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Role;
+import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.BankCardRepository;
@@ -39,13 +40,15 @@ public class UserManagementServiceImp implements UserManagementService {
         try {
             keycloakId = keycloakUserManagementService.createUser(req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword());
 
+            log.info("Keycloak id : {}", keycloakId);
+
             UserEntity user = UserEntity.builder()
                     .uuid(UUID.randomUUID())
                     .email(req.getEmail())
                     .firstName(req.getFirstName())
                     .lastName(req.getLastName())
                     .sex(req.getSex())
-                    .address(req.getAddress())
+                    .address(new Address(req.getStreet(), req.getCity(), req.getZipCode(), req.getCountry()))
                     .birthDate(req.getBirthDate())
                     .phoneNumber(req.getPhoneNumber())
                     .favoriteCommunicationChanel(req.getFavoriteCommunicationChanel())

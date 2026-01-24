@@ -1,24 +1,20 @@
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
-  name: cybertech-app
+  name: cybertech-project
 build:
   artifacts:
+    # Ton application Java avec Jib
     - image: cybertech-app
       jib:
-        project: .
-
-manifests:
-  rawYaml:
-    - src/main/resources/k8s/cybertech/cybertech-app.yml
+        project: com.novatech.cybertech:Cybertech # Nom du projet Maven
+  local:
+    push: false # Ne pas pousser sur Docker Hub, utiliser le cache local
 
 deploy:
-  kubectl: {}
-
-portForward:
-  - resourceType: service
-    resourceName: cybertech-app
-    port: 8081
-    localPort: 8081
-
-
+  helm:
+    releases:
+      - name: cybertech-release
+        chartPath: "./src/main/resources/k8s/helm/charts/cybertech-app-chart" # Chemin vers ton chart
+        setValueTemplates:
+          cybertechApp.image: "{{.IMAGE_FULLY_QUALIFIED_cybertech_app}}"

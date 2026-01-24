@@ -4,11 +4,14 @@ import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.valueObjects.Address;
+import com.novatech.cybertech.entities.valueObjects.Money;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -18,21 +21,32 @@ import java.util.List;
 @Setter
 @Getter
 @SuperBuilder
-@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "orderTable")
 @ToString(callSuper = true)
+@EqualsAndHashCode(callSuper = true)
+@EntityListeners(AuditingEntityListener.class)
 public class OrderEntity extends BaseEntity {
 
     @Column(name = "orderDate", nullable = false)
     private LocalDateTime orderDate;
 
-    @Column(name = "totalAmount", nullable = false)
-    private BigDecimal totalAmount = BigDecimal.valueOf(0);
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "amount", column = @Column(name = "totalAmount", nullable = false)),
+            @AttributeOverride(name = "currencyCode", column = @Column(name = "currency", nullable = false))
+    })
+    private Money totalAmount;
 
-    @Column(name = "shippingAddress", nullable = false)
-    private String shippingAddress;
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "street", column = @Column(name = "shippingStreet")),
+            @AttributeOverride(name = "city", column = @Column(name = "shippingCity")),
+            @AttributeOverride(name = "zipCode", column = @Column(name = "shippingZipCode")),
+            @AttributeOverride(name = "country", column = @Column(name = "shippingCountry"))
+    })
+    private Address shippingAddress;
 
     @Column(name = "status", nullable = false)
     @Enumerated(EnumType.STRING)
@@ -61,6 +75,10 @@ public class OrderEntity extends BaseEntity {
     @OneToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     @JoinColumn(name = "paymentId")
     private PaymentEntity paymentEntity;
+
+    @LastModifiedDate
+    @Column(name = "updatedAt")
+    private LocalDateTime updatedAt;
 }
 
     /*

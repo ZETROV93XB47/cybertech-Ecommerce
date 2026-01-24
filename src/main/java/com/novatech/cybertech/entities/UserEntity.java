@@ -3,16 +3,16 @@ package com.novatech.cybertech.entities;
 import com.novatech.cybertech.entities.enums.CommunicationChanel;
 import com.novatech.cybertech.entities.enums.Role;
 import com.novatech.cybertech.entities.enums.Sex;
+import com.novatech.cybertech.entities.valueObjects.Address;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Date;
 import java.util.List;
 
 @Entity
+@Setter
 @Getter
 @SuperBuilder
 @AllArgsConstructor
@@ -35,15 +35,18 @@ public class UserEntity extends BaseEntity {
     @Column(name = "sex", nullable = false)
     private Sex sex;
 
-    @Column(name = "address", length = 255)
-    private String address;
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "street", column = @Column(name = "address_street")),
+            @AttributeOverride(name = "city", column = @Column(name = "address_city")),
+            @AttributeOverride(name = "zipCode", column = @Column(name = "address_zip_code")),
+            @AttributeOverride(name = "country", column = @Column(name = "address_country"))
+    })
+    private Address address;
 
-    @Temporal(TemporalType.TIMESTAMP)
-    @Column(name = "birthDate")
+    //TODO: Vérifier le type LocalDate pour la colonne birthDate
+    @Column(name = "birthDate", columnDefinition = "DATE")
     private LocalDateTime birthDate;
-
-    @Column(name = "password", length = 100)
-    private String password;
 
     @Column(unique = true, nullable = false)
     private String keycloakId;
@@ -58,7 +61,7 @@ public class UserEntity extends BaseEntity {
     @Column(name = "isActive", nullable = false)
     private Boolean isActive = true;
 
-    //@Enumerated(EnumType.STRING)
+    @Enumerated(EnumType.STRING)
     @Column(name = "defaultCommunicationChanel", nullable = false)
     private CommunicationChanel favoriteCommunicationChanel;
 

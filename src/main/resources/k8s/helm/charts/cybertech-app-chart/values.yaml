@@ -1,0 +1,33 @@
+cybertechApp:
+  image: cybertech-app:latest
+  port: 8081
+
+mysql:
+  host: mysql
+  port: 3306
+  database: cybertechDB
+  username: root
+  password: ""
+
+redis:
+  host: redis
+  port: 6379
+
+elasticsearch:
+  host: elasticsearch
+  port: 9200
+
+keycloak:
+  host: keycloak
+  port: 8080
+  realm: cybertech
+
+mailpit:
+  host: mailpit
+  port: 1025
+
+moderationApi:
+  url: http://moderation-api:5000/analyze
+
+frontend:
+  url: http://localhost:4200

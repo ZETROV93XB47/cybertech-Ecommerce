@@ -71,7 +71,7 @@ public class UserManagementController implements UserCrudControllerApiSpec {
 
 
     //@PreAuthorize("hasRole('ADMIN')")
-    @PostMapping(value = "/create/auto", produces = APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/register/auto", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<Collection<UserResponseDto>> createUserAutomatically() {
         return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.createAutomatically(DataGenerator.generateUsers(100)));
     }

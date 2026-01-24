@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -22,7 +23,7 @@ public class OrderResponseDto {
     //TODO: mapper correctement ce champ
     private UUID userUuid;
     
-    private Date orderDate;
+    private LocalDate orderDate;
     private OrderStatus status;
     private BigDecimal totalAmount;
     private String shippingAddress;

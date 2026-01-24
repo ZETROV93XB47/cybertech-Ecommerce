@@ -2,6 +2,8 @@ package com.novatech.cybertech.services.implementation;
 
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.entities.ProductDocument;
 import com.novatech.cybertech.services.core.ProductSearchService;
@@ -23,73 +25,72 @@ public class ProductSearchServiceImp implements ProductSearchService {
     private static final String DOT = ".";
     private static final String BRAND = "brand";
     private static final String PRICE = "price";
-    public static final String NAME_FIELD = "name";
+    private static final String NAME_FIELD = "name";
     private static final String CATEGORY = "category";
     private static final String ATTRIBUTES = "attributes";
-    public static final String DESCRIPTION_FIELD = "description";
+    private static final String DESCRIPTION_FIELD = "description";
 
     private final ElasticsearchOperations elasticsearchOperations;
 
     @Override
-    public List<ProductDocument> search(final ProductSearchRequestDto productSearchRequestDto) {
+    public List<ProductDocument> search(final ProductSearchRequestDto req) {
 
         BoolQuery.Builder bool = new BoolQuery.Builder();
 
-        // 1) Filtre catégorie (exact)
-        if (productSearchRequestDto.getCategory() != null) {
-            bool.filter(f -> f.term(t -> t.field(CATEGORY).value(productSearchRequestDto.getCategory().name())));
+        // 1) Catégorie (filter)
+        if (req.getCategory() != null) {
+            bool.filter(f -> f.term(t -> t.field(CATEGORY).value(req.getCategory().name())));
         }
 
-        // 2) Filtre brands (multi-sélection via terms)
-        if (productSearchRequestDto.getBrands() != null && !productSearchRequestDto.getBrands().isEmpty()) {
-            List<FieldValue> brandValues = productSearchRequestDto.getBrands().stream()
-                    .map(b -> FieldValue.of(b.name()))
-                    .toList();
-            bool.filter(f -> f.terms(t -> t.field(BRAND).terms(v -> v.value(brandValues))));
-        }
+        // 2) Marques (filter)
+        if (req.getBrands() != null && !req.getBrands().isEmpty()) {
+            List<String> brandValues = req.getBrands().stream().map(Enum::name).toList();
 
-        // 3) Recherche Textuelle (MultiMatch)
-        if (StringUtils.hasText(productSearchRequestDto.getKeyword())) {
-            bool.must(m -> m.multiMatch(mm -> mm
-                    .query(productSearchRequestDto.getKeyword())
-                    .fields(NAME_FIELD, DESCRIPTION_FIELD)
-                    .fuzziness("AUTO") // Optionnel : permet les fautes de frappe
+            bool.filter(f -> f.terms(t -> t
+                    .field(BRAND)
+                    .terms(v -> v.value(brandValues.stream().map(FieldValue::of).toList()))
             ));
         }
 
-        // --- AJOUT 4) Filtrage par Range de Prix ---
-        // --- Filtrage par Range de Prix ---
-        if (productSearchRequestDto.getPriceMin() != null && productSearchRequestDto.getPriceMax() != null) {
-            bool.filter(f -> f.range(r -> r
-                    .number(n -> n
-                            .field("price")
-                            .gte(productSearchRequestDto.getPriceMin())
-                            .lte(productSearchRequestDto.getPriceMax())
+        // 3) Recherche textuelle (must)
+        if (StringUtils.hasText(req.getKeyword())) {
+            bool.must(m -> m.multiMatch(MultiMatchQuery.of(mm -> mm
+                    .query(req.getKeyword())
+                    .fields(NAME_FIELD, DESCRIPTION_FIELD)
+                    .fuzziness("AUTO")
+            )));
+        }
+
+        // 4) Range de prix (filter)
+        if (req.getPriceMin() != null && req.getPriceMax() != null) {
+            bool.filter(f -> f.range(r -> r.number(n ->
+                            n.field(PRICE)
+                                    .gte(FieldValue.of(req.getPriceMin()).doubleValue())
+                                    .lte(FieldValue.of(req.getPriceMax()).doubleValue())
                     )
             ));
         }
 
-
-        // --- AJOUT 5) Filtrage sur les attributs dynamiques (Flattened) ---
-        // --- Filtrage sur les attributs dynamiques (Flattened) ---
-        if (productSearchRequestDto.getAttributes() != null) {
-            productSearchRequestDto.getAttributes().forEach((key, values) -> {
+        // 5) Attributs dynamiques (flattened): attributes.key IN (values...) (filter)
+        if (req.getAttributes() != null) {
+            req.getAttributes().forEach((key, values) -> {
                 if (values != null && !values.isEmpty()) {
-                    // On transforme la liste de String en liste de FieldValue
-                    List<FieldValue> attrValues = values.stream()
-                            .map(FieldValue::of)
-                            .toList();
+                    String field = ATTRIBUTES + DOT + key;
 
                     bool.filter(f -> f.terms(t -> t
-                            .field(ATTRIBUTES + DOT + key)
-                            .terms(v -> v.value(attrValues))
+                            .field(field)
+                            .terms(v -> v.value(values.stream()
+                                    .map(FieldValue::of)
+                                    .toList()))
                     ));
                 }
             });
         }
 
+        Query finalQuery = bool.build()._toQuery();
+
         NativeQuery query = NativeQuery.builder()
-                .withQuery(q -> q.bool(bool.build()))
+                .withQuery(finalQuery)
                 .build();
 
         return elasticsearchOperations.search(query, ProductDocument.class)

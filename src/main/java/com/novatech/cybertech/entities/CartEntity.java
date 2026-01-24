@@ -9,15 +9,15 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Entity
+//@Entity
 @Getter
 @SuperBuilder
-@EqualsAndHashCode(callSuper = true)
+//@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "cartTable")
+//@Table(name = "cartTable")
 @ToString(callSuper = true)
-public class CartEntity extends BaseEntity {
+public class CartEntity  {
 
     @ManyToOne
     @JoinColumn(name = "userId", nullable = false)

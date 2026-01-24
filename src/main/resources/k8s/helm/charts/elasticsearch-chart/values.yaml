@@ -11,3 +11,4 @@ elasticsearch:
 env:
   discoveryType: "single-node"
   xpackSecurity: "false"
+  xpackSecurityHttpSsl: "false"

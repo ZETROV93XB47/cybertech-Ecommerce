@@ -12,6 +12,6 @@ import java.math.BigDecimal;
 public class BlackFridayDiscountStrategy implements DiscountStrategy {
     @Override
     public BigDecimal calculateDiscount(OrderEntity orderEntity) {
-        return BigDecimal.valueOf(orderEntity.getDiscountType().getDiscountPercentage() * orderEntity.getTotalAmount().doubleValue());
+        return BigDecimal.valueOf(orderEntity.getDiscountType().getDiscountPercentage() * orderEntity.getTotalAmount().getAmount().doubleValue());
     }
 }

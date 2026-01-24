@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cybertech-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cybertech-app
+  template:
+    metadata:
+      labels:
+        app: cybertech-app
+    spec:
+      containers:
+        - name: cybertech-app
+          image: {{ .Values.cybertechApp.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ .Values.cybertechApp.port }}
+          env:
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cybertech-app-secret
+                  key: mysql-password
+            - name: SPRING_DATA_ELASTICSEARCH_CLIENT_ENDPOINTS
+              value: "http://elasticsearch:9200"
+
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+      volumes:
+        - name: config-volume
+          configMap:
+            name: cybertech-app-config
