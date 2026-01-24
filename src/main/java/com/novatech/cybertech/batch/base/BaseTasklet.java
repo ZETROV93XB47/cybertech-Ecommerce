@@ -39,7 +39,6 @@ public abstract class BaseTasklet implements Tasklet, StepExecutionListener {
                 context.getStepContext().getStepExecution());
 
         return ScopedValue.where(STEP_SETTINGS, taskletProps).call(() -> {
-
             try {
                 return execute(stepContribution, taskletProps);
             }
