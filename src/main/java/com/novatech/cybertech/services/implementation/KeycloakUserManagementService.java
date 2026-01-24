@@ -67,7 +67,7 @@ public class KeycloakUserManagementService {
     }
 
     public void deleteUser(String keycloakUserId) {
-        keycloakClient.realm(realm).users().delete(keycloakUserId)
+        keycloakClient.realm(realm).users().delete(keycloakUserId);
     }
 
     private String createUserNameFromFirstNameAndLastName(final String firstName, final String lastName, final String email) {
