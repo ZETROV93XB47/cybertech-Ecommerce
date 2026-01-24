@@ -18,11 +18,11 @@ public class Money implements Serializable {
     private BigDecimal amount;
     private String currencyCode; // ex: "EUR", "USD"
 
-    public static Money of(BigDecimal amount) {
+    public static Money of(final BigDecimal amount) {
         return new Money(amount, "EUR"); // Devise par défaut
     }
 
-    public Money add(Money other) {
+    public Money add(final Money other) {
         if (!this.currencyCode.equals(other.currencyCode)) {
             throw new IllegalArgumentException("Cannot add different currencies");
         }
