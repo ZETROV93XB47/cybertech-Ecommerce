@@ -18,6 +18,7 @@ public interface UserMapper extends BaseMapper<UserEntity, UserCreateRequestDto,
     @Mapping(target = "address", expression = "java(mapStringToAddress(dto.getAddress()))")
     void updateEntityFromDto(UserUpdateRequestDto dto, @MappingTarget UserEntity entity);
 
+    // Mapping direct des champs éclatés du DTO vers l'objet Address de l'entité
     @Override
     @Mapping(target = "address.street", source = "street")
     @Mapping(target = "address.city", source = "city")

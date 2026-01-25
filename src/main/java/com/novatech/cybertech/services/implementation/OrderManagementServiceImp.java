@@ -101,7 +101,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         final String keycloakId = jwt.getSubject();
 
-        final OrderEntity orderEntity = orderRepository.findByUuid(orderUpdateRequestDto.getOrderUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
+        final OrderEntity orderEntity = orderRepository.findByUuid(orderUpdateRequestDto.getUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
         final UserEntity userEntity = orderEntity.getUserEntity();
 
         if (isCurrentUserOrderInitiator(orderEntity, keycloakId) && !isOrderAlreadyShipped(orderEntity)) {
@@ -114,7 +114,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
             validateOrderBeforeProcessingPayment(quantities, orderEntity.getUserEntity());
 
             // 3. Réserver le stock AVANT tout paiement
-            stockService.reserveStock(orderUpdateRequestDto.getOrderUuid(), quantities);
+            stockService.reserveStock(orderUpdateRequestDto.getUuid(), quantities);
 
             // 5. Calculer le prix total
             final BigDecimal amount = processOrderPaymentAmount(orderUpdateRequestDto.getItemUpdateRequestDtoList(), products);

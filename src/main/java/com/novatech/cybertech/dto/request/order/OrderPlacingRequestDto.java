@@ -4,40 +4,44 @@ import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.UUID;
 
-@Getter
-@Setter
+@Data
 @Builder
-@ToString
-@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
 public class OrderPlacingRequestDto {
 
-    @NotNull(message = "User UUID cannot be null")
+    @NotNull
     private UUID userUuid;
 
-    @NotNull(message = "Shipping Address cannot be null")
-    private String shippingAddress;
-
-    @NotNull(message = "Shipping Type cannot be null")
-    private ShippingType shippingType;
-
-    @NotNull(message = "Shipping Provider cannot be null")
-    private ShippingProvider shippingProvider;
-
-    @NotNull(message = "The payment Method Type cannot be null")
+    @NotNull
     private PaymentType paymentType;
 
-    @NotNull(message = "Cannot create an order without orderItems in the order")
+    @NotNull
+    private ShippingType shippingType;
+
+    @NotNull
+    private ShippingProvider shippingProvider;
+
+    @NotBlank
+    private String shippingStreet;
+    @NotBlank
+    private String shippingCity;
+    @NotBlank
+    private String shippingZipCode;
+    @NotBlank
+    private String shippingCountry;
+
+    @NotEmpty
     private List<OrderItemCreateRequestDto> orderItems;
 }
-
-//Order date will be updated in the service layer
-//    @NotNull(message = "Cart UUID cannot be null for order creation")
-//    private UUID cartUuid; // Assumes an order is created from an existing cart

@@ -21,8 +21,11 @@ import java.math.BigDecimal;
 public interface OrderMapper {
     @Mapping(target = "uuid", expression = "java(java.util.UUID.randomUUID())")
     @Mapping(target = "orderDate", expression = "java(java.time.LocalDateTime.now())")
-    @Mapping(target = "shippingAddress", expression = "java(mapStringToAddress(orderPlacingRequestDto.getShippingAddress()))")
     @Mapping(target = "totalAmount", ignore = true) // Sera calculé par le service
+    @Mapping(target = "shippingAddress.street", source = "shippingStreet")
+    @Mapping(target = "shippingAddress.city", source = "shippingCity")
+    @Mapping(target = "shippingAddress.zipCode", source = "shippingZipCode")
+    @Mapping(target = "shippingAddress.country", source = "shippingCountry")
     OrderEntity mapFromOrderPlacingRequestDtoToOrderEntity(final OrderPlacingRequestDto orderPlacingRequestDto);
 
 
@@ -46,16 +49,13 @@ public interface OrderMapper {
     @Mapping(target = "paymentEntity", ignore = true) // Le paiement est géré via le service de paiement et non par mapping direct
     @Mapping(target = "status", ignore = true) // Le statut suit une machine à états stricte
     @Mapping(target = "totalAmount", ignore = true) // Le montant est recalculé par le service
-    @Mapping(target = "shippingAddress", expression = "java(mapStringToAddress(orderUpdateRequestDto.getShippingAddress()))")
+    @Mapping(target = "shippingAddress.street", source = "shippingStreet")
+    @Mapping(target = "shippingAddress.city", source = "shippingCity")
+    @Mapping(target = "shippingAddress.zipCode", source = "shippingZipCode")
+    @Mapping(target = "shippingAddress.country", source = "shippingCountry")
     void updateOrderFromOrderUpdateRequestDto(final OrderUpdateRequestDto orderUpdateRequestDto, @MappingTarget final OrderEntity orderEntity);
 
     // --- Méthodes de conversion par défaut pour les Value Objects ---
-
-    default Address mapStringToAddress(String address) {
-        if (address == null) return null;
-        // TODO: Faire évoluer les DTOs pour avoir des champs séparés (rue, ville, etc.)
-        return new Address(address, "Unknown City", "00000", "Unknown Country");
-    }
 
     default String mapAddressToString(Address address) {
         if (address == null) return null;

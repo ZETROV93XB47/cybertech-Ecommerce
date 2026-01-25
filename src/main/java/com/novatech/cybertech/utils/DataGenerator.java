@@ -274,7 +274,10 @@ public class DataGenerator {
 
         return OrderPlacingRequestDto.builder()
                 .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
-                .shippingAddress(FAKER.address().fullAddress())
+                .shippingStreet(FAKER.address().streetAddress())
+                .shippingCity(FAKER.address().city())
+                .shippingZipCode(FAKER.address().zipCode())
+                .shippingCountry(FAKER.address().country())
                 .shippingType(ShippingType.STANDARD)
                 .shippingProvider(ShippingProvider.FEDEX)
                 .paymentType(PaymentType.VISA)
@@ -315,7 +318,10 @@ public class DataGenerator {
 
         OrderPlacingRequestDto orderPlacingRequestDto = OrderPlacingRequestDto.builder()
                 .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
-                .shippingAddress(FAKER.address().fullAddress())
+                .shippingStreet(FAKER.address().streetAddress())
+                .shippingCity(FAKER.address().city())
+                .shippingZipCode(FAKER.address().zipCode())
+                .shippingCountry(FAKER.address().country())
                 .shippingType(ShippingType.STANDARD)
                 .shippingProvider(ShippingProvider.FEDEX)
                 .paymentType(PaymentType.VISA)

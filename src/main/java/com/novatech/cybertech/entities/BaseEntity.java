@@ -7,8 +7,6 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
 
-import java.io.Serial;
-import java.io.Serializable;
 import java.util.UUID;
 
 @Setter

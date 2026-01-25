@@ -5,7 +5,7 @@ import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,7 +21,7 @@ import java.util.UUID;
 public class OrderUpdateRequestDto {
 
     @NotNull(message = "Order UUID cannot be null")
-    private UUID orderUuid;
+    private UUID uuid;
 
     @NotNull(message = "The payment Method Type cannot be null")
     private PaymentType paymentType;
@@ -32,8 +32,17 @@ public class OrderUpdateRequestDto {
     @NotNull(message = "Shipping Provider cannot be null")
     private ShippingProvider shippingProvider;
 
-    @Size(max = 255, message = "Shipping address must be at most 255 characters")
-    private String shippingAddress;
+    @NotBlank(message = "Shipping Street cannot be blank")
+    private String shippingStreet;
+
+    @NotBlank(message = "Shipping City cannot be blank")
+    private String shippingCity;
+
+    @NotBlank(message = "Shipping Zip code cannot be blank")
+    private String shippingZipCode;
+
+    @NotBlank(message = "Shipping Country cannot be blank")
+    private String shippingCountry;
 
     private List<OrderItemCreateRequestDto> itemUpdateRequestDtoList;
 }

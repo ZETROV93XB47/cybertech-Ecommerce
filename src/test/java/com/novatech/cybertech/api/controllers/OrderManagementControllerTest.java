@@ -64,7 +64,10 @@ class OrderManagementControllerTest {
         OrderPlacingRequestDto requestDto = OrderPlacingRequestDto.builder()
                 .paymentType(PaymentType.VISA)
                 .userUuid(userUuid)
-                .shippingAddress("Random address")
+                .shippingStreet("123 Random Street")
+                .shippingCity("Random City")
+                .shippingZipCode("12345")
+                .shippingCountry("Randomland")
                 .shippingType(ShippingType.EXPRESS)
                 .shippingProvider(ShippingProvider.FEDEX)
                 .orderItems(List.of(OrderItemCreateRequestDto.builder()
@@ -76,12 +79,13 @@ class OrderManagementControllerTest {
         // TODO: Remplissez les champs obligatoires de requestDto ici pour passer la validation @Valid
         // ex: requestDto.setProducts(List.of(...));
 
+        String expectedShippingAddress = "123 Random Street, 12345 Random City, Randomland";
         OrderResponseDto responseDto = OrderResponseDto.builder()
                 .userUuid(userUuid)
                 .orderDate(LocalDate.of(2026, 1, 10))
                 .status(OrderStatus.SHIPPED)
                 .totalAmount(BigDecimal.TEN)
-                .shippingAddress("Random address")
+                .shippingAddress(expectedShippingAddress)
                 .orderItems(List.of(OrderItemResponseDto.builder()
                         .orderItemUuid(UUID.randomUUID())
                         .productUuid(productUuid)
