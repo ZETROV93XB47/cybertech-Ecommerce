@@ -9,15 +9,15 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 import java.util.List;
 
-//@Entity
+@Entity
 @Getter
 @SuperBuilder
-//@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-//@Table(name = "cartTable")
+@Table(name = "cartTable")
+@EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
-public class CartEntity  {
+public class CartEntity extends BaseEntity {
 
     @ManyToOne
     @JoinColumn(name = "userId", nullable = false)
@@ -37,6 +37,6 @@ public class CartEntity  {
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<CartItemEntity> cartItems;
 
-    //@OneToOne(mappedBy = "cartEntity")
-    //private OrderEntity orderEntity;
+    @OneToOne(mappedBy = "cartEntity")
+    private OrderEntity orderEntity;
 }

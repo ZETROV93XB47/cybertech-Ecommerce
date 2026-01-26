@@ -152,6 +152,41 @@ CREATE TABLE reviewTable
      CONSTRAINT chk_rating CHECK (rating >= 1 AND rating <= 5)
 );
 
+CREATE TABLE cartTable
+(
+    -- Hérité de BaseEntity
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    uuid          BINARY(16)   NOT NULL UNIQUE,
+    version       BIGINT       NOT NULL,
+
+    -- Champs spécifiques à CartEntity
+    userId        BIGINT       NOT NULL,
+    createdAt     DATETIME     NOT NULL,
+    updatedAt     DATETIME,
+    isCheckedOut  BOOLEAN      NOT NULL DEFAULT 0,
+
+    PRIMARY KEY (id),
+    FOREIGN KEY (userId) REFERENCES userTable (id)
+);
+
+CREATE TABLE cartItemTable
+(
+    -- Hérité de BaseEntity
+    id            BIGINT         NOT NULL AUTO_INCREMENT,
+    uuid          BINARY(16)     NOT NULL UNIQUE,
+    version       BIGINT         NOT NULL,
+
+    -- Champs spécifiques à CartItemEntity
+    quantity      INTEGER        NOT NULL,
+    unitPrice     DECIMAL(10, 2) NOT NULL,
+    cartId        BIGINT         NOT NULL,
+    productEntity BIGINT         NOT NULL, -- FK to productTable
+    addedAt       DATETIME       NOT NULL,
+
+    PRIMARY KEY (id),
+    FOREIGN KEY (cartId) REFERENCES cartTable (id),
+    FOREIGN KEY (productEntity) REFERENCES productTable (id)
+);
 
 CREATE TABLE orderTable
 (
@@ -177,13 +212,15 @@ CREATE TABLE orderTable
     -- Relations ManyToOne et OneToOne
     userId           BIGINT,                  -- Vers UserEntity
     paymentId        BIGINT,                  -- Vers PaymentEntity
+    cartId           BIGINT,                  -- Vers CartEntity
 
     PRIMARY KEY (id),
 
     -- Contraintes de clés étrangères (PaymentEntity est également déduit)
     FOREIGN KEY (userId) REFERENCES userTable (id),
     -- On suppose l'existence de la table paymentTable
-    FOREIGN KEY (paymentId) REFERENCES paymentTable (id)
+    FOREIGN KEY (paymentId) REFERENCES paymentTable (id),
+    FOREIGN KEY (cartId) REFERENCES cartTable (id)
 );
 
 
