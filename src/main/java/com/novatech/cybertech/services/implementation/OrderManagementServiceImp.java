@@ -165,14 +165,14 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Conversion CartItemEntity -> OrderItemEntity
-        List<OrderItemEntity> orderItems = (List<OrderItemEntity>) cartItems.stream()
+        List<OrderItemEntity> orderItems = cartItems.stream()
                 .map(item -> OrderItemEntity.builder()
                             .unitPrice(item.getUnitPrice())
                             .quantity(item.getQuantity())
                             .subtotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                             .productEntity(item.getProductEntity())
                             .build())
-                .toList();
+                .collect(Collectors.toUnmodifiableList());
 
         // 2. Initialisation de l'entité en mémoire (SANS save immédiat)
         final OrderEntity initializedOrderEntity = initOrderEntity(orderUuid, req.getShippingCity(), req.getShippingStreet(), req.getShippingZipCode(), req.getShippingCountry(), req.getShippingType(), req.getShippingProvider(), amount, orderItems, userEntity);

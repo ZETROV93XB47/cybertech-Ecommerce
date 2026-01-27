@@ -62,13 +62,13 @@ public class ProductSearchServiceImp implements ProductSearchService {
         }
 
         // 4) Range de prix (filter)
-        if (req.getPriceMin() != null && req.getPriceMax() != null) {
-            bool.filter(f -> f.range(r -> r.number(n ->
-                            n.field(PRICE)
-                                    .gte(FieldValue.of(req.getPriceMin()).doubleValue())
-                                    .lte(FieldValue.of(req.getPriceMax()).doubleValue())
-                    )
-            ));
+        if (req.getPriceMin() != null || req.getPriceMax() != null) {
+            bool.filter(f -> f.range(r -> r.number(n -> {
+                n.field(PRICE);
+                if (req.getPriceMin() != null) n.gte(req.getPriceMin());
+                if (req.getPriceMax() != null) n.lte(req.getPriceMax());
+                return n;
+            })));
         }
 
         // 5) Attributs dynamiques (flattened): attributes.key IN (values...) (filter)
@@ -77,12 +77,13 @@ public class ProductSearchServiceImp implements ProductSearchService {
                 if (values != null && !values.isEmpty()) {
                     String field = ATTRIBUTES + DOT + key;
 
-                    bool.filter(f -> f.terms(t -> t
-                            .field(field)
-                            .terms(v -> v.value(values.stream()
-                                    .map(FieldValue::of)
-                                    .toList()))
-                    ));
+                    bool.filter(f -> f.bool(b -> {
+                        values.forEach(val -> b.should(s -> s.wildcard(w -> w
+                                .field(field)
+                                .value("*" + val + "*")
+                                .caseInsensitive(true))));
+                        return b;
+                    }));
                 }
             });
         }

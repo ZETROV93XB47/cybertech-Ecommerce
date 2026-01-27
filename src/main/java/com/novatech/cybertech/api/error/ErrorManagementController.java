@@ -3,10 +3,7 @@ package com.novatech.cybertech.api.error;
 
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
-import com.novatech.cybertech.exceptions.AccountNotFoundException;
-import com.novatech.cybertech.exceptions.CannotCancelOrderException;
-import com.novatech.cybertech.exceptions.ProductConstraintsViolationException;
-import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.exceptions.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -39,7 +36,11 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, RESOURCE_NOT_FOUND.getResponseStatus());
     }
 
-
+    @ExceptionHandler(CannotRemoveItemFromEmptyCartException.class)
+    public ResponseEntity<ErrorResponseDto> handleCannotRemoveItemFromEmptyCartException(CannotRemoveItemFromEmptyCartException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto("Cannot remove item from empty cart.", CANNOT_REMOVE_ITEM_FROM_EMPTY_CART.getResponseStatus().value(), CANNOT_REMOVE_ITEM_FROM_EMPTY_CART.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, CANNOT_REMOVE_ITEM_FROM_EMPTY_CART.getResponseStatus());
+    }
 
     @ExceptionHandler(UnrecognizedPropertyException.class)
     public ResponseEntity<String> handleUnrecognizedPropertyException(UnrecognizedPropertyException ex) {

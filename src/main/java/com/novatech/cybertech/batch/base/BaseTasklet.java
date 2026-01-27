@@ -6,6 +6,7 @@ import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.repeat.RepeatStatus;
 
+import java.lang.ScopedValue;
 import java.time.LocalDateTime;
 
 @Slf4j
