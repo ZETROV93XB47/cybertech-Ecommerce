@@ -17,7 +17,7 @@ import java.util.List;
 @Table(name = "cartTable")
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
-public class CartEntity extends BaseEntity {
+public class CartEntity extends BaseEntity<Long> {
 
     @ManyToOne
     @JoinColumn(name = "userId", nullable = false)

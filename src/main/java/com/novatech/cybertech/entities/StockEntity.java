@@ -22,7 +22,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "stockTable", uniqueConstraints = @UniqueConstraint(columnNames = {"order_uuid", "product_uuid"}))
-public class StockEntity extends BaseEntity {
+public class StockEntity extends BaseEntity<Long> {
 
     @Column(name = "order_uuid", nullable = false)
     private UUID orderUuid;

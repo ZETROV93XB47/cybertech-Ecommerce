@@ -18,9 +18,9 @@ import java.util.List;
 @AllArgsConstructor
 @RequiredArgsConstructor
 @Table(name = "userTable")
-@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntities"})
-@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntities"})
-public class UserEntity extends BaseEntity {
+@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntities", "cartEntities"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntities", "cartEntities"})
+public class UserEntity extends BaseEntity<Long> {
 
     @Column(name = "email", nullable = false, unique = true, length = 50)
     private String email;
@@ -76,7 +76,8 @@ public class UserEntity extends BaseEntity {
 
     @OneToMany(fetch = FetchType.EAGER, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<BankCardEntity> bankCardEntities;
-}
 
-//@OneToMany(fetch = FetchType.EAGER, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
-//private List<CartEntity> cartEntities;
+    @OneToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @JoinColumn(name = "cartId")
+    private CartEntity cartEntity;
+}

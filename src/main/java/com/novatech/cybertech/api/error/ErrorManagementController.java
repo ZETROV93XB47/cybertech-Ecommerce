@@ -33,14 +33,13 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
     }
 
-    /*
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleNoResourceFoundException(NoResourceFoundException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto("The page you're asking for doesn't exists :(", RESOURCE_NOT_FOUND.getResponseStatus().value(), RESOURCE_NOT_FOUND.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, RESOURCE_NOT_FOUND.getResponseStatus());
     }
 
-     */
+
 
     @ExceptionHandler(UnrecognizedPropertyException.class)
     public ResponseEntity<String> handleUnrecognizedPropertyException(UnrecognizedPropertyException ex) {

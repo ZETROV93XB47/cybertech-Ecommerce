@@ -14,7 +14,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @ToString(callSuper = true)
 @Table(name = "orderItemTable")
-public class OrderItemEntity extends BaseEntity {
+public class OrderItemEntity extends BaseEntity<Long> {
 
     @Column(name = "quantity", nullable = false)
     private Integer quantity;

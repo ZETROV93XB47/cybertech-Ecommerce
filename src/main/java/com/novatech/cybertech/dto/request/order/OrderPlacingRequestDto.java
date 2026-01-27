@@ -1,6 +1,5 @@
 package com.novatech.cybertech.dto.request.order;
 
-import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
@@ -12,7 +11,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -42,6 +40,4 @@ public class OrderPlacingRequestDto {
     @NotBlank
     private String shippingCountry;
 
-    @NotEmpty
-    private List<OrderItemCreateRequestDto> orderItems;
 }

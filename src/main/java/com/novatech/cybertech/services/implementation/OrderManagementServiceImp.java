@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 
+import com.github.f4b6a3.uuid.UuidCreator;
 import com.novatech.cybertech.dispatcher.ShippingDispatcher;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
@@ -14,6 +15,7 @@ import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.exceptions.*;
@@ -21,6 +23,7 @@ import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.CartService;
 import com.novatech.cybertech.services.core.OrderManagementService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
@@ -33,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -47,6 +51,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
     private final OrderMapper orderMapper;
 
+    private final CartService cartService;
     private final StockService stockService;
     private final PaymentService paymentService;
 
@@ -117,14 +122,14 @@ public class OrderManagementServiceImp implements OrderManagementService {
             stockService.reserveStock(orderUpdateRequestDto.getUuid(), quantities);
 
             // 5. Calculer le prix total
-            final BigDecimal amount = processOrderPaymentAmount(orderUpdateRequestDto.getItemUpdateRequestDtoList(), products);
+            final BigDecimal amount = processOrderTotalPrice(orderUpdateRequestDto.getItemUpdateRequestDtoList(), products);
             orderEntity.setTotalAmount(Money.of(amount));
 
             // 6. Paiement
             final PaymentEntity payment = paymentService.processPayment(orderUpdateRequestDto.getPaymentType(), amount);
 
             return switch (payment.getPaymentStatus()) {
-                case SUCCESS -> onPaymentSuccess(orderUpdateRequestDto.getShippingType(), orderUpdateRequestDto.getShippingProvider(), orderEntity.getUuid(), orderEntity, userEntity, amount, quantities);
+                case SUCCESS -> onPaymentSuccess(payment, orderUpdateRequestDto.getShippingType(), orderUpdateRequestDto.getShippingProvider(), orderEntity.getUuid(), orderEntity, userEntity, amount, quantities);
                 case FAILED -> throw new FailedUpdatingOrder("Could not process payment");
             };
         }
@@ -136,37 +141,54 @@ public class OrderManagementServiceImp implements OrderManagementService {
     @Transactional
     public OrderResponseDto placeOrder(final OrderPlacingRequestDto req, final Jwt jwt) {
 
-        // 1. Charger l'utilisateur
-        String keycloakId = jwt.getSubject();
+        final String keycloakId = jwt.getSubject();
         final UserEntity userEntity = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
-        // 2. Charger les produits
-        List<ProductEntity> products = getAllProductsFromRequest(req.getOrderItems());
-        Map<UUID, Integer> quantities = req.getOrderItems().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
-        final UUID orderUUID = UUID.randomUUID();
+        // Récupération du panier
+        CartEntity cart = userEntity.getCartEntity();
+        if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) {
+            throw new CartNotFoundException("Cannot place order: Cart is empty");
+        }
+        List<CartItemEntity> cartItems = cart.getCartItems();
 
-        // 3. Réserver le stock AVANT tout paiement
-        stockService.reserveStock(orderUUID, quantities);
+        // Mapping des quantités pour la réservation de stock
+        Map<UUID, Integer> quantities = cartItems.stream().collect(Collectors.toMap(item -> item.getProductEntity().getUuid(), CartItemEntity::getQuantity));
 
-        // 4. Vérifier la commande
         validateOrderBeforeProcessingPayment(quantities, userEntity);
 
-        // 5. Calculer le prix total
-        final BigDecimal amount = processOrderPaymentAmount(req.getOrderItems(), products);
+        // 1. Génération manuelle de l'UUID (v7 via une lib externe)
+        final UUID orderUuid = UuidCreator.getTimeOrderedEpoch();
 
-        // 6. Paiement
+        // Calcul du montant total depuis le panier
+        final BigDecimal amount = cartItems.stream()
+                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Conversion CartItemEntity -> OrderItemEntity
+        List<OrderItemEntity> orderItems = (List<OrderItemEntity>) cartItems.stream()
+                .map(item -> OrderItemEntity.builder()
+                            .unitPrice(item.getUnitPrice())
+                            .quantity(item.getQuantity())
+                            .subtotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                            .productEntity(item.getProductEntity())
+                            .build())
+                .toList();
+
+        // 2. Initialisation de l'entité en mémoire (SANS save immédiat)
+        final OrderEntity initializedOrderEntity = initOrderEntity(orderUuid, req.getShippingCity(), req.getShippingStreet(), req.getShippingZipCode(), req.getShippingCountry(), req.getShippingType(), req.getShippingProvider(), amount, orderItems, userEntity);
+
+        // 3. Réservation du stock avec l'UUID généré
+        stockService.reserveStock(orderUuid, quantities);
+
         final PaymentEntity payment = paymentService.processPayment(req.getPaymentType(), amount);
 
-        // 7. Construire l’OrderEntity
-        final OrderEntity order = orderMapper.mapFromOrderPlacingRequestDtoToOrderEntity(req);
-        final List<OrderItemEntity> items = getOrderItemEntities(req, order, products);
+        // Vider le panier après la tentative de commande (le stock est réservé, la commande est créée)
+        cartService.clearCart(keycloakId);
 
-        initOrderEntity(orderUUID, order, payment, amount, items, userEntity);
-
+        // 4. Persistance unique à la fin (INSERT) selon le résultat du paiement
         return switch (payment.getPaymentStatus()) {
-            case SUCCESS ->
-                    onPaymentSuccess(req.getShippingType(), req.getShippingProvider(), orderUUID, order, userEntity, amount, quantities);
-            case FAILED -> onPaymentFailure(orderUUID, order);
+            case SUCCESS -> onPaymentSuccess(payment, req.getShippingType(), req.getShippingProvider(), orderUuid, initializedOrderEntity, userEntity, amount, quantities);
+            case FAILED -> onPaymentFailure(orderUuid, initializedOrderEntity);
         };
     }
 
@@ -205,9 +227,11 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-    private OrderResponseDto onPaymentSuccess(final ShippingType shippingType, final ShippingProvider shippingProvider, final UUID orderUUID, final OrderEntity order, final UserEntity userEntity, final BigDecimal amount, final Map<UUID, Integer> quantities) {
+    private OrderResponseDto onPaymentSuccess(final PaymentEntity payment, final ShippingType shippingType, final ShippingProvider shippingProvider, final UUID orderUUID, final OrderEntity order, final UserEntity userEntity, final BigDecimal amount, final Map<UUID, Integer> quantities) {
         // 8. Commit du stock
         stockService.commitStock(orderUUID);
+
+        order.setPaymentEntity(payment);
 
         OrderEntity saved = orderRepository.save(order);
 
@@ -229,14 +253,33 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-    private static void initOrderEntity(final UUID orderUUID, final OrderEntity orderEntity, final PaymentEntity paymentEntity, final BigDecimal totalPrice, final List<OrderItemEntity> orderItemEntities, final UserEntity user) {
-        orderEntity.setUuid(orderUUID);
-        orderEntity.setPaymentEntity(paymentEntity);
-        orderEntity.setTotalAmount(Money.of(totalPrice));
-        orderEntity.setStatus(PROCESSING);
-        orderEntity.setOrderItemEntities(orderItemEntities);
-        orderEntity.setUserEntity(user);
-        orderEntity.setDiscountType(NO_DISCOUNT);
+    private static OrderEntity initOrderEntity(final UUID orderUuid,
+                                               final String shippingCity,
+                                               final String shippingStreet,
+                                               final String shippingZipCode,
+                                               final String shippingCountry,
+                                               final ShippingType shippingType,
+                                               final ShippingProvider shippingProvider,
+                                               final BigDecimal totalPrice,
+                                               final List<OrderItemEntity> orderItemEntities,
+                                               final UserEntity user) {
+        return OrderEntity.builder()
+                .uuid(orderUuid)
+                .userEntity(user)
+                .orderItemEntities(orderItemEntities)
+                .totalAmount(Money.of(totalPrice))
+                .discountType(NO_DISCOUNT)
+                .status(PROCESSING)
+                .orderDate(LocalDateTime.now())
+                .shippingProvider(shippingProvider)
+                .shippingType(shippingType)
+                .shippingAddress(Address.builder()
+                        .street(shippingStreet)
+                        .city(shippingCity)
+                        .zipCode(shippingZipCode)
+                        .country(shippingCountry)
+                        .build())
+                .build();
     }
 
 
@@ -273,22 +316,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-    private static List<OrderItemEntity> getOrderItemEntities(final OrderPlacingRequestDto orderPlacingRequestDto, final OrderEntity orderEntity, final List<ProductEntity> productEntities) {
-        final Map<UUID, Integer> productsByQuantityMap = orderPlacingRequestDto.getOrderItems().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
-
-        return productEntities.stream().map(productEntity -> OrderItemEntity.builder()
-                        .uuid(UUID.randomUUID())
-                        .unitPrice(productEntity.getPrice())
-                        .quantity(productsByQuantityMap.get(productEntity.getUuid()))
-                        .subtotal(productEntity.getPrice().multiply(BigDecimal.valueOf(productsByQuantityMap.get(productEntity.getUuid()))))
-                        .orderEntity(orderEntity)//!Warning: Ici, l'objet orderEntity n'est pas encore complet
-                        .productEntity(productEntity)
-                        .build())
-                .collect(Collectors.toList());
-    }
-
-
-    private BigDecimal processOrderPaymentAmount(final List<OrderItemCreateRequestDto> orderItemCreateRequestDto, final List<ProductEntity> productEntities) {
+    private BigDecimal processOrderTotalPrice(final List<OrderItemCreateRequestDto> orderItemCreateRequestDto, final List<ProductEntity> productEntities) {
 
         final Map<UUID, ProductEntity> productsByUuid = productEntities.stream().collect(Collectors.toMap(ProductEntity::getUuid, product -> product));
 

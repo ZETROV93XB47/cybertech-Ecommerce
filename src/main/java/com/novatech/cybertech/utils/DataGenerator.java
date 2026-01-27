@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.javafaker.Faker;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
-import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
@@ -59,7 +58,7 @@ public class DataGenerator {
     public static ReviewEntity generateReviewEntity() {
 
         UserEntity userEntity = generateUser();
-        userEntity.setId((long) (Math.random() * 1000));
+        //userEntity.setId((long) (Math.random() * 1000));
 
         return ReviewEntity.builder()
                 //.id(new Random().nextLong())
@@ -68,7 +67,7 @@ public class DataGenerator {
                 .isHateful(false)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
-                .uuid(UUID.randomUUID())
+                //.uuid(UUID.randomUUID())
                 .userEntity(userEntity)
                 .productEntity(generateProduct())
                 .build();
@@ -77,7 +76,7 @@ public class DataGenerator {
     public static ProductEntity generateProduct() {
         return ProductEntity.builder()
                 //.id(new Random().nextLong())
-                .uuid(UUID.randomUUID())
+                //.uuid(UUID.randomUUID())
                 .name(FAKER.commerce().productName())
                 .description("Gaming PC Fireeeee")
                 .price(new BigDecimal(2300))
@@ -118,14 +117,12 @@ public class DataGenerator {
 
     public static UserEntity generateUser() {
         return UserEntity.builder()
-                //.id(1875L)
                 .email(FAKER.internet().emailAddress())
                 .firstName(FAKER.name().firstName())
                 .lastName(FAKER.name().lastName())
                 .sex(M)
                 .address(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
                 .birthDate(LocalDateTime.ofInstant(FAKER.date().birthday().toInstant(), ZoneId.systemDefault()))
-                //.password(FAKER.internet().password())
                 .role(USER)
                 .numberOfHatefulComments(0)
                 .orderEntities(new ArrayList<>())
@@ -163,7 +160,7 @@ public class DataGenerator {
 
             for (long i = 1; i < numberOfUsers + 1; i++) {
                 UserEntity userEntity = UserEntity.builder()
-                        .uuid(UUID.randomUUID())
+                        //.uuid(UUID.randomUUID())
                         .email(FAKER.internet().emailAddress())
                         .firstName(FAKER.name().firstName())
                         .lastName(FAKER.name().lastName())
@@ -220,7 +217,7 @@ public class DataGenerator {
 
     public static OrderEntity generateOrder() {
         return OrderEntity.builder()
-                .uuid(UUID.randomUUID())
+                //.uuid(UUID.randomUUID())
                 .orderDate(LocalDateTime.now())
                 .orderItemEntities(new ArrayList<>())
                 .shippingAddress(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
@@ -232,7 +229,7 @@ public class DataGenerator {
 
     public static PaymentEntity generatePayment() {
         return PaymentEntity.builder()
-                .uuid(UUID.randomUUID())
+                //.uuid(UUID.randomUUID())
                 .amount(new BigDecimal(0))
                 .paymentDate(LocalDateTime.now())
                 .paymentStatus(PaymentStatus.SUCCESS)
@@ -268,10 +265,6 @@ public class DataGenerator {
     }
 
     public static OrderPlacingRequestDto orderGenerator() {
-        UUID productUUID_1 = UUID.fromString("ac1d3001-9bce-1597-819b-ce22697d000e");
-        UUID productUUID_2 = UUID.fromString("ac1d3001-9bce-1597-819b-ce2274f2000f");
-        UUID productUUID_3 = UUID.fromString("ac1d3001-9bce-1597-819b-ce227aba0010");
-
         return OrderPlacingRequestDto.builder()
                 .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
                 .shippingStreet(FAKER.address().streetAddress())
@@ -281,11 +274,6 @@ public class DataGenerator {
                 .shippingType(ShippingType.STANDARD)
                 .shippingProvider(ShippingProvider.FEDEX)
                 .paymentType(PaymentType.VISA)
-                .orderItems(List.of(
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_1).quantity(1).build(),
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_2).quantity(2).build(),
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_3).quantity(3).build()
-                ))
                 .build();
 
     }
@@ -312,10 +300,6 @@ public class DataGenerator {
 
 
     static void main(String[] args) throws JsonProcessingException {
-        UUID productUUID_1 = UUID.fromString("ac1d3001-9bce-1597-819b-ce22697d000e");
-        UUID productUUID_2 = UUID.fromString("ac1d3001-9bce-1597-819b-ce2274f2000f");
-        UUID productUUID_3 = UUID.fromString("ac1d3001-9bce-1597-819b-ce227aba0010");
-
         OrderPlacingRequestDto orderPlacingRequestDto = OrderPlacingRequestDto.builder()
                 .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
                 .shippingStreet(FAKER.address().streetAddress())
@@ -325,11 +309,6 @@ public class DataGenerator {
                 .shippingType(ShippingType.STANDARD)
                 .shippingProvider(ShippingProvider.FEDEX)
                 .paymentType(PaymentType.VISA)
-                .orderItems(List.of(
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_1).quantity(1).build(),
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_2).quantity(2).build(),
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_3).quantity(3).build()
-                ))
                 .build();
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());

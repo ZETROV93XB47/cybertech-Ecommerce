@@ -27,7 +27,7 @@ import java.util.List;
 @ToString(callSuper = true)
 @EqualsAndHashCode(callSuper = true)
 @EntityListeners(AuditingEntityListener.class)
-public class OrderEntity extends BaseEntity {
+public class OrderEntity extends BaseEntity<Long> {
 
     @Column(name = "orderDate", nullable = false)
     private LocalDateTime orderDate;

@@ -19,9 +19,10 @@ import java.math.BigDecimal;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface OrderMapper {
-    @Mapping(target = "uuid", expression = "java(java.util.UUID.randomUUID())")
+
+//    @Mapping(target = "uuid", expression = "java(java.util.UUID.randomUUID())")
     @Mapping(target = "orderDate", expression = "java(java.time.LocalDateTime.now())")
-    @Mapping(target = "totalAmount", ignore = true) // Sera calculé par le service
+    //@Mapping(target = "totalAmount", ignore = true) // Sera calculé par le service
     @Mapping(target = "shippingAddress.street", source = "shippingStreet")
     @Mapping(target = "shippingAddress.city", source = "shippingCity")
     @Mapping(target = "shippingAddress.zipCode", source = "shippingZipCode")

@@ -59,9 +59,8 @@ services:
     container_name: redisEcommerce
     ports:
       - '6379:6379' # Ajout du mappage du port pour l'accès local
-    volumes:
-      - ./docker/redis.conf:/usr/local/etc/redis/redis.conf
-    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    # On active les notifications d'expiration (Ex) directement ici sans dépendre d'un fichier externe
+    command: redis-server --save 20 1 --loglevel warning --notify-keyspace-events Ex
     networks:
       - ecommerce-net
 

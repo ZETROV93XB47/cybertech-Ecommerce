@@ -23,7 +23,7 @@ import java.util.Map;
 @ToString(callSuper = true)
 @Table(name = "productTable")
 @EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "reviewEntities"})
-public class ProductEntity extends BaseEntity {
+public class ProductEntity extends BaseEntity<Long> {
 
     @Column(name = "name", nullable = false)
     private String name;

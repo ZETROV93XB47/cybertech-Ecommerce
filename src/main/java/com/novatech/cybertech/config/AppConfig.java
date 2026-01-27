@@ -19,6 +19,7 @@ import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,6 +33,7 @@ import java.util.Map;
 
 @Slf4j
 @Configuration
+@EnableCaching
 @EnableJpaAuditing
 @RequiredArgsConstructor
 public class AppConfig {

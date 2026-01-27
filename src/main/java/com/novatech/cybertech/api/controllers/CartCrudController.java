@@ -4,7 +4,7 @@ import com.novatech.cybertech.api.controllers.spec.CartCrudControllerApiSpec;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
-import com.novatech.cybertech.services.implementation.CartServiceImp;
+import com.novatech.cybertech.services.core.CartService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = " CartController", description = "API for Cart management")
 public class CartCrudController implements CartCrudControllerApiSpec {
 
-    private final CartServiceImp cartService;
+    private final CartService cartService;
 
     @Override
     @GetMapping(value = "/get/{cartUuid}", produces = APPLICATION_JSON_VALUE)

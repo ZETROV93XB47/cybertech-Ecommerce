@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 @Table(name = "reviewTable")
 @ToString(callSuper = true)
-public class ReviewEntity extends BaseEntity {
+public class ReviewEntity extends BaseEntity<Long> {
 
     @Range(min = 1, max = 5, message = "Rating must be between 1 and 5")
     @Column(name = "rating", nullable = false)

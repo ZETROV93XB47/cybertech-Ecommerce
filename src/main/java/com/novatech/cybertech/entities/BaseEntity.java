@@ -7,22 +7,28 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.UUID;
 
-@Setter
 @Getter
 @ToString
 @SuperBuilder
 @MappedSuperclass
-@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
-public abstract class BaseEntity {
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+public abstract class BaseEntity<ID extends Number & Serializable & Comparable<ID>> implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     @Id
+    @EqualsAndHashCode.Include
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private ID id;
 
+    @EqualsAndHashCode.Include
     @JdbcTypeCode(SqlTypes.UUID)
     @UuidGenerator(style = UuidGenerator.Style.TIME) // Force la génération v7 (séquentielle)
     @Column(name = "uuid", updatable = false, nullable = false, unique = true)
@@ -30,5 +36,5 @@ public abstract class BaseEntity {
 
     @Version
     @Column(name = "version", nullable = false)
-    private Long version = 0L;
+    private Long version;
 }

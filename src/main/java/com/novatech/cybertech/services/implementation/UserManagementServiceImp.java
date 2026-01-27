@@ -43,7 +43,7 @@ public class UserManagementServiceImp implements UserManagementService {
             log.info("Keycloak id : {}", keycloakId);
 
             UserEntity user = UserEntity.builder()
-                    .uuid(UUID.randomUUID())
+                    //.uuid(UUID.randomUUID())
                     .email(req.getEmail())
                     .firstName(req.getFirstName())
                     .lastName(req.getLastName())
@@ -69,7 +69,6 @@ public class UserManagementServiceImp implements UserManagementService {
                     .build();
 
             bankCard.setUserEntity(savedUser);
-            bankCard.setUuid(UUID.randomUUID());
 
             bankCardRepository.save(bankCard);
 

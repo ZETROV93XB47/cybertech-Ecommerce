@@ -15,7 +15,7 @@ import lombok.experimental.SuperBuilder;
 @Table(name = "bankCardTable")
 @ToString(callSuper = true, exclude = {"userEntity"})
 @EqualsAndHashCode(callSuper = true, exclude = {"userEntity"})
-public class BankCardEntity extends BaseEntity {
+public class BankCardEntity extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.EAGER,cascade=CascadeType.ALL)
     @JoinColumn(name = "user_id", nullable = false)

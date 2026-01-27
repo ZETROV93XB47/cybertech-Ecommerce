@@ -23,7 +23,7 @@ public class PaymentServiceImp implements PaymentService {
     public PaymentEntity processPayment(final PaymentType paymentType, final BigDecimal paymentAmount) {
 
         PaymentEntity paymentEntity = PaymentEntity.builder()
-                .uuid(UUID.randomUUID())
+                //.uuid(UUID.randomUUID())
                 .amount(paymentAmount)
                 .paymentType(paymentType)
                 .paymentStatus(null)

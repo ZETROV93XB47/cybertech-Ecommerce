@@ -16,8 +16,9 @@ import java.time.LocalDateTime;
 @ToString(callSuper = true)
 @Table(name = "cartItemTable")
 @EqualsAndHashCode(callSuper = true)
-public class CartItemEntity extends BaseEntity {
+public class CartItemEntity extends BaseEntity<Long> {
 
+    @Setter
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
 

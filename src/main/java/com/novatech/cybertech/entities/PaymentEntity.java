@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 @ToString(callSuper = true)
 @Table(name = "paymentTable")
 @EqualsAndHashCode(callSuper = true)
-public class PaymentEntity extends BaseEntity {
+public class PaymentEntity extends BaseEntity<Long> {
 
     @Column(name = "amount", nullable = false)
     private BigDecimal amount;

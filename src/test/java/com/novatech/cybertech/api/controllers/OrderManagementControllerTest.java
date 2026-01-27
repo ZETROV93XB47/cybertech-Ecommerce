@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novatech.cybertech.config.SecurityConfig;
 import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
-import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderItemResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
@@ -70,10 +69,6 @@ class OrderManagementControllerTest {
                 .shippingCountry("Randomland")
                 .shippingType(ShippingType.EXPRESS)
                 .shippingProvider(ShippingProvider.FEDEX)
-                .orderItems(List.of(OrderItemCreateRequestDto.builder()
-                        .productUuid(productUuid)
-                        .quantity(5)
-                        .build()))
                 .build();
 
         // TODO: Remplissez les champs obligatoires de requestDto ici pour passer la validation @Valid
