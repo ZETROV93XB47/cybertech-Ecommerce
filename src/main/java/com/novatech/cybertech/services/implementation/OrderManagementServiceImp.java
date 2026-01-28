@@ -183,7 +183,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final PaymentEntity payment = paymentService.processPayment(req.getPaymentType(), amount);
 
         // Vider le panier après la tentative de commande (le stock est réservé, la commande est créée)
-        cartService.clearCart(keycloakId);
+        cartService.clearCart(jwt);
 
         // 4. Persistance unique à la fin (INSERT) selon le résultat du paiement
         return switch (payment.getPaymentStatus()) {

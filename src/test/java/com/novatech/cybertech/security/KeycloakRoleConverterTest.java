@@ -1,5 +1,6 @@
 package com.novatech.cybertech.security;
 
+import com.novatech.cybertech.converter.KeycloakRoleConverter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.GrantedAuthority;

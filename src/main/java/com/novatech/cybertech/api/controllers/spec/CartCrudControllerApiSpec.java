@@ -2,7 +2,7 @@ package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
-import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
+import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -52,7 +52,7 @@ public interface CartCrudControllerApiSpec {
 
     @Operation(summary = "Update an existing Cart by UUID",
             description = "Updates an existing cart's details based on their unique UUID. Fields not provided will not be updated.",
-            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Cart data for update. Only provide fields that need to be changed.", required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartUpdateRequestDto.class))),
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Cart data for update. Only provide fields that need to be changed.", required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartItemRemoveRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Cart updated successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartResponseDto.class))),
@@ -65,7 +65,7 @@ public interface CartCrudControllerApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during cart update",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<CartResponseDto> updateCart(final CartUpdateRequestDto cartUpdateRequestDto);
+    ResponseEntity<CartResponseDto> updateCart(final CartItemRemoveRequestDto cartItemRemoveRequestDto);
 
 
     @Operation(summary = "Delete a Cart by UUID",

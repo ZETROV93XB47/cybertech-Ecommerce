@@ -1,7 +1,7 @@
 package com.novatech.cybertech.config;
 
 
-import com.novatech.cybertech.security.KeycloakRoleConverter;
+import com.novatech.cybertech.converter.KeycloakRoleConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;

@@ -34,7 +34,7 @@ public class CartEntity extends BaseEntity<Long> {
     @Column(name = "isCheckedOut", nullable = false)
     private Boolean isCheckedOut = false;
 
-    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "cart", orphanRemoval = true, fetch = FetchType.EAGER)
     private List<CartItemEntity> cartItems;
 
     @OneToOne(mappedBy = "cartEntity")
