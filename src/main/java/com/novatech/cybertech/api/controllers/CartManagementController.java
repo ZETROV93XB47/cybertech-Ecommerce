@@ -1,6 +1,6 @@
 package com.novatech.cybertech.api.controllers;
 
-import com.novatech.cybertech.api.controllers.spec.CartCrudControllerApiSpec;
+import com.novatech.cybertech.api.controllers.spec.CartManagementControllerApiSpec;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
@@ -24,7 +24,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RequiredArgsConstructor
 @RequestMapping(CART_CRUD_CONTROLLER_BASE_PATH)
 @Tag(name = " CartController", description = "API for Cart management")
-public class CartManagementController implements CartCrudControllerApiSpec {
+public class CartManagementController implements CartManagementControllerApiSpec {
 
     private final CartService cartService;
 
