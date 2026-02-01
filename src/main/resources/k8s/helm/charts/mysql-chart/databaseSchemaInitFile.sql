@@ -67,7 +67,7 @@ CREATE TABLE paymentTable
     paymentDate   DATETIME       NOT NULL,
 
     -- Clé étrangère implicite pour la relation OneToOne vers OrderEntity
-    -- L'annotation 'mappedBy' sur paymentEntity dans OrderEntity indique
+    -- L'annotation 'mappedBy' sur paymentAttemptEntity dans OrderEntity indique
     -- que la colonne de clé étrangère (paymentId) se trouve dans orderTable.
     -- Par conséquent, cette table n'a pas besoin de colonne d'ID de commande ici.
 

@@ -2,9 +2,9 @@ package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
 import com.novatech.cybertech.entities.BaseEntity;
-import com.novatech.cybertech.entities.PaymentEntity;
-import com.novatech.cybertech.entities.enums.PaymentStatus;
-import com.novatech.cybertech.repositories.PaymentRepository;
+import com.novatech.cybertech.entities.PaymentAttemptEntity;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
@@ -26,15 +26,15 @@ import static org.springframework.batch.core.ExitStatus.COMPLETED;
 @RequiredArgsConstructor
 public class GetAllFailedPaymentOrderTasklet extends BaseTasklet {
 
-    private final PaymentRepository paymentRepository;
+    private final PaymentAttemptRepository paymentAttemptRepository;
 
 
     @Override
     @Transactional
     public RepeatStatus execute(final StepContribution stepContribution, final StepArguments stepArguments) {
 
-        final Map<String, Long> failedPaymentsMapUserEmailByOrderId = paymentRepository.findByPaymentStatus(PaymentStatus.FAILED).stream()
-                .map(PaymentEntity::getOrderEntity)
+        final Map<String, Long> failedPaymentsMapUserEmailByOrderId = paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED).stream()
+                .map(PaymentAttemptEntity::getOrderEntity)
                 .collect(Collectors.toMap(o -> o.getUserEntity().getEmail(), BaseEntity::getId));
 
         if (failedPaymentsMapUserEmailByOrderId.isEmpty()) {

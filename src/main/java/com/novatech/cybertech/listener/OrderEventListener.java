@@ -25,7 +25,6 @@ public class OrderEventListener {
         final NotificationContext context = NotificationContext.builder()
                 .notificationType(NotificationType.ORDER_CONFIRMATION)
                 .user(event.getOrderEventDto().getUserContactDto())
-                //.data((Map<String, Object>) new HashMap<>().put("OrderEventDto", event.getOrderEventDto()))
                 .payload(event.getOrderEventDto())//TODO: Clean this redundant part later
                 .message("Votre commande #" + event.getOrderEventDto().getOrderUuid() + " a bien été confirmée.")//!WARNING Potentielle redondance de orderDto
                 .build();

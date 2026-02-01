@@ -1,7 +1,7 @@
 package com.novatech.cybertech.factory;
 
 import com.novatech.cybertech.entities.enums.PaymentType;
-import com.novatech.cybertech.services.core.PaymentProcessor;
+import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -11,9 +11,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class PaymentStrategyFactory {
 
-    private final Map<PaymentType, PaymentProcessor> serviceMap;
+    private final Map<PaymentType, PaymentAttemptProcessor> serviceMap;
 
-    public PaymentProcessor getServiceFromPaymentType(final PaymentType type) {
+    public PaymentAttemptProcessor getServiceFromPaymentType(final PaymentType type) {
         return serviceMap.get(type);
     }
 }

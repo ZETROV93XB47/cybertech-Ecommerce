@@ -1,0 +1,20 @@
+package com.novatech.cybertech.entities.enums;
+
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
+@Getter
+@RequiredArgsConstructor
+public enum PaymentAttemptStatus implements EnumFunctions<Integer> {
+    CREATED(1),
+    PROCESSING(2),
+    SUCCESS(3),
+    FAILED(4),
+    CANCELED(5);
+
+    private final Integer code;
+
+    public static PaymentAttemptStatus getByCode(final Integer code) {
+        return EnumFunctions.getByCode(code, PaymentAttemptStatus.class);
+    }
+}

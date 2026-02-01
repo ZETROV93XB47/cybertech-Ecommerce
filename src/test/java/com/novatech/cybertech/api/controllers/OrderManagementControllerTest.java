@@ -67,6 +67,7 @@ class OrderManagementControllerTest {
                 .shippingCity("Random City")
                 .shippingZipCode("12345")
                 .shippingCountry("Randomland")
+                .idempotencyKey(UUID.randomUUID().toString())
                 .shippingType(ShippingType.EXPRESS)
                 .shippingProvider(ShippingProvider.FEDEX)
                 .build();

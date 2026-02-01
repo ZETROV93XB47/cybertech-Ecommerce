@@ -47,7 +47,7 @@ public interface OrderMapper {
     @Mapping(target = "orderDate", ignore = true)
     @Mapping(target = "userEntity", ignore = true)
     @Mapping(target = "orderItemEntities", ignore = true) // La gestion des listes (ajout/suppression) est préférable dans le service
-    @Mapping(target = "paymentEntity", ignore = true) // Le paiement est géré via le service de paiement et non par mapping direct
+    @Mapping(target = "paymentAttempts", ignore = true) // Le paiement est géré via le service de paiement et non par mapping direct
     @Mapping(target = "status", ignore = true) // Le statut suit une machine à états stricte
     @Mapping(target = "totalAmount", ignore = true) // Le montant est recalculé par le service
     @Mapping(target = "shippingAddress.street", source = "shippingStreet")

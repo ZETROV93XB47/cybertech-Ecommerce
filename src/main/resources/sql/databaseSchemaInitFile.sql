@@ -56,25 +56,29 @@ CREATE TABLE productTable
 );
 
 
-CREATE TABLE paymentTable
+CREATE TABLE paymentAttemptTable
 (
     -- Hérité de BaseEntity
-    id            BIGINT         NOT NULL AUTO_INCREMENT,
-    uuid          BINARY(16) NOT NULL UNIQUE,
-    version       BIGINT         NOT NULL,
+    id             BIGINT         NOT NULL AUTO_INCREMENT,
+    uuid           BINARY(16)     NOT NULL UNIQUE,
+    version        BIGINT         NOT NULL,
 
-    -- Champs spécifiques à PaymentEntity
-    amount        DECIMAL(19, 2) NOT NULL,
-    paymentType   VARCHAR(255)   NOT NULL, -- EnumType.STRING
-    paymentStatus VARCHAR(255)   NOT NULL, -- EnumType.STRING
-    paymentDate   DATETIME       NOT NULL,
+    -- Champs spécifiques à PaymentAttemptEntity
+    amount         DECIMAL(19, 2) NOT NULL,
+    currency       VARCHAR(10)    NOT NULL,
+    paymentType    VARCHAR(255)   NOT NULL, -- EnumType.STRING
+    status         VARCHAR(255)   NOT NULL, -- EnumType.STRING
+    providerRef    VARCHAR(255),
+    idempotencyKey VARCHAR(64)    NOT NULL,
+    createdAt      DATETIME       NOT NULL,
 
-    -- Clé étrangère implicite pour la relation OneToOne vers OrderEntity
-    -- L'annotation 'mappedBy' sur paymentEntity dans OrderEntity indique
-    -- que la colonne de clé étrangère (paymentId) se trouve dans orderTable.
-    -- Par conséquent, cette table n'a pas besoin de colonne d'ID de commande ici.
+    -- Relation ManyToOne vers OrderEntity
+    orderId        BIGINT         NOT NULL,
 
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+
+    -- Contrainte d'unicité sur idempotencyKey
+    CONSTRAINT uk_payment_attempt_idem UNIQUE (idempotencyKey)
 );
 
 
@@ -219,10 +223,16 @@ CREATE TABLE orderTable
     -- Contraintes de clés étrangères (PaymentEntity est également déduit)
     FOREIGN KEY (userId) REFERENCES userTable (id),
     -- On suppose l'existence de la table paymentTable
-    FOREIGN KEY (paymentId) REFERENCES paymentTable (id),
+    FOREIGN KEY (paymentId) REFERENCES paymentAttemptTable (id),
     FOREIGN KEY (cartId) REFERENCES cartTable (id)
 );
 
+-- Ajout de la contrainte FK pour paymentAttemptTable vers orderTable
+-- Note: Cela crée une dépendance circulaire potentielle si on insère les deux en même temps,
+-- mais c'est cohérent avec le modèle objet.
+ALTER TABLE paymentAttemptTable
+ADD CONSTRAINT FK_PaymentAttempt_Order
+FOREIGN KEY (orderId) REFERENCES orderTable (id);
 
 
 CREATE TABLE orderItemTable

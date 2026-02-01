@@ -38,7 +38,7 @@ public class CancelAllPendingOrdersByTimeTasklet extends BaseTasklet {
     @Transactional
     public RepeatStatus execute(final StepContribution stepContribution, final StepArguments stepArguments) {
 
-        final List<OrderEntity> ordersToCancel = orderRepository.findByStatusAndOrderDateBefore(OrderStatus.PENDING_PAYMENT, LocalDateTime.now().minusWeeks(timeBeforeDeletingOrder))
+        final List<OrderEntity> ordersToCancel = orderRepository.findByStatusAndOrderDateBefore(OrderStatus.AWAITING_PAYMENT, LocalDateTime.now().minusWeeks(timeBeforeDeletingOrder))
                 .stream()
                 .map(orderEntity -> {
                     orderEntity.setStatus(OrderStatus.CANCELED);

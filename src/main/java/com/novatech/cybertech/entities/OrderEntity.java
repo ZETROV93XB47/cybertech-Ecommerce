@@ -13,6 +13,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 //Est ce qu'il y a un intéret à garder la partie cart dans ce cas ? tous les éléments commandés par le user sont dans son order
@@ -72,9 +73,9 @@ public class OrderEntity extends BaseEntity<Long> {
     @ToString.Exclude
     private List<OrderItemEntity> orderItemEntities;
 
-    @OneToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
-    @JoinColumn(name = "paymentId")
-    private PaymentEntity paymentEntity;
+    @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @ToString.Exclude
+    private List<PaymentAttemptEntity> paymentAttempts = new ArrayList<>();
 
     @LastModifiedDate
     @Column(name = "updatedAt")

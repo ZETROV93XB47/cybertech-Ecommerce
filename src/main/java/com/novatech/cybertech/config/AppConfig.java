@@ -7,7 +7,7 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.AbstractNotification;
 import com.novatech.cybertech.services.core.NotificationProcessor;
-import com.novatech.cybertech.services.core.PaymentProcessor;
+import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.ShippingProviderService;
 import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import com.novatech.cybertech.validator.core.OrderValidator;
@@ -59,12 +59,12 @@ public class AppConfig {
     }
 
     @Bean
-    public Map<PaymentType, PaymentProcessor> paymentServiceMap(final ApplicationContext context) {
-        final Map<PaymentType, PaymentProcessor> serviceMap = new EnumMap<>(PaymentType.class);
+    public Map<PaymentType, PaymentAttemptProcessor> paymentServiceMap(final ApplicationContext context) {
+        final Map<PaymentType, PaymentAttemptProcessor> serviceMap = new EnumMap<>(PaymentType.class);
 
-        final Map<String, PaymentProcessor> beans = context.getBeansOfType(PaymentProcessor.class);
+        final Map<String, PaymentAttemptProcessor> beans = context.getBeansOfType(PaymentAttemptProcessor.class);
 
-        for (PaymentProcessor service : beans.values()) {
+        for (PaymentAttemptProcessor service : beans.values()) {
             final PaymentTypeHandler annotation = service.getClass().getAnnotation(PaymentTypeHandler.class);
             if (annotation != null) {
                 serviceMap.put(annotation.value(), service);

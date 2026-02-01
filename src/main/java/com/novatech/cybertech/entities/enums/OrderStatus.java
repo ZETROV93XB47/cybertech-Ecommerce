@@ -6,13 +6,15 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum OrderStatus {
-    PENDING_PAYMENT(1),
-    PROCESSING(2),
-    SHIPPED(3),
-    DELIVERED(4),
-    RETURNED(5),
-    CANCELED(6),
-    REFUNDED(7);
+    CREATED(1),
+    AWAITING_PAYMENT(2),
+    PAYMENT_FAILED(3),
+    PAID(4),
+    SHIPPED(5),
+    DELIVERED(6),
+    RETURNED(7),
+    CANCELED(8),
+    REFUNDED(9);
 
     private final Integer code;
 }

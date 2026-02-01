@@ -2,6 +2,7 @@ package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.StockEntity;
+import com.novatech.cybertech.entities.enums.ReservationStatus;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
@@ -24,7 +25,9 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
     private final StockRepository stockRepository;
     private final ProductRepository productRepository;
 
-    public RedisExpirationListener(RedisMessageListenerContainer container, StockRepository stockRepository, ProductRepository productRepository) {
+    public RedisExpirationListener(RedisMessageListenerContainer container,
+                                   StockRepository stockRepository,
+                                   ProductRepository productRepository) {
         super(container);
         this.productRepository = productRepository;
         this.stockRepository = stockRepository;
@@ -42,20 +45,24 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
         log.warn("Reservation expired for order {}", orderUuid);
 
         List<StockEntity> reservations = stockRepository.findByOrderUuid(orderUuid);
+        if (reservations.isEmpty()) return;
 
-        reservations.forEach(this::releaseProductStockAfterTTLExpiration);
+        for (StockEntity r : reservations) {
+            if (r.getReservationStatus() != ReservationStatus.ACTIVE) continue;
 
+            // Marquer comme EXPIRED pour éviter double release
+            r.setReservationStatus(ReservationStatus.EXPIRED);
+            stockRepository.save(r);
+
+            ProductEntity product = productRepository.lockByUuid(r.getProductUuid())
+                    .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + r.getProductUuid() + " found"));
+
+            product.setReservedStock(product.getReservedStock() - r.getQuantity());
+            productRepository.save(product);
+        }
+
+        // delete en 1 seule fois
         stockRepository.deleteByOrderUuid(orderUuid);
-    }
-
-    private void releaseProductStockAfterTTLExpiration(StockEntity stockEntity) {
-        ProductEntity product = productRepository.lockByUuid(stockEntity.getProductUuid()).orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + stockEntity.getProductUuid() + " found"));
-
-        if (stockEntity.getReservationStatus() != ACTIVE) return;
-
-        product.setReservedStock(product.getReservedStock() - stockEntity.getQuantity());
-        productRepository.save(product);
-        stockRepository.deleteByOrderUuid(stockEntity.getOrderUuid());
     }
 }
 

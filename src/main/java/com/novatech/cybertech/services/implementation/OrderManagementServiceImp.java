@@ -13,11 +13,13 @@ import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
+import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
@@ -42,7 +44,6 @@ import java.util.stream.Collectors;
 
 import static com.novatech.cybertech.entities.enums.DiscountType.NO_DISCOUNT;
 import static com.novatech.cybertech.entities.enums.OrderStatus.*;
-import static com.novatech.cybertech.entities.enums.PaymentStatus.SUCCESS;
 
 @Slf4j
 @Service
@@ -102,39 +103,105 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
     @Override
     @Transactional
-    public OrderResponseDto updateOrder(final OrderUpdateRequestDto orderUpdateRequestDto, final Jwt jwt) {
+    public OrderResponseDto updateOrder(final OrderUpdateRequestDto dto, final Jwt jwt) {
 
         final String keycloakId = jwt.getSubject();
 
-        final OrderEntity orderEntity = orderRepository.findByUuid(orderUpdateRequestDto.getUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
-        final UserEntity userEntity = orderEntity.getUserEntity();
+        final OrderEntity order = orderRepository.findByUuid(dto.getUuid())
+                .orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
-        if (isCurrentUserOrderInitiator(orderEntity, keycloakId) && !isOrderAlreadyShipped(orderEntity)) {
-
-            // 2. Charger les produits
-            List<ProductEntity> products = getAllProductsFromRequest(orderUpdateRequestDto.getItemUpdateRequestDtoList());
-            Map<UUID, Integer> quantities = orderUpdateRequestDto.getItemUpdateRequestDtoList().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
-
-            // 4. Vérifier la commande
-            validateOrderBeforeProcessingPayment(quantities, orderEntity.getUserEntity());
-
-            // 3. Réserver le stock AVANT tout paiement
-            stockService.reserveStock(orderUpdateRequestDto.getUuid(), quantities);
-
-            // 5. Calculer le prix total
-            final BigDecimal amount = processOrderTotalPrice(orderUpdateRequestDto.getItemUpdateRequestDtoList(), products);
-            orderEntity.setTotalAmount(Money.of(amount));
-
-            // 6. Paiement
-            final PaymentEntity payment = paymentService.processPayment(orderUpdateRequestDto.getPaymentType(), amount);
-
-            return switch (payment.getPaymentStatus()) {
-                case SUCCESS -> onPaymentSuccess(payment, orderUpdateRequestDto.getShippingType(), orderUpdateRequestDto.getShippingProvider(), orderEntity.getUuid(), orderEntity, userEntity, amount, quantities);
-                case FAILED -> throw new FailedUpdatingOrder("Could not process payment");
-            };
+        if (!isCurrentUserOrderInitiator(order, keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order not found for this user account");
         }
-        throw new OrderDoesntBelongsToUserException("Order not found for this user account");
+        if (isOrderAlreadyShipped(order)) {
+            throw new FailedUpdatingOrder("Order already shipped, cannot update");
+        }
+
+        // 0) Tu overwrites les items : libère l'ancienne réservation (si existante)
+        //    (safe même si rien n'était réservé)
+        stockService.releaseStock(order.getUuid());
+
+        // 1) Charger les produits + quantités demandées
+        final List<ProductEntity> products = getAllProductsFromRequest(dto.getItemUpdateRequestDtoList());
+        final Map<UUID, Integer> quantities = dto.getItemUpdateRequestDtoList().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
+
+        // 2) Validation
+        validateOrderBeforeProcessingPayment(order.getUserEntity());
+
+        // 3) Calculer le total
+        final BigDecimal amount = processOrderTotalPrice(dto.getItemUpdateRequestDtoList(), products);
+        final Money total = Money.of(amount);
+
+        // 4) Update shipping + address + total + statut
+        order.setShippingType(dto.getShippingType());
+        order.setShippingProvider(dto.getShippingProvider());
+        order.setShippingAddress(Address.builder()
+                .street(dto.getShippingStreet())
+                .city(dto.getShippingCity())
+                .zipCode(dto.getShippingZipCode())
+                .country(dto.getShippingCountry())
+                .build());
+        order.setTotalAmount(total);
+        order.setStatus(OrderStatus.AWAITING_PAYMENT);
+
+        // 5) Overwrite des items (selon ton choix)
+        //    Ici, je suppose que tu sais reconstruire la liste OrderItemEntity depuis dto + products
+        final List<OrderItemEntity> newItems = mapToOrderItems(quantities, products, order);
+        order.getOrderItemEntities().clear();
+        order.getOrderItemEntities().addAll(newItems);
+
+        orderRepository.save(order);
+
+        // 6) Réserver le stock pour les nouveaux items
+        stockService.reserveStock(order.getUuid(), quantities);
+
+        // 7) Paiement attempt (idempotent)
+        final String idemKey = (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().isBlank())
+                ? dto.getIdempotencyKey()
+                : (order.getUuid() + ":update:" + System.currentTimeMillis()); // fallback back
+
+        final PaymentAttemptEntity attempt = paymentService.processPayment(
+                order.getUuid(),
+                dto.getPaymentType(),
+                total,
+                idemKey
+        );
+
+        // 8) Statut commande + stock selon résultat
+        return switch (attempt.getStatus()) {
+
+            case SUCCESS -> {
+                stockService.commitStock(order.getUuid());
+
+                order.setStatus(OrderStatus.PAID);
+                final OrderEntity saved = orderRepository.save(order);
+
+                // Déclenche expédition via listener AFTER_COMMIT
+                eventPublisher.publishEvent(new OrderPaidEvent(saved.getUuid()));
+
+                yield orderMapper.mapFromEntityToResponseDto(saved);
+            }
+
+            case FAILED, CANCELED -> {
+                // On libère explicitement ici pour ne pas dépendre du TTL.
+                stockService.releaseStock(order.getUuid());
+
+                order.setStatus(OrderStatus.PAYMENT_FAILED);
+                final OrderEntity saved = orderRepository.save(order);
+
+                yield orderMapper.mapFromEntityToResponseDto(saved);
+            }
+
+            case CREATED, PROCESSING -> {
+                // sans 3DS, normalement rare, mais propre
+                order.setStatus(OrderStatus.AWAITING_PAYMENT);
+                final OrderEntity saved = orderRepository.save(order);
+                yield orderMapper.mapFromEntityToResponseDto(saved);
+            }
+        };
     }
+
+
 
 
     @Override
@@ -142,55 +209,125 @@ public class OrderManagementServiceImp implements OrderManagementService {
     public OrderResponseDto placeOrder(final OrderPlacingRequestDto req, final Jwt jwt) {
 
         final String keycloakId = jwt.getSubject();
-        final UserEntity userEntity = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
-        // Récupération du panier
-        CartEntity cart = userEntity.getCartEntity();
+        // 1) Récupération panier
+        final CartEntity cart = user.getCartEntity();
+
         if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) {
             throw new CartNotFoundException("Cannot place order: Cart is empty");
         }
-        List<CartItemEntity> cartItems = cart.getCartItems();
 
-        // Mapping des quantités pour la réservation de stock
-        Map<UUID, Integer> quantities = cartItems.stream().collect(Collectors.toMap(item -> item.getProductEntity().getUuid(), CartItemEntity::getQuantity));
+        final List<CartItemEntity> cartItems = cart.getCartItems();
 
-        validateOrderBeforeProcessingPayment(quantities, userEntity);
+        // 2) Quantités pour stock
+        final Map<UUID, Integer> quantities = cartItems.stream()
+                .collect(Collectors.toMap(
+                        item -> item.getProductEntity().getUuid(),
+                        CartItemEntity::getQuantity
+                ));
 
-        // 1. Génération manuelle de l'UUID (v7 via une lib externe)
+        validateOrderBeforeProcessingPayment(user);
+
+        // 3) UUID commande (v7/ordered)
         final UUID orderUuid = UuidCreator.getTimeOrderedEpoch();
 
-        // Calcul du montant total depuis le panier
-        final BigDecimal amount = cartItems.stream()
+        // 4) Total
+        final BigDecimal totalAmount = cartItems.stream()
                 .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Conversion CartItemEntity -> OrderItemEntity
-        List<OrderItemEntity> orderItems = cartItems.stream()
+        final Money totalMoney = Money.of(totalAmount);
+
+        // 5) Items commande
+        final List<OrderItemEntity> orderItems = cartItems.stream()
                 .map(item -> OrderItemEntity.builder()
-                            .unitPrice(item.getUnitPrice())
-                            .quantity(item.getQuantity())
-                            .subtotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                            .productEntity(item.getProductEntity())
-                            .build())
+                        .unitPrice(item.getUnitPrice())
+                        .quantity(item.getQuantity())
+                        .subtotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                        .productEntity(item.getProductEntity())
+                        // IMPORTANT: si OrderItemEntity a un champ orderEntity, set-le ici
+                        // .orderEntity(order)
+                        .build())
                 .collect(Collectors.toUnmodifiableList());
 
-        // 2. Initialisation de l'entité en mémoire (SANS save immédiat)
-        final OrderEntity initializedOrderEntity = initOrderEntity(orderUuid, req.getShippingCity(), req.getShippingStreet(), req.getShippingZipCode(), req.getShippingCountry(), req.getShippingType(), req.getShippingProvider(), amount, orderItems, userEntity);
+        // 6) Créer + sauver la commande AVANT paiement (toujours persistée)
+        final OrderEntity order = initOrderEntity(
+                orderUuid,
+                req.getShippingCity(),
+                req.getShippingStreet(),
+                req.getShippingZipCode(),
+                req.getShippingCountry(),
+                req.getShippingType(),
+                req.getShippingProvider(),
+                totalAmount,
+                orderItems,
+                user
+        );
 
-        // 3. Réservation du stock avec l'UUID généré
+        order.setStatus(OrderStatus.AWAITING_PAYMENT);
+        final OrderEntity savedOrder = orderRepository.save(order);
+
+        // 7) Réserver stock (si ça throw -> transaction rollback)
         stockService.reserveStock(orderUuid, quantities);
 
-        final PaymentEntity payment = paymentService.processPayment(req.getPaymentType(), amount);
+        // 8) Paiement attempt (idempotent)
+        // Reco: ajoute req.getIdempotencyKey() côté DTO.
+        final String idempotencyKey = (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) ? req.getIdempotencyKey() : (orderUuid + ":place:" + System.currentTimeMillis());
 
-        // Vider le panier après la tentative de commande (le stock est réservé, la commande est créée)
+        final PaymentAttemptEntity attempt = paymentService.processPayment(
+                orderUuid,
+                req.getPaymentType(),
+                totalMoney,
+                idempotencyKey
+        );
+
+        // 9) Vider le panier après la tentative (commande existante + stock réservé)
+        //    Si tu préfères ne vider qu'après SUCCESS, déplace-le dans le case SUCCESS.
         cartService.clearCart(jwt);
 
-        // 4. Persistance unique à la fin (INSERT) selon le résultat du paiement
-        return switch (payment.getPaymentStatus()) {
-            case SUCCESS -> onPaymentSuccess(payment, req.getShippingType(), req.getShippingProvider(), orderUuid, initializedOrderEntity, userEntity, amount, quantities);
-            case FAILED -> onPaymentFailure(orderUuid, initializedOrderEntity);
+        // 10) Statuts + stock + events
+        return switch (attempt.getStatus()) {
+
+            case SUCCESS -> {
+                stockService.commitStock(orderUuid);
+
+                savedOrder.setStatus(OrderStatus.PAID);
+                final OrderEntity paidOrder = orderRepository.save(savedOrder);
+
+                // Event création (corrige ton paymentStatus: plus de SUCCESS en dur)
+                sendOrderCreationEvent(paidOrder, user, totalAmount, attempt.getStatus());
+
+                // Expédition décorrélée : listener AFTER_COMMIT déclenche shippingDispatcher.dispatch(...)
+                eventPublisher.publishEvent(new OrderPaidEvent(paidOrder.getUuid()));
+
+                yield orderMapper.mapFromEntityToResponseDto(paidOrder);
+            }
+
+            case FAILED, CANCELED -> {
+                // Même si tu as TTL Redis, release immédiat = stock dispo tout de suite.
+                stockService.releaseStock(orderUuid);
+
+                savedOrder.setStatus(OrderStatus.PAYMENT_FAILED);
+                final OrderEntity failedOrder = orderRepository.save(savedOrder);
+
+                sendOrderCreationEvent(failedOrder, user, totalAmount, attempt.getStatus());
+
+                yield orderMapper.mapFromEntityToResponseDto(failedOrder);
+            }
+
+            case CREATED, PROCESSING -> {
+                // sans 3DS tu ne devrais pas rester là, mais on est clean
+                savedOrder.setStatus(OrderStatus.AWAITING_PAYMENT);
+                final OrderEntity awaiting = orderRepository.save(savedOrder);
+
+                sendOrderCreationEvent(awaiting, user, totalAmount, attempt.getStatus());
+
+                yield orderMapper.mapFromEntityToResponseDto(awaiting);
+            }
         };
     }
+
 
     @Override
     @Transactional
@@ -216,34 +353,45 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-    private OrderResponseDto onPaymentFailure(final UUID orderUUID, final OrderEntity order) {
-        // Paiement échec → libérer le stock
-        stockService.releaseStock(orderUUID);
-        order.setStatus(PENDING_PAYMENT);
-        OrderEntity saved = orderRepository.save(order);
+    /*
 
-        return orderMapper.mapFromEntityToResponseDto(saved);
-        //throw new PaymentFailedException("Could not process payment");
-    }
-
-
-    private OrderResponseDto onPaymentSuccess(final PaymentEntity payment, final ShippingType shippingType, final ShippingProvider shippingProvider, final UUID orderUUID, final OrderEntity order, final UserEntity userEntity, final BigDecimal amount, final Map<UUID, Integer> quantities) {
-        // 8. Commit du stock
+    private OrderResponseDto onPaymentSuccess(
+            final PaymentAttemptEntity attempt,
+            final UUID orderUUID,
+            final OrderEntity order,
+            final UserEntity userEntity,
+            final BigDecimal amount
+    ) {
         stockService.commitStock(orderUUID);
 
-        order.setPaymentEntity(payment);
-
+        order.setStatus(OrderStatus.PAID);
         OrderEntity saved = orderRepository.save(order);
 
-        // 9. Événements
-        sendOrderCreationEvent(order, userEntity, amount, quantities);
-        sendOrderShippingEvent(shippingType, shippingProvider, userEntity, saved);
+        sendOrderCreationEvent(saved, userEntity, amount, attempt.getStatus());
+
+        // plus de dispatch direct ici
+        eventPublisher.publishEvent(new OrderPaidEvent(saved.getUuid()));
 
         return orderMapper.mapFromEntityToResponseDto(saved);
     }
 
 
-    private void validateOrderBeforeProcessingPayment(final Map<UUID, Integer> productsByQuantityMap, final UserEntity userEntity) {
+    private OrderResponseDto onPaymentFailure(final UUID orderUUID, final OrderEntity order) {
+        stockService.releaseStock(orderUUID);
+
+        order.setStatus(OrderStatus.PAYMENT_FAILED);
+        OrderEntity saved = orderRepository.save(order);
+
+        // paymentStatus dans l’event doit refléter FAILED, pas SUCCESS
+        sendOrderCreationEvent(saved, order.getUserEntity(), saved.getTotalAmount().getAmount(), PaymentAttemptStatus.FAILED);
+
+        return orderMapper.mapFromEntityToResponseDto(saved);
+    }
+
+     */
+
+
+    private void validateOrderBeforeProcessingPayment(final UserEntity userEntity) {
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
                 .userDefaultBankCard(userEntity.getBankCardEntities().stream().filter(BankCardEntity::getIsDefault).findFirst().orElseThrow(() -> new NoDefaultBankCartSetException("No default bank card set, please, set a default bank card and retry ...")))
@@ -269,7 +417,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .orderItemEntities(orderItemEntities)
                 .totalAmount(Money.of(totalPrice))
                 .discountType(NO_DISCOUNT)
-                .status(PROCESSING)
+                .status(CREATED)
                 .orderDate(LocalDateTime.now())
                 .shippingProvider(shippingProvider)
                 .shippingType(shippingType)
@@ -296,14 +444,17 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-    private void sendOrderCreationEvent(final OrderEntity orderEntity, final UserEntity user, final BigDecimal totalPrice, final Map<UUID, Integer> productsByQuantityMap) {
-
+    private void sendOrderCreationEvent(
+            final OrderEntity orderEntity,
+            final UserEntity user,
+            final BigDecimal totalPrice,
+            final PaymentAttemptStatus paymentAttemptStatus
+    ) {
         OrderEventDto orderEventDto = OrderEventDto.builder()
                 .orderUuid(orderEntity.getUuid())
                 .orderStatus(orderEntity.getStatus())
-                .paymentStatus(SUCCESS)
+                .paymentAttemptStatus(paymentAttemptStatus)
                 .totalAmount(totalPrice)
-                .productsByQuantityMap(productsByQuantityMap)
                 .userContactDto(UserContactDto.builder()
                         .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
                         .email(user.getEmail())
@@ -347,7 +498,19 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     private static boolean isInDeletableState(final OrderEntity order) {
-        final Set<OrderStatus> deletableStates = Set.of(PENDING_PAYMENT, DELIVERED, RETURNED, CANCELED, REFUNDED);
+        final Set<OrderStatus> deletableStates = Set.of(AWAITING_PAYMENT, DELIVERED, RETURNED, CANCELED, REFUNDED);
         return deletableStates.contains(order.getStatus());
+    }
+
+    private List<OrderItemEntity> mapToOrderItems(Map<UUID, Integer> quantities, List<ProductEntity> products, OrderEntity order) {
+        return products.stream()
+                .map(product -> OrderItemEntity.builder()
+                        .unitPrice(product.getPrice())
+                        .quantity(quantities.get(product.getUuid()))
+                        .subtotal(product.getPrice().multiply(BigDecimal.valueOf(quantities.get(product.getUuid()))))
+                        .orderEntity(order)
+                        .productEntity(product)
+                        .build())
+                .collect(Collectors.toUnmodifiableList());
     }
 }

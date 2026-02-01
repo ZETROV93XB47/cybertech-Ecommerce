@@ -1,35 +1,63 @@
 package com.novatech.cybertech.services.implementation;
 
-import com.novatech.cybertech.entities.PaymentEntity;
+import com.novatech.cybertech.dto.data.PaymentAttemptResult;
+import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.PaymentAttemptEntity;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
+import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.factory.PaymentStrategyFactory;
+import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.repositories.PaymentAttemptRepository;
+import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.UUID;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentServiceImp implements PaymentService {
 
+    private final OrderRepository orderRepository;
+    private final PaymentAttemptRepository attemptRepository;
     private final PaymentStrategyFactory paymentStrategyFactory;
 
-    @Override
-    public PaymentEntity processPayment(final PaymentType paymentType, final BigDecimal paymentAmount) {
+    @Transactional
+    public PaymentAttemptEntity processPayment(UUID orderUuid, PaymentType paymentType, Money amount, String idempotencyKey) {
 
-        PaymentEntity paymentEntity = PaymentEntity.builder()
-                //.uuid(UUID.randomUUID())
-                .amount(paymentAmount)
+        // Idempotence (retry même requête)
+        var existing = attemptRepository.findByIdempotencyKey(idempotencyKey);
+        if (existing.isPresent()) return existing.get();
+
+        OrderEntity order = orderRepository.findByUuid(orderUuid).orElseThrow();
+
+        // Crée attempt
+        PaymentAttemptEntity attempt = PaymentAttemptEntity.builder()
+                .orderEntity(order)
+                .amount(amount)
                 .paymentType(paymentType)
-                .paymentStatus(null)
-                .paymentDate(LocalDateTime.now())
+                .status(PaymentAttemptStatus.CREATED)
+                .idempotencyKey(idempotencyKey)
                 .build();
 
-        return paymentStrategyFactory.getServiceFromPaymentType(paymentEntity.getPaymentType()).processPayment(paymentEntity);
+        attempt = attemptRepository.save(attempt);
+
+        // Appel provider via Strategy
+        attempt.setStatus(PaymentAttemptStatus.PROCESSING);
+
+        PaymentAttemptProcessor processor = paymentStrategyFactory.getServiceFromPaymentType(paymentType);
+
+        // Idée: ton processor retourne un résultat (au lieu de muter une entity PaymentEntity)
+        PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+
+        attempt.setStatus(result.status());
+        attempt.setProviderRef(result.providerRef());
+
+        return attemptRepository.save(attempt);
     }
 }

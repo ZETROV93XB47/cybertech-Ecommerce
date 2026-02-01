@@ -221,18 +221,18 @@ public class DataGenerator {
                 .orderDate(LocalDateTime.now())
                 .orderItemEntities(new ArrayList<>())
                 .shippingAddress(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
-                .status(OrderStatus.PROCESSING)
+                .status(OrderStatus.CREATED)
                 .totalAmount(new Money(BigDecimal.ZERO, "EUR"))
-                .paymentEntity(generatePayment())
+                .paymentAttempts(List.of(generatePayment()))
                 .build();
     }
 
-    public static PaymentEntity generatePayment() {
-        return PaymentEntity.builder()
+    public static PaymentAttemptEntity generatePayment() {
+        return PaymentAttemptEntity.builder()
                 //.uuid(UUID.randomUUID())
-                .amount(new BigDecimal(0))
-                .paymentDate(LocalDateTime.now())
-                .paymentStatus(PaymentStatus.SUCCESS)
+                .amount(Money.of(new BigDecimal(0)))
+                .createdAt(LocalDateTime.now())
+                .status(PaymentAttemptStatus.SUCCESS)
                 .paymentType(PaymentType.VISA)
                 .build();
     }
