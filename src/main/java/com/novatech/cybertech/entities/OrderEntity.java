@@ -80,9 +80,4 @@ public class OrderEntity extends BaseEntity<Long> {
     @LastModifiedDate
     @Column(name = "updatedAt")
     private LocalDateTime updatedAt;
-
-    @OneToOne(cascade = CascadeType.ALL)
-    @JoinColumn(name = "cartId")
-    private CartEntity cartEntity;
 }
-

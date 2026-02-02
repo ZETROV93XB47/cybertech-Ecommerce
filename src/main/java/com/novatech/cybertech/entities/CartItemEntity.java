@@ -1,18 +1,15 @@
 package com.novatech.cybertech.entities;
 
-import com.novatech.cybertech.exceptions.QuantityChangeResult;
-import com.novatech.cybertech.exceptions.QuantityRejected;
-import com.novatech.cybertech.exceptions.QuantityUpdated;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-import static com.novatech.cybertech.exceptions.QuantityRejectionReason.AMOUNT_TO_DECREASE_BIGGER_THAN_CURRENT_QUANTITY;
-
+@Slf4j
 @Entity
 @Getter
 @SuperBuilder
@@ -35,7 +32,7 @@ public class CartItemEntity extends BaseEntity<Long> {
     @ToString.Exclude
     private CartEntity cart;
 
-    @ManyToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "productEntity", nullable = false)
     @ToString.Exclude
     private ProductEntity productEntity;
@@ -68,7 +65,10 @@ public class CartItemEntity extends BaseEntity<Long> {
 
 
     public Integer increaseQuantity(final Integer amount) {
-        quantity -= amount;
+        log.info("quantity before increase : {}", this.quantity);
+        log.info("amount to increase : {}", amount);
+        this.quantity = this.quantity + amount;
+        log.info("quantity after increase : {}", this.quantity);
         return quantity;
     }
 

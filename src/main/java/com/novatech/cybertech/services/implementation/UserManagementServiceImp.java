@@ -37,8 +37,10 @@ public class UserManagementServiceImp implements UserManagementService {
     public UserResponseDto create(final UserCreateRequestDto req) {
         String keycloakId = null;
 
+        log.info("user creation request : {}", req);
+
         try {
-            keycloakId = keycloakUserManagementService.createUser(req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword());
+            keycloakId = keycloakUserManagementService.createUser(req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword(), Role.USER);
 
             log.info("Keycloak id : {}", keycloakId);
 
@@ -55,6 +57,7 @@ public class UserManagementServiceImp implements UserManagementService {
                     .role(Role.USER)
                     .keycloakId(keycloakId)
                     .isActive(true)
+                    .numberOfHatefulComments(0)
                     .build();
 
             final UserEntity savedUser = userRepository.save(user);

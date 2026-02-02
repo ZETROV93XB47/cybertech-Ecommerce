@@ -7,7 +7,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,14 +14,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+//@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, include = JsonTypeInfo.As.PROPERTY, property = "@class")
 public class CartResponseDto {
-
     private UUID cartUuid;
-    private UUID userUuid; // L'UUID de l'utilisateur propriétaire du panier
+    private UUID userUuid;
     private List<CartItemResponseDto> items;
-    private BigDecimal totalPrice; // Le prix total de tous les articles dans le panier
-    private Date createdAt;
-    private Date updatedAt;
-    // Tu pourrais ajouter un statut si les paniers peuvent avoir différents états (ex: "ACTIVE", "ABANDONED")
-    // private String status;
+    private BigDecimal totalPrice;
 }

@@ -71,22 +71,23 @@ public class ProductSearchServiceImp implements ProductSearchService {
             })));
         }
 
-        // 5) Attributs dynamiques (flattened): attributes.key IN (values...) (filter)
+// 5) Attributs dynamiques (flattened) : match sur attributes.key
         if (req.getAttributes() != null) {
             req.getAttributes().forEach((key, values) -> {
                 if (values != null && !values.isEmpty()) {
                     String field = ATTRIBUTES + DOT + key;
 
                     bool.filter(f -> f.bool(b -> {
-                        values.forEach(val -> b.should(s -> s.wildcard(w -> w
+                        values.forEach(val -> b.should(s -> s.match(m -> m
                                 .field(field)
-                                .value("*" + val + "*")
-                                .caseInsensitive(true))));
+                                .query(String.valueOf(val)) // conversion safe
+                        )));
                         return b;
                     }));
                 }
             });
         }
+
 
         Query finalQuery = bool.build()._toQuery();
 

@@ -34,6 +34,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
     private final ProductSearchRepository productSearchRepository;
     private final ProductValidationService productValidationService;
 
+
     @Override
     @Transactional(readOnly = true)
     public Collection<ProductResponseDto> getAll() {

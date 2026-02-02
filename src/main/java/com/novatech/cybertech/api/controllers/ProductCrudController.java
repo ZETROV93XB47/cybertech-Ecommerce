@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,6 +34,11 @@ public class ProductCrudController implements ProductCrudControllerApiSpec {
     @GetMapping(value = "/get/{productUuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductResponseDto> getProductByUuid(@PathVariable("productUuid") UUID productUuid) {
         return ResponseEntity.status(HttpStatus.OK).body(productService.getByUUID(productUuid));
+    }
+
+    @GetMapping(value = "/get/all", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Collection<ProductResponseDto>> getAllProducts() {
+        return ResponseEntity.status(HttpStatus.OK).body(productService.getAll());
     }
 
     @Override

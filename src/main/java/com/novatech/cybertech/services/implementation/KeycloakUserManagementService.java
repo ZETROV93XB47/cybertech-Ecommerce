@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
+import com.novatech.cybertech.entities.enums.Role;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -25,7 +27,7 @@ public class KeycloakUserManagementService {
     private final Keycloak keycloakClient;
 
 
-    public String createUser(String email, String firstName, String lastName, String rawPassword) {
+    public String createUser(String email, String firstName, String lastName, String rawPassword, Role role) {
 
         final UsersResource users = keycloakClient.realm(realm).users();
 
@@ -41,6 +43,20 @@ public class KeycloakUserManagementService {
 
             // L’ID est dans le Location header: .../users/{id}
             locationHeaderValue = resp.getLocation().toString();
+
+            String userId = getUserKeycloakId(locationHeaderValue);
+
+            log.info("userID : {}", userId);
+
+            RoleRepresentation userRole = keycloakClient.realm(realm)
+                    .roles()
+                    .get(role.name())
+                    .toRepresentation();
+
+            log.info("userRole : {}", userRole);
+
+            users.get(userId).roles().realmLevel().add(List.of(userRole));
+
         }
         return getUserKeycloakId(locationHeaderValue);
     }

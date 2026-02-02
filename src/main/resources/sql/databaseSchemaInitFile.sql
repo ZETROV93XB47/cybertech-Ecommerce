@@ -6,6 +6,8 @@ FLUSH PRIVILEGES;
 
 use cybertechDB;
 
+CREATE DATABASE IF NOT EXISTS cybertechDB;
+
 CREATE TABLE userTable
 (
     -- Hérité de BaseEntity
@@ -167,7 +169,6 @@ CREATE TABLE cartTable
     userId        BIGINT       NOT NULL,
     createdAt     DATETIME     NOT NULL,
     updatedAt     DATETIME,
-    isCheckedOut  BOOLEAN      NOT NULL DEFAULT 0,
 
     PRIMARY KEY (id),
     FOREIGN KEY (userId) REFERENCES userTable (id)

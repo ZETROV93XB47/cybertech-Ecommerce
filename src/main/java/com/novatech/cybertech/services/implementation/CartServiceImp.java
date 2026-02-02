@@ -39,8 +39,10 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "cart", key = "#keycloakId") // Invalide le cache car le panier est modifié
+    @CacheEvict(value = "cart", key = "#jwt.subject") // Invalide le cache car le panier est modifié
     public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final Jwt jwt) {
+
+        log.info("cart request dto : {}", cartCreateRequestDto);
 
         final Map<UUID, Integer> productsToAdd = cartCreateRequestDto.getCartItemAddRequestDtos().stream().collect(Collectors.toMap(CartItemAddRequestDto::getProductUuid, CartItemAddRequestDto::getQuantity));
 
@@ -51,13 +53,18 @@ public class CartServiceImp implements CartService {
         List<ProductEntity> products = productRepository.findAllByUuidIn(productsToAdd.keySet());
         Map<UUID, ProductEntity> productMap = products.stream().collect(Collectors.toMap(ProductEntity::getUuid, p -> p));
 
+        log.info("products to add : {}", productsToAdd);
+        log.info("productsMap : {}", productMap);
+        log.info("products : {}", products);
+
         CartEntity cartEntity = user.getCartEntity();
+
+        log.info("cart : {}", cartEntity);
 
         // 1. Créer le panier s'il n'existe pas
         if (cartEntity == null) {
             cartEntity = CartEntity.builder()
                     .userEntity(user)
-                    .isCheckedOut(false)
                     .cartItems(new ArrayList<>())
                     .uuid(UuidCreator.getTimeOrderedEpoch())
                     .build();
@@ -69,7 +76,6 @@ public class CartServiceImp implements CartService {
         for (Map.Entry<UUID, Integer> entry : productsToAdd.entrySet()) {
             UUID productUuid = entry.getKey();
             Integer quantity = entry.getValue();
-
             ProductEntity product = productMap.get(productUuid);
             if (product == null) {
                 throw new ProductNotFoundException("No product with the UUID : " + productUuid + " found");
@@ -81,16 +87,32 @@ public class CartServiceImp implements CartService {
                     .filter(item -> item.getProductEntity().getUuid().equals(productUuid))
                     .findFirst();
 
-            int newQuantity = existingItem.map(item -> item.getQuantity() + quantity).orElse(quantity);
+            log.info("existingItem : {} and old quantity : {}", existingItem, quantity);
+
+            int newQuantity = existingItem.map(item -> {
+                int res = item.getQuantity() + quantity;
+
+                log.info("newQuantity in lambda : {}", res);
+
+                return res;
+
+            }).orElse(quantity);
+
+            log.info("newQuantity : {}", newQuantity);
 
             // 3. Vérifier le stock (Stock total vs Stock réservé + Quantité demandée totale)
             if (product.getReservedStock() + newQuantity > product.getStock()) {
                 throw new NotEnoughStockException("Not enough stock for product " + product.getName() + ". Available: " + (product.getStock() - product.getReservedStock()));
             }
 
+            log.info("product stock : {}", product.getStock());
+            log.info("product reserved stock : {}", product.getReservedStock());
+
             if (existingItem.isPresent()) {
                 // Mise à jour de la quantité existante
-                existingItem.get().increaseQuantity(newQuantity);
+                log.info("existing item before quantity update: {}", existingItem);
+                existingItem.get().increaseQuantity(quantity);
+                log.info("existing item after quantity update: {}", existingItem);
             } else {
                 // Ajout d'un nouvel item
                 final CartItemEntity newItem = CartItemEntity.builder()
@@ -110,7 +132,7 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value = "cart", key = "#keycloakId")
+    @Cacheable(value = "cart", key = "#jwt.subject", unless = "#result.cartUuid == null")
     public CartResponseDto getCart(final Jwt jwt) {
         final String keycloakId = jwt.getSubject();
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -167,7 +189,7 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "cart", key = "#keycloakId") // Supprime le cache pour forcer le rechargement
+    @CacheEvict(value = "cart", key = "#jwt.subject") // Supprime le cache pour forcer le rechargement
     public CartResponseDto removeItemFromCart(final UUID productUuid, final Jwt jwt) {
         final String keycloakId = jwt.getSubject();
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -212,7 +234,7 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "cart", key = "#keycloakId") // Supprime le cache
+    @CacheEvict(value = "cart", key = "#jwt.subject") // Supprime le cache
     public void clearCart(final Jwt jwt) {
         final String keycloakId = jwt.getSubject();
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));

@@ -16,11 +16,11 @@ import java.util.List;
 @AllArgsConstructor
 @Table(name = "cartTable")
 @EqualsAndHashCode(callSuper = true)
-@ToString(callSuper = true)
+@ToString(callSuper = true, exclude = {"cartItems","userEntity"})
 public class CartEntity extends BaseEntity<Long> {
 
-    @ManyToOne
-    @JoinColumn(name = "userId", nullable = false)
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "userId", nullable = false) // C'est Cart qui porte la clé étrangère (voir SQL)
     private UserEntity userEntity;
 
     @CreationTimestamp
@@ -31,12 +31,6 @@ public class CartEntity extends BaseEntity<Long> {
     @Column(name = "updatedAt")
     private LocalDateTime updatedAt;
 
-    @Column(name = "isCheckedOut", nullable = false)
-    private Boolean isCheckedOut = false;
-
-    @OneToMany(mappedBy = "cart", orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "cart", orphanRemoval = true, cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<CartItemEntity> cartItems;
-
-    @OneToOne(mappedBy = "cartEntity")
-    private OrderEntity orderEntity;
 }

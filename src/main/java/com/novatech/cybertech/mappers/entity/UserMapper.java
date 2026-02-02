@@ -12,7 +12,7 @@ import org.mapstruct.ReportingPolicy;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface UserMapper extends BaseMapper<UserEntity, UserCreateRequestDto, UserUpdateRequestDto, UserResponseDto> {
-    
+
     // Il me faut l'uuid pour pouvoir retrouver le User, pas pour le maj
     @Mapping(target = "uuid", ignore = true)
     @Mapping(target = "address", expression = "java(mapStringToAddress(dto.getAddress()))")
@@ -27,6 +27,7 @@ public interface UserMapper extends BaseMapper<UserEntity, UserCreateRequestDto,
     UserEntity mapFromCreationRequestToEntity(UserCreateRequestDto dto);
 
     @Override
+    @Mapping(target = "username", expression = "java(usernameMapper(entity.getFirstName(), entity.getLastName()))")
     @Mapping(target = "address", expression = "java(mapAddressToString(entity.getAddress()))")
     UserResponseDto mapFromEntityToResponseDto(UserEntity entity);
 
@@ -38,5 +39,10 @@ public interface UserMapper extends BaseMapper<UserEntity, UserCreateRequestDto,
     default String mapAddressToString(Address address) {
         if (address == null) return null;
         return String.format("%s, %s %s, %s", address.getStreet(), address.getZipCode(), address.getCity(), address.getCountry());
+    }
+
+    default String usernameMapper(String firstName, String lastName) {
+        if (firstName == null || lastName == null) return null;
+        return firstName.trim().toLowerCase() + "." + lastName.trim().toLowerCase();
     }
 }

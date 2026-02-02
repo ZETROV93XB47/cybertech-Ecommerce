@@ -51,6 +51,12 @@ public class UserManagementController implements UserCrudControllerApiSpec {
     }
 
     @Override
+    @GetMapping(value = "/get/all", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Collection<UserResponseDto>> getAllUsers() {
+        return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.getAll());
+    }
+
+    @Override
     @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<UserResponseDto> createUser(@Valid @RequestBody UserCreateRequestDto userCreateRequestDto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.create(userCreateRequestDto));
@@ -86,7 +92,7 @@ public class UserManagementController implements UserCrudControllerApiSpec {
         ));
     }
 
-    @PostMapping("/register/auto")
+    @PostMapping("/register/auto/single")
     public ResponseEntity<UserResponseDto> registerAuto() {
         return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.create(generateUserCreateRequestDto()));
     }

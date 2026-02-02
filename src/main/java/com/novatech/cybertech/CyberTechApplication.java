@@ -15,16 +15,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @SpringBootApplication
 @RequiredArgsConstructor
 @EnableConfigurationProperties
-public class CyberTechApplication implements CommandLineRunner {
-    private final ApplicationContext applicationContext;
-
-    public static void main(String[] args) {
+public class CyberTechApplication {
+    static void main(String[] args) {
         SpringApplication.run(CyberTechApplication.class, args);
-    }
-
-    @Override
-    public void run(String... args) {
-        //log.info("Inspect the beans provided by Spring Boot:");
-        //Arrays.stream(applicationContext.getBeanDefinitionNames()).sorted().forEach(beanName -> log.info("Bean name : {}", beanName));
     }
 }

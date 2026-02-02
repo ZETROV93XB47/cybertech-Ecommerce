@@ -22,20 +22,19 @@ public class SecurityConfig {
 
     // Définit la liste des URL à autoriser sans sécurité
     private static final String[] PUBLIC_URLS = {
-//            "/auth/**",
-//            "/h2-console/**",       // Accès à la console H2 (Très important en développement !)
-//            "/api/public/**",       // Exemple: Tous les endpoints sous /api/public/
-//            "/auth/register",       // Exemple: Endpoint d'enregistrement
-//            "/auth/login",          // Exemple: Endpoint de connexion (si géré sans sécurité initiale)
-//            "/products/list",       // Exemple: Liste publique des produits
-//            "/swagger-ui/**",       // Accès à Swagger UI (si utilisé)
-//            "/v3/api-docs/**",      // Accès à la définition OpenAPI (si utilisé)
-//            "/api/v1/services/**",
-//            "/public/**",
-//            "/users/register",
-//            "/api/v1/register",
-//            "/api/v1/register/**",
-//            "/api/v1/services/product/generate"
+            "/h2-console/**",       // Accès à la console H2 (Très important en développement !)
+            "/api/public/**",       // Exemple: Tous les endpoints sous /api/public/
+            "/auth/register",       // Exemple: Endpoint d'enregistrement
+            "/auth/login",          // Exemple: Endpoint de connexion (si géré sans sécurité initiale)
+            "/products/list",       // Exemple: Liste publique des produits
+            "/swagger-ui/**",       // Accès à Swagger UI (si utilisé)
+            "/v3/api-docs/**",      // Accès à la définition OpenAPI (si utilisé)
+            //"/api/v1/services/**",
+            //"/public/**",
+            "/api/v1/services/user/register/**",
+            //"/api/v1/services/cart/**",
+            "/api/v1/services/user/get/all",
+            "/api/v1/services/product/**"
     };
 
     @Bean

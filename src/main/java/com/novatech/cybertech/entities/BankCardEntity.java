@@ -24,7 +24,7 @@ public class BankCardEntity extends BaseEntity<Long> {
     @Column(name = "cardHolderName", nullable = false, length = 100)
     private String cardHolderName;
 
-    @Column(name = "cardNumber", nullable = false, length = 19) // Longueur typique avec espaces/tirets
+    @Column(name = "cardNumber", nullable = false, length = 25) // Longueur typique avec espaces/tirets
     private String cardNumber; // Stocker comme String pour gérer les zéros initiaux et le formatage
 
     @Column(name = "expiryDate", nullable = false, length = 7) // Format MM/YYYY

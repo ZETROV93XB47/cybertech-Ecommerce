@@ -54,31 +54,36 @@ public class CartManagementController implements CartManagementControllerApiSpec
     }
 
 
+    @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @GetMapping(value = "/get", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> getCart(@AuthenticationPrincipal final Jwt jwt) {
         return ResponseEntity.status(HttpStatus.OK).body(cartService.getCart(jwt));
     }
 
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN")
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @DeleteMapping(value = "/clear", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> clearCart(@AuthenticationPrincipal final Jwt jwt) {
         cartService.clearCart(jwt);
         return ResponseEntity.noContent().build();
     }
 
+    @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PostMapping(value = "/add", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> addToCart(@Valid @RequestBody final CartCreateRequestDto cartCreateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cartService.addItemsToCart(cartCreateRequestDto, jwt));
     }
 
+    @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PatchMapping(value = "/remove/{productUuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> removeFromCart(@PathVariable("productUuid") final UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
         return ResponseEntity.status(HttpStatus.OK).body(cartService.removeItemFromCart(uuid, jwt));
     }
 
+    @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @DeleteMapping(value = "/decreaseQuantity", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> decreaseQuantity(@Valid @RequestBody final CartItemRemoveRequestDto cartItemRemoveRequestDto, @AuthenticationPrincipal final Jwt jwt) {
