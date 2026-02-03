@@ -126,7 +126,6 @@ public class DataGenerator {
                 .role(USER)
                 .numberOfHatefulComments(0)
                 .orderEntities(new ArrayList<>())
-                .reviewEntities(new ArrayList<>())
                 .build();
     }
 
@@ -174,7 +173,6 @@ public class DataGenerator {
                         .numberOfHatefulComments(0)
                         .orderEntities(new ArrayList<>())
                         .reviewEntities(new ArrayList<>())
-                        .bankCardEntities(new ArrayList<>())
                         //.cartEntities(new ArrayList<>())
                         .build();
 
@@ -210,7 +208,6 @@ public class DataGenerator {
                         .cardNumber(FAKER.finance().creditCard())
                         .expiryDate("12/2029")
                         .cardType(BankCardType.VISA)
-                        .isDefault(true)
                         .build())
                 .build();
     }
@@ -265,7 +262,7 @@ public class DataGenerator {
     }
 
     public static OrderPlacingRequestDto orderGenerator() {
-        return OrderPlacingRequestDto.builder()
+        OrderPlacingRequestDto build = OrderPlacingRequestDto.builder()
                 .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
                 .shippingStreet(FAKER.address().streetAddress())
                 .shippingCity(FAKER.address().city())
@@ -276,6 +273,15 @@ public class DataGenerator {
                 .paymentType(PaymentType.VISA)
                 .build();
 
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.writeValueAsString(build);
+            return build;
+        }
+        catch (Exception e) {
+         log.info("e :: ", e);
+        }
+        return null;
     }
 
     public static void convertToUUID(final String UUIDString) {
@@ -299,9 +305,9 @@ public class DataGenerator {
 //    }
 
 
-    static void main(String[] args) throws JsonProcessingException {
+    static void main(String[] args) {
         OrderPlacingRequestDto orderPlacingRequestDto = OrderPlacingRequestDto.builder()
-                .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
+                .userUuid(UUID.fromString("c0a80001-9c1d-1106-819c-1de1fee20002"))
                 .shippingStreet(FAKER.address().streetAddress())
                 .shippingCity(FAKER.address().city())
                 .shippingZipCode(FAKER.address().zipCode())
@@ -311,8 +317,11 @@ public class DataGenerator {
                 .paymentType(PaymentType.VISA)
                 .build();
 
-        ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-
-        System.out.println(objectMapper.writeValueAsString(orderPlacingRequestDto));
+        try {
+            ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+            System.out.println(objectMapper.writeValueAsString(orderPlacingRequestDto));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

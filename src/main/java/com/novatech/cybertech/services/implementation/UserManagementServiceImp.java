@@ -68,7 +68,6 @@ public class UserManagementServiceImp implements UserManagementService {
                     .cardNumber(req.getBankCardCreationRequestDto().getCardNumber())
                     .expiryDate(req.getBankCardCreationRequestDto().getExpiryDate())
                     .cardType(req.getBankCardCreationRequestDto().getCardType())
-                    .isDefault(true)
                     .build();
 
             bankCard.setUserEntity(savedUser);

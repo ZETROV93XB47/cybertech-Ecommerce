@@ -20,10 +20,10 @@ CREATE TABLE userTable
     firstName                  VARCHAR(50),
     lastName                   VARCHAR(50),
     sex                        VARCHAR(255) NOT NULL, -- EnumType.STRING
-    addressStreet             VARCHAR(255),
-    addressCity               VARCHAR(255),
-    addressZipCode           VARCHAR(20),
-    addressCountry            VARCHAR(255),
+    address_street             VARCHAR(255),
+    address_city               VARCHAR(255),
+    address_zip_code           VARCHAR(20),
+    address_country            VARCHAR(255),
     birthDate                  DATE,
     keycloakId                 VARCHAR(100) NOT NULL UNIQUE,
     role                       VARCHAR(255) NOT NULL, -- EnumType.STRING
@@ -117,7 +117,6 @@ CREATE TABLE bankCardTable
     cardNumber     VARCHAR(100) NOT NULL,
     expiryDate     VARCHAR(7)   NOT NULL, -- MM/YYYY
     cardType       VARCHAR(255) NOT NULL, -- EnumType.STRING
-    isDefault      BOOLEAN      NOT NULL,
 
     -- Relation ManyToOne vers UserEntity
     user_id        BIGINT       NOT NULL,
@@ -216,16 +215,11 @@ CREATE TABLE orderTable
 
     -- Relations ManyToOne et OneToOne
     userId           BIGINT,                  -- Vers UserEntity
-    paymentId        BIGINT,                  -- Vers PaymentEntity
-    cartId           BIGINT,                  -- Vers CartEntity
 
     PRIMARY KEY (id),
 
     -- Contraintes de clés étrangères (PaymentEntity est également déduit)
-    FOREIGN KEY (userId) REFERENCES userTable (id),
-    -- On suppose l'existence de la table paymentTable
-    FOREIGN KEY (paymentId) REFERENCES paymentAttemptTable (id),
-    FOREIGN KEY (cartId) REFERENCES cartTable (id)
+    FOREIGN KEY (userId) REFERENCES userTable (id)
 );
 
 -- Ajout de la contrainte FK pour paymentAttemptTable vers orderTable

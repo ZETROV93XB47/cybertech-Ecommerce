@@ -17,7 +17,7 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true, exclude = {"userEntity"})
 public class BankCardEntity extends BaseEntity<Long> {
 
-    @ManyToOne(fetch = FetchType.EAGER,cascade=CascadeType.ALL)
+    @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private UserEntity userEntity;
 
@@ -33,7 +33,4 @@ public class BankCardEntity extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     @Column(name = "cardType", nullable = false)
     private BankCardType cardType;
-
-    @Column(name = "isDefault", nullable = false)
-    private Boolean isDefault = false;
 }

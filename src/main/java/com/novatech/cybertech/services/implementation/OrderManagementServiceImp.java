@@ -161,7 +161,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 : (order.getUuid() + ":update:" + System.currentTimeMillis()); // fallback back
 
         final PaymentAttemptEntity attempt = paymentService.processPayment(
-                order.getUuid(),
+                order,
                 dto.getPaymentType(),
                 total,
                 idemKey
@@ -249,7 +249,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                         // IMPORTANT: si OrderItemEntity a un champ orderEntity, set-le ici
                         // .orderEntity(order)
                         .build())
-                .collect(Collectors.toUnmodifiableList());
+                .collect(Collectors.toList());
 
         // 6) Créer + sauver la commande AVANT paiement (toujours persistée)
         final OrderEntity order = initOrderEntity(
@@ -265,6 +265,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 user
         );
 
+        // FIX: Lier les items à la commande pour que la clé étrangère orderId soit peuplée lors du save
+        orderItems.forEach(item -> item.setOrderEntity(order));
+
         order.setStatus(OrderStatus.AWAITING_PAYMENT);
         final OrderEntity savedOrder = orderRepository.save(order);
 
@@ -276,7 +279,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final String idempotencyKey = (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) ? req.getIdempotencyKey() : (orderUuid + ":place:" + System.currentTimeMillis());
 
         final PaymentAttemptEntity attempt = paymentService.processPayment(
-                orderUuid,
+                savedOrder,
                 req.getPaymentType(),
                 totalMoney,
                 idempotencyKey
@@ -394,7 +397,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private void validateOrderBeforeProcessingPayment(final UserEntity userEntity) {
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
-                .userDefaultBankCard(userEntity.getBankCardEntities().stream().filter(BankCardEntity::getIsDefault).findFirst().orElseThrow(() -> new NoDefaultBankCartSetException("No default bank card set, please, set a default bank card and retry ...")))
+                .userDefaultBankCard(Optional.ofNullable(userEntity.getBankCardEntity()).orElseThrow(() -> new NoDefaultBankCartSetException("No bank card set, please, add a bank card and retry ...")))
                 .build();
 
         orderValidatorChain.validate(orderValidationDto);

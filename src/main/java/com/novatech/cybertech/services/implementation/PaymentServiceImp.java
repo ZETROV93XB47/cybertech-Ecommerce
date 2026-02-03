@@ -6,6 +6,7 @@ import com.novatech.cybertech.entities.PaymentAttemptEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.valueObjects.Money;
+import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.factory.PaymentStrategyFactory;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
@@ -28,13 +29,11 @@ public class PaymentServiceImp implements PaymentService {
     private final PaymentStrategyFactory paymentStrategyFactory;
 
     @Transactional
-    public PaymentAttemptEntity processPayment(UUID orderUuid, PaymentType paymentType, Money amount, String idempotencyKey) {
+    public PaymentAttemptEntity processPayment(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
 
         // Idempotence (retry même requête)
         var existing = attemptRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) return existing.get();
-
-        OrderEntity order = orderRepository.findByUuid(orderUuid).orElseThrow();
 
         // Crée attempt
         PaymentAttemptEntity attempt = PaymentAttemptEntity.builder()
@@ -53,7 +52,7 @@ public class PaymentServiceImp implements PaymentService {
         PaymentAttemptProcessor processor = paymentStrategyFactory.getServiceFromPaymentType(paymentType);
 
         // Idée: ton processor retourne un résultat (au lieu de muter une entity PaymentEntity)
-        PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+        PaymentAttemptResult result = processor.processPayment(order.getUuid(), amount, idempotencyKey);
 
         attempt.setStatus(result.status());
         attempt.setProviderRef(result.providerRef());
