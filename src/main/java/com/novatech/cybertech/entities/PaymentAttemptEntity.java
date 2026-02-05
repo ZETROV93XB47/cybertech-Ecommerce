@@ -5,10 +5,7 @@ import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -24,6 +21,7 @@ import java.time.LocalDateTime;
         name = "paymentAttemptTable",
         uniqueConstraints = @UniqueConstraint(name = "uk_payment_attempt_idem", columnNames = "idempotencyKey")
 )
+@ToString(callSuper = true)
 public class PaymentAttemptEntity extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

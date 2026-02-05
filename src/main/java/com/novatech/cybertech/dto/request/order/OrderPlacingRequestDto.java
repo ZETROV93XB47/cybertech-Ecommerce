@@ -40,8 +40,8 @@ public class OrderPlacingRequestDto {
     @NotBlank
     private String shippingCountry;
 
-    @NotNull(message = "Idempotency Key cannot be null")
-    @NotBlank(message = "Idempotency Key cannot be blank")
+    //@NotNull(message = "Idempotency Key cannot be null")
+    //@NotBlank(message = "Idempotency Key cannot be blank")
     private String idempotencyKey;
 
 }

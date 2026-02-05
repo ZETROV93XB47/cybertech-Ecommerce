@@ -25,8 +25,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "orderTable")
-@ToString(callSuper = true)
-@EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true, exclude = {"orderItemEntities", "paymentAttempts"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "paymentAttempts"})
 @EntityListeners(AuditingEntityListener.class)
 public class OrderEntity extends BaseEntity<Long> {
 
@@ -70,11 +70,9 @@ public class OrderEntity extends BaseEntity<Long> {
     private UserEntity userEntity;
 
     @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-    @ToString.Exclude
     private List<OrderItemEntity> orderItemEntities;
 
     @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @ToString.Exclude
     private List<PaymentAttemptEntity> paymentAttempts = new ArrayList<>();
 
     @LastModifiedDate

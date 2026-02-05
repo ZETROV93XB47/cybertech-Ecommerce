@@ -23,6 +23,8 @@ public class VisaCardPaymentAttemptProcessor implements PaymentAttemptProcessor 
     public PaymentAttemptResult processPayment(UUID orderUuid, Money amount, String idempotencyKey) {
         log.info("Calling provider (simulated) for order={}, amount={}, idemKey={}", orderUuid, amount, idempotencyKey);
         // no 3DS => sync success/failed
-        return new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "prov_" + orderUuid);
+        PaymentAttemptResult paymentAttemptResult = new PaymentAttemptResult(PaymentAttemptStatus.FAILED, "prov_" + orderUuid);
+
+        return paymentAttemptResult;
     }
 }

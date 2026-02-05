@@ -14,6 +14,10 @@ public enum ErrorCode {
     CANNOT_CANCEL_ORDER(HttpStatus.FORBIDDEN, ErrorCodeType.TECHNICAL),
     CANNOT_REMOVE_ITEM_FROM_EMPTY_CART(HttpStatus.FORBIDDEN, ErrorCodeType.TECHNICAL),
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
+    ORDER_DOESNT_BELONGS_TO_USER(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    FAILED_UPDATING_ORDER(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    CART_IS_EMPTY(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    NO_DEFAULT_BANK_CARD_SET(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL);
 
     private final HttpStatus responseStatus;

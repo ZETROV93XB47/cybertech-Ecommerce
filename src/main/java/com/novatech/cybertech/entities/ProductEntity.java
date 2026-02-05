@@ -20,7 +20,7 @@ import java.util.Map;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
+@ToString(callSuper = true, exclude = {"orderItemEntities", "reviewEntities"})
 @Table(name = "productTable")
 @EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "reviewEntities"})
 public class ProductEntity extends BaseEntity<Long> {

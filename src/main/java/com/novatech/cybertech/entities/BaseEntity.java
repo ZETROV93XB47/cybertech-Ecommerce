@@ -1,10 +1,10 @@
 package com.novatech.cybertech.entities;
 
+import com.github.f4b6a3.uuid.UuidCreator;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
 
 import java.io.Serial;
@@ -15,9 +15,9 @@ import java.util.UUID;
 @ToString
 @SuperBuilder
 @MappedSuperclass
+@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public abstract class BaseEntity<ID extends Number & Serializable & Comparable<ID>> implements Serializable {
 
     @Serial
@@ -30,11 +30,18 @@ public abstract class BaseEntity<ID extends Number & Serializable & Comparable<I
 
     @EqualsAndHashCode.Include
     @JdbcTypeCode(SqlTypes.UUID)
-    @UuidGenerator(style = UuidGenerator.Style.TIME) // Force la génération v7 (séquentielle)
+    //@UuidGenerator(style = UuidGenerator.Style.TIME) // Force la génération v7 (séquentielle)
     @Column(name = "uuid", updatable = false, nullable = false, unique = true)
     private UUID uuid;
 
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
+
+    @PrePersist
+    public void prePersist() {
+        if (uuid == null) {
+            uuid = UuidCreator.getTimeOrderedEpoch();
+        }
+    }
 }

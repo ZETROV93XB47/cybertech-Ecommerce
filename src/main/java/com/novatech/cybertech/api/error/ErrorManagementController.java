@@ -62,6 +62,25 @@ public class ErrorManagementController {
     @ExceptionHandler(ProductNotFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleProductNotFoundException(ProductNotFoundException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), RESOURCE_NOT_FOUND.getResponseStatus().value(), PRODUCT_NOT_FOUND.getErrorCodeType());
-        return new ResponseEntity<>(errorResponseDto, RESOURCE_NOT_FOUND.getResponseStatus());
+        return new ResponseEntity<>(errorResponseDto, PRODUCT_NOT_FOUND.getResponseStatus());
     }
+
+    @ExceptionHandler(OrderDoesntBelongsToUserException.class)
+    public ResponseEntity<ErrorResponseDto> handleOrderDoesntBelongsToUserException(OrderDoesntBelongsToUserException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_DOESNT_BELONGS_TO_USER.getResponseStatus().value(), ORDER_DOESNT_BELONGS_TO_USER.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ORDER_DOESNT_BELONGS_TO_USER.getResponseStatus());
+    }
+
+    @ExceptionHandler(FailedUpdatingOrder.class)
+    public ResponseEntity<ErrorResponseDto> handleFailedUpdatingOrder(FailedUpdatingOrder exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), FAILED_UPDATING_ORDER.getResponseStatus().value(), FAILED_UPDATING_ORDER.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, FAILED_UPDATING_ORDER.getResponseStatus());
+    }
+
+    @ExceptionHandler(CartNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleCartNotFoundException(CartNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), CART_IS_EMPTY.getResponseStatus().value(), CART_IS_EMPTY.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, CART_IS_EMPTY.getResponseStatus());
+    }
+
 }

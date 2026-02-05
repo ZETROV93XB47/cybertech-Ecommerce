@@ -34,6 +34,7 @@ public class OrderConfirmationNotification extends AbstractNotification {
         model.put("orderId", orderEventDto.getOrderUuid());
         model.put("amount", orderEventDto.getTotalAmount());
         model.put("email", orderEventDto.getUserContactDto().getEmail());
+        model.put("orderStatus", orderEventDto.getOrderStatus());
 
         notificationContext.setData(model);
 

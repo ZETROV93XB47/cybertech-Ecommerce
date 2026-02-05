@@ -25,10 +25,7 @@ import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
-import com.novatech.cybertech.services.core.CartService;
-import com.novatech.cybertech.services.core.OrderManagementService;
-import com.novatech.cybertech.services.core.PaymentService;
-import com.novatech.cybertech.services.core.StockService;
+import com.novatech.cybertech.services.core.*;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +60,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final OrderValidator orderValidatorChain;
     private final ShippingDispatcher shippingDispatcher;
     private final ApplicationEventPublisher eventPublisher;
+
+    private final IdempotencyKeyServiceGenerator idempotencyKeyServiceGenerator;
 
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
@@ -166,6 +165,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 total,
                 idemKey
         );
+
+        log.info("payment :: {}", attempt);
 
         // 8) Statut commande + stock selon résultat
         return switch (attempt.getStatus()) {
@@ -276,14 +277,24 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         // 8) Paiement attempt (idempotent)
         // Reco: ajoute req.getIdempotencyKey() côté DTO.
-        final String idempotencyKey = (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) ? req.getIdempotencyKey() : (orderUuid + ":place:" + System.currentTimeMillis());
+        final String idempotencyKey = (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) ? req.getIdempotencyKey() : idempotencyKeyServiceGenerator.generateKey(orderUuid.toString(), orderItems.stream().map(item -> item.getProductEntity().getUuid().toString()).collect(Collectors.toList()));
+        final PaymentAttemptEntity attempt;
 
-        final PaymentAttemptEntity attempt = paymentService.processPayment(
-                savedOrder,
-                req.getPaymentType(),
-                totalMoney,
-                idempotencyKey
-        );
+        try {
+            attempt = paymentService.processPayment(
+                    savedOrder,
+                    req.getPaymentType(),
+                    totalMoney,
+                    idempotencyKey
+            );
+        }
+        catch (PaymentAlreadyCompletedForThisOrderException e) {
+            return orderMapper.mapFromEntityToResponseDto(savedOrder);
+        }
+
+
+        log.info("payment :: {}", attempt);
+
 
         // 9) Vider le panier après la tentative (commande existante + stock réservé)
         //    Si tu préfères ne vider qu'après SUCCESS, déplace-le dans le case SUCCESS.

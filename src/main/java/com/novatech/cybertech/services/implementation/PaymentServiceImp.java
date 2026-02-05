@@ -6,7 +6,7 @@ import com.novatech.cybertech.entities.PaymentAttemptEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.valueObjects.Money;
-import com.novatech.cybertech.exceptions.OrderNotFoundException;
+import com.novatech.cybertech.exceptions.PaymentAlreadyCompletedForThisOrderException;
 import com.novatech.cybertech.factory.PaymentStrategyFactory;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -32,8 +32,10 @@ public class PaymentServiceImp implements PaymentService {
     public PaymentAttemptEntity processPayment(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
 
         // Idempotence (retry même requête)
-        var existing = attemptRepository.findByIdempotencyKey(idempotencyKey);
-        if (existing.isPresent()) return existing.get();
+        final Optional<PaymentAttemptEntity> existing = attemptRepository.findByIdempotencyKey(idempotencyKey);
+        if (existing.isPresent()) {
+            if(existing.get().getStatus() == PaymentAttemptStatus.SUCCESS) throw new PaymentAlreadyCompletedForThisOrderException("Payment already completed for this order");
+        }
 
         // Crée attempt
         PaymentAttemptEntity attempt = PaymentAttemptEntity.builder()

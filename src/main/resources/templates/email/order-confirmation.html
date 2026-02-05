@@ -69,6 +69,7 @@
     <p>Bonjour <strong th:text="${userName}">Nom</strong>,</p>
     <p>Merci pour votre commande <span class="order-info">#<span th:text="${orderId}">0001</span></span>.</p>
     <p>Total : <span class="order-info"><span th:text="${amount}">€0.00</span></span></p>
+    <p>Statut : <span class="order-info" th:text="${orderStatus}" th:style="${orderStatus.name() == 'PAID' ? 'color: #27ae60;' : (orderStatus.name() == 'PAYMENT_FAILED' ? 'color: #e74c3c;' : '')}">STATUS</span></p>
     <a href="#" class="btn" th:href="@{${baseUrl} + '/orders/' + ${orderId}}">Voir ma commande</a>
     <footer>
         Cybertech - Merci de votre confiance

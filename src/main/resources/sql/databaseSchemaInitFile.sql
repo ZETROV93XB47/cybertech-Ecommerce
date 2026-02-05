@@ -4,6 +4,9 @@ GRANT ALL PRIVILEGES ON keycloakDB.* TO 'rookie'@'%';
 
 FLUSH PRIVILEGES;
 
+CREATE DATABASE IF NOT EXISTS cybertechDB;
+
+
 use cybertechDB;
 
 CREATE DATABASE IF NOT EXISTS cybertechDB;
