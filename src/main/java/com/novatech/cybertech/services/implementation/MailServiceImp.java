@@ -28,16 +28,11 @@ public class MailServiceImp implements MailService {
 
     @Override
     public void sendEmail(final EmailDto emailDto) {
-
-
-        final Context context = new Context();
-        context.setVariables((Map<String, Object>) emailDto.getContext());
-        // Ajout de la variable baseUrl pour les liens relatifs dans les templates
-        context.setVariable("baseUrl", frontendUrl);
+        final Context context = toEmailContext(emailDto.getContext());
 
         log.info("EmailDto value : {}", emailDto);
 
-        final String content = templateEngine.process("email/order-confirmation", context);
+        final String content = templateEngine.process(emailDto.getTemplatePath(), context);
 
         final MimeMessage message = javaMailSender.createMimeMessage();
 
@@ -47,11 +42,17 @@ public class MailServiceImp implements MailService {
             helper.setTo(emailDto.getTo());
             helper.setSubject(emailDto.getSubject());
             helper.setText(content, true); // HTML content
-        }
-        catch (MessagingException e) {
+        } catch (MessagingException e) {
             log.error("Erreur lors de l'envoi de l'e-mail", e);
         }
 
         javaMailSender.send(message);
+    }
+
+    public static Context toEmailContext(final Map<String, Object> data) {
+        final Context context = new Context();
+        context.setVariables(data);
+
+        return context;
     }
 }

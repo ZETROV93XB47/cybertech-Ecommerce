@@ -13,6 +13,8 @@ import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -33,19 +35,25 @@ public class GetAllFailedPaymentOrderTasklet extends BaseTasklet {
     @Transactional
     public RepeatStatus execute(final StepContribution stepContribution, final StepArguments stepArguments) {
 
-        final Map<String, Long> failedPaymentsMapUserEmailByOrderId = paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED).stream()
-                .map(PaymentAttemptEntity::getOrderEntity)
-                .collect(Collectors.toMap(o -> o.getUserEntity().getEmail(), BaseEntity::getId));
+        log.info("Starting GetAllFailedPaymentOrderTasklet");
 
-        if (failedPaymentsMapUserEmailByOrderId.isEmpty()) {
+        final List<PaymentAttemptEntity> byStatus = paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED);
+
+        final Map<String, List<UUID>> failedPaymentsMapUserEmailByUserEmail = byStatus.stream()
+                .collect(Collectors.groupingBy(pa -> pa.getOrderEntity().getUserEntity().getEmail(), Collectors.mapping(pa -> pa.getOrderEntity().getUuid(), Collectors.toList())));
+
+
+        if (failedPaymentsMapUserEmailByUserEmail.isEmpty()) {
             stepContribution.setExitStatus(new ExitStatus(NO_FAILED_PAYMENT_ORDER_FOUND));
             log.info("No failed payment orders found");
         }
 
         else {
-            stepContribution.getStepExecution().getJobExecution().getExecutionContext().put(FAILED_PAYMENT_ORDERS_MAP_BY_USERS, failedPaymentsMapUserEmailByOrderId);
+            stepContribution.getStepExecution().getJobExecution().getExecutionContext().put(FAILED_PAYMENT_ORDERS_MAP_BY_USERS, failedPaymentsMapUserEmailByUserEmail);
             stepContribution.setExitStatus(COMPLETED);
         }
+
+        log.info("GetAllFailedPaymentOrderTasklet finished");
 
         return RepeatStatus.FINISHED;
     }

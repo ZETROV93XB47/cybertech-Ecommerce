@@ -20,5 +20,6 @@ public class NotificationContext {
     private final String message;
     private Map<String, Object> data;
     private final NotificationType notificationType;
+    private String subject;
+    private String templatePath;
 }
-

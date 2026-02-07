@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
         name = "paymentAttemptTable",
         uniqueConstraints = @UniqueConstraint(name = "uk_payment_attempt_idem", columnNames = "idempotencyKey")
 )
-@ToString(callSuper = true)
+@ToString(callSuper = true, exclude = {"orderEntity"})
 public class PaymentAttemptEntity extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -33,7 +33,7 @@ public class PaymentAttemptEntity extends BaseEntity<Long> {
             @AttributeOverride(name = "amount", column = @Column(name = "amount", nullable = false)),
             @AttributeOverride(name = "currencyCode", column = @Column(name = "currency", nullable = false))
     })
-    private Money amount; // tu as déjà Money : nickel
+    private Money amount;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "paymentType", nullable = false)
@@ -48,8 +48,4 @@ public class PaymentAttemptEntity extends BaseEntity<Long> {
 
     @Column(name = "idempotencyKey", nullable = false, updatable = false, length = 64)
     private String idempotencyKey;
-
-    @CreationTimestamp
-    @Column(name = "createdAt", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
 }

@@ -2,7 +2,7 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Confirmation de commande</title>
+    <title>Annulation de commande</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -19,9 +19,8 @@
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-
         h1 {
-            color: #27ae60; /* Vert pour le succès */
+            color: #e74c3c; /* Rouge pour l'annulation */
             font-size: 24px;
             margin-bottom: 20px;
         }
@@ -30,20 +29,21 @@
             line-height: 1.5;
             margin: 16px 0;
         }
-        .order-summary {
-            background-color: #eafaf1;
-            border: 1px solid #27ae60;
+        .order-list {
+            background-color: #fff5f5;
+            border: 1px solid #feb2b2;
             border-radius: 6px;
             padding: 15px 20px;
             margin: 20px 0;
+            list-style-type: none;
         }
-        .summary-item {
+        .order-item {
             font-weight: 600;
-            color: #1e8449;
+            color: #c0392b;
             padding: 5px 0;
-            border-bottom: 1px solid #d5f5e3;
+            border-bottom: 1px solid #eee;
         }
-        .summary-item:last-child {
+        .order-item:last-child {
             border-bottom: none;
         }
         .footer {
@@ -56,23 +56,21 @@
 </head>
 <body>
 <div class="container">
-    <h1>Confirmation de votre commande</h1>
-    <p>Bonjour <strong th:text="${userName}">Nom</strong>,</p>
-    <p>Nous avons le plaisir de vous confirmer que votre commande <strong>#<span th:text="${orderId}">0000</span></strong> a bien été enregistrée.</p>
+    <h1>Commande(s) Annulée(s)</h1>
+    <p>Bonjour,</p>
+    <p>Nous vous informons que les commandes suivantes ont été annulées (en raison d'un échec de paiement ou de l'expiration du délai de validation) :</p>
 
-    <div class="order-summary">
-        <div class="summary-item">
-            Montant total : <span th:text="${amount}">0.00</span>
-        </div>
-        <div class="summary-item">
-            Statut : <span th:text="${orderStatus}">PAID</span>
-        </div>
-    </div>
+    <ul class="order-list">
+        <!-- 'orderId' est une List<Long> passée par le listener -->
+        <li class="order-item" th:each="id : ${orderId}">
+            Commande #<span th:text="${id}">0000</span>
+        </li>
+    </ul>
 
-    <p>Vous recevrez un nouvel email dès que votre commande sera expédiée.</p>
+    <p>Si vous pensez qu'il s'agit d'une erreur ou si vous souhaitez repasser commande, n'hésitez pas à visiter notre site.</p>
 
     <div class="footer">
-        Cybertech - Merci de votre confiance
+        Cybertech - Merci de votre compréhension
     </div>
 </div>
 </body>

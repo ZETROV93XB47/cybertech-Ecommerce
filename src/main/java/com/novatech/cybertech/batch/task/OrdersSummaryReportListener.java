@@ -1,6 +1,7 @@
 package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.dto.data.EmailDto;
+import com.novatech.cybertech.entities.enums.EmailTemplateType;
 import com.novatech.cybertech.services.core.MailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -8,8 +9,10 @@ import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.thymeleaf.spring6.SpringTemplateEngine;
 
 import java.util.HashMap;
+import java.util.UUID;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +29,7 @@ public class OrdersSummaryReportListener implements JobExecutionListener {
     private String emailSender;
 
     private final MailService mailService;
+    private final SpringTemplateEngine templateEngine;
 
     @Override
     public void afterJob(final JobExecution jobExecution) {
@@ -44,35 +48,40 @@ public class OrdersSummaryReportListener implements JobExecutionListener {
     }
 
     private void sendCancelledOrdersEmails(final JobExecution jobExecution) {
-        final Map<String, Long> cancelledOrdersMapByUserEmail = (Map<String, Long>) jobExecution.getExecutionContext().get(PENDING_ORDERS_MAP_BY_USER_EMAIL);
+        final Map<String, List<UUID>> cancelledOrdersMapByUserEmail = (Map<String, List<UUID>>) jobExecution.getExecutionContext().get(PENDING_ORDERS_MAP_BY_USER_EMAIL);
 
         if (cancelledOrdersMapByUserEmail == null) {
             log.info("No cancelled orders map found, No cancelled orders emails will be sent");
             return;
         }
 
-        createEmailDtoAndSendEmail(cancelledOrdersMapByUserEmail);
+        createEmailDtoAndSendEmail(cancelledOrdersMapByUserEmail, EmailTemplateType.ORDER_CANCELLATION);
     }
 
     private void sendPendingOrdersEmails(final JobExecution jobExecution) {
-        final Map<String, Long> pendingPaymentOrdersMapByUserEmail = (Map<String, Long>) jobExecution.getExecutionContext().get(FAILED_PAYMENT_ORDERS_MAP_BY_USERS);
+        final Map<String, List<UUID>> pendingPaymentOrdersMapByUserEmail = (Map<String, List<UUID>>) jobExecution.getExecutionContext().get(FAILED_PAYMENT_ORDERS_MAP_BY_USERS);
 
         if (pendingPaymentOrdersMapByUserEmail == null) {
             log.info("No pending  orders map found, No pending orders emails will be sent");
             return;
         }
 
-        createEmailDtoAndSendEmail(pendingPaymentOrdersMapByUserEmail);
+        createEmailDtoAndSendEmail(pendingPaymentOrdersMapByUserEmail, EmailTemplateType.ORDER_PENDING_PAYMENT);
     }
 
-    private void createEmailDtoAndSendEmail(final Map<String, Long> pendingPaymentOrdersMapByUserEmail) {
-        final List<EmailDto> emailDtoList = pendingPaymentOrdersMapByUserEmail.entrySet().stream()
-                .map(entry -> EmailDto.builder()
-                        .from(emailSender)
-                        .to(entry.getKey())
-                        .subject("Your Order " + entry.getValue() + "has been cancelled")
-                        .context((Map<String, Object>) new HashMap<>().put("orderId", entry.getValue()))
-                        .build())
+    private void createEmailDtoAndSendEmail(final Map<String, List<UUID>> ordersMapByUserEmail, final EmailTemplateType emailTemplateType) {
+        final List<EmailDto> emailDtoList = ordersMapByUserEmail.entrySet().stream()
+                .map(entry -> {
+                    Map<String, Object> context = new HashMap<>();
+                    context.put("orderId", entry.getValue());
+                    return EmailDto.builder()
+                            .from(emailSender)
+                            .to(entry.getKey())
+                            .subject(emailTemplateType.getSubject())
+                            .context(context)
+                            .templatePath(emailTemplateType.getTemplatePath())
+                            .build();
+                })
                 .toList();
 
         emailDtoList.forEach(mailService::sendEmail);

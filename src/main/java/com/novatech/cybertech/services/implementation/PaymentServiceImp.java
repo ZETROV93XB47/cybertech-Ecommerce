@@ -24,7 +24,6 @@ import java.util.Optional;
 @Slf4j
 public class PaymentServiceImp implements PaymentService {
 
-    private final OrderRepository orderRepository;
     private final PaymentAttemptRepository attemptRepository;
     private final PaymentStrategyFactory paymentStrategyFactory;
 

@@ -13,7 +13,7 @@ import lombok.*;
 public class ShippingContext {
     private final Object payload;
     private final String packageId;
-    private final UserEntity user;
+    private final UserContactDto user;
     private final ShippingType shippingType;
     private final ShippingProvider shippingProvider;
 }

@@ -27,7 +27,6 @@ import java.util.List;
 @Table(name = "orderTable")
 @ToString(callSuper = true, exclude = {"orderItemEntities", "paymentAttempts"})
 @EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "paymentAttempts"})
-@EntityListeners(AuditingEntityListener.class)
 public class OrderEntity extends BaseEntity<Long> {
 
     @Column(name = "orderDate", nullable = false)
@@ -74,8 +73,4 @@ public class OrderEntity extends BaseEntity<Long> {
 
     @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<PaymentAttemptEntity> paymentAttempts = new ArrayList<>();
-
-    @LastModifiedDate
-    @Column(name = "updatedAt")
-    private LocalDateTime updatedAt;
 }

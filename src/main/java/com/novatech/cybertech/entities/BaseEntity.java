@@ -6,18 +6,23 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
 @ToString
 @SuperBuilder
 @MappedSuperclass
-@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public abstract class BaseEntity<ID extends Number & Serializable & Comparable<ID>> implements Serializable {
 
     @Serial
@@ -30,9 +35,16 @@ public abstract class BaseEntity<ID extends Number & Serializable & Comparable<I
 
     @EqualsAndHashCode.Include
     @JdbcTypeCode(SqlTypes.UUID)
-    //@UuidGenerator(style = UuidGenerator.Style.TIME) // Force la génération v7 (séquentielle)
     @Column(name = "uuid", updatable = false, nullable = false, unique = true)
     private UUID uuid;
+
+    @CreatedDate
+    @Column(name = "createdAt", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updatedAt")
+    private LocalDateTime updatedAt;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -42,6 +54,9 @@ public abstract class BaseEntity<ID extends Number & Serializable & Comparable<I
     public void prePersist() {
         if (uuid == null) {
             uuid = UuidCreator.getTimeOrderedEpoch();
+        }
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
         }
     }
 }

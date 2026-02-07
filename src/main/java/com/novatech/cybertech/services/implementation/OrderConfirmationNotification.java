@@ -3,6 +3,7 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.annotation.NotificationTypeHandler;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.OrderEventDto;
+import com.novatech.cybertech.entities.enums.EmailTemplateType;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.services.core.AbstractNotification;
 import com.novatech.cybertech.services.core.NotificationProcessor;
@@ -26,7 +27,7 @@ public class OrderConfirmationNotification extends AbstractNotification {
     @Override
     public void sendNotification(final NotificationContext notificationContext) {
 
-        OrderEventDto orderEventDto = (OrderEventDto) notificationContext.getPayload();
+        OrderEventDto orderEventDto = (OrderEventDto) notificationContext.getData().get("orderEventDto");
 
         final Map<String, Object> model = new HashMap<>();
 
@@ -35,6 +36,10 @@ public class OrderConfirmationNotification extends AbstractNotification {
         model.put("amount", orderEventDto.getTotalAmount());
         model.put("email", orderEventDto.getUserContactDto().getEmail());
         model.put("orderStatus", orderEventDto.getOrderStatus());
+
+        // Utilisation de l'Enum pour le sujet et le template
+        notificationContext.setSubject(EmailTemplateType.ORDER_CONFIRMATION.getSubject());
+        notificationContext.setTemplatePath(EmailTemplateType.ORDER_CONFIRMATION.getTemplatePath());
 
         notificationContext.setData(model);
 

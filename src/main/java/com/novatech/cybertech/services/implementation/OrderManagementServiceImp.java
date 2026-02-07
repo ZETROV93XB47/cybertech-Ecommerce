@@ -2,10 +2,8 @@ package com.novatech.cybertech.services.implementation;
 
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import com.novatech.cybertech.dispatcher.ShippingDispatcher;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
-import com.novatech.cybertech.dto.data.ShippingContext;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
@@ -58,7 +56,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final ProductRepository productRepository;
 
     private final OrderValidator orderValidatorChain;
-    private final ShippingDispatcher shippingDispatcher;
     private final ApplicationEventPublisher eventPublisher;
 
     private final IdempotencyKeyServiceGenerator idempotencyKeyServiceGenerator;
@@ -367,44 +364,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-    /*
-
-    private OrderResponseDto onPaymentSuccess(
-            final PaymentAttemptEntity attempt,
-            final UUID orderUUID,
-            final OrderEntity order,
-            final UserEntity userEntity,
-            final BigDecimal amount
-    ) {
-        stockService.commitStock(orderUUID);
-
-        order.setStatus(OrderStatus.PAID);
-        OrderEntity saved = orderRepository.save(order);
-
-        sendOrderCreationEvent(saved, userEntity, amount, attempt.getStatus());
-
-        // plus de dispatch direct ici
-        eventPublisher.publishEvent(new OrderPaidEvent(saved.getUuid()));
-
-        return orderMapper.mapFromEntityToResponseDto(saved);
-    }
-
-
-    private OrderResponseDto onPaymentFailure(final UUID orderUUID, final OrderEntity order) {
-        stockService.releaseStock(orderUUID);
-
-        order.setStatus(OrderStatus.PAYMENT_FAILED);
-        OrderEntity saved = orderRepository.save(order);
-
-        // paymentStatus dans l’event doit refléter FAILED, pas SUCCESS
-        sendOrderCreationEvent(saved, order.getUserEntity(), saved.getTotalAmount().getAmount(), PaymentAttemptStatus.FAILED);
-
-        return orderMapper.mapFromEntityToResponseDto(saved);
-    }
-
-     */
-
-
     private void validateOrderBeforeProcessingPayment(final UserEntity userEntity) {
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
@@ -442,19 +401,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
                         .country(shippingCountry)
                         .build())
                 .build();
-    }
-
-
-    private void sendOrderShippingEvent(final ShippingType shippingType, final ShippingProvider shippingProvider, final UserEntity user, final OrderEntity savedOrder) {
-        final ShippingContext shippingContext = ShippingContext.builder()
-                .user(user)
-                .packageId(savedOrder.getUuid().toString())
-                .payload(savedOrder)
-                .shippingType(shippingType)
-                .shippingProvider(shippingProvider)
-                .build();
-
-        shippingDispatcher.dispatch(shippingContext);
     }
 
 

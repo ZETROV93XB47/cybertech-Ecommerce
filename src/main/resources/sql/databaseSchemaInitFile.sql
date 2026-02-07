@@ -17,6 +17,8 @@ CREATE TABLE userTable
     id                         BIGINT       NOT NULL AUTO_INCREMENT,
     uuid                       BINARY(16) NOT NULL UNIQUE,
     version                    BIGINT       NOT NULL,
+    createdAt                  DATETIME     NOT NULL,
+    updatedAt                  DATETIME,
 
     -- Champs spécifiques à UserEntity
     email                      VARCHAR(50)  NOT NULL UNIQUE,
@@ -45,6 +47,8 @@ CREATE TABLE productTable
     id            BIGINT         NOT NULL AUTO_INCREMENT,
     uuid          BINARY(16) NOT NULL UNIQUE,
     version       BIGINT         NOT NULL,
+    createdAt     DATETIME       NOT NULL,
+    updatedAt     DATETIME,
 
     -- Champs spécifiques à ProductEntity
     name          VARCHAR(255)   NOT NULL,
@@ -76,6 +80,7 @@ CREATE TABLE paymentAttemptTable
     providerRef    VARCHAR(255),
     idempotencyKey VARCHAR(64)    NOT NULL,
     createdAt      DATETIME       NOT NULL,
+    updatedAt      DATETIME,
 
     -- Relation ManyToOne vers OrderEntity
     orderId        BIGINT         NOT NULL,
@@ -99,7 +104,8 @@ CREATE TABLE stockTable
     product_uuid      BINARY(16) NOT NULL,
     quantity          INT          NOT NULL,
     reservationStatus VARCHAR(255) NOT NULL, -- EnumType.STRING
-    createdAt         DATETIME,
+    createdAt         DATETIME     NOT NULL,
+    updatedAt         DATETIME,
 
     PRIMARY KEY (id),
 
@@ -114,6 +120,8 @@ CREATE TABLE bankCardTable
     id             BIGINT       NOT NULL AUTO_INCREMENT,
     uuid           BINARY(16) NOT NULL UNIQUE,
     version        BIGINT       NOT NULL,
+    createdAt      DATETIME     NOT NULL,
+    updatedAt      DATETIME,
 
     -- Champs spécifiques à BankCardEntity
     cardHolderName VARCHAR(100) NOT NULL,
@@ -182,6 +190,8 @@ CREATE TABLE cartItemTable
     id            BIGINT         NOT NULL AUTO_INCREMENT,
     uuid          BINARY(16)     NOT NULL UNIQUE,
     version       BIGINT         NOT NULL,
+    createdAt     DATETIME       NOT NULL,
+    updatedAt     DATETIME,
 
     -- Champs spécifiques à CartItemEntity
     quantity      INTEGER        NOT NULL,
@@ -201,6 +211,7 @@ CREATE TABLE orderTable
     id               BIGINT         NOT NULL AUTO_INCREMENT,
     uuid             BINARY(16) NOT NULL UNIQUE,
     version          BIGINT         NOT NULL,
+    createdAt        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     -- Champs spécifiques à OrderEntity
     orderDate        DATETIME       NOT NULL,
@@ -239,6 +250,8 @@ CREATE TABLE orderItemTable
     id            BIGINT         NOT NULL AUTO_INCREMENT,
     uuid          BINARY(16) NOT NULL UNIQUE,
     version       BIGINT         NOT NULL,
+    createdAt     DATETIME       NOT NULL,
+    updatedAt     DATETIME,
 
     -- Champs spécifiques à OrderItemEntity
     quantity      INTEGER        NOT NULL,

@@ -23,15 +23,12 @@ public class EmailNotificationProcessor implements NotificationProcessor {
     @Override
     public void sendMessage(final NotificationContext notificationContext) {
 
-        //final NotificationType notificationType = notificationContext.getNotificationType();
-//        final OrderEventDto orderEventDto = (OrderEventDto) notificationContext.getContext();
-//        final UserContactDto user = orderEventDto.getUserContactDto();
-
         final EmailDto emailDto = EmailDto.builder()
                 .from("abc@mail.com")
                 .to(notificationContext.getUser().getEmail())
-                .subject(notificationContext.getMessage())
+                .subject(notificationContext.getSubject())
                 .context(notificationContext.getData())
+                .templatePath(notificationContext.getTemplatePath())
                 .build();
 
         mailService.sendEmail(emailDto);

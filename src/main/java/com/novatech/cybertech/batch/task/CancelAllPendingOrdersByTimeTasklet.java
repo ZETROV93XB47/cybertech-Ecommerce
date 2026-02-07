@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -38,7 +39,9 @@ public class CancelAllPendingOrdersByTimeTasklet extends BaseTasklet {
     @Transactional
     public RepeatStatus execute(final StepContribution stepContribution, final StepArguments stepArguments) {
 
-        final List<OrderEntity> ordersToCancel = orderRepository.findByStatusAndOrderDateBefore(OrderStatus.AWAITING_PAYMENT, LocalDateTime.now().minusWeeks(timeBeforeDeletingOrder))
+        log.info("Starting CancelAllPendingOrdersByTimeTasklet");
+
+        final List<OrderEntity> ordersToCancel = orderRepository.findByStatusAndOrderDateBefore(OrderStatus.PAYMENT_FAILED, LocalDateTime.now().minusWeeks(timeBeforeDeletingOrder))
                 .stream()
                 .map(orderEntity -> {
                     orderEntity.setStatus(OrderStatus.CANCELED);
@@ -52,11 +55,13 @@ public class CancelAllPendingOrdersByTimeTasklet extends BaseTasklet {
 
         else {
             final List<OrderEntity> cancelledOrders = orderRepository.saveAll(ordersToCancel);
-            final Map<String, Long> cancelledOrdersIdsByUserEmail = cancelledOrders.stream().collect(Collectors.toMap(o -> o.getUserEntity().getEmail(), BaseEntity::getId));
+            final Map<String, List<UUID>> cancelledOrdersIdsByUserEmail = cancelledOrders.stream().collect(Collectors.groupingBy(co -> co.getUserEntity().getEmail(), Collectors.mapping(BaseEntity::getUuid, Collectors.toList())));
 
             stepContribution.getStepExecution().getJobExecution().getExecutionContext().put(PENDING_ORDERS_MAP_BY_USER_EMAIL, cancelledOrdersIdsByUserEmail);
             stepContribution.setExitStatus(COMPLETED);
         }
+
+        log.info("CancelAllPendingOrdersByTimeTasklet finished");
 
         return RepeatStatus.FINISHED;
     }
