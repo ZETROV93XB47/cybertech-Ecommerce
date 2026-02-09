@@ -5,10 +5,10 @@ import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentAttemptEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
+import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.exceptions.PaymentAlreadyCompletedForThisOrderException;
 import com.novatech.cybertech.factory.PaymentStrategyFactory;
-import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.PaymentService;
@@ -32,8 +32,14 @@ public class PaymentServiceImp implements PaymentService {
 
         // Idempotence (retry même requête)
         final Optional<PaymentAttemptEntity> existing = attemptRepository.findByIdempotencyKey(idempotencyKey);
+
+        log.info("existing :: {}", existing);
+
         if (existing.isPresent()) {
-            if(existing.get().getStatus() == PaymentAttemptStatus.SUCCESS) throw new PaymentAlreadyCompletedForThisOrderException("Payment already completed for this order");
+            if (existing.get().getStatus() == PaymentAttemptStatus.SUCCESS) {
+                log.info("Payment already completed for this order");
+                throw new PaymentAlreadyCompletedForThisOrderException("Payment already completed for this order");
+            }
         }
 
         // Crée attempt
@@ -41,6 +47,7 @@ public class PaymentServiceImp implements PaymentService {
                 .orderEntity(order)
                 .amount(amount)
                 .paymentType(paymentType)
+                .transactionType(TransactionType.PAYMENT)
                 .status(PaymentAttemptStatus.CREATED)
                 .idempotencyKey(idempotencyKey)
                 .build();
@@ -54,6 +61,36 @@ public class PaymentServiceImp implements PaymentService {
 
         // Idée: ton processor retourne un résultat (au lieu de muter une entity PaymentEntity)
         PaymentAttemptResult result = processor.processPayment(order.getUuid(), amount, idempotencyKey);
+
+        attempt.setStatus(result.status());
+        attempt.setProviderRef(result.providerRef());
+
+        return attemptRepository.save(attempt);
+    }
+
+    @Transactional
+    public PaymentAttemptEntity refund(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
+        log.info("In refund method for order: {}, amount: {}", order.getUuid(), amount);
+        // Crée attempt de remboursement
+        PaymentAttemptEntity attempt = PaymentAttemptEntity.builder()
+                .orderEntity(order)
+                .amount(amount)
+                .paymentType(paymentType)
+                .transactionType(TransactionType.REFUND)
+                .status(PaymentAttemptStatus.CREATED)
+                .idempotencyKey(idempotencyKey)
+                .build();
+
+        attempt = attemptRepository.save(attempt);
+        attempt.setStatus(PaymentAttemptStatus.PROCESSING);
+
+        log.info("Refund attempt created with ID: {}", attempt.getId());
+
+        PaymentAttemptProcessor processor = paymentStrategyFactory.getServiceFromPaymentType(paymentType);
+
+        log.info("Calling payment processor for refund...");
+        PaymentAttemptResult result = processor.refund(order.getUuid(), amount, idempotencyKey);
+        log.info("Payment processor response: status={}, ref={}", result.status(), result.providerRef());
 
         attempt.setStatus(result.status());
         attempt.setProviderRef(result.providerRef());

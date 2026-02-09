@@ -13,10 +13,12 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ProductSearchRepository;
 import com.novatech.cybertech.services.core.ProductManagementService;
 import com.novatech.cybertech.services.core.ProductSearchService;
+import com.novatech.cybertech.services.core.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Collection;
 import java.util.List;
@@ -33,6 +35,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
     private final ProductSearchService productSearchService;
     private final ProductSearchRepository productSearchRepository;
     private final ProductValidationService productValidationService;
+    private final S3Service s3Service;
 
 
     @Override
@@ -62,6 +65,18 @@ public class ProductManagementServiceImp implements ProductManagementService {
         productSearchRepository.save(productMapper.mapFromProductEntityToProductDocument(savedProductEntity));
 
         return productMapper.mapFromEntityToResponseDto(savedProductEntity);
+    }
+
+    @Override
+    @Transactional
+    public ProductResponseDto createWithImage(ProductCreateRequestDto productCreateRequestDto, MultipartFile image) {
+        if (image != null && !image.isEmpty()) {
+            String imageUrl = s3Service.uploadFile(image, "products");
+            productCreateRequestDto.setPhoto(imageUrl);
+        }
+
+        // On délègue à la méthode create existante qui gère déjà la validation et la sauvegarde
+        return create(productCreateRequestDto);
     }
 
     @Override

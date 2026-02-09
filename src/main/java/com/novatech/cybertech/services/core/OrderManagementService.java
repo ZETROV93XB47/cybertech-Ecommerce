@@ -15,4 +15,6 @@ public interface OrderManagementService {
     void deleteByUUID(final UUID uuid, final Jwt jwt);
     
     OrderResponseDto updateOrder(final OrderUpdateRequestDto orderUpdateRequestDto, final Jwt jwt);
+
+    OrderResponseDto retryPayment(final UUID orderUuid, final Jwt jwt);
 }

@@ -18,7 +18,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @RequiredArgsConstructor
 @EnableConfigurationProperties
 public class CyberTechApplication {
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(CyberTechApplication.class, args);
     }
 }

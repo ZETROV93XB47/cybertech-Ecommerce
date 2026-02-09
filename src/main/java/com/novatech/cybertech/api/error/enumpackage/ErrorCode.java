@@ -18,7 +18,9 @@ public enum ErrorCode {
     FAILED_UPDATING_ORDER(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     CART_IS_EMPTY(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     NO_DEFAULT_BANK_CARD_SET(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
-    INVALID_REQUEST(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL);
+    INVALID_REQUEST(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
+    ORDER_ALREADY_SHIPPED(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;

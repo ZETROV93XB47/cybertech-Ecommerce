@@ -1,5 +1,6 @@
-package com.novatech.cybertech.listener;
+package com.novatech.cybertech.batch.task;
 
+import com.novatech.cybertech.batch.base.BaseTasklet;
 import com.novatech.cybertech.dispatcher.NotificationDispatcher;
 import com.novatech.cybertech.dispatcher.ShippingDispatcher;
 import com.novatech.cybertech.dto.data.NotificationContext;
@@ -9,51 +10,57 @@ import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.events.OrderPaidEvent;
-import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.event.TransactionPhase;
-import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.batch.core.ExitStatus;
+import org.springframework.batch.core.StepContribution;
+import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Random;
+import java.util.List;
 
 @Slf4j
-@Component
+@Service
 @RequiredArgsConstructor
-public class ShippingListener {
+public class ShipAllAwaitingShippingOrdersTasklet extends BaseTasklet {
 
     private final OrderRepository orderRepository;
     private final ShippingDispatcher shippingDispatcher;
     private final NotificationDispatcher notificationDispatcher;
-    
-    private final Random random = new Random();
 
-    @Async
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void on(final OrderPaidEvent orderPaidEvent) {
-        log.info("OrderPaidEvent received");
+    @Override
+    @Transactional
+    public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) throws Exception {
+        log.info("Starting ShipAllAwaitingShippingOrdersTasklet");
 
-        OrderEntity order = orderRepository.findByUuid(orderPaidEvent.getOrderUUID()).orElseThrow(() -> new OrderNotFoundException("Order " + orderPaidEvent.getOrderUUID() + " not found"));
+        // Récupérer toutes les commandes en attente d'expédition
+        List<OrderEntity> awaitingOrders = orderRepository.findByStatus(OrderStatus.AWAITING_SHIPPING);
 
-        if (order.getStatus() != OrderStatus.PAID) return;
-
-        // Simulation aléatoire de délai logistique
-        // 0-5 (60%) : Expédition immédiate
-        // 6-9 (40%) : Mise en attente (AWAITING_SHIPPING)
-        if (random.nextInt(10) > 5) {
-            log.info("Simulating shipping delay. Order {} set to AWAITING_SHIPPING", order.getUuid());
-            order.setStatus(OrderStatus.AWAITING_SHIPPING);
-            orderRepository.save(order);
-            return; // On arrête le processus ici, le Batch s'occupera du reste plus tard
+        if (awaitingOrders.isEmpty()) {
+            log.info("No orders found in AWAITING_SHIPPING status.");
+            stepContribution.setExitStatus(ExitStatus.COMPLETED);
+            return RepeatStatus.FINISHED;
         }
 
+        log.info("Found {} orders to ship.", awaitingOrders.size());
+
+        awaitingOrders.forEach(order -> {
+            try {
+                processShipping(order);
+            } catch (Exception e) {
+                log.error("Error processing shipping for order {}", order.getUuid(), e);
+                // On continue pour les autres commandes même si une échoue
+            }
+        });
+
+        stepContribution.setExitStatus(ExitStatus.COMPLETED);
+        log.info("ShipAllAwaitingShippingOrdersTasklet finished");
+        return RepeatStatus.FINISHED;
+    }
+
+    private void processShipping(OrderEntity order) {
         final UserEntity user = order.getUserEntity();
 
         final UserContactDto userContactDto = UserContactDto.builder()
@@ -73,10 +80,7 @@ public class ShippingListener {
 
         shippingDispatcher.dispatch(shippingContext);
 
-        order.setStatus(OrderStatus.SHIPPED); // ou READY_TO_SHIP puis SHIPPED
-        
-        log.info("Order shipped successfully");
-        
+        order.setStatus(OrderStatus.SHIPPED);
         orderRepository.save(order);
 
         NotificationContext notificationContext = NotificationContext.builder()
@@ -86,7 +90,6 @@ public class ShippingListener {
                 .build();
 
         notificationDispatcher.dispatch(notificationContext);
-
-        log.info("Shipping Notification sent successfully");
+        log.info("Order {} shipped via Batch.", order.getUuid());
     }
 }

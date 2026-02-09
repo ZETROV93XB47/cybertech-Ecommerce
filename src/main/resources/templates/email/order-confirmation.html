@@ -21,7 +21,6 @@
         }
 
         h1 {
-            color: #27ae60; /* Vert pour le succès */
             font-size: 24px;
             margin-bottom: 20px;
         }
@@ -31,17 +30,13 @@
             margin: 16px 0;
         }
         .order-summary {
-            background-color: #eafaf1;
-            border: 1px solid #27ae60;
             border-radius: 6px;
             padding: 15px 20px;
             margin: 20px 0;
         }
         .summary-item {
             font-weight: 600;
-            color: #1e8449;
             padding: 5px 0;
-            border-bottom: 1px solid #d5f5e3;
         }
         .summary-item:last-child {
             border-bottom: none;
@@ -56,15 +51,15 @@
 </head>
 <body>
 <div class="container">
-    <h1>Confirmation de votre commande</h1>
+    <h1 th:text="${title}" th:style="'color: ' + ${themeColor}">Confirmation de votre commande</h1>
     <p>Bonjour <strong th:text="${userName}">Nom</strong>,</p>
     <p>Nous avons le plaisir de vous confirmer que votre commande <strong>#<span th:text="${orderId}">0000</span></strong> a bien été enregistrée.</p>
 
-    <div class="order-summary">
-        <div class="summary-item">
+    <div class="order-summary" th:style="'background-color: ' + ${themeBackgroundColor} + '; border: 1px solid ' + ${themeColor}">
+        <div class="summary-item" th:style="'color: ' + ${themeColor} + '; border-bottom: 1px solid ' + ${themeBorderColor}">
             Montant total : <span th:text="${amount}">0.00</span>
         </div>
-        <div class="summary-item">
+        <div class="summary-item" th:style="'color: ' + ${themeColor}">
             Statut : <span th:text="${orderStatus}">PAID</span>
         </div>
     </div>

@@ -15,4 +15,7 @@ public interface OrderRepository extends CrudBaseRepository<OrderEntity, Long> {
     List<OrderEntity> getAllByStatusIs(OrderStatus status);
 
     List<OrderEntity> findByStatusAndOrderDateBefore(OrderStatus status, LocalDateTime date);
+
+    List<OrderEntity> findByStatus(OrderStatus status);
+
 }

@@ -54,8 +54,15 @@ public class OrderManagementController implements OrderManagementControllerApiSp
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PostMapping(value = "/update", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<OrderResponseDto> updateOrder(final OrderUpdateRequestDto orderUpdateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+    public ResponseEntity<OrderResponseDto> updateOrder(@Valid @RequestBody final OrderUpdateRequestDto orderUpdateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
         return ResponseEntity.status(HttpStatus.OK).body(orderManagementService.updateOrder(orderUpdateRequestDto, jwt));
+    }
+
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PostMapping(value = "/retry-payment/{uuid}", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<OrderResponseDto> retryPayment(@PathVariable("uuid") final UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.ok(orderManagementService.retryPayment(uuid, jwt));
     }
 
 

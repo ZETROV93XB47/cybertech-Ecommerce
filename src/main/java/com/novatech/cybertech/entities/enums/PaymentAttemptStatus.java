@@ -8,8 +8,8 @@ import lombok.RequiredArgsConstructor;
 public enum PaymentAttemptStatus implements EnumFunctions<Integer> {
     CREATED(1),
     PROCESSING(2),
-    SUCCESS(3),
-    FAILED(4),
+    FAILED(3),
+    SUCCESS(4),
     CANCELED(5);
 
     private final Integer code;

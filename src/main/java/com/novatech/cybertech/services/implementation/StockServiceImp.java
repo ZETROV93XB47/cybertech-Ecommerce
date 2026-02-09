@@ -39,6 +39,12 @@ public class StockServiceImp implements StockService {
     public void reserveStock(UUID orderUuid, Map<UUID, Integer> quantities) {
         log.info("Starting stock Reservation for order {}", orderUuid);
 
+        if (!stockRepository.findByOrderUuid(orderUuid).isEmpty()) {
+            log.info("Stock reservation already exists for order {}. Extending reservation time.", orderUuid);
+            redisTemplate.opsForValue().set("reservation:order:" + orderUuid, "ACTIVE", RESERVATION_TTL);
+            return;
+        }
+
         quantities.entrySet().forEach(entry -> lockAndReserveProduct(orderUuid, entry));
         // 3️⃣ Redis TTL (cache + expiration)
         redisTemplate.opsForValue().set("reservation:order:" + orderUuid, "ACTIVE", RESERVATION_TTL);
@@ -126,7 +132,3 @@ public class StockServiceImp implements StockService {
     }
 
 }
-
-
-
-

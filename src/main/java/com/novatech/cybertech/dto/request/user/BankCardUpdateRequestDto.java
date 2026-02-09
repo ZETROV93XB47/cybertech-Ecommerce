@@ -16,7 +16,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class BankCardCreationRequestDto {
+public class BankCardUpdateRequestDto {
+
+    @NotNull(message = "UUID cannot be null for update")
+    private UUID uuid;
 
     @NotBlank(message = "Card holder name cannot be blank")
     private String cardHolderName;
@@ -31,7 +34,4 @@ public class BankCardCreationRequestDto {
 
     @NotNull(message = "Card type cannot be null")
     private BankCardType cardType;
-
-    // Optionnel : Utilisé uniquement pour le CRUD Admin si on veut lier directement à un user
-    private UUID userUuid;
 }

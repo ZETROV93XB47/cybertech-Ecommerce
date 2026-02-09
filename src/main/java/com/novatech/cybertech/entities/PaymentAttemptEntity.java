@@ -3,6 +3,7 @@ package com.novatech.cybertech.entities;
 
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
+import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import jakarta.persistence.*;
 import lombok.*;
@@ -38,6 +39,10 @@ public class PaymentAttemptEntity extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     @Column(name = "paymentType", nullable = false)
     private PaymentType paymentType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "transactionType", nullable = false)
+    private TransactionType transactionType;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

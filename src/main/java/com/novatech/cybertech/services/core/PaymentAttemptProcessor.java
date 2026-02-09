@@ -7,5 +7,5 @@ import java.util.UUID;
 
 public interface PaymentAttemptProcessor {
     PaymentAttemptResult processPayment(UUID orderUuid, Money amount, String idempotencyKey);
+    PaymentAttemptResult refund(UUID orderUuid, Money amount, String idempotencyKey);
 }
-

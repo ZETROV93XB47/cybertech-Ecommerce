@@ -76,6 +76,7 @@ CREATE TABLE paymentAttemptTable
     amount         DECIMAL(19, 2) NOT NULL,
     currency       VARCHAR(10)    NOT NULL,
     paymentType    VARCHAR(255)   NOT NULL, -- EnumType.STRING
+    transactionType VARCHAR(255)  NOT NULL, -- EnumType.STRING (PAYMENT, REFUND)
     status         VARCHAR(255)   NOT NULL, -- EnumType.STRING
     providerRef    VARCHAR(255),
     idempotencyKey VARCHAR(64)    NOT NULL,

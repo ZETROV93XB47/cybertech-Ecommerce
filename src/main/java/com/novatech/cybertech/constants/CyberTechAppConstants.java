@@ -13,6 +13,7 @@ public class CyberTechAppConstants {
     public static final String CART_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/cart";
     public static final String ORDER_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/order";
     public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/review";
+    public static final String BANK_CARD_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/bank-card";
 
     public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = "/api/v1/services/management/order";
 
@@ -24,5 +25,6 @@ public class CyberTechAppConstants {
     public static final String NO_FAILED_PAYMENT_ORDER_FOUND = "NO_FAILED_PAYMENT_ORDER_FOUND";
 
     public static final String REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB =  "REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB";
+    public static final String CLEAN_UP_EXPIRED_STOCK_JOB = "CLEAN_UP_EXPIRED_STOCK_JOB";
 
 }

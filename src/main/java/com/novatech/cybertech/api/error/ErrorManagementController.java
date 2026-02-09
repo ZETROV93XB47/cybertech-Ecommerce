@@ -71,8 +71,8 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, ORDER_DOESNT_BELONGS_TO_USER.getResponseStatus());
     }
 
-    @ExceptionHandler(FailedUpdatingOrder.class)
-    public ResponseEntity<ErrorResponseDto> handleFailedUpdatingOrder(FailedUpdatingOrder exception) {
+    @ExceptionHandler(FailedRetryingPayment.class)
+    public ResponseEntity<ErrorResponseDto> handleFailedUpdatingOrder(FailedRetryingPayment exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), FAILED_UPDATING_ORDER.getResponseStatus().value(), FAILED_UPDATING_ORDER.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, FAILED_UPDATING_ORDER.getResponseStatus());
     }
@@ -83,4 +83,22 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, CART_IS_EMPTY.getResponseStatus());
     }
 
+    @ExceptionHandler(OrderAlreadyShippedException.class)
+    public ResponseEntity<ErrorResponseDto> handleOrderAlreadyShippedException(OrderAlreadyShippedException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_ALREADY_SHIPPED.getResponseStatus().value(), ORDER_ALREADY_SHIPPED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ORDER_ALREADY_SHIPPED.getResponseStatus());
+    }
+
+    @ExceptionHandler(NoPreviousPaymentAttemptException.class)
+    public ResponseEntity<ErrorResponseDto> handleNoPreviousPaymentAttemptException(NoPreviousPaymentAttemptException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND.getResponseStatus().value(), NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND.getResponseStatus());
+    }
+
+    // Gestionnaire global pour toutes les erreurs non prévues (500)
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ErrorResponseDto> handleRuntimeException(RuntimeException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto("An unexpected error occurred: " + exception.getMessage(), APPLICATION_ERROR.getResponseStatus().value(), APPLICATION_ERROR.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, APPLICATION_ERROR.getResponseStatus());
+    }
 }

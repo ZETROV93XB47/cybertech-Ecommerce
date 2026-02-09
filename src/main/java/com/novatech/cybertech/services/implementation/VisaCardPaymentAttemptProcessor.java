@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Random;
 import java.util.UUID;
 
 
@@ -19,12 +20,32 @@ import java.util.UUID;
 @PaymentTypeHandler(PaymentType.VISA)
 public class VisaCardPaymentAttemptProcessor implements PaymentAttemptProcessor {
 
+    private final Random random = new Random();
+
     @Override
     public PaymentAttemptResult processPayment(UUID orderUuid, Money amount, String idempotencyKey) {
         log.info("Calling provider (simulated) for order={}, amount={}, idemKey={}", orderUuid, amount, idempotencyKey);
-        // no 3DS => sync success/failed
-        PaymentAttemptResult paymentAttemptResult = new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "prov_" + orderUuid);
+        return simulateProviderResponse(orderUuid);
+    }
 
-        return paymentAttemptResult;
+    @Override
+    public PaymentAttemptResult refund(UUID orderUuid, Money amount, String idempotencyKey) {
+        log.info("Calling provider (simulated refund) for order={}, amount={}, idemKey={}", orderUuid, amount, idempotencyKey);
+        return new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "prov_mc_" + orderUuid + "_" + System.currentTimeMillis());
+    }
+
+    private PaymentAttemptResult simulateProviderResponse(UUID orderUuid) {
+        int chance = random.nextInt(10); // Génère un nombre entre 0 et 9
+        PaymentAttemptStatus status;
+
+        if (chance <= 5) { // 0 à 5 (60%)
+            status = PaymentAttemptStatus.SUCCESS;
+        } else if (chance <= 7) { // 6 à 7 (20%)
+            status = PaymentAttemptStatus.FAILED;
+        } else { // 8 à 9 (20%)
+            status = PaymentAttemptStatus.PROCESSING;
+        }
+
+        return new PaymentAttemptResult(status, "prov_visa_" + orderUuid + "_" + System.currentTimeMillis());
     }
 }

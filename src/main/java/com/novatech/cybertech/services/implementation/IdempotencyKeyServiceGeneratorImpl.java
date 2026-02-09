@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -27,13 +28,14 @@ public class IdempotencyKeyServiceGeneratorImpl implements IdempotencyKeyService
 
         // 1. Trier les UUIDs des produits pour garantir un ordre constant et déterministe.
         // C'est crucial pour que [A, B] et [B, A] produisent la même clé.
-        log.info("orderProductsUUIDs before sorting: {}", orderProductsUUIDs);
-        Collections.sort(orderProductsUUIDs);
-        String sortedProducts = String.join(",", orderProductsUUIDs);
+        // Copie de la liste pour éviter les effets de bord ou les exceptions sur les listes immuables
+        List<String> sortedProducts = new ArrayList<>(orderProductsUUIDs);
+        Collections.sort(sortedProducts);
+        String sortedProductsString = String.join(",", sortedProducts);
 
         // 2. Créer une chaîne de caractères canonique qui représente la requête unique.
         // Le séparateur "::" évite les collisions si un UUID se terminait comme un autre commence.
-        String dataToHash = orderUUID + "::" + sortedProducts;
+        String dataToHash = orderUUID + "::" + sortedProductsString;
 
         try {
             // 3. Hacher la chaîne avec l'algorithme choisi.

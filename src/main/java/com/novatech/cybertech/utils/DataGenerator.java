@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.javafaker.Faker;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
@@ -284,8 +286,28 @@ public class DataGenerator {
         return null;
     }
 
+    public static OrderUpdateRequestDto generateOrderUpdateRequestDto() {
+        return OrderUpdateRequestDto.builder()
+                .uuid(UUID.randomUUID())
+                .paymentType(PaymentType.MASTERCARD)
+                .shippingType(ShippingType.EXPRESS)
+                .shippingProvider(ShippingProvider.DHL)
+                .shippingStreet(FAKER.address().streetAddress())
+                .shippingCity(FAKER.address().city())
+                .shippingZipCode(FAKER.address().zipCode())
+                .shippingCountry(FAKER.address().country())
+                .idempotencyKey(UUID.randomUUID().toString())
+                .itemUpdateRequestDtoList(List.of(
+                        OrderItemCreateRequestDto.builder()
+                                .productUuid(UUID.randomUUID())
+                                .quantity(FAKER.number().numberBetween(1, 5))
+                                .build()
+                ))
+                .build();
+    }
+
     public static void convertToUUID(final String UUIDString) {
-        String hex = "0xAC1D30019BCE1597819BCE15DAC20000".substring(2);
+        String hex = UUIDString.substring(2);
 
         // 2. Convertir l'hexa en un nombre de 128 bits
         BigInteger b = new BigInteger(hex, 16);
@@ -306,6 +328,9 @@ public class DataGenerator {
 
 
     static void main(String[] args) {
+
+        convertToUUID("0x019C3FA4B4D2700D94694FE90CED0D7A");
+        /*
         OrderPlacingRequestDto orderPlacingRequestDto = OrderPlacingRequestDto.builder()
                 .userUuid(UUID.fromString("c0a80001-9c1d-1106-819c-1de1fee20002"))
                 .shippingStreet(FAKER.address().streetAddress())
@@ -317,11 +342,17 @@ public class DataGenerator {
                 .paymentType(PaymentType.VISA)
                 .build();
 
+        OrderUpdateRequestDto orderUpdateRequestDto = generateOrderUpdateRequestDto();
+
         try {
             ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-            System.out.println(objectMapper.writeValueAsString(orderPlacingRequestDto));
+            System.out.println(objectMapper.writeValueAsString(orderUpdateRequestDto));
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+         */
+
+
     }
 }

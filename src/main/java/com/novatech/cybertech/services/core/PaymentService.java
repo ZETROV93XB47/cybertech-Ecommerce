@@ -10,4 +10,5 @@ import java.util.UUID;
 
 public interface PaymentService {
     PaymentAttemptEntity processPayment(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey);
+    PaymentAttemptEntity refund(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey);
 }

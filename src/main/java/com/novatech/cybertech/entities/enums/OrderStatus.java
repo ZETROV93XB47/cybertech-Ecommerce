@@ -10,11 +10,12 @@ public enum OrderStatus {
     AWAITING_PAYMENT(2),
     PAYMENT_FAILED(3),
     PAID(4),
-    SHIPPED(5),
-    DELIVERED(6),
-    RETURNED(7),
-    CANCELED(8),
-    REFUNDED(9);
+    AWAITING_SHIPPING(5),
+    SHIPPED(6),
+    DELIVERED(7),
+    RETURNED(8),
+    CANCELED(9),
+    REFUNDED(10);
 
     private final Integer code;
 }

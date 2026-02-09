@@ -10,10 +10,7 @@ import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.*;
-import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
-import com.novatech.cybertech.entities.enums.ShippingProvider;
-import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
@@ -58,8 +55,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final OrderValidator orderValidatorChain;
     private final ApplicationEventPublisher eventPublisher;
 
-    private final IdempotencyKeyServiceGenerator idempotencyKeyServiceGenerator;
-
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
     @Transactional(readOnly = true)
@@ -101,16 +96,21 @@ public class OrderManagementServiceImp implements OrderManagementService {
     @Transactional
     public OrderResponseDto updateOrder(final OrderUpdateRequestDto dto, final Jwt jwt) {
 
+        log.info("in Update Order : {}", dto);
+
         final String keycloakId = jwt.getSubject();
 
-        final OrderEntity order = orderRepository.findByUuid(dto.getUuid())
-                .orElseThrow(() -> new OrderNotFoundException("Order not found"));
+        final OrderEntity order = orderRepository.findByUuid(dto.getUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
+
+        log.info("Order found : {}", order);
 
         if (!isCurrentUserOrderInitiator(order, keycloakId)) {
             throw new OrderDoesntBelongsToUserException("Order not found for this user account");
         }
+
         if (isOrderAlreadyShipped(order)) {
-            throw new FailedUpdatingOrder("Order already shipped, cannot update");
+            log.info("Order already shipped, cannot update");
+            throw new OrderAlreadyShippedException("Order already shipped, cannot update");
         }
 
         // 0) Tu overwrites les items : libère l'ancienne réservation (si existante)
@@ -128,6 +128,15 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final BigDecimal amount = processOrderTotalPrice(dto.getItemUpdateRequestDtoList(), products);
         final Money total = Money.of(amount);
 
+        // Calcul du montant déjà payé (Paiements - Remboursements)
+        BigDecimal paidAmount = order.getPaymentAttempts().stream()
+                .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS)
+                .map(p -> p.getTransactionType() == TransactionType.REFUND ? p.getAmount().getAmount().negate() : p.getAmount().getAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal difference = total.getAmount().subtract(paidAmount);
+        log.info("Update Order: New Total: {}, Paid: {}, Difference: {}", total.getAmount(), paidAmount, difference);
+
         // 4) Update shipping + address + total + statut
         order.setShippingType(dto.getShippingType());
         order.setShippingProvider(dto.getShippingProvider());
@@ -138,7 +147,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .country(dto.getShippingCountry())
                 .build());
         order.setTotalAmount(total);
-        order.setStatus(OrderStatus.AWAITING_PAYMENT);
 
         // 5) Overwrite des items (selon ton choix)
         //    Ici, je suppose que tu sais reconstruire la liste OrderItemEntity depuis dto + products
@@ -154,51 +162,68 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 7) Paiement attempt (idempotent)
         final String idemKey = (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().isBlank())
                 ? dto.getIdempotencyKey()
-                : (order.getUuid() + ":update:" + System.currentTimeMillis()); // fallback back
+                : generateIdempotencyKey(order.getUuid(), "update");
 
-        final PaymentAttemptEntity attempt = paymentService.processPayment(
-                order,
-                dto.getPaymentType(),
-                total,
-                idemKey
-        );
-
-        log.info("payment :: {}", attempt);
-
-        // 8) Statut commande + stock selon résultat
-        return switch (attempt.getStatus()) {
-
-            case SUCCESS -> {
-                stockService.commitStock(order.getUuid());
-
+        if (difference.compareTo(BigDecimal.ZERO) == 0) {
+            // Cas 3 : Pas de différence de prix
+            // On valide juste le stock et on s'assure que le statut est PAID
+            stockService.commitStock(order.getUuid());
+            if (order.getStatus() != OrderStatus.PAID) {
                 order.setStatus(OrderStatus.PAID);
-                final OrderEntity saved = orderRepository.save(order);
-
-                // Déclenche expédition via listener AFTER_COMMIT
-                eventPublisher.publishEvent(new OrderPaidEvent(saved.getUuid()));
-
-                yield orderMapper.mapFromEntityToResponseDto(saved);
             }
+            final OrderEntity saved = orderRepository.save(order);
+            return orderMapper.mapFromEntityToResponseDto(saved);
+        }
 
-            case FAILED, CANCELED -> {
-                // On libère explicitement ici pour ne pas dépendre du TTL.
-                stockService.releaseStock(order.getUuid());
+        final PaymentAttemptEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), idemKey);
 
-                order.setStatus(OrderStatus.PAYMENT_FAILED);
-                final OrderEntity saved = orderRepository.save(order);
-
-                yield orderMapper.mapFromEntityToResponseDto(saved);
-            }
-
-            case CREATED, PROCESSING -> {
-                // sans 3DS, normalement rare, mais propre
-                order.setStatus(OrderStatus.AWAITING_PAYMENT);
-                final OrderEntity saved = orderRepository.save(order);
-                yield orderMapper.mapFromEntityToResponseDto(saved);
-            }
-        };
+        return handlePaymentResult(attempt, order, difference);
     }
 
+    @Override
+    @Transactional
+    public OrderResponseDto retryPayment(final UUID orderUuid, final Jwt jwt) {
+        final String keycloakId = jwt.getSubject();
+        final OrderEntity order = orderRepository.findByUuid(orderUuid).orElseThrow(() -> new OrderNotFoundException("Order not found"));
+
+        if (!isCurrentUserOrderInitiator(order, keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order not found for this user account");
+        }
+
+        if (!isOrderInRetryablePaymentStatus(order)) {
+            throw new FailedRetryingPayment("Cannot retry payment for order in status: " + order.getStatus() + ". Order must be in PAYMENT_FAILED state.");
+        }
+
+        // 1. Vérifier et Réserver le stock (car il a été libéré lors de l'échec précédent)
+        final Map<UUID, Integer> quantities = order.getOrderItemEntities().stream()
+                .collect(Collectors.toMap(
+                        item -> item.getProductEntity().getUuid(),
+                        OrderItemEntity::getQuantity
+                ));
+
+        // Lève NotEnoughStockException si le stock n'est plus disponible
+        stockService.reserveStock(order.getUuid(), quantities);
+
+        // 2. Récupérer le type de paiement de la dernière tentative
+        PaymentType paymentType = order.getPaymentAttempts().stream()
+                .max(Comparator.comparing(BaseEntity::getCreatedAt))
+                .map(PaymentAttemptEntity::getPaymentType)
+                .orElseThrow(() -> new NoPreviousPaymentAttemptException("No previous payment attempt found for failed order"));
+
+        // 3. Tenter le paiement
+        final String idempotencyKey = generateIdempotencyKey(order.getUuid(), "retry");
+        final PaymentAttemptEntity attempt = paymentService.processPayment(
+                order,
+                paymentType,
+                order.getTotalAmount(),
+                idempotencyKey
+        );
+
+        log.info("Retry payment attempt :: {}", attempt);
+
+        // 4. Gérer le résultat (Commit stock si succès, Release si échec)
+        return handlePaymentResult(attempt, order, BigDecimal.ZERO);
+    }
 
 
 
@@ -274,7 +299,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         // 8) Paiement attempt (idempotent)
         // Reco: ajoute req.getIdempotencyKey() côté DTO.
-        final String idempotencyKey = (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) ? req.getIdempotencyKey() : idempotencyKeyServiceGenerator.generateKey(orderUuid.toString(), orderItems.stream().map(item -> item.getProductEntity().getUuid().toString()).collect(Collectors.toList()));
+        final String idempotencyKey = (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) ? req.getIdempotencyKey() : generateIdempotencyKey(orderUuid, "place");
         final PaymentAttemptEntity attempt;
 
         try {
@@ -329,6 +354,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
             case CREATED, PROCESSING -> {
                 // sans 3DS tu ne devrais pas rester là, mais on est clean
+                //stockService.releaseStock(orderUuid);
+
                 savedOrder.setStatus(OrderStatus.AWAITING_PAYMENT);
                 final OrderEntity awaiting = orderRepository.save(savedOrder);
 
@@ -450,11 +477,15 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     private static boolean isOrderAlreadyShipped(OrderEntity orderEntity) {
-        return orderEntity.getStatus().getCode() < SHIPPED.getCode();
+        return orderEntity.getStatus().getCode() >= SHIPPED.getCode();
     }
 
     private static boolean isCurrentUserOrderInitiator(OrderEntity orderEntity, String keycloakId) {
         return orderEntity.getUserEntity().getKeycloakId().equals(keycloakId);
+    }
+
+    private static boolean isOrderInRetryablePaymentStatus(OrderEntity orderEntity) {
+        return orderEntity.getStatus() == OrderStatus.PAYMENT_FAILED || orderEntity.getStatus() == OrderStatus.AWAITING_PAYMENT || orderEntity.getStatus() == CREATED;
     }
 
     private static boolean isInDeletableState(final OrderEntity order) {
@@ -472,5 +503,62 @@ public class OrderManagementServiceImp implements OrderManagementService {
                         .productEntity(product)
                         .build())
                 .collect(Collectors.toUnmodifiableList());
+    }
+
+    private PaymentAttemptEntity handlePaymentUpdate(OrderEntity order, BigDecimal difference, PaymentType paymentType, String idempotencyKey) {
+        if (difference.compareTo(BigDecimal.ZERO) > 0) {
+            // Cas 1 : Le nouveau montant est plus élevé -> Paiement du complément
+            order.setStatus(OrderStatus.AWAITING_PAYMENT);
+            orderRepository.save(order);
+            return paymentService.processPayment(order, paymentType, Money.of(difference), idempotencyKey);
+        } else {
+            // Cas 2 : Le nouveau montant est moins élevé -> Remboursement de la différence
+            return paymentService.refund(order, paymentType, Money.of(difference.abs()), idempotencyKey);
+        }
+    }
+
+    private OrderResponseDto handlePaymentResult(PaymentAttemptEntity attempt, OrderEntity order, BigDecimal difference) {
+        return switch (attempt.getStatus()) {
+            case SUCCESS -> {
+                stockService.commitStock(order.getUuid());
+
+                // Si c'était un paiement complémentaire ou un remboursement réussi, la commande est considérée comme payée/équilibrée
+                if (order.getStatus() != OrderStatus.PAID) {
+                    order.setStatus(OrderStatus.PAID);
+                }
+                final OrderEntity saved = orderRepository.save(order);
+
+                // Déclenche expédition via listener AFTER_COMMIT
+                eventPublisher.publishEvent(new OrderPaidEvent(saved.getUuid()));
+
+                yield orderMapper.mapFromEntityToResponseDto(saved);
+            }
+
+            case FAILED, CANCELED -> {
+                // On libère explicitement ici pour ne pas dépendre du TTL.
+                stockService.releaseStock(order.getUuid());
+
+                // Si c'est un échec de remboursement, on ne change peut-être pas le statut global de la commande en FAILED,
+                // mais pour un paiement complémentaire oui.
+                if (difference.compareTo(BigDecimal.ZERO) > 0) {
+                    order.setStatus(OrderStatus.PAYMENT_FAILED);
+                }
+                final OrderEntity saved = orderRepository.save(order);
+
+                yield orderMapper.mapFromEntityToResponseDto(saved);
+            }
+
+            case CREATED, PROCESSING -> {
+                if (difference.compareTo(BigDecimal.ZERO) > 0) {
+                    order.setStatus(OrderStatus.AWAITING_PAYMENT);
+                }
+                final OrderEntity saved = orderRepository.save(order);
+                yield orderMapper.mapFromEntityToResponseDto(saved);
+            }
+        };
+    }
+
+    private String generateIdempotencyKey(UUID orderUuid, String action) {
+        return orderUuid + ":" + action + ":" + System.currentTimeMillis();
     }
 }
