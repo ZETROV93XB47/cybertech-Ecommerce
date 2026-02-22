@@ -75,6 +75,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
             productCreateRequestDto.setPhoto(imageUrl);
         }
 
+
         // On délègue à la méthode create existante qui gère déjà la validation et la sauvegarde
         return create(productCreateRequestDto);
     }

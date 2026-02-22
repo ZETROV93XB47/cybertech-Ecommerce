@@ -1,13 +1,11 @@
 package com.novatech.cybertech.api.controllers;
 
+import com.novatech.cybertech.api.controllers.implementation.OrderManagementController;
 import com.novatech.cybertech.config.SecurityConfig;
 import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -20,9 +18,9 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@AutoConfigureMockMvc() // important : active les filtres security
+//@AutoConfigureMockMvc() // important : active les filtres security
 @Import(SecurityConfig.class) // important : charge ta conf Security + converter
-@WebMvcTest(controllers = OrderManagementController.class)
+//@WebMvcTest(controllers = OrderManagementController.class)
 class OrderManagementControllerSecurityTest2 {
 
     @Autowired

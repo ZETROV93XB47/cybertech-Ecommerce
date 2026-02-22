@@ -11,7 +11,7 @@ app.secret_key = 'development key'
 toolbar = DebugToolbarExtension(app)
 classifier = pipeline("text-classification", model="unitary/toxic-bert")
 
-@app.route('/analyze', methods=['POST'])
+@app.route('/api/v1/moderation/analyze', methods=['POST'])
 def analyze_comment():
     data = request.get_json()
     comment = data.get("comment")

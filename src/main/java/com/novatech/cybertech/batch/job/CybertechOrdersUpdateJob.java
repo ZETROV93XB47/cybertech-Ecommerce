@@ -3,14 +3,14 @@ package com.novatech.cybertech.batch.job;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.batch.core.Job;
-import org.springframework.batch.core.JobExecution;
-import org.springframework.batch.core.JobParametersBuilder;
-import org.springframework.batch.core.JobParametersInvalidException;
+import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.JobExecution;
+import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
+import org.springframework.batch.core.job.parameters.JobParametersBuilder;
+import org.springframework.batch.core.launch.JobExecutionAlreadyRunningException;
+import org.springframework.batch.core.launch.JobInstanceAlreadyCompleteException;
 import org.springframework.batch.core.launch.JobLauncher;
-import org.springframework.batch.core.repository.JobExecutionAlreadyRunningException;
-import org.springframework.batch.core.repository.JobInstanceAlreadyCompleteException;
-import org.springframework.batch.core.repository.JobRestartException;
+import org.springframework.batch.core.launch.JobRestartException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -44,8 +44,8 @@ public class CybertechOrdersUpdateJob {
             log.info("REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB is not scheduled, the Job won't be executed.");
             return null;
         }
-        catch (JobInstanceAlreadyCompleteException | JobExecutionAlreadyRunningException |
-               JobParametersInvalidException | JobRestartException e) {
+        catch (JobInstanceAlreadyCompleteException | JobExecutionAlreadyRunningException | JobRestartException |
+               InvalidJobParametersException e) {
 
             log.error("An Error occurred during {} launching: \n{} ", REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB, e.getMessage());
             return null;

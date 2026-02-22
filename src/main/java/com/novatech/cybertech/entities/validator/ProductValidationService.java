@@ -33,6 +33,8 @@ public class ProductValidationService {
 
         final Set<ConstraintViolation<Object>> violations = validator.validate(attributeDto);
         if (!violations.isEmpty()) {
+            log.info("The product attributes arent matching the constraints criteria");
+            log.info("Violations: {}", violations);
             throw new ProductConstraintsViolationException("The product attributes arent matching the constraints criteria", violations);
         }
     }

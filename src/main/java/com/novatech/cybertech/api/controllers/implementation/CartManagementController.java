@@ -1,4 +1,4 @@
-package com.novatech.cybertech.api.controllers;
+package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.spec.CartManagementControllerApiSpec;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;

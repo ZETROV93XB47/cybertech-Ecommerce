@@ -3,10 +3,9 @@ package com.novatech.cybertech.clients;
 import com.novatech.cybertech.dto.response.moderation.ModerationResponseDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -16,29 +15,25 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CommentModerationClient {
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
 
-    //@Value("${moderation.api.url:http://moderation-api:5000/analyze}")
+    // @Value("${moderation.api.url:http://moderation-api:5000/analyze}")
     private String moderationApiUrl = "http://127.0.0.1:5000/analyze";
 
     public ModerationResponseDto moderate(final String comment) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
 
-        Map<String, String> body = new HashMap<>();
-        body.put("comment", comment);
+        Map<String, String> body = Map.of("comment", comment);
 
-        HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+        ModerationResponseDto response = restClient
+                .post()
+                .uri(moderationApiUrl)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(ModerationResponseDto.class);
 
-        ResponseEntity<ModerationResponseDto> response = restTemplate.exchange(
-                moderationApiUrl,
-                HttpMethod.POST,
-                request,
-                ModerationResponseDto.class
-        );
+        log.info("response body: {}", response);
 
-        log.info("response body  : {}", response.getBody());
-
-        return response.getBody();
+        return response;
     }
 }

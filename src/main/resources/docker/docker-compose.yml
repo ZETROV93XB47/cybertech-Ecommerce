@@ -65,7 +65,7 @@ services:
       - ecommerce-net
 
   elasticsearch:
-    image: elasticsearch:8.13.4 # Utilisez une version stable et compatible avec votre client Java
+    image: elasticsearch:9.2.5 # Utilisez une version stable et compatible avec votre client Java
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
@@ -109,20 +109,20 @@ services:
     restart: unless-stopped
 
   # ----------------------------------------------------
-  # 6. Object Storage : MinIO (S3 Compatible)
+  # 6. Object Storage : LocalStack (Simulation AWS S3)
   # ----------------------------------------------------
-  minio:
-    image: minio/minio:latest
-    container_name: minio
+  localstack:
+    image: localstack/localstack:4.13.1 # Utilise une version récente et stable
+    container_name: localstack
     ports:
-      - "9000:9000" # API S3
-      - "9001:9001" # Console Web
+      - "4566:4566" # Port par défaut pour les services LocalStack (dont S3)
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
+      - SERVICES=s3 # On active uniquement le service S3
+      - AWS_DEFAULT_REGION=us-east-1 # Région par défaut
+      - AWS_ACCESS_KEY_ID=test # Clés factices pour le développement
+      - AWS_SECRET_ACCESS_KEY=test
     volumes:
-      - minio_data:/data
+      - localstack_data:/var/lib/localstack
     networks:
       - ecommerce-net
     restart: unless-stopped
@@ -132,7 +132,7 @@ volumes:
     driver: local
   esdata:
     driver: local
-  minio_data:
+  localstack_data:
     driver: local
 
 networks:

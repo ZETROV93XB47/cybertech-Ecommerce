@@ -8,15 +8,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.UUID;
+
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class S3ServiceImp implements S3Service {
 
+    private final S3Client s3Client; // <-- AJOUT IMPORTANT
     private final S3Template s3Template;
 
     @Value("${application.bucket.name}")
@@ -24,15 +30,11 @@ public class S3ServiceImp implements S3Service {
 
     @Override
     public String uploadFile(MultipartFile file, String folder) {
-        // Génération d'un nom unique : folder/uuid_filename
         String key = folder + "/" + UUID.randomUUID() + "_" + file.getOriginalFilename();
 
         try {
             log.info("Uploading file {} to bucket {} with key {}", file.getOriginalFilename(), bucketName, key);
-
             S3Resource resource = s3Template.upload(bucketName, key, file.getInputStream());
-
-            // Retourne l'URL d'accès (pour MinIO local, assurez-vous que l'URL est accessible)
             return resource.getURL().toString();
         } catch (IOException e) {
             log.error("Error uploading file to S3", e);
@@ -42,16 +44,26 @@ public class S3ServiceImp implements S3Service {
 
     @Override
     public void deleteFile(String fileUrl) {
-        // Extraction de la clé depuis l'URL (simplifié)
-        // Supposons que l'URL contient le nom du bucket ou que l'on stocke la clé relative
-        // Ici, on suppose que fileUrl est la clé ou qu'on peut la déduire.
-        // Pour faire simple, on peut passer la clé directement si on la stocke.
         try {
-            // Logique d'extraction de la clé à adapter selon le format de l'URL MinIO
-            // s3Template.delete(bucketName, key);
-            log.info("Delete file requested for {}", fileUrl);
+            URL url = new URL(fileUrl);
+            String path = url.getPath();
+
+            // /bucketName/folder/file.jpg → folder/file.jpg
+            String key = path.substring(("/" + bucketName + "/").length());
+
+            log.info("Deleting file from S3 with key: {}", key);
+
+            s3Client.deleteObject(DeleteObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .build());
+
+            log.info("Successfully deleted file with key: {}", key);
+
+        } catch (MalformedURLException e) {
+            log.error("Invalid URL for S3 deletion: {}", fileUrl, e);
         } catch (Exception e) {
-            log.error("Error deleting file from S3", e);
+            log.error("Error deleting file from S3: {}", fileUrl, e);
         }
     }
 }

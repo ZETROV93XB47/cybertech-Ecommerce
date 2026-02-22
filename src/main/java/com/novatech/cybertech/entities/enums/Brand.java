@@ -17,7 +17,11 @@ public enum Brand {
     MSI(6),
     ACER(7),
     TOSHIBA(8),
-    ALIENWARE(9);
+    ALIENWARE(9),
+    MICROSOFT(10),
+    ALTYK(11),
+    GIGABYTE(12),
+    SAMSUNG(13);
 
     private final Integer code;
 

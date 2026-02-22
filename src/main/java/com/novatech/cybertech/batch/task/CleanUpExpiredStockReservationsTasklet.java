@@ -8,8 +8,8 @@ import com.novatech.cybertech.services.core.StockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
-import org.springframework.batch.core.StepContribution;
-import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.batch.core.step.StepContribution;
+import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,7 +29,7 @@ public class CleanUpExpiredStockReservationsTasklet extends BaseTasklet {
 
     @Override
     @Transactional
-    public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) throws Exception {
+    public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) {
         log.info("Starting CleanUpExpiredStockReservationsTasklet");
 
         // On prend une marge de sécurité : 15 minutes (le TTL Redis est de 10 min)

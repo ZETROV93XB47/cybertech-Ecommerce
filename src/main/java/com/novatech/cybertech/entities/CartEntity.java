@@ -15,8 +15,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "cartTable")
-@EqualsAndHashCode(callSuper = true, exclude = {"cartItems","userEntity"})
 @ToString(callSuper = true, exclude = {"cartItems","userEntity"})
+@EqualsAndHashCode(callSuper = true, exclude = {"cartItems","userEntity"})
 public class CartEntity extends BaseEntity<Long> {
 
     @OneToOne(fetch = FetchType.LAZY)

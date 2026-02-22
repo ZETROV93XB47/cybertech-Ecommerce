@@ -1,18 +1,15 @@
 package com.novatech.cybertech.entities;
 
-import com.novatech.cybertech.entities.enums.*;
+import com.novatech.cybertech.entities.enums.Brand;
+import com.novatech.cybertech.entities.enums.Category;
 import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Type;
-import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Entity
 @Setter
@@ -20,9 +17,9 @@ import java.util.Map;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true, exclude = {"orderItemEntities", "reviewEntities"})
 @Table(name = "productTable")
-@EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "reviewEntities"})
+@ToString(callSuper = true, exclude = {"orderItemEntities", "reviewEntities", "wishlistEntries", "recommendations"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "reviewEntities", "wishlistEntries", "recommendations"})
 public class ProductEntity extends BaseEntity<Long> {
 
     @Column(name = "name", nullable = false)
@@ -60,7 +57,10 @@ public class ProductEntity extends BaseEntity<Long> {
 
     @OneToMany(mappedBy = "productEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<ReviewEntity> reviewEntities;
-}
 
-//@OneToMany(mappedBy = "productEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-//private List<CartItemEntity> cartItemEntities;
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<WishlistEntity> wishlistEntries = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<RecommendationEntity> recommendations = new HashSet<>();
+}

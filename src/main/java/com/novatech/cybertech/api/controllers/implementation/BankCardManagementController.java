@@ -1,4 +1,4 @@
-package com.novatech.cybertech.api.controllers;
+package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.spec.BankCardControllerApiSpec;
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
@@ -25,7 +25,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(BANK_CARD_CRUD_CONTROLLER_BASE_PATH) // Je suppose ce path, à adapter si besoin
+@RequestMapping(BANK_CARD_CRUD_CONTROLLER_BASE_PATH)
 @Tag(name = " BankCardManagementController", description = "API for managing Bank Cards")
 public class BankCardManagementController implements BankCardControllerApiSpec {
 

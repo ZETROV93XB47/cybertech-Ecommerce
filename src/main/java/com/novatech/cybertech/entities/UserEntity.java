@@ -9,7 +9,9 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Setter
@@ -18,8 +20,8 @@ import java.util.List;
 @AllArgsConstructor
 @RequiredArgsConstructor
 @Table(name = "userTable")
-@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntities"})
-@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntities"})
+@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntities", "wishlistItems", "recommendations"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntities", "wishlistItems", "recommendations"})
 public class UserEntity extends BaseEntity<Long> {
 
     @Column(name = "email", nullable = false, unique = true, length = 50)
@@ -79,4 +81,10 @@ public class UserEntity extends BaseEntity<Long> {
 
     @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL)
     private CartEntity cartEntity;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<WishlistEntity> wishlistItems = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<RecommendationEntity> recommendations = new HashSet<>();
 }
