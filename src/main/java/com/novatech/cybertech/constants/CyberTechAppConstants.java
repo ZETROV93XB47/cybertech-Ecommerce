@@ -16,6 +16,7 @@ public class CyberTechAppConstants {
     public static final String ORDER_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/order";
     public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/review";
     public static final String BANK_CARD_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/bank-card";
+    public static final String USER_WISHLIST_CONTROLLER_BASE_PATH = "/api/v1/services/wishlist";
 
     public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = "/api/v1/services/management/order";
 

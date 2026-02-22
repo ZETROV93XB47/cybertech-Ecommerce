@@ -16,7 +16,7 @@ public class ProductResponseDto {
     private final BigDecimal price;
     private final String brand;
     private final String category;
-    //private final String photo;
+    private final String photo;
     private final String description;
     private final Map<String, Object> attributes;
 }

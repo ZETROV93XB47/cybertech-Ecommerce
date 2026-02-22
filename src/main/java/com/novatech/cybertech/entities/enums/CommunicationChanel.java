@@ -14,11 +14,4 @@ public enum CommunicationChanel {
     SMS(2);
 
     private final Integer code;
-
-    public static CommunicationChanel getByCode(final Integer code) {
-        return stream(values())
-                .filter(communicationChanel -> communicationChanel.getCode().equals(code))
-                .findFirst()
-                .orElseThrow(IllegalArgumentException::new);
-    }
 }

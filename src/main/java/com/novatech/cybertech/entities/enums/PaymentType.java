@@ -13,8 +13,4 @@ public enum PaymentType implements EnumFunctions<Integer> {
     GOOGLE_PAY(4);
 
     private final Integer code;
-
-    public static PaymentType getByCode(final Integer code) {
-        return EnumFunctions.getByCode(code, PaymentType.class);
-    }
 }

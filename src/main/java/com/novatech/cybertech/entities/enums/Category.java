@@ -16,11 +16,4 @@ public enum Category {
     SMARTPHONE(5);
 
     private final Integer code;
-
-    public static Category getByCode(int code) {
-        return stream(values())
-                .filter(category -> category.getCode().equals(code))
-                .findFirst()
-                .orElseThrow(IllegalArgumentException::new);
-    }
 }

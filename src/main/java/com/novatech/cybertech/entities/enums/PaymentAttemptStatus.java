@@ -13,8 +13,4 @@ public enum PaymentAttemptStatus implements EnumFunctions<Integer> {
     CANCELED(5);
 
     private final Integer code;
-
-    public static PaymentAttemptStatus getByCode(final Integer code) {
-        return EnumFunctions.getByCode(code, PaymentAttemptStatus.class);
-    }
 }

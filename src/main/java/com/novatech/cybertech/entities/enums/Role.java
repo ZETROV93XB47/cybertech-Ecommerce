@@ -15,8 +15,4 @@ public enum Role {
     ADMIN(2);
     private final Integer code;
 
-    public static Role getByCode(Integer code) {
-        return stream(values()).filter(role -> Objects.equals(role.getCode(), code)).findFirst().orElseThrow(IllegalArgumentException::new);
-    }
-
 }

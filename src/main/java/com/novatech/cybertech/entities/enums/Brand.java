@@ -25,8 +25,4 @@ public enum Brand {
 
     private final Integer code;
 
-    public static Brand getByCode(int code) {
-        return stream(values()).filter(marque -> marque.getCode() == code).findFirst().orElseThrow(IllegalArgumentException::new);
-    }
-
 }

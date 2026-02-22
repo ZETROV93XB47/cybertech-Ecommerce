@@ -72,8 +72,6 @@ public class ProductManagementAdminController implements ProductManagementAdminA
             @Valid @RequestPart("product") ProductCreateRequestDto productCreateRequestDto,
             @RequestPart("image") MultipartFile image) {
 
-        log.info("Request data : {}", productCreateRequestDto);
-
     return ResponseEntity.status(HttpStatus.CREATED).body(productService.createWithImage(productCreateRequestDto, image));
     }
 }
