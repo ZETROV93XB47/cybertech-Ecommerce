@@ -95,6 +95,18 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND.getResponseStatus());
     }
 
+    @ExceptionHandler(ProductAlreadyInWishlist.class)
+    public ResponseEntity<ErrorResponseDto> handleProductAlreadyInWishlist(ProductAlreadyInWishlist exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PRODUCT_ALREADY_IN_WISHLIST.getResponseStatus().value(), PRODUCT_ALREADY_IN_WISHLIST.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, PRODUCT_ALREADY_IN_WISHLIST.getResponseStatus());
+    }
+
+    @ExceptionHandler(WishlistNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleWishlistNotFoundException(WishlistNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), WISHLIST_NOT_FOUND.getResponseStatus().value(), WISHLIST_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, WISHLIST_NOT_FOUND.getResponseStatus());
+    }
+
     // Gestionnaire global pour toutes les erreurs non prévues (500)
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponseDto> handleRuntimeException(RuntimeException exception) {

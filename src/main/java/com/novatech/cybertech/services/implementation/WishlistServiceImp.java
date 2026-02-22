@@ -4,6 +4,7 @@ import com.novatech.cybertech.dto.response.wishlist.WishlistResponseDto;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.WishlistEntity;
+import com.novatech.cybertech.exceptions.ProductAlreadyInWishlist;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.exceptions.WishlistNotFoundException;
@@ -35,7 +36,7 @@ public class WishlistServiceImp implements WishlistService {
     @Transactional
     public WishlistResponseDto addProductToMyWishlist(String userKeycloakId, UUID productUuid) {
         if (wishlistRepository.existsByUser_KeycloakIdAndProduct_Uuid(userKeycloakId, productUuid)) {
-            throw new RuntimeException("Product already in wishlist");
+            throw new ProductAlreadyInWishlist("Product already in wishlist");
         }
 
         UserEntity user = userRepository.findByKeycloakId(userKeycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));

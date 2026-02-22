@@ -20,7 +20,9 @@ public enum ErrorCode {
     NO_DEFAULT_BANK_CARD_SET(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
     ORDER_ALREADY_SHIPPED(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
-    NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL);
+    NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
+    PRODUCT_ALREADY_IN_WISHLIST(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
+    WISHLIST_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;
