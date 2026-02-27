@@ -5,7 +5,7 @@ import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
-import com.novatech.cybertech.entities.ProductDocument;
+import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

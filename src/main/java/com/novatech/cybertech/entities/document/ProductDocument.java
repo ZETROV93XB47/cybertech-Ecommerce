@@ -1,4 +1,4 @@
-package com.novatech.cybertech.entities;
+package com.novatech.cybertech.entities.document;
 
 import jakarta.persistence.Id;
 import lombok.AllArgsConstructor;

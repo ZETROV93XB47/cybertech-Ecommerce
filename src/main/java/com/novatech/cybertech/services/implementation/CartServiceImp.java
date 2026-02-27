@@ -18,6 +18,7 @@ import com.novatech.cybertech.services.core.CartService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,7 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "cart", key = "#jwt.subject") // Invalide le cache car le panier est modifié
+    @CachePut(cacheNames = "cart", key = "#jwt.subject") // Invalide le cache car le panier est modifié
     public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final Jwt jwt) {
 
         log.info("cart request dto : {}", cartCreateRequestDto);
@@ -132,12 +133,71 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value = "cart", key = "#jwt.subject", unless = "#result.cartUuid == null")
+    @Cacheable(cacheNames = "cart", key = "#jwt.subject", unless = "#result.cartUuid == null")
     public CartResponseDto getCart(final Jwt jwt) {
         final String keycloakId = jwt.getSubject();
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         return user.getCartEntity() == null ? new CartResponseDto() : cartMapper.mapFromEntityToResponseDto(user.getCartEntity());
+    }
+
+    @Override
+    @Transactional
+    @CachePut(cacheNames = "cart", key = "#jwt.subject") // Supprime le cache pour forcer le rechargement
+    public CartResponseDto removeItemFromCart(final UUID productUuid, final Jwt jwt) {
+        final String keycloakId = jwt.getSubject();
+        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        final CartEntity cart = user.getCartEntity();
+
+        if (cart != null && cart.getCartItems() != null) {
+            boolean removed = cart.getCartItems().removeIf(item -> item.getProductEntity().getUuid().equals(productUuid));
+
+            if (removed) {
+                return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cart));
+            }
+        }
+        throw new CannotRemoveItemFromEmptyCartException("Cannot remove item from empty cart.");
+    }
+
+    @Override
+    @Transactional
+    @CachePut(cacheNames = "cart", key = "#jwt.subject")
+    public CartResponseDto decreaseQuantity(final CartItemRemoveRequestDto cartItemRemoveRequestDto, final Jwt jwt) {
+        final String keycloakId = jwt.getSubject();
+        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        final CartEntity cart = user.getCartEntity();
+
+        if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) {
+            throw new CartIsEmptyException("Cannot decrease quantity from an empty cart.");
+        }
+
+        final CartItemEntity cartItemToDecrease = cart.getCartItems().stream()
+                .filter(item -> item.getProductEntity().getUuid().equals(cartItemRemoveRequestDto.getProductUuid()))
+                .findFirst()
+                .orElseThrow(() -> new CartItemNotFoundException("Product not found in cart"));
+
+        final Integer updateResult = cartItemToDecrease.decreaseQuantity(cartItemRemoveRequestDto.getQuantity());
+
+        // Le service gère la logique de la collection (suppression de l'item)
+
+        if (updateResult <= 0) {
+            cart.getCartItems().remove(cartItemToDecrease);
+        }
+        return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cart));
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(cacheNames = "cart", key = "#jwt.subject") // Supprime le cache
+    public void clearCart(final Jwt jwt) {
+        final String keycloakId = jwt.getSubject();
+        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        final CartEntity cart = user.getCartEntity();
+
+        if (cart != null && cart.getCartItems() != null) {
+            cart.getCartItems().clear(); // Vide la liste
+            cartRepository.save(cart);   // Sauvegarde l'état vide
+        }
     }
 
     @Override
@@ -185,64 +245,5 @@ public class CartServiceImp implements CartService {
     @Transactional
     public void deleteByUUIDs(Collection<UUID> uuids) {
         cartRepository.deleteAllByUuidIn(uuids);
-    }
-
-    @Override
-    @Transactional
-    @CacheEvict(value = "cart", key = "#jwt.subject") // Supprime le cache pour forcer le rechargement
-    public CartResponseDto removeItemFromCart(final UUID productUuid, final Jwt jwt) {
-        final String keycloakId = jwt.getSubject();
-        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        final CartEntity cart = user.getCartEntity();
-
-        if (cart != null && cart.getCartItems() != null) {
-            boolean removed = cart.getCartItems().removeIf(item -> item.getProductEntity().getUuid().equals(productUuid));
-
-            if (removed) {
-                return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cart));
-            }
-        }
-        throw new CannotRemoveItemFromEmptyCartException("Cannot remove item from empty cart.");
-    }
-
-    @Override
-    @Transactional
-    @CacheEvict(value = "cart", key = "#jwt.subject")
-    public CartResponseDto decreaseQuantity(final CartItemRemoveRequestDto cartItemRemoveRequestDto, final Jwt jwt) {
-        final String keycloakId = jwt.getSubject();
-        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        final CartEntity cart = user.getCartEntity();
-
-        if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) {
-            throw new CartIsEmptyException("Cannot decrease quantity from an empty cart.");
-        }
-
-        final CartItemEntity cartItemToDecrease = cart.getCartItems().stream()
-                .filter(item -> item.getProductEntity().getUuid().equals(cartItemRemoveRequestDto.getProductUuid()))
-                .findFirst()
-                .orElseThrow(() -> new CartItemNotFoundException("Product not found in cart"));
-
-        final Integer updateResult = cartItemToDecrease.decreaseQuantity(cartItemRemoveRequestDto.getQuantity());
-
-        // Le service gère la logique de la collection (suppression de l'item)
-
-        if (updateResult <= 0) {
-            cart.getCartItems().remove(cartItemToDecrease);
-        }
-        return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cart));
-    }
-
-    @Override
-    @Transactional
-    @CacheEvict(value = "cart", key = "#jwt.subject") // Supprime le cache
-    public void clearCart(final Jwt jwt) {
-        final String keycloakId = jwt.getSubject();
-        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        final CartEntity cart = user.getCartEntity();
-
-        if (cart != null && cart.getCartItems() != null) {
-            cart.getCartItems().clear(); // Vide la liste
-            cartRepository.save(cart);   // Sauvegarde l'état vide
-        }
     }
 }

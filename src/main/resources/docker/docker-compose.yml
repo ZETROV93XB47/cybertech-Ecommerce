@@ -54,13 +54,20 @@ services:
       timeout: 2s
       retries: 20
 
+
   redis:
-    image: 'redis:latest' # Version stable recommandée, ou specific
+    image: redis:7.2
     container_name: redisEcommerce
     ports:
-      - '6379:6379' # Ajout du mappage du port pour l'accès local
+      - "6379:6379"
     # On active les notifications d'expiration (Ex) directement ici sans dépendre d'un fichier externe
-    command: redis-server --save 20 1 --loglevel warning --notify-keyspace-events Ex
+    command: >
+      redis-server
+      --save ""
+      --appendonly noprop
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --notify-keyspace-events Ex
     networks:
       - ecommerce-net
 
@@ -127,6 +134,36 @@ services:
       - ecommerce-net
     restart: unless-stopped
 
+
+  mongodb:
+    image: mongo:8.2.5
+    container_name: mongodbEcommerce
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: userEventsDB
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - ecommerce-net
+
+  gorse:
+    image: zhenghaoz/gorse-in-one:latest
+    container_name: gorse
+    restart: unless-stopped
+    ports:
+      - "8088:8088"   # API server
+      - "8089:8089"   # Dashboard
+    environment:
+      GORSE_CACHE_STORE: redis://redisEcommerce:6379
+      GORSE_DATA_STORE: mysql://rookie:pwd@tcp(mysql:3306)/cybertechDB
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - ecommerce-net
+
 volumes:
   mysql_data:
     driver: local
@@ -134,6 +171,9 @@ volumes:
     driver: local
   localstack_data:
     driver: local
+  mongodb_data:
+    driver: local
+
 
 networks:
   ecommerce-net:

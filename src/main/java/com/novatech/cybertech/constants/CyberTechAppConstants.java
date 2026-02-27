@@ -17,6 +17,7 @@ public class CyberTechAppConstants {
     public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/review";
     public static final String BANK_CARD_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/bank-card";
     public static final String USER_WISHLIST_CONTROLLER_BASE_PATH = "/api/v1/services/wishlist";
+    public static final String USER_EVENT_INGESTION_BASE_PATH = "/api/v1/events";
 
     public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = "/api/v1/services/management/order";
 
@@ -30,4 +31,6 @@ public class CyberTechAppConstants {
     public static final String REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB =  "REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB";
     public static final String CLEAN_UP_EXPIRED_STOCK_JOB = "CLEAN_UP_EXPIRED_STOCK_JOB";
 
+
+    public static final Integer NUMBER_OF_MOST_SELLED_PRODUCTS_TO_GET = 15;
 }

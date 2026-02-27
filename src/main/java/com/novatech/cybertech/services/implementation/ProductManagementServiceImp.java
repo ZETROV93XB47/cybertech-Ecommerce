@@ -4,8 +4,8 @@ import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
-import com.novatech.cybertech.entities.ProductDocument;
 import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.validator.ProductValidationService;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
@@ -16,6 +16,8 @@ import com.novatech.cybertech.services.core.ProductSearchService;
 import com.novatech.cybertech.services.core.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -113,5 +115,16 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
         //return productMapper.mapFromEntityToResponseDto(savedProductEntity);
         return savedProductEntity;
+    }
+
+    @Transactional
+    public List<ProductResponseDto> getBestSellers(final Integer numberOfProducts) {
+        final Pageable pageable = PageRequest.of(0, numberOfProducts);
+
+        final List<ProductEntity> productEntities = productRepository.findBestSellers(pageable);
+
+        return productEntities.stream()
+                .map(productMapper::mapFromEntityToResponseDto)
+                .toList();
     }
 }
