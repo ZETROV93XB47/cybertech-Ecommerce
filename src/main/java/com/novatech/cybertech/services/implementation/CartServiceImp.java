@@ -40,7 +40,7 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CachePut(cacheNames = "cart", key = "#jwt.subject") // Invalide le cache car le panier est modifié
+    @CachePut(cacheNames = "cart", key = "#jwt.subject")
     public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final Jwt jwt) {
 
         log.info("cart request dto : {}", cartCreateRequestDto);
@@ -70,7 +70,7 @@ public class CartServiceImp implements CartService {
                     .uuid(UuidCreator.getTimeOrderedEpoch())
                     .build();
             // Important : lier le panier à l'utilisateur si ce n'est pas fait automatiquement par le save du cart
-            // user.setCartEntity(cartEntity); 
+            // user.setCartEntity(cartEntity);
         }
 
         // Pour chaque produit à ajouter
@@ -133,7 +133,7 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(cacheNames = "cart", key = "#jwt.subject", unless = "#result.cartUuid == null")
+    @Cacheable(cacheNames = "cart", key = "#jwt.subject", unless = "#result == null || #result.cartUuid == null")
     public CartResponseDto getCart(final Jwt jwt) {
         final String keycloakId = jwt.getSubject();
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -156,7 +156,7 @@ public class CartServiceImp implements CartService {
                 return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cart));
             }
         }
-        throw new CannotRemoveItemFromEmptyCartException("Cannot remove item from empty cart.");
+        throw new CannotRemoveItemFromEmptyCartException("Cannot remove item already absent from cart.");
     }
 
     @Override
@@ -174,7 +174,7 @@ public class CartServiceImp implements CartService {
         final CartItemEntity cartItemToDecrease = cart.getCartItems().stream()
                 .filter(item -> item.getProductEntity().getUuid().equals(cartItemRemoveRequestDto.getProductUuid()))
                 .findFirst()
-                .orElseThrow(() -> new CartItemNotFoundException("Product not found in cart"));
+                .orElseThrow(() -> new CartItemNotFoundException("Product doesn't exist in cart"));
 
         final Integer updateResult = cartItemToDecrease.decreaseQuantity(cartItemRemoveRequestDto.getQuantity());
 
@@ -222,11 +222,6 @@ public class CartServiceImp implements CartService {
     @Transactional
     public CartResponseDto create(CartCreateRequestDto cartCreateRequestDto) {
         return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cartMapper.mapFromCreationRequestToEntity(cartCreateRequestDto)));
-    }
-
-    @Transactional
-    public Collection<CartResponseDto> createAutomatically(Collection<CartEntity> carts) {
-        return new ArrayList<>(cartMapper.mapFromEntityToResponseDto(carts.stream().map(cartRepository::save).toList()));
     }
 
     @Override

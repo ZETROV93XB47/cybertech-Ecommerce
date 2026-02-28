@@ -28,6 +28,7 @@ public class StockCleanupJob {
 
     @Qualifier(CLEAN_UP_EXPIRED_STOCK_JOB)
     private final Job job;
+    
     private final JobLauncher jobLauncher;
 
     @Scheduled(cron = "${cybertech.stock.cleanup.job.cron:0 */30 * * * *}", zone = "UTC")

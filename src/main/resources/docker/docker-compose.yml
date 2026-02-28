@@ -56,7 +56,7 @@ services:
 
 
   redis:
-    image: redis:7.2
+    image: redis:latest
     container_name: redisEcommerce
     ports:
       - "6379:6379"
@@ -64,7 +64,7 @@ services:
     command: >
       redis-server
       --save ""
-      --appendonly noprop
+      --appendonly no
       --maxmemory 512mb
       --maxmemory-policy allkeys-lru
       --notify-keyspace-events Ex

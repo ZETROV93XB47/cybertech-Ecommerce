@@ -4,6 +4,7 @@ package com.novatech.cybertech.api.error;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.exceptions.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -13,7 +14,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCode.*;
 
-
+@Slf4j
 @ControllerAdvice
 public class ErrorManagementController {
 
@@ -105,6 +106,18 @@ public class ErrorManagementController {
     public ResponseEntity<ErrorResponseDto> handleWishlistNotFoundException(WishlistNotFoundException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), WISHLIST_NOT_FOUND.getResponseStatus().value(), WISHLIST_NOT_FOUND.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, WISHLIST_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(CartItemNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleCartItemNotFoundException(CartItemNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), CART_ITEM_NOT_FOUND.getResponseStatus().value(), CART_ITEM_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, CART_ITEM_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(CartIsEmptyException.class)
+    public ResponseEntity<ErrorResponseDto> handleCartIsEmptyException(CartIsEmptyException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), CART_IS_EMPTY.getResponseStatus().value(), CART_IS_EMPTY.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, CART_IS_EMPTY.getResponseStatus());
     }
 
     // Gestionnaire global pour toutes les erreurs non prévues (500)

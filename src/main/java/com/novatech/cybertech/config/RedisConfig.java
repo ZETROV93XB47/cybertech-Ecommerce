@@ -1,15 +1,16 @@
 package com.novatech.cybertech.config;
 
+import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.repository.configuration.EnableRedisRepositories;
 import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
+import org.springframework.data.redis.serializer.JacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import tools.jackson.databind.MapperFeature;
@@ -28,7 +29,7 @@ public class RedisConfig {
     private static final String USER_EXISTENCE_CACHE = "userExistence";
 
     @Bean
-    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory, @Qualifier("redisObjectMapper") ObjectMapper redisObjectMapper) {
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory, @Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
@@ -44,6 +45,7 @@ public class RedisConfig {
         return template;
     }
 
+
     @Bean("redisObjectMapper")
     public ObjectMapper redisObjectMapper() {
         return JsonMapper.builder()
@@ -51,42 +53,39 @@ public class RedisConfig {
                 .build();
     }
 
-    @Bean
-    public RedisCacheConfiguration cacheConfiguration(@Qualifier("redisObjectMapper") ObjectMapper redisObjectMapper) {
-        return RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofHours(1))
-                .serializeValuesWith(
-                        RedisSerializationContext.SerializationPair.fromSerializer(
-                                new GenericJacksonJsonRedisSerializer(redisObjectMapper)
-                        )
-                );
-    }
 
     @Bean
-    public RedisCacheManager cacheManager(final RedisConnectionFactory connectionFactory) {
+    public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory, RedisCacheConfiguration baseConfig) {
 
-        final Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
+        final RedisCacheConfiguration defaultConfig = baseConfig.entryTtl(Duration.ofHours(1));
 
-        cacheConfigurations.put(
-                USER_EXISTENCE_CACHE,
-                RedisCacheConfiguration.defaultCacheConfig().entryTtl(Duration.ofHours(24))
-        );
+        final JacksonJsonRedisSerializer<Boolean> userExistSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(Boolean.class);
+        final JacksonJsonRedisSerializer<CartResponseDto> cartSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(CartResponseDto.class);
 
-        cacheConfigurations.put(
-                CART_CACHE,
-                RedisCacheConfiguration.defaultCacheConfig().entryTtl(Duration.ofHours(2))
-        );
+        final RedisCacheConfiguration cartConfig = defaultConfig
+                .entryTtl(Duration.ofHours(2))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(cartSerializer));
+
+        final RedisCacheConfiguration userExistConfig = defaultConfig
+                .entryTtl(Duration.ofHours(24))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(userExistSerializer));
+
+        final Map<String, RedisCacheConfiguration> configs = new HashMap<>();
+
+        configs.put(CART_CACHE, cartConfig);
+        configs.put(USER_EXISTENCE_CACHE, userExistConfig);
 
         return RedisCacheManager.builder(connectionFactory)
-                .cacheDefaults(RedisCacheConfiguration.defaultCacheConfig().entryTtl(Duration.ofHours(1)))
-                .withInitialCacheConfigurations(cacheConfigurations)
+                .cacheDefaults(defaultConfig)
+                .withInitialCacheConfigurations(configs)
                 .build();
     }
 
-
     @Bean
-    @Primary
-    public ObjectMapper objectMapper() {
-        return JsonMapper.builder().enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY).build();
+    public RedisCacheConfiguration cacheConfiguration(@Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper) {
+        return RedisCacheConfiguration
+                .defaultCacheConfig()
+                .entryTtl(Duration.ofHours(1))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJacksonJsonRedisSerializer(redisObjectMapper)));
     }
 }

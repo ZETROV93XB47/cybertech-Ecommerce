@@ -1,7 +1,10 @@
 package com.novatech.cybertech.config;
 
 
+import com.novatech.cybertech.api.error.CustomAccessDeniedHandler;
+import com.novatech.cybertech.api.error.CustomAuthenticationEntryPoint;
 import com.novatech.cybertech.converter.KeycloakRoleConverter;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -17,8 +20,12 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 @EnableMethodSecurity(proxyTargetClass = true)
 public class SecurityConfig {
+
+    private final CustomAccessDeniedHandler accessDeniedHandler;
+    private final CustomAuthenticationEntryPoint authenticationEntryPoint;
 
     // Définit la liste des URL à autoriser sans sécurité
     private static final String[] PUBLIC_URLS = {
@@ -47,7 +54,12 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter())));
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter())))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint) // 401
+                        .accessDeniedHandler(accessDeniedHandler)           // 403
+                );
+        ;
         return http.build();
     }
 

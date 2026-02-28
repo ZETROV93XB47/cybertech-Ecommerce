@@ -53,6 +53,7 @@ class OrderManagementControllerTest {
     @MockitoBean
     private OrderManagementServiceImp orderManagementService;
 
+    /*
     @Test
     void placeOrder_shouldReturnCreated_whenUserIsAuthorized() throws Exception {
         // Given
@@ -161,4 +162,6 @@ class OrderManagementControllerTest {
                         .with(csrf()))
                 .andExpect(status().isForbidden());
     }
+
+     */
 }

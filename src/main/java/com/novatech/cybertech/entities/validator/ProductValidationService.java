@@ -1,6 +1,5 @@
 package com.novatech.cybertech.entities.validator;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novatech.cybertech.entities.attributes.ComputerAttributes;
 import com.novatech.cybertech.entities.attributes.MonitorAttributes;
 import com.novatech.cybertech.entities.enums.Category;
@@ -10,6 +9,7 @@ import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 import java.util.Set;

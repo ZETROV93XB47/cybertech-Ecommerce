@@ -28,14 +28,14 @@ class TestcontainersConfiguration {
     @Bean
     @ServiceConnection(name = "redis")
     GenericContainer<?> redisTestContainer() {
-        return new GenericContainer<>(DockerImageName.parse("redis:7.4.1")).withExposedPorts(6379);
+        return new GenericContainer<>(DockerImageName.parse("redis:8.6.1")).withExposedPorts(6379);
     }
 
 
     @Bean
     @ServiceConnection
     ElasticsearchContainer elasticsearchContainer() {
-        return new ElasticsearchContainer(DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:7.17.10"));//Buid failing with a newer version of elastic search
+        return new ElasticsearchContainer(DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:7.17.10"));//Build failing with a newer version of elastic search
     }
 
 

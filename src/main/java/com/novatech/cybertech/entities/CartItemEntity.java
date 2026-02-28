@@ -27,7 +27,7 @@ public class CartItemEntity extends BaseEntity<Long> {
     @Column(name = "unitPrice", precision = 10, scale = 2, nullable = false)
     private BigDecimal unitPrice;
 
-    @ManyToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "cartId", nullable = false)
     @ToString.Exclude
     private CartEntity cart;
@@ -52,18 +52,6 @@ public class CartItemEntity extends BaseEntity<Long> {
         }
     }
 
-
-//    public QuantityChangeResult decreaseQuantity(final int amount) {
-//        return switch (amount) {
-//            case int amountToDecrease when amountToDecrease > this.quantity -> new QuantityRejected(AMOUNT_TO_DECREASE_BIGGER_THAN_CURRENT_QUANTITY);
-//            default -> {
-//                this.quantity -= amount;
-//                yield new QuantityUpdated(this.quantity);
-//            }
-//        };
-//    }
-
-
     public Integer increaseQuantity(final Integer amount) {
         log.info("quantity before increase : {}", this.quantity);
         log.info("amount to increase : {}", amount);
@@ -73,3 +61,12 @@ public class CartItemEntity extends BaseEntity<Long> {
     }
 
 }
+//    public QuantityChangeResult decreaseQuantity(final int amount) {
+//        return switch (amount) {
+//            case int amountToDecrease when amountToDecrease > this.quantity -> new QuantityRejected(AMOUNT_TO_DECREASE_BIGGER_THAN_CURRENT_QUANTITY);
+//            default -> {
+//                this.quantity -= amount;
+//                yield new QuantityUpdated(this.quantity);
+//            }
+//        };
+//    }

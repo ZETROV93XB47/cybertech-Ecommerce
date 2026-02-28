@@ -52,15 +52,15 @@ public class ProductEntity extends BaseEntity<Long> {
     @Column(columnDefinition = "json")
     private Map<String, Object> attributes = new HashMap<>();
 
-    @OneToMany(mappedBy = "productEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "productEntity", /*cascade = CascadeType.ALL,*/ fetch = FetchType.EAGER)
     private List<OrderItemEntity> orderItemEntities;
 
-    @OneToMany(mappedBy = "productEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "productEntity", /*cascade = CascadeType.ALL,*/ fetch = FetchType.EAGER)
     private List<ReviewEntity> reviewEntities;
 
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "product", /*cascade = CascadeType.ALL,*/ orphanRemoval = true)
     private Set<WishlistEntity> wishlistEntries = new HashSet<>();
 
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "product", /*cascade = CascadeType.ALL,*/ orphanRemoval = true)
     private Set<RecommendationEntity> recommendations = new HashSet<>();
 }

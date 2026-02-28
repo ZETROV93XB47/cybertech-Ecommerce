@@ -49,7 +49,6 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
 
         for (StockEntity r : reservations) {
             if (r.getReservationStatus() != ReservationStatus.ACTIVE) continue;
-
             // Marquer comme EXPIRED pour éviter double release
             r.setReservationStatus(ReservationStatus.EXPIRED);
             stockRepository.save(r);
@@ -60,7 +59,6 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
             product.setReservedStock(product.getReservedStock() - r.getQuantity());
             productRepository.save(product);
         }
-
         // delete en 1 seule fois
         stockRepository.deleteByOrderUuid(orderUuid);
     }
