@@ -11,6 +11,7 @@ import org.springframework.batch.core.launch.JobExecutionAlreadyRunningException
 import org.springframework.batch.core.launch.JobInstanceAlreadyCompleteException;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.batch.core.launch.JobRestartException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -27,7 +28,9 @@ public class CybertechOrdersUpdateJob {
     @Value("${cybertech.orders.update.job.activated}")
     private boolean activated;
 
+    @Qualifier(REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB)
     private final Job job;
+
     private final JobLauncher jobLauncher;
 
 
@@ -43,9 +46,8 @@ public class CybertechOrdersUpdateJob {
 
             log.info("REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB is not scheduled, the Job won't be executed.");
             return null;
-        }
-        catch (JobInstanceAlreadyCompleteException | JobExecutionAlreadyRunningException | JobRestartException |
-               InvalidJobParametersException e) {
+        } catch (JobInstanceAlreadyCompleteException | JobExecutionAlreadyRunningException | JobRestartException |
+                 InvalidJobParametersException e) {
 
             log.error("An Error occurred during {} launching: \n{} ", REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB, e.getMessage());
             return null;
