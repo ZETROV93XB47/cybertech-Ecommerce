@@ -7,6 +7,7 @@ import com.novatech.cybertech.services.implementation.ProductManagementServiceIm
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,7 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.NUMBER_OF_M
 import static com.novatech.cybertech.constants.CyberTechAppConstants.PRODUCT_CRUD_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(PRODUCT_CRUD_CONTROLLER_BASE_PATH)

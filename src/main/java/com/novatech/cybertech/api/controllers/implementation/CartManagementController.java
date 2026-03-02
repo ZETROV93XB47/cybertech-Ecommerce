@@ -8,6 +8,7 @@ import com.novatech.cybertech.services.core.CartService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +21,7 @@ import java.util.UUID;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.CART_CRUD_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(CART_CRUD_CONTROLLER_BASE_PATH)
@@ -58,14 +60,16 @@ public class CartManagementController implements CartManagementControllerApiSpec
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @GetMapping(value = "/get", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> getCart(@AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.OK).body(cartService.getCart(jwt));
+        log.info("jwt value  : {}", jwt.toString());
+
+        return ResponseEntity.status(HttpStatus.OK).body(cartService.getCart(jwt.getSubject()));
     }
 
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @DeleteMapping(value = "/clear", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> clearCart(@AuthenticationPrincipal final Jwt jwt) {
-        cartService.clearCart(jwt);
+        cartService.clearCart(jwt.getSubject());
         return ResponseEntity.noContent().build();
     }
 
@@ -73,20 +77,20 @@ public class CartManagementController implements CartManagementControllerApiSpec
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PostMapping(value = "/add", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> addToCart(@Valid @RequestBody final CartCreateRequestDto cartCreateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(cartService.addItemsToCart(cartCreateRequestDto, jwt));
+        return ResponseEntity.status(HttpStatus.CREATED).body(cartService.addItemsToCart(cartCreateRequestDto, jwt.getSubject()));
     }
 
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PatchMapping(value = "/remove/{productUuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> removeFromCart(@PathVariable("productUuid") final UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.OK).body(cartService.removeItemFromCart(uuid, jwt));
+        return ResponseEntity.status(HttpStatus.OK).body(cartService.removeItemFromCart(uuid, jwt.getSubject()));
     }
 
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @DeleteMapping(value = "/decreaseQuantity", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> decreaseQuantity(@Valid @RequestBody final CartItemRemoveRequestDto cartItemRemoveRequestDto, @AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.OK).body(cartService.decreaseQuantity(cartItemRemoveRequestDto, jwt));
+        return ResponseEntity.status(HttpStatus.OK).body(cartService.decreaseQuantity(cartItemRemoveRequestDto, jwt.getSubject()));
     }
 }

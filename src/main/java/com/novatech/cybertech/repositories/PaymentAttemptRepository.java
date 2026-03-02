@@ -13,4 +13,6 @@ public interface PaymentAttemptRepository extends CrudBaseRepository<PaymentAtte
     List<PaymentAttemptEntity> findByStatus(PaymentAttemptStatus status);
     Optional<PaymentAttemptEntity> findByIdempotencyKey(String idempotencyKey);
     boolean existsByOrderEntity_UuidAndStatus(UUID orderUuid, PaymentAttemptStatus status);
+    Optional<PaymentAttemptEntity> findByStripePaymentID(String stripePaymentID);
+    Optional<PaymentAttemptEntity> findByProviderEventId(String providerEventId);
 }

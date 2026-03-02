@@ -40,14 +40,12 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CachePut(cacheNames = "cart", key = "#jwt.subject")
-    public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final Jwt jwt) {
+    @CachePut(cacheNames = "cart", key = "#keycloakId")
+    public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
 
         log.info("cart request dto : {}", cartCreateRequestDto);
 
         final Map<UUID, Integer> productsToAdd = cartCreateRequestDto.getCartItemAddRequestDtos().stream().collect(Collectors.toMap(CartItemAddRequestDto::getProductUuid, CartItemAddRequestDto::getQuantity));
-
-        final String keycloakId = jwt.getSubject();
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         // Récupération des produits en une seule requête pour optimiser les performances
@@ -133,9 +131,9 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(cacheNames = "cart", key = "#jwt.subject", unless = "#result == null || #result.cartUuid == null")
-    public CartResponseDto getCart(final Jwt jwt) {
-        final String keycloakId = jwt.getSubject();
+    @Cacheable(cacheNames = "cart", key = "#keycloakId", unless = "#result == null || #result.cartUuid == null")
+    public CartResponseDto getCart(final String keycloakId) {
+        
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         return user.getCartEntity() == null ? new CartResponseDto() : cartMapper.mapFromEntityToResponseDto(user.getCartEntity());
@@ -143,9 +141,9 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CachePut(cacheNames = "cart", key = "#jwt.subject") // Supprime le cache pour forcer le rechargement
-    public CartResponseDto removeItemFromCart(final UUID productUuid, final Jwt jwt) {
-        final String keycloakId = jwt.getSubject();
+    @CachePut(cacheNames = "cart", key = "#keycloakId") // Supprime le cache pour forcer le rechargement
+    public CartResponseDto removeItemFromCart(final UUID productUuid, final String keycloakId) {
+        
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
         final CartEntity cart = user.getCartEntity();
 
@@ -161,9 +159,9 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CachePut(cacheNames = "cart", key = "#jwt.subject")
-    public CartResponseDto decreaseQuantity(final CartItemRemoveRequestDto cartItemRemoveRequestDto, final Jwt jwt) {
-        final String keycloakId = jwt.getSubject();
+    @CachePut(cacheNames = "cart", key = "#keycloakId")
+    public CartResponseDto decreaseQuantity(final CartItemRemoveRequestDto cartItemRemoveRequestDto, final String keycloakId) {
+        
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
         final CartEntity cart = user.getCartEntity();
 
@@ -188,9 +186,9 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = "cart", key = "#jwt.subject") // Supprime le cache
-    public void clearCart(final Jwt jwt) {
-        final String keycloakId = jwt.getSubject();
+    @CacheEvict(cacheNames = "cart", key = "#keycloakId") // Supprime le cache
+    public void clearCart(final String keycloakId) {
+        
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
         final CartEntity cart = user.getCartEntity();
 

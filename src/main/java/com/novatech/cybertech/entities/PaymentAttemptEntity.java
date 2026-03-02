@@ -48,8 +48,11 @@ public class PaymentAttemptEntity extends BaseEntity<Long> {
     @Column(name = "status", nullable = false)
     private PaymentAttemptStatus status;
 
-    @Column(name = "providerRef")
-    private String providerRef;
+    @Column(name = "stripePaymentID")
+    private String stripePaymentID;//TODO: ID de paiement chez stripe, il faut penser à le renommer en stripePaymentID
+
+    @Column(name = "providerEventId", unique = true)
+    private String providerEventId;
 
     @Column(name = "idempotencyKey", nullable = false, updatable = false, length = 64)
     private String idempotencyKey;

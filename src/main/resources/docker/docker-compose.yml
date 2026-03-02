@@ -164,6 +164,19 @@ services:
     networks:
       - ecommerce-net
 
+
+  stripe:
+    image: stripe/stripe-cli:v1.37.1
+    container_name: stripe-cli
+    command: >
+      listen
+      --api-key sk_test_VePHdqKTYQjKNInc7u56JBrQ
+      --forward-to http://host.docker.internal:8081/api/v1/webhooks/stripe
+      --events payment_intent.succeeded,payment_intent.payment_failed,checkout.session.completed,charge.refunded
+    environment:
+      STRIPE_API_KEY: sk_test_VePHdqKTYQjKNInc7u56JBrQ
+    restart: unless-stopped
+
 volumes:
   mysql_data:
     driver: local

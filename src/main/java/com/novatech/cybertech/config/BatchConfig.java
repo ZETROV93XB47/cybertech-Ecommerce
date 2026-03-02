@@ -3,7 +3,7 @@ package com.novatech.cybertech.config;
 import com.novatech.cybertech.batch.task.CancelAllPendingOrdersByTimeTasklet;
 import com.novatech.cybertech.batch.task.GetAllFailedPaymentOrderTasklet;
 import com.novatech.cybertech.batch.task.CleanUpExpiredStockReservationsTasklet;
-import com.novatech.cybertech.batch.task.ShipAllAwaitingShippingOrdersTasklet;
+import com.novatech.cybertech.batch.task.ShipAllPaidOrdersTasklet;
 import com.novatech.cybertech.batch.task.OrdersSummaryReportListener;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.job.Job;
@@ -14,6 +14,8 @@ import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.CLEAN_UP_EXPIRED_STOCK_JOB;
@@ -26,7 +28,7 @@ public class BatchConfig {
     private static final String GET_FAILED_PAYMENT_ORDERS = "GET_FAILED_PAYMENT_ORDERS";
     private static final String CANCEL_ALL_PENDING_ORDERS_BY_TIME_TASKLET = "CancelAllPendingOrdersByTimeTasklet";
     private static final String GET_ALL_FAILED_PAYMENTS_ORDER_TASKLET = "GetAllFailedPaymentOrderTasklet";
-    private static final String SHIP_ALL_AWAITING_SHIPPING_ORDERS_TASKLET = "ShipAllAwaitingShippingOrdersTasklet";
+    private static final String SHIP_ALL_PAID_ORDERS_TASKLET = "ShipAllAwaitingShippingOrdersTasklet";
     private static final String CLEAN_UP_EXPIRED_STOCK_RESERVATIONS_TASKLET = "CleanUpExpiredStockReservationsTasklet";
 
     private final JobRepository jobRepository;
@@ -35,7 +37,7 @@ public class BatchConfig {
     private final OrdersSummaryReportListener ordersSummaryReportListener;
     private final GetAllFailedPaymentOrderTasklet getAllFailedPaymentOrderTasklet;
     private final CancelAllPendingOrdersByTimeTasklet cancelAllPendingOrdersByTimeTasklet;
-    private final ShipAllAwaitingShippingOrdersTasklet shipAllAwaitingShippingOrdersTasklet;
+    private final ShipAllPaidOrdersTasklet shipAllPaidOrdersTasklet;
     private final CleanUpExpiredStockReservationsTasklet cleanUpExpiredStockReservationsTasklet;
 
 
@@ -79,10 +81,10 @@ public class BatchConfig {
                 .build();
     }
 
-    @Bean(SHIP_ALL_AWAITING_SHIPPING_ORDERS_TASKLET)
+    @Bean(SHIP_ALL_PAID_ORDERS_TASKLET)
     public Step shipAllAwaitingShippingOrders() {
-        return new StepBuilder(SHIP_ALL_AWAITING_SHIPPING_ORDERS_TASKLET, jobRepository)
-                .tasklet(shipAllAwaitingShippingOrdersTasklet, platformTransactionManager)
+        return new StepBuilder(SHIP_ALL_PAID_ORDERS_TASKLET, jobRepository)
+                .tasklet(shipAllPaidOrdersTasklet, platformTransactionManager)
                 .allowStartIfComplete(true)
                 .build();
     }
@@ -94,4 +96,14 @@ public class BatchConfig {
                 .allowStartIfComplete(true)
                 .build();
     }
+
+    @Bean
+    public TaskScheduler taskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1); // un seul thread = une seule exécution
+        scheduler.setThreadNamePrefix("scheduler-");
+        return scheduler;
+    }
+
+
 }

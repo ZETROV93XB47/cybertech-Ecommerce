@@ -24,7 +24,7 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ShipAllAwaitingShippingOrdersTasklet extends BaseTasklet {
+public class ShipAllPaidOrdersTasklet extends BaseTasklet {
 
     private final OrderRepository orderRepository;
     private final ShippingDispatcher shippingDispatcher;
@@ -32,14 +32,14 @@ public class ShipAllAwaitingShippingOrdersTasklet extends BaseTasklet {
 
     @Override
     @Transactional
-    public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) throws Exception {
+    public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) {
         log.info("Starting ShipAllAwaitingShippingOrdersTasklet");
 
         // Récupérer toutes les commandes en attente d'expédition
-        List<OrderEntity> awaitingOrders = orderRepository.findByStatus(OrderStatus.AWAITING_SHIPPING);
+        List<OrderEntity> awaitingOrders = orderRepository.findByStatus(OrderStatus.PAID);
 
         if (awaitingOrders.isEmpty()) {
-            log.info("No orders found in AWAITING_SHIPPING status.");
+            log.info("No orders found in PAID status.");
             stepContribution.setExitStatus(ExitStatus.COMPLETED);
             return RepeatStatus.FINISHED;
         }

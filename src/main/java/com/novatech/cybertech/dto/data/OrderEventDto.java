@@ -18,9 +18,9 @@ public class OrderEventDto implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private UUID orderUuid;
-    private UserContactDto userContactDto;
     private BigDecimal totalAmount;
     private OrderStatus orderStatus;
+    private UserContactDto userContactDto;
     private PaymentAttemptStatus paymentAttemptStatus;
     //private Map<UUID, Integer> productsByQuantityMap;
 }

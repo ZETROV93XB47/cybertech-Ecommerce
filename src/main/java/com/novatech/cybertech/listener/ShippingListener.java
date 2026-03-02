@@ -21,7 +21,6 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Random;
 
 @Slf4j
 @Component
@@ -31,8 +30,6 @@ public class ShippingListener {
     private final OrderRepository orderRepository;
     private final ShippingDispatcher shippingDispatcher;
     private final NotificationDispatcher notificationDispatcher;
-    
-    private final Random random = new Random();
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -43,16 +40,6 @@ public class ShippingListener {
         OrderEntity order = orderRepository.findByUuid(orderPaidEvent.getOrderUUID()).orElseThrow(() -> new OrderNotFoundException("Order " + orderPaidEvent.getOrderUUID() + " not found"));
 
         if (order.getStatus() != OrderStatus.PAID) return;
-
-        // Simulation aléatoire de délai logistique
-        // 0-5 (60%) : Expédition immédiate
-        // 6-9 (40%) : Mise en attente (AWAITING_SHIPPING)
-        if (random.nextInt(10) > 5) {
-            log.info("Simulating shipping delay. Order {} set to AWAITING_SHIPPING", order.getUuid());
-            order.setStatus(OrderStatus.AWAITING_SHIPPING);
-            orderRepository.save(order);
-            return; // On arrête le processus ici, le Batch s'occupera du reste plus tard
-        }
 
         final UserEntity user = order.getUserEntity();
 

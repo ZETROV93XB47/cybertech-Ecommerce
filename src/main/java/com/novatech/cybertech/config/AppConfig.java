@@ -28,8 +28,8 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
-import java.util.EnumMap;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Configuration
@@ -59,17 +59,19 @@ public class AppConfig {
     }
 
     @Bean
-    public Map<PaymentType, PaymentAttemptProcessor> paymentServiceMap(final ApplicationContext context) {
-        final Map<PaymentType, PaymentAttemptProcessor> serviceMap = new EnumMap<>(PaymentType.class);
+    public Map<Set<PaymentType>, PaymentAttemptProcessor> paymentServiceMap(final ApplicationContext context) {
+        final Map<Set<PaymentType>, PaymentAttemptProcessor> serviceMap = new HashMap<Set<PaymentType>, PaymentAttemptProcessor>();
 
         final Map<String, PaymentAttemptProcessor> beans = context.getBeansOfType(PaymentAttemptProcessor.class);
 
         for (PaymentAttemptProcessor service : beans.values()) {
             final PaymentTypeHandler annotation = service.getClass().getAnnotation(PaymentTypeHandler.class);
             if (annotation != null) {
-                serviceMap.put(annotation.value(), service);
+                serviceMap.put((new HashSet<>(Arrays.asList(annotation.value()))), service);
             }
         }
+
+        log.info("payment service map : {}", serviceMap);
 
         return serviceMap;
     }

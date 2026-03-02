@@ -20,7 +20,10 @@ import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
-import com.novatech.cybertech.services.core.*;
+import com.novatech.cybertech.services.core.CartService;
+import com.novatech.cybertech.services.core.OrderManagementService;
+import com.novatech.cybertech.services.core.PaymentService;
+import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,7 +47,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
     private final OrderMapper orderMapper;
 
-    private final CartService cartService;
+    //private final CartService cartService;
     private final StockService stockService;
     private final PaymentService paymentService;
 
@@ -122,7 +125,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final Map<UUID, Integer> quantities = dto.getItemUpdateRequestDtoList().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
 
         // 2) Validation
-        validateOrderBeforeProcessingPayment(order.getUserEntity());
+        validateUserBeforeProcessingPayment(order.getUserEntity());//TODO: is it really necessary to make this check here ? maybe make it before launching the order placing process
 
         // 3) Calculer le total
         final BigDecimal amount = processOrderTotalPrice(dto.getItemUpdateRequestDtoList(), products);
@@ -226,7 +229,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-
     @Override
     @Transactional
     public OrderResponseDto placeOrder(final OrderPlacingRequestDto req, final Jwt jwt) {
@@ -250,7 +252,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                         CartItemEntity::getQuantity
                 ));
 
-        validateOrderBeforeProcessingPayment(user);
+        validateUserBeforeProcessingPayment(user);//TODO: is it really necessary to make this check here ? maybe make it before launching the order placing process
 
         // 3) UUID commande (v7/ordered)
         final UUID orderUuid = UuidCreator.getTimeOrderedEpoch();
@@ -302,68 +304,23 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final String idempotencyKey = (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) ? req.getIdempotencyKey() : generateIdempotencyKey(orderUuid, "place");
         final PaymentAttemptEntity attempt;
 
-        try {
-            attempt = paymentService.processPayment(
-                    savedOrder,
-                    req.getPaymentType(),
-                    totalMoney,
-                    idempotencyKey
-            );
-        }
-        catch (PaymentAlreadyCompletedForThisOrderException e) {
-            return orderMapper.mapFromEntityToResponseDto(savedOrder);
-        }
-
+        //TODO: je pense que ça n'a pas de sens de faire un try catch ici parce qu'une commande nouvellement passée n'a pas lieu d'aboutir sur un paiement déjà effectué
+        attempt = paymentService.processPayment(
+                savedOrder,
+                req.getPaymentType(),
+                totalMoney,
+                idempotencyKey
+        );
 
         log.info("payment :: {}", attempt);
 
-
         // 9) Vider le panier après la tentative (commande existante + stock réservé)
         //    Si tu préfères ne vider qu'après SUCCESS, déplace-le dans le case SUCCESS.
-        cartService.clearCart(jwt);
-
         // 10) Statuts + stock + events
-        return switch (attempt.getStatus()) {
 
-            case SUCCESS -> {
-                stockService.commitStock(orderUuid);
+        sendOrderCreationEvent(savedOrder, user, totalAmount, attempt.getStatus());//TODO: vérifier cette partie plus tard si saved order est good
 
-                savedOrder.setStatus(OrderStatus.PAID);
-                final OrderEntity paidOrder = orderRepository.save(savedOrder);
-
-                // Event création (corrige ton paymentStatus: plus de SUCCESS en dur)
-                sendOrderCreationEvent(paidOrder, user, totalAmount, attempt.getStatus());
-
-                // Expédition décorrélée : listener AFTER_COMMIT déclenche shippingDispatcher.dispatch(...)
-                eventPublisher.publishEvent(new OrderPaidEvent(paidOrder.getUuid()));
-
-                yield orderMapper.mapFromEntityToResponseDto(paidOrder);
-            }
-
-            case FAILED, CANCELED -> {
-                // Même si tu as TTL Redis, release immédiat = stock dispo tout de suite.
-                stockService.releaseStock(orderUuid);
-
-                savedOrder.setStatus(OrderStatus.PAYMENT_FAILED);
-                final OrderEntity failedOrder = orderRepository.save(savedOrder);
-
-                sendOrderCreationEvent(failedOrder, user, totalAmount, attempt.getStatus());
-
-                yield orderMapper.mapFromEntityToResponseDto(failedOrder);
-            }
-
-            case CREATED, PROCESSING -> {
-                // sans 3DS tu ne devrais pas rester là, mais on est clean
-                //stockService.releaseStock(orderUuid);
-
-                savedOrder.setStatus(OrderStatus.AWAITING_PAYMENT);
-                final OrderEntity awaiting = orderRepository.save(savedOrder);
-
-                sendOrderCreationEvent(awaiting, user, totalAmount, attempt.getStatus());
-
-                yield orderMapper.mapFromEntityToResponseDto(awaiting);
-            }
-        };
+        return orderMapper.mapFromEntityToResponseDto(savedOrder);
     }
 
 
@@ -391,7 +348,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-    private void validateOrderBeforeProcessingPayment(final UserEntity userEntity) {
+    private void validateUserBeforeProcessingPayment(final UserEntity userEntity) {
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
                 .userDefaultBankCard(Optional.ofNullable(userEntity.getBankCardEntity()).orElseThrow(() -> new NoDefaultBankCartSetException("No bank card set, please, add a bank card and retry ...")))
