@@ -10,7 +10,8 @@ public enum PaymentAttemptStatus implements EnumFunctions<Integer> {
     PROCESSING(2),
     FAILED(3),
     SUCCESS(4),
-    CANCELED(5);
+    REFUNDED(5),
+    CANCELED(6);
 
     private final Integer code;
 }

@@ -13,6 +13,7 @@ import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.entities.valueObjects.Address;
+import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -221,7 +222,7 @@ public class DataGenerator {
                 .orderItemEntities(new ArrayList<>())
                 .shippingAddress(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
                 .status(OrderStatus.CREATED)
-                .totalAmount(new Money(BigDecimal.ZERO, "EUR"))
+                .totalAmount(new Money(BigDecimal.ZERO, CurrencyCode.EUR))
                 .paymentAttempts(List.of(generatePayment()))
                 .build();
     }
@@ -296,7 +297,7 @@ public class DataGenerator {
                 .shippingCity(FAKER.address().city())
                 .shippingZipCode(FAKER.address().zipCode())
                 .shippingCountry(FAKER.address().country())
-                .idempotencyKey(UUID.randomUUID().toString())
+                //.idempotencyKey(UUID.randomUUID().toString())
                 .itemUpdateRequestDtoList(List.of(
                         OrderItemCreateRequestDto.builder()
                                 .productUuid(UUID.randomUUID())

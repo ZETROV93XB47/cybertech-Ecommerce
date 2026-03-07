@@ -44,10 +44,5 @@ public class OrderUpdateRequestDto {
     @NotBlank(message = "Shipping Country cannot be blank")
     private String shippingCountry;
 
-    @NotNull(message = "Idempotency Key cannot be null")
-    @NotBlank(message = "Idempotency Key cannot be blank")
-    private String idempotencyKey;
-
-
     private List<OrderItemCreateRequestDto> itemUpdateRequestDtoList;
 }

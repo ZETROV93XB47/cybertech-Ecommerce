@@ -8,9 +8,6 @@ import com.novatech.cybertech.entities.valueObjects.Money;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Setter
@@ -32,7 +29,7 @@ public class PaymentAttemptEntity extends BaseEntity<Long> {
     @Embedded
     @AttributeOverrides({
             @AttributeOverride(name = "amount", column = @Column(name = "amount", nullable = false)),
-            @AttributeOverride(name = "currencyCode", column = @Column(name = "currency", nullable = false))
+            @AttributeOverride(name = "currencyCode", column = @Column(name = "currency", nullable = false, columnDefinition = "VARCHAR(10)"))
     })
     private Money amount;
 

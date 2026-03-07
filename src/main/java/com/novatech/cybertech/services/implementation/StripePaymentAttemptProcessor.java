@@ -88,6 +88,8 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
     @Override
     public PaymentAttemptResult refund(UUID orderUuid, Money amount, String idempotencyKey, String stripePaymentID) {
 
+        log.info("idempotencykey : {}", idempotencyKey);
+
         RefundCreateParams params = RefundCreateParams.builder()
                 .setPaymentIntent(stripePaymentID) // important
                 .setAmount(amount.getAmount().toBigInteger().longValue()) //TODO: WARNING: this conversion can cause issues, refactor later
@@ -128,7 +130,7 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
 
         return PaymentIntentCreateParams.builder()
                 .setAmount(amountInMinorUnit)
-                .setCurrency(amount.getCurrencyCode().toLowerCase())
+                .setCurrency(amount.getCurrencyCode().getCode().toLowerCase())
                 .putMetadata("order_uuid", orderUuid.toString())
                 .putMetadata("idempotency_key", idempotencyKey)
 

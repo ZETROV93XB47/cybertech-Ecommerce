@@ -3,6 +3,7 @@ package com.novatech.cybertech.listener;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.events.PaymentFailedEvent;
+import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
 import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
@@ -59,5 +60,21 @@ public class OrderPaymentConfirmationEventListener {
         orderRepository.save(order);
 
         log.info("Order {} marked as PAYMENT_FAILED", order.getUuid());
+    }
+
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleRefund(final PaymentRefundedEvent event) {
+        final String orderUuid = event.getStripeEvent().getData().getPaymentIntentPayload().getMetadata().get("order_uuid");
+        final OrderEntity order = orderRepository.findByUuid(UUID.fromString(orderUuid)).orElseThrow(() -> new PaymentNotFoundException("Order not found for uuid : " + orderUuid));
+
+        // Release stock on refund
+        stockService.releaseStock(order.getUuid());
+
+        order.setStatus(OrderStatus.REFUNDED);
+        orderRepository.save(order);
+
+        log.info("Order {} marked as REFUNDED", order.getUuid());
     }
 }

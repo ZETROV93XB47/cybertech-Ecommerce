@@ -15,12 +15,12 @@ import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.events.OrderPaidEvent;
+import com.novatech.cybertech.events.OrderUpdatedEvent;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
-import com.novatech.cybertech.services.core.CartService;
 import com.novatech.cybertech.services.core.OrderManagementService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
@@ -163,9 +163,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         stockService.reserveStock(order.getUuid(), quantities);
 
         // 7) Paiement attempt (idempotent)
-        final String idemKey = (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().isBlank())
-                ? dto.getIdempotencyKey()
-                : generateIdempotencyKey(order.getUuid(), "update");
+        //final String idemKey = generateIdempotencyKey(order.getUuid(), "update");
 
         if (difference.compareTo(BigDecimal.ZERO) == 0) {
             // Cas 3 : Pas de différence de prix
@@ -178,9 +176,12 @@ public class OrderManagementServiceImp implements OrderManagementService {
             return orderMapper.mapFromEntityToResponseDto(saved);
         }
 
-        final PaymentAttemptEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), idemKey);
 
-        return handlePaymentResult(attempt, order, difference);
+        final PaymentAttemptEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), order.getPaymentAttempts().getLast().getIdempotencyKey());
+
+        sendOrderUpdatedEvent(order, order.getUserEntity(), total.getAmount(), attempt.getStatus());
+
+        return orderMapper.mapFromEntityToResponseDto(order);
     }
 
     @Override
@@ -225,7 +226,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
         log.info("Retry payment attempt :: {}", attempt);
 
         // 4. Gérer le résultat (Commit stock si succès, Release si échec)
-        return handlePaymentResult(attempt, order, BigDecimal.ZERO);
+        sendOrderCreationEvent(order, order.getUserEntity(), order.getTotalAmount().getAmount(), attempt.getStatus());
+
+        return orderMapper.mapFromEntityToResponseDto(order);
     }
 
 
@@ -332,10 +335,22 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         final OrderEntity orderEntity = orderRepository.findByUuid(orderUUID).orElseThrow(() -> new OrderNotFoundException("Order with UUID " + orderUUID + " not found"));
 
-        if (isOrderAlreadyShipped(orderEntity)) {//Il faudra un autre endpoint pour annuler la commande une fois renvoyée
+        if (!isOrderAlreadyShipped(orderEntity)) {//Il faudra un autre endpoint pour annuler la commande une fois renvoyée
             final String keycloakId = jwt.getSubject();
             if (isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
                 orderEntity.setStatus(OrderStatus.CANCELED);
+
+
+                orderEntity.getPaymentAttempts().stream()
+                        .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS)
+                        .filter(p -> p.getTransactionType() == TransactionType.PAYMENT)
+                        .forEach(paymentAttemptEntity -> paymentService.refund(orderEntity, paymentAttemptEntity.getPaymentType(), paymentAttemptEntity.getAmount(), paymentAttemptEntity.getIdempotencyKey()));
+
+
+                //paymentService.refund(orderEntity, orderEntity.getPaymentAttempts().getLast().getPaymentType(), orderEntity.getTotalAmount(), generateIdempotencyKey(orderUUID, "cancel"));
+                //TODO: check if it's better to user the calculated amountToRefund or the order totalAmount
+
+
                 return orderMapper.mapFromEntityToResponseDto(orderRepository.save(orderEntity));
             } else {
                 log.info("User tried to cancel and order not linked to his account");
@@ -410,6 +425,26 @@ public class OrderManagementServiceImp implements OrderManagementService {
         eventPublisher.publishEvent(new OrderCreatedEvent(this, orderEventDto));
     }
 
+    private void sendOrderUpdatedEvent(final OrderEntity orderEntity, final UserEntity user, final BigDecimal totalPrice, final PaymentAttemptStatus paymentAttemptStatus) {
+        OrderEventDto orderEventDto = OrderEventDto.builder()
+                .orderUuid(orderEntity.getUuid())
+                .orderStatus(orderEntity.getStatus())
+                .paymentAttemptStatus(paymentAttemptStatus)
+                .totalAmount(totalPrice)
+                .userContactDto(UserContactDto.builder()
+                        .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
+                        .email(user.getEmail())
+                        .name(user.getFirstName())
+                        .phoneNumber(user.getPhoneNumber())
+                        .build())
+                .build();
+
+        eventPublisher.publishEvent(new OrderUpdatedEvent(this, orderEventDto));
+
+    }
+
+
+
 
     private BigDecimal processOrderTotalPrice(final List<OrderItemCreateRequestDto> orderItemCreateRequestDto, final List<ProductEntity> productEntities) {
 
@@ -472,47 +507,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
             // Cas 2 : Le nouveau montant est moins élevé -> Remboursement de la différence
             return paymentService.refund(order, paymentType, Money.of(difference.abs()), idempotencyKey);
         }
-    }
-
-    private OrderResponseDto handlePaymentResult(PaymentAttemptEntity attempt, OrderEntity order, BigDecimal difference) {
-        return switch (attempt.getStatus()) {
-            case SUCCESS -> {
-                stockService.commitStock(order.getUuid());
-
-                // Si c'était un paiement complémentaire ou un remboursement réussi, la commande est considérée comme payée/équilibrée
-                if (order.getStatus() != OrderStatus.PAID) {
-                    order.setStatus(OrderStatus.PAID);
-                }
-                final OrderEntity saved = orderRepository.save(order);
-
-                // Déclenche expédition via listener AFTER_COMMIT
-                eventPublisher.publishEvent(new OrderPaidEvent(saved.getUuid()));
-
-                yield orderMapper.mapFromEntityToResponseDto(saved);
-            }
-
-            case FAILED, CANCELED -> {
-                // On libère explicitement ici pour ne pas dépendre du TTL.
-                stockService.releaseStock(order.getUuid());
-
-                // Si c'est un échec de remboursement, on ne change peut-être pas le statut global de la commande en FAILED,
-                // mais pour un paiement complémentaire oui.
-                if (difference.compareTo(BigDecimal.ZERO) > 0) {
-                    order.setStatus(OrderStatus.PAYMENT_FAILED);
-                }
-                final OrderEntity saved = orderRepository.save(order);
-
-                yield orderMapper.mapFromEntityToResponseDto(saved);
-            }
-
-            case CREATED, PROCESSING -> {
-                if (difference.compareTo(BigDecimal.ZERO) > 0) {
-                    order.setStatus(OrderStatus.AWAITING_PAYMENT);
-                }
-                final OrderEntity saved = orderRepository.save(order);
-                yield orderMapper.mapFromEntityToResponseDto(saved);
-            }
-        };
     }
 
     private String generateIdempotencyKey(UUID orderUuid, String action) {

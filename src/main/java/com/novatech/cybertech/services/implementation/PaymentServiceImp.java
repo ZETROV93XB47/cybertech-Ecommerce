@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -78,13 +79,14 @@ public class PaymentServiceImp implements PaymentService {
         final String stripePaymentID = paymentAttemptEntity.getStripePaymentID();
 
         // Crée attempt de remboursement
+        final String refundIdempotencyKey = generateIdempotencyKey(order.getUuid(), "refund");
         PaymentAttemptEntity attempt = PaymentAttemptEntity.builder()
                 .orderEntity(order)
                 .amount(amount)
                 .paymentType(paymentType)
                 .transactionType(TransactionType.REFUND)
                 .status(PaymentAttemptStatus.CREATED)
-                .idempotencyKey(idempotencyKey)
+                .idempotencyKey(refundIdempotencyKey)
                 .build();
 
         attempt = paymentAttemptRepository.save(attempt);
@@ -95,12 +97,16 @@ public class PaymentServiceImp implements PaymentService {
         PaymentAttemptProcessor processor = paymentStrategyFactory.getServiceFromPaymentType(paymentType);
 
         log.info("Calling payment processor for refund...");
-        PaymentAttemptResult result = processor.refund(order.getUuid(), amount, idempotencyKey, stripePaymentID);
+        PaymentAttemptResult result = processor.refund(order.getUuid(), amount, refundIdempotencyKey, stripePaymentID);
         log.info("Payment processor response: status={}, ref={}", result.status(), result.stripePaymentID());
 
         attempt.setStatus(result.status());
         attempt.setStripePaymentID(result.stripePaymentID());
 
         return paymentAttemptRepository.save(attempt);
+    }
+
+    private String generateIdempotencyKey(UUID orderUuid, String action) {
+        return orderUuid + ":" + action + ":" + System.currentTimeMillis();
     }
 }

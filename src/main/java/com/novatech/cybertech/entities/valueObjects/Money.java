@@ -1,6 +1,8 @@
 package com.novatech.cybertech.entities.valueObjects;
 
 import jakarta.persistence.Embeddable;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import lombok.*;
 
 import java.io.Serializable;
@@ -16,10 +18,12 @@ import java.math.BigDecimal;
 public class Money implements Serializable {
 
     private BigDecimal amount;
-    private String currencyCode; // ex: "EUR", "USD"
+
+    @Enumerated(EnumType.STRING)
+    private CurrencyCode currencyCode; // ex: "EUR", "USD"
 
     public static Money of(final BigDecimal amount) {
-        return new Money(amount, "EUR"); // Devise par défaut
+        return new Money(amount, CurrencyCode.fromCode("EUR")); // Devise par défaut
     }
 
     public Money add(final Money other) {
