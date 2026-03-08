@@ -1,6 +1,6 @@
 package com.novatech.cybertech.repositories;
 
-import com.novatech.cybertech.entities.PaymentAttemptEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import org.springframework.stereotype.Repository;
 
@@ -9,10 +9,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface PaymentAttemptRepository extends CrudBaseRepository<PaymentAttemptEntity, Long> {
-    List<PaymentAttemptEntity> findByStatus(PaymentAttemptStatus status);
-    Optional<PaymentAttemptEntity> findByIdempotencyKey(String idempotencyKey);
+public interface PaymentAttemptRepository extends CrudBaseRepository<PaymentEntity, Long> {
+    List<PaymentEntity> findByStatus(PaymentAttemptStatus status);
+    Optional<PaymentEntity> findByIdempotencyKey(String idempotencyKey);
     boolean existsByOrderEntity_UuidAndStatus(UUID orderUuid, PaymentAttemptStatus status);
-    Optional<PaymentAttemptEntity> findByStripePaymentID(String stripePaymentID);
-    Optional<PaymentAttemptEntity> findByProviderEventId(String providerEventId);
+    Optional<PaymentEntity> findByStripePaymentID(String stripePaymentID);
+    Optional<PaymentEntity> findByProviderEventId(String providerEventId);
 }

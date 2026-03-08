@@ -7,5 +7,12 @@ import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
 
 import java.util.UUID;
 
-public interface ReviewManagementService extends CrudBaseService<UUID, ReviewCreateRequestDto, ReviewUpdateRequestDto, ReviewResponseDto> {
+public interface ReviewManagementService {
+    ReviewResponseDto getByUUID(final UUID uuid);
+
+    ReviewResponseDto create(final ReviewCreateRequestDto reviewCreateRequestDto, final String keycloakId);
+
+    ReviewResponseDto update(final ReviewUpdateRequestDto reviewUpdateRequestDto, final String keycloakId);
+
+    void deleteByUUID(final UUID uuid, final String keycloakId);
 }

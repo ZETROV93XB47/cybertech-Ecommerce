@@ -9,5 +9,9 @@ public interface UserRepository extends CrudBaseRepository<UserEntity, Long> {
 
     Optional<UserEntity> findByKeycloakId(final String keycloakId);
 
+    Optional<UserEntity> findByKeycloakIdAndIsActive(final String keycloakId, final boolean isActive);
+
+    boolean existsByKeycloakIdAndIsActive(final String keycloakId, final boolean isActive);
+
     boolean existsByKeycloakId(String keycloakId);
 }

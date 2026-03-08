@@ -38,6 +38,7 @@ public class OrderManagementController implements OrderManagementControllerApiSp
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PostMapping(value = "/place", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponseDto> placeOrder(@Valid @RequestBody final OrderPlacingRequestDto orderPlacingRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        log.info("request : {}", orderPlacingRequestDto);
         return ResponseEntity.status(HttpStatus.CREATED).body(orderManagementService.placeOrder(orderPlacingRequestDto, jwt));
     }
 

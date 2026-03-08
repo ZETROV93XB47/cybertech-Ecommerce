@@ -4,20 +4,23 @@ import com.novatech.cybertech.api.controllers.spec.ReviewCrudControllerApiSpec;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
-import com.novatech.cybertech.services.implementation.ReviewManagementServiceImp;
-import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import com.novatech.cybertech.services.core.ReviewManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REVIEW_CRUD_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
+
 
 @Slf4j
 @RestController
@@ -26,37 +29,35 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "ReviewController", description = "API for Review management")
 public class ReviewCrudController implements ReviewCrudControllerApiSpec {
 
-    private final ReviewManagementServiceImp reviewService;
+    private final ReviewManagementService reviewService;
+
 
     @Override
     @GetMapping(value = "/get/{reviewUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<ReviewResponseDto> getReviewByUuid(@PathVariable("reviewUuid") UUID reviewUuid) {
+    public ResponseEntity<ReviewResponseDto> getReviewByUuid(final @PathVariable("reviewUuid") UUID reviewUuid) {
         return ResponseEntity.status(HttpStatus.OK).body(reviewService.getByUUID(reviewUuid));
     }
 
     @Override
+    @PreAuthorize("hasRole('USER')")
     @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<ReviewResponseDto> createReview(@Valid @RequestBody ReviewCreateRequestDto reviewCreateRequestDto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(reviewService.create(reviewCreateRequestDto));
+    public ResponseEntity<ReviewResponseDto> createReview(@Valid @RequestBody final ReviewCreateRequestDto reviewCreateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(reviewService.create(reviewCreateRequestDto, jwt.getSubject()));
     }
 
     @Override
+    @PreAuthorize("hasRole('USER')")
     @PatchMapping(value = "/update/{reviewUuid}", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<ReviewResponseDto> updateReview(final ReviewUpdateRequestDto reviewUpdateRequestDto) {
-        return ResponseEntity.status(HttpStatus.OK).body(reviewService.update(reviewUpdateRequestDto));
+    public ResponseEntity<ReviewResponseDto> updateReview(@Valid @RequestBody final ReviewUpdateRequestDto reviewUpdateRequestDto, final @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.OK).body(reviewService.update(reviewUpdateRequestDto, jwt.getSubject()));
     }
 
     @Override
+    @PreAuthorize("hasRole('USER')")
     @DeleteMapping(value = "/delete/{reviewUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deleteReviewByUuid(UUID reviewUuid) {
-        reviewService.deleteByUUID(reviewUuid);
+    public ResponseEntity<Void> deleteReviewByUuid(final UUID reviewUuid, final @AuthenticationPrincipal Jwt jwt) {
+        reviewService.deleteByUUID(reviewUuid, jwt.getSubject());
         return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping(value = "/create/auto", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<ReviewResponseDto> createReview() {
-        log.info("The following class has been called : {}", this.getClass().getName());
-        return ResponseEntity.status(HttpStatus.CREATED).body(reviewService.saveReview());
     }
 
 }

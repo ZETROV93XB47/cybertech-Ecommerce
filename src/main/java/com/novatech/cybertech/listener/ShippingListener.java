@@ -60,7 +60,7 @@ public class ShippingListener {
 
         shippingDispatcher.dispatch(shippingContext);
 
-        order.setStatus(OrderStatus.SHIPPED); // ou READY_TO_SHIP puis SHIPPED
+        order.setStatus(OrderStatus.SHIPPED);
         
         log.info("Order shipped successfully");
         

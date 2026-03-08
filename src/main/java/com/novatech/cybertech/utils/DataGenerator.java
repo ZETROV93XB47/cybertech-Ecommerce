@@ -1,8 +1,6 @@
 package com.novatech.cybertech.utils;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.javafaker.Faker;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
@@ -227,8 +225,8 @@ public class DataGenerator {
                 .build();
     }
 
-    public static PaymentAttemptEntity generatePayment() {
-        return PaymentAttemptEntity.builder()
+    public static PaymentEntity generatePayment() {
+        return PaymentEntity.builder()
                 //.uuid(UUID.randomUUID())
                 .amount(Money.of(new BigDecimal(0)))
                 .createdAt(LocalDateTime.now())

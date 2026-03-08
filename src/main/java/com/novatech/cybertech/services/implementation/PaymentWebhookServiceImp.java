@@ -1,7 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
-import com.novatech.cybertech.entities.PaymentAttemptEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
@@ -84,7 +84,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
 
     private void updatePaymentStatus(String stripePaymentID, PaymentAttemptStatus status, final String stripeEventID) {
 
-        final PaymentAttemptEntity attempt = attemptRepository
+        final PaymentEntity attempt = attemptRepository
                 .findByStripePaymentID(stripePaymentID)
                 .orElseThrow(() -> new PaymentNotFoundException("Payment attempt not found for stripePaymentID: " + stripePaymentID));
 

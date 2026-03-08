@@ -3,18 +3,23 @@ package com.novatech.cybertech.dto.request.review;
 
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReviewCreateRequestDto {
 
     @NotNull(message = "User UUID cannot be null")
     private UUID userUuid;
+
+    @NotNull(message = "Order UUID cannot be null")
+    private UUID orderUuid;
 
     @NotNull(message = "Product UUID cannot be null")
     private UUID productUuid;

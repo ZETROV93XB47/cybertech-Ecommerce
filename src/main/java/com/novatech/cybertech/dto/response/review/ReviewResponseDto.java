@@ -15,14 +15,10 @@ import java.util.UUID;
 @AllArgsConstructor
 public class ReviewResponseDto {
 
-    private UUID reviewUuid;
+    private UUID uuid;
     private UUID userUuid;
-    private String userFirstName;
-    private String userLastName;
     private UUID productUuid;
     private String productName;
     private Integer rating;
     private String comment;
-    private Date createdAt;
-    private Date updatedAt;
 }

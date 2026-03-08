@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.UUID;
 
@@ -47,7 +48,7 @@ public interface ReviewCrudControllerApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during Review creation",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<ReviewResponseDto> createReview(final ReviewCreateRequestDto reviewCreateRequestDto);
+    ResponseEntity<ReviewResponseDto> createReview(final ReviewCreateRequestDto reviewCreateRequestDto, final Jwt jwt);
 
 
     @Operation(summary = "Update an existing Review by UUID",
@@ -65,7 +66,7 @@ public interface ReviewCrudControllerApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during review update",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<ReviewResponseDto> updateReview(final ReviewUpdateRequestDto reviewUpdateRequestDto);
+    ResponseEntity<ReviewResponseDto> updateReview(final ReviewUpdateRequestDto reviewUpdateRequestDto, final Jwt jwt);
 
 
     @Operation(summary = "Delete a Review by UUID",
@@ -84,6 +85,6 @@ public interface ReviewCrudControllerApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during review deletion",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Void> deleteReviewByUuid(final UUID reviewUuid);
+    ResponseEntity<Void> deleteReviewByUuid(final UUID reviewUuid, final Jwt jwt);
 
 }

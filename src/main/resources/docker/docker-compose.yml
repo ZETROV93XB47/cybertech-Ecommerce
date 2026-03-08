@@ -26,6 +26,7 @@ services:
     networks:
       - ecommerce-net
 
+
   moderation-api:
     build:
       context: ../../java/com/novatech/cybertech/api/external/moderation/
@@ -35,6 +36,7 @@ services:
     restart: unless-stopped
     networks:
       - ecommerce-net
+
 
   mailpit:
     image: axllent/mailpit
@@ -70,6 +72,7 @@ services:
       --notify-keyspace-events Ex
     networks:
       - ecommerce-net
+
 
   elasticsearch:
     image: elasticsearch:9.2.5 # Utilisez une version stable et compatible avec votre client Java
@@ -148,6 +151,7 @@ services:
     networks:
       - ecommerce-net
 
+
   gorse:
     image: zhenghaoz/gorse-in-one:latest
     container_name: gorse
@@ -177,6 +181,7 @@ services:
       STRIPE_API_KEY: sk_test_VePHdqKTYQjKNInc7u56JBrQ
     restart: unless-stopped
 
+
 volumes:
   mysql_data:
     driver: local
@@ -191,49 +196,3 @@ volumes:
 networks:
   ecommerce-net:
     driver: bridge
-
-
-
-#  kafka:
-#    image: apache/kafka:3.7.0 # Je te conseille de rester sur la 3.7/3.8, la 4.x est très récente
-#    container_name: kafka
-#    ports:
-#      - "9092:9092"
-#    environment:
-#      - KAFKA_NODE_ID=1
-#      - KAFKA_PROCESS_ROLES=broker,controller
-#      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
-#
-#      # On définit 3 noms de protocoles
-#      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-#
-#      # On écoute sur 3 ports différents
-#      # 9092: Externe (Windows)
-#      # 9094: Interne (Docker)
-#      # 9093: Contrôleur KRaft
-#      - KAFKA_LISTENERS=EXTERNAL://0.0.0.0:9092,INTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
-#
-#      # C'est ici que la magie opère :
-#      # Si on vient de l'extérieur, on s'adresse à localhost:9092
-#      # Si on vient de l'intérieur (Docker), on s'adresse à kafka:9094
-#      - KAFKA_ADVERTISED_LISTENERS=EXTERNAL://localhost:9092,INTERNAL://kafka:9094
-#
-#      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
-#      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
-#      - KAFKA_LOG_DIRS=/var/lib/kafka/data
-#      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
-#    networks:
-#      - ecommerce-net
-#
-#  kafka-ui:
-#    image: provectuslabs/kafka-ui:latest
-#    container_name: kafka-ui
-#    ports:
-#      - "8090:8080"  # <--- On change ici : 8090 sur Windows pointera vers 8080 dans Docker
-#    environment:
-#      - KAFKA_CLUSTERS_0_NAME=local
-#      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9094
-#    networks:
-#      - ecommerce-net
-#    depends_on:
-#      - kafka

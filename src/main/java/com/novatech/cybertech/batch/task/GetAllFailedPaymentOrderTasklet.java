@@ -1,8 +1,7 @@
 package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
-import com.novatech.cybertech.entities.BaseEntity;
-import com.novatech.cybertech.entities.PaymentAttemptEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +36,7 @@ public class GetAllFailedPaymentOrderTasklet extends BaseTasklet {
 
         log.info("Starting GetAllFailedPaymentOrderTasklet");
 
-        final List<PaymentAttemptEntity> byStatus = paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED);
+        final List<PaymentEntity> byStatus = paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED);
 
         final Map<String, List<UUID>> failedPaymentsMapUserEmailByUserEmail = byStatus.stream()
                 .collect(Collectors.groupingBy(pa -> pa.getOrderEntity().getUserEntity().getEmail(), Collectors.mapping(pa -> pa.getOrderEntity().getUuid(), Collectors.toList())));

@@ -69,5 +69,5 @@ public class OrderEntity extends BaseEntity<Long> {
     private List<OrderItemEntity> orderItemEntities;
 
     @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<PaymentAttemptEntity> paymentAttempts = new ArrayList<>();
+    private List<PaymentEntity> paymentAttempts = new ArrayList<>();
 }

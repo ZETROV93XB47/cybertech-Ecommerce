@@ -15,7 +15,6 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-//@EqualsAndHashCode(callSuper = true)
 public class CartItemResponseDto implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;

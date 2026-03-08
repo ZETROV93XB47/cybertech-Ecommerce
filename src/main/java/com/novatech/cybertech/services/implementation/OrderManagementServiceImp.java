@@ -14,7 +14,6 @@ import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
-import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.OrderUpdatedEvent;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.OrderMapper;
@@ -177,7 +176,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         }
 
 
-        final PaymentAttemptEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), order.getPaymentAttempts().getLast().getIdempotencyKey());
+        final PaymentEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), order.getPaymentAttempts().getLast().getIdempotencyKey());
 
         sendOrderUpdatedEvent(order, order.getUserEntity(), total.getAmount(), attempt.getStatus());
 
@@ -211,12 +210,12 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 2. Récupérer le type de paiement de la dernière tentative
         PaymentType paymentType = order.getPaymentAttempts().stream()
                 .max(Comparator.comparing(BaseEntity::getCreatedAt))
-                .map(PaymentAttemptEntity::getPaymentType)
+                .map(PaymentEntity::getPaymentType)
                 .orElseThrow(() -> new NoPreviousPaymentAttemptException("No previous payment attempt found for failed order"));
 
         // 3. Tenter le paiement
         final String idempotencyKey = generateIdempotencyKey(order.getUuid(), "retry");
-        final PaymentAttemptEntity attempt = paymentService.processPayment(
+        final PaymentEntity attempt = paymentService.processPayment(
                 order,
                 paymentType,
                 order.getTotalAmount(),
@@ -304,8 +303,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         // 8) Paiement attempt (idempotent)
         // Reco: ajoute req.getIdempotencyKey() côté DTO.
-        final String idempotencyKey = (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) ? req.getIdempotencyKey() : generateIdempotencyKey(orderUuid, "place");
-        final PaymentAttemptEntity attempt;
+        final String idempotencyKey = generateIdempotencyKey(orderUuid, "place");
+        final PaymentEntity attempt;
 
         //TODO: je pense que ça n'a pas de sens de faire un try catch ici parce qu'une commande nouvellement passée n'a pas lieu d'aboutir sur un paiement déjà effectué
         attempt = paymentService.processPayment(
@@ -497,7 +496,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .collect(Collectors.toUnmodifiableList());
     }
 
-    private PaymentAttemptEntity handlePaymentUpdate(OrderEntity order, BigDecimal difference, PaymentType paymentType, String idempotencyKey) {
+    private PaymentEntity handlePaymentUpdate(OrderEntity order, BigDecimal difference, PaymentType paymentType, String idempotencyKey) {
         if (difference.compareTo(BigDecimal.ZERO) > 0) {
             // Cas 1 : Le nouveau montant est plus élevé -> Paiement du complément
             order.setStatus(OrderStatus.AWAITING_PAYMENT);

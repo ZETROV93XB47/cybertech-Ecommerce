@@ -16,11 +16,11 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(
-        name = "paymentAttemptTable",
-        uniqueConstraints = @UniqueConstraint(name = "uk_payment_attempt_idem", columnNames = "idempotencyKey")
+        name = "paymentTable",
+        uniqueConstraints = @UniqueConstraint(name = "uk_payment_idempotency", columnNames = "idempotencyKey")
 )
 @ToString(callSuper = true, exclude = {"orderEntity"})
-public class PaymentAttemptEntity extends BaseEntity<Long> {
+public class PaymentEntity extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "orderId", nullable = false)

@@ -2,7 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.OrderEntity;
-import com.novatech.cybertech.entities.PaymentAttemptEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.TransactionType;
@@ -30,10 +30,10 @@ public class PaymentServiceImp implements PaymentService {
     private final PaymentAttemptRepository paymentAttemptRepository;
 
     @Transactional
-    public PaymentAttemptEntity processPayment(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
+    public PaymentEntity processPayment(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
 
         // Idempotence (retry même requête)
-        final Optional<PaymentAttemptEntity> existing = paymentAttemptRepository.findByIdempotencyKey(idempotencyKey);
+        final Optional<PaymentEntity> existing = paymentAttemptRepository.findByIdempotencyKey(idempotencyKey);
 
         log.info("existing :: {}", existing);
 
@@ -45,7 +45,7 @@ public class PaymentServiceImp implements PaymentService {
         }
 
         // Crée attempt
-        PaymentAttemptEntity attempt = PaymentAttemptEntity.builder()
+        PaymentEntity attempt = PaymentEntity.builder()
                 .orderEntity(order)
                 .amount(amount)
                 .paymentType(paymentType)
@@ -72,15 +72,15 @@ public class PaymentServiceImp implements PaymentService {
     }
 
     @Transactional
-    public PaymentAttemptEntity refund(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
+    public PaymentEntity refund(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
         log.info("In refund method for order: {}, amount: {}", order.getUuid(), amount);
 
-        final PaymentAttemptEntity paymentAttemptEntity = paymentAttemptRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> new PaymentNotFoundException("No payment attempt found for idempotency key: " + idempotencyKey));
-        final String stripePaymentID = paymentAttemptEntity.getStripePaymentID();
+        final PaymentEntity paymentEntity = paymentAttemptRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> new PaymentNotFoundException("No payment attempt found for idempotency key: " + idempotencyKey));
+        final String stripePaymentID = paymentEntity.getStripePaymentID();
 
         // Crée attempt de remboursement
         final String refundIdempotencyKey = generateIdempotencyKey(order.getUuid(), "refund");
-        PaymentAttemptEntity attempt = PaymentAttemptEntity.builder()
+        PaymentEntity attempt = PaymentEntity.builder()
                 .orderEntity(order)
                 .amount(amount)
                 .paymentType(paymentType)

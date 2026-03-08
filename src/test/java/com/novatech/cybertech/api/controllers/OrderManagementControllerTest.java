@@ -1,7 +1,6 @@
 package com.novatech.cybertech.api.controllers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.novatech.cybertech.api.controllers.implementation.OrderManagementController;
 import com.novatech.cybertech.config.SecurityConfig;
 import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
@@ -67,7 +66,7 @@ class OrderManagementControllerTest {
                 .shippingCity("Random City")
                 .shippingZipCode("12345")
                 .shippingCountry("Randomland")
-                .idempotencyKey(UUID.randomUUID().toString())
+                //.idempotencyKey(UUID.randomUUID().toString())
                 .shippingType(ShippingType.EXPRESS)
                 .shippingProvider(ShippingProvider.FEDEX)
                 .build();
