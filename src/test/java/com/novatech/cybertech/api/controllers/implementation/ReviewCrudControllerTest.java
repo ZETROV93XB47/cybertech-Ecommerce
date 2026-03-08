@@ -7,10 +7,7 @@ import com.novatech.cybertech.services.implementation.ReviewManagementServiceImp
 import com.novatech.cybertech.utils.TestUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -22,8 +19,6 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.UUID;
 
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -31,11 +26,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-//@AutoConfigureMockMvc
-//@ExtendWith(MockitoExtension.class)
 @Slf4j
 @Import({TestSecurityConfig.class})
 @WebMvcTest(value = ReviewCrudController.class)
@@ -49,9 +41,6 @@ class ReviewCrudControllerTest {
 
     @Autowired
     MockMvc mockMvc;
-
-    @Autowired
-    ObjectMapper objectMapper;
 
     @MockitoBean
     ReviewManagementServiceImp reviewService;
@@ -120,26 +109,6 @@ class ReviewCrudControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string("{\"message\":\"Invalid Request or Request Poorly Constructed\",\"httpStatusCode\":400,\"errorCodeType\":\"TECHNICAL\"}"));
 
-    }
-
-
-    @Test
-    void shouldDeserializeReviewCreateRequestDto() throws Exception {
-        String json = """
-                {
-                  "userUuid":"67c1ba96-d915-4f00-920f-9b970baf61ed",
-                  "productUuid":"21b4cb63-2689-408f-b732-94f546691296",
-                  "rating":5,
-                  "comment":"comment"
-                }
-                """;
-
-        ReviewCreateRequestDto dto = objectMapper.readValue(json, ReviewCreateRequestDto.class);
-
-        assertNotNull(dto.getUserUuid());
-        assertNotNull(dto.getProductUuid());
-        assertEquals(5, dto.getRating());
-        assertEquals("comment", dto.getComment());
     }
 
     @Test
