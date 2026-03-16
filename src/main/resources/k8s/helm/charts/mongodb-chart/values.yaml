@@ -1,0 +1,31 @@
+image:
+  repository: mongo
+  tag: "6.0.14"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 27017
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 5Gi
+
+resources: {}
+
+auth:
+  enabled: false
+  rootUser: "root"
+  rootPassword: "password"
+  database: "admin"
+
+extraEnv: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+

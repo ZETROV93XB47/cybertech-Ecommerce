@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  labels:
+    app: mongodb
+spec:
+  serviceName: "mongodb"
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+              name: mongodb
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-auth
+                  key: rootUser
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-auth
+                  key: rootPassword
+            - name: MONGO_INITDB_DATABASE
+              value: "{{ .Values.auth.database }}"
+          command: ["mongod"]
+          args: ["--bind_ip_all"]
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+      nodeSelector: {{ toYaml .Values.nodeSelector | default "{}" | nindent 6 }}
+      tolerations: {{ toYaml .Values.tolerations | default "[]" | nindent 6 }}
+      affinity: {{ toYaml .Values.affinity | default "{}" | nindent 6 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: mongodb
+      spec:
+        accessModes:
+          - {{ .Values.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+        storageClassName: "{{ .Values.persistence.storageClass }}"
+

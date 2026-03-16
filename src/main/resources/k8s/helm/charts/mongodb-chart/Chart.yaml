@@ -1,0 +1,7 @@
+apiVersion: v2
+name: mongodb
+description: MongoDB chart using the official image
+type: application
+version: 0.1.0
+appVersion: "6.0.14"
+
