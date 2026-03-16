@@ -4,9 +4,7 @@ import com.novatech.cybertech.api.controllers.spec.ProductManagementAdminApiSpec
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
-import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.services.implementation.ProductManagementServiceImp;
-import com.novatech.cybertech.utils.DataGenerator;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -60,18 +58,13 @@ public class ProductManagementAdminController implements ProductManagementAdminA
         return ResponseEntity.noContent().build();
     }
 
-    @Override
-    @PostMapping(value = "/generate", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<ProductEntity> generateProduct() {
-        return ResponseEntity.status(HttpStatus.CREATED).body(productService.temporarySaveProductEntity(DataGenerator.createProductCreateRequestDto()));
-    }
 
     @Override
     @PostMapping(value = "/create-with-image", consumes = MULTIPART_FORM_DATA_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductResponseDto> createProductWithImage(
-            @Valid @RequestPart("product") ProductCreateRequestDto productCreateRequestDto,
-            @RequestPart("image") MultipartFile image) {
+            @Valid @RequestPart("product") final ProductCreateRequestDto productCreateRequestDto,
+            @RequestPart("image") final MultipartFile image) {
 
-    return ResponseEntity.status(HttpStatus.CREATED).body(productService.createWithImage(productCreateRequestDto, image));
+        return ResponseEntity.status(HttpStatus.CREATED).body(productService.createWithImage(productCreateRequestDto, image));
     }
 }

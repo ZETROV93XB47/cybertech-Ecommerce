@@ -23,6 +23,10 @@ public enum ErrorCode {
     ORDER_ALREADY_SHIPPED(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     PRODUCT_ALREADY_IN_WISHLIST(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
+    REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
+    USER_NOT_ACTIVE(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    USER_NOT_AUTHOR_OF_REVIEW(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     WISHLIST_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;

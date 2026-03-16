@@ -26,6 +26,7 @@ public class UserEventServiceImpl implements UserEventService {
     private final UserEventRepository repository;
     private final UserEventMapper userEventMapper;
 
+
     @Override
     public UserEvent processEvent(UserEventDto eventDto) {
         log.info("Processing event for user: {}", eventDto.getUserId());

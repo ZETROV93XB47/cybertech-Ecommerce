@@ -93,13 +93,6 @@ public interface ProductManagementAdminApiSpec {
             })
     ResponseEntity<Void> deleteProductByUuid(final UUID productUuid);
 
-    @Operation(summary = "Generate a random Product (Admin/Dev)",
-            description = "Generates a random product for testing purposes.",
-            security = @SecurityRequirement(name = "bearerAuth"),
-            responses = {
-                    @ApiResponse(responseCode = "201", description = "Product generated successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductEntity.class)))
-            })
-    ResponseEntity<ProductEntity> generateProduct();
 
     @Operation(summary = "Create a new Product with an image (Admin)",
             description = "Creates a new product and uploads an associated image. Requires multipart/form-data.",

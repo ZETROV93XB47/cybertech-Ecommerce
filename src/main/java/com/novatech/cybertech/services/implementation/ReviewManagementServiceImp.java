@@ -52,7 +52,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
     @Transactional
     public ReviewResponseDto create(final ReviewCreateRequestDto reviewCreateRequestDto, final String keycloakId) {
 
-        final UserEntity user = userRepository.findByKeycloakIdAndIsActive(keycloakId, true).orElseThrow(() -> new UserDoesntExistsException("User that's trying to post this comment doesn't exists"));
+        final UserEntity user = userRepository.findByKeycloakIdAndIsActive(keycloakId, true).orElseThrow(() -> new UserNotFoundException("User that's trying to post this comment doesn't exists or is not active"));
 
         final OrderEntity order = orderRepository.findByUuid(reviewCreateRequestDto.getOrderUuid()).orElseThrow(() -> new OrderNotFoundException("Order related to this review doesn't exists, order UUID : " + reviewCreateRequestDto.getOrderUuid()));
 
@@ -65,7 +65,8 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         //I ned to recompile the moderation api module cause made some changes in it
 
         ModerationResponseDto moderationResponseDto = moderationService.checkIfIsHateful(reviewEntity.getComment());
-        if (moderationResponseDto.getScore() > HATEFUL_COMMENT_SCORE_THRESHOLD) throw new CommentPostNotAllowedException("Your comment looks similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.");
+        if (moderationResponseDto.getScore() > HATEFUL_COMMENT_SCORE_THRESHOLD)
+            throw new CommentPostNotAllowedException("Your comment looks similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.");
 
         reviewEntity.setIsHateful(false);
         reviewEntity.setUserEntity(user);
@@ -81,15 +82,13 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         //TODO: Optimisation potentielle ici, chercher directement en base les users actifs
         final boolean userExists = userRepository.existsByKeycloakIdAndIsActive(keycloakId, true);
-        if (!userExists) throw new UserDoesntExistsException("User that's trying to post this comment doesn't exists");
-
+        if (!userExists) throw new UserNotFoundException("User that's trying to post this comment doesn't exists or is not active");
 
         final ReviewEntity review = reviewRepository.findByUuid(reviewCreateRequestDto.getReviewUuid()).orElseThrow(() -> new ReviewNotFoundException("No review with the UUID : " + reviewCreateRequestDto.getReviewUuid() + " found"));
 
         boolean isCurrentUserAuthorOfTheRequestReview = review.getUserEntity().getKeycloakId().equals(keycloakId);
 
-        if (!isCurrentUserAuthorOfTheRequestReview)
-            throw new ReviewNotFoundException("Current review Doesn't belongs to the connected user");
+        if (!isCurrentUserAuthorOfTheRequestReview) throw new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user");
 
         return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(reviewMapper.mapFromUpdateRequestToEntity(reviewCreateRequestDto)));
     }
@@ -99,14 +98,13 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
     @Transactional
     public void deleteByUUID(final UUID uuid, final String keycloakId) {
         final boolean userExists = userRepository.existsByKeycloakIdAndIsActive(keycloakId, true);
-        if (!userExists) throw new UserDoesntExistsException("User that's trying to post this comment doesn't exists");
+        if (!userExists) throw new UserNotFoundException("User that's trying to delete this comment doesn't exists or is not active");
 
         final ReviewEntity review = reviewRepository.findByUuid(uuid).orElseThrow(() -> new ReviewNotFoundException("No review with the UUID : " + uuid + " found"));
 
         boolean isCurrentUserAuthorOfTheRequestReview = review.getUserEntity().getKeycloakId().equals(keycloakId);
 
-        if (!isCurrentUserAuthorOfTheRequestReview)
-            throw new ReviewNotFoundException("Current review Doesn't belongs to the connected user");
+        if (!isCurrentUserAuthorOfTheRequestReview) throw new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user");
 
         reviewRepository.deleteByUuid(uuid);
     }

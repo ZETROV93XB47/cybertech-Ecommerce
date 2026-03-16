@@ -1,32 +1,37 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
+import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
+import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
+import com.novatech.cybertech.exceptions.ReviewNotFoundException;
+import com.novatech.cybertech.exceptions.UserNotAuthorOfReviewException;
+import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.services.implementation.ReviewManagementServiceImp;
-import com.novatech.cybertech.utils.TestUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import tools.jackson.databind.ObjectMapper;
 
 import java.util.UUID;
 
+import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
+import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNICAL;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.json.JsonCompareMode.STRICT;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Slf4j
 @Import({TestSecurityConfig.class})
@@ -59,7 +64,7 @@ class ReviewCrudControllerTest {
                         .contentType(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(jsonPath("$.uuid").value(reviewUUID.toString()));
+                .andExpect(content().json(asJsonString(reviewResponseDto), STRICT));
     }
 
     @Test
@@ -76,7 +81,6 @@ class ReviewCrudControllerTest {
                 .comment("comment")
                 .build();
 
-
         ReviewResponseDto reviewResponseDto = ReviewResponseDto.builder()
                 .uuid(reviewUUID)
                 .build();
@@ -89,34 +93,234 @@ class ReviewCrudControllerTest {
                         .with(csrf())
                         .accept(APPLICATION_JSON)
                         .contentType(APPLICATION_JSON)
-                        .content(TestUtils.asJsonString(reviewCreateRequestDto)))
+                        .content(asJsonString(reviewCreateRequestDto)))
                 .andExpect(status().isCreated())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(TestUtils.asJsonString(reviewResponseDto), true));
+                .andExpect(content().json(asJsonString(reviewResponseDto), STRICT));
     }
 
 
     @Test
     void shouldFailCreatingReviewCauseDtoBadRequest() throws Exception {
-        ReviewCreateRequestDto reviewCreateRequestDto = new ReviewCreateRequestDto(); //.builder().build();
+        ReviewCreateRequestDto reviewCreateRequestDto = new ReviewCreateRequestDto();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Invalid Request or Request Poorly Constructed")
+                .httpStatusCode(400)
+                .errorCodeType(TECHNICAL)
+                .build();
 
         mockMvc.perform(post(CREATE_REVIEW_ENDPOINT)
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .with(csrf())
                         .accept(APPLICATION_JSON)
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
                         .content(asJsonString(reviewCreateRequestDto)))
                 .andExpect(status().isBadRequest())
-                .andExpect(content().string("{\"message\":\"Invalid Request or Request Poorly Constructed\",\"httpStatusCode\":400,\"errorCodeType\":\"TECHNICAL\"}"));
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
 
     }
 
     @Test
-    void updateReview() {
+    void shouldUpdateReviewSuccessfully() throws Exception {
+        UUID reviewUUID = UUID.randomUUID();
+
+        ReviewUpdateRequestDto reviewUpdateRequestDto = ReviewUpdateRequestDto.builder()
+                .reviewUuid(reviewUUID)
+                .rating(5)
+                .comment("comment")
+                .build();
+
+        ReviewResponseDto reviewResponseDto = ReviewResponseDto.builder()
+                .uuid(reviewUUID)
+                .build();
+
+        when(reviewService.update(any(ReviewUpdateRequestDto.class), any(String.class))).thenReturn(reviewResponseDto);
+
+        mockMvc.perform(patch(UPDATE_REVIEW_ENDPOINT, reviewUUID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(reviewUpdateRequestDto)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(reviewResponseDto), STRICT));
     }
 
     @Test
-    void deleteReviewByUuid() {
+    void shouldFailUpdatingReviewCauseDtoBadRequest() throws Exception {
+        ReviewUpdateRequestDto reviewUpdateRequestDto = new ReviewUpdateRequestDto();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Invalid Request or Request Poorly Constructed")
+                .httpStatusCode(400)
+                .errorCodeType(TECHNICAL)
+                .build();
+
+        mockMvc.perform(patch(UPDATE_REVIEW_ENDPOINT, UUID.randomUUID())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(reviewUpdateRequestDto)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
     }
 
+    @Test
+    void shouldFailUpdatingReviewCauseUserUpdatingReviewNotFound() throws Exception {
+        UUID reviewUUID = UUID.randomUUID();
+        String keycloakId = "keycloakId";
+        ReviewUpdateRequestDto reviewUpdateRequestDto = ReviewUpdateRequestDto.builder()
+                .reviewUuid(reviewUUID)
+                .comment("comment")
+                .rating(5)
+                .build();
+
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("User that's trying to post this comment doesn't exists or is not active")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .build();
+
+        when(reviewService.update(reviewUpdateRequestDto, keycloakId)).thenThrow(new UserNotFoundException("User that's trying to post this comment doesn't exists or is not active"));
+
+        mockMvc.perform(patch(UPDATE_REVIEW_ENDPOINT, reviewUUID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+                                .jwt(jwt -> jwt.subject("keycloakId")))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(reviewUpdateRequestDto)))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+
+    }
+
+    @Test
+    void shouldFailUpdatingReviewCauseUserNotAuthorOfReview() throws Exception {
+        UUID reviewUUID = UUID.randomUUID();
+        String keycloakId = "keycloakId";
+        ReviewUpdateRequestDto reviewUpdateRequestDto = ReviewUpdateRequestDto.builder()
+                .reviewUuid(reviewUUID)
+                .comment("comment")
+                .rating(5)
+                .build();
+
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Current review Doesn't belongs to the connected user")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .build();
+
+        when(reviewService.update(reviewUpdateRequestDto, keycloakId)).thenThrow(new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user"));
+
+        mockMvc.perform(patch(UPDATE_REVIEW_ENDPOINT, reviewUUID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+                                .jwt(jwt -> jwt.subject("keycloakId")))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(reviewUpdateRequestDto)))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+
+    @Test
+    void shouldSucceedDeletingReviewByUuid() throws Exception {
+        UUID reviewUUID = UUID.randomUUID();
+        String keycloakId = "keycloakId";
+
+        doNothing().when(reviewService).deleteByUUID(reviewUUID, keycloakId);
+
+        mockMvc.perform(delete(DELETE_REVIEW_BY_UUID_ENDPOINT, reviewUUID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+                                .jwt(jwt -> jwt.subject("keycloakId")))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void shouldFailDeletingReviewByUuidCauseUserNotAuthorOfReview() throws Exception {
+        UUID reviewUUID = UUID.randomUUID();
+        String keycloakId = "keycloakId";
+
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Current review Doesn't belongs to the connected user")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .build();
+
+        doThrow(new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user"))
+                .when(reviewService)
+                .deleteByUUID(reviewUUID, keycloakId);
+
+        mockMvc.perform(delete(DELETE_REVIEW_BY_UUID_ENDPOINT, reviewUUID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+                                .jwt(jwt -> jwt.subject("keycloakId")))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+
+        verify(reviewService).deleteByUUID(reviewUUID, keycloakId);
+    }
+
+    @Test
+    void shouldFailDeletingReviewByUuidCauseUserNotFound() throws Exception {
+        UUID reviewUUID = UUID.randomUUID();
+        String keycloakId = "keycloakId";
+
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("User that's trying to delete this comment doesn't exists or is not active")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .build();
+
+        doThrow(new UserNotFoundException("User that's trying to delete this comment doesn't exists or is not active"))
+                .when(reviewService)
+                .deleteByUUID(reviewUUID, keycloakId);
+
+        mockMvc.perform(delete(DELETE_REVIEW_BY_UUID_ENDPOINT, reviewUUID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+                                .jwt(jwt -> jwt.subject("keycloakId")))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+
+    }
+
+    @Test
+    void shouldFailDeletingReviewByUuidCauseReviewNotFoundException() throws Exception {
+        UUID reviewUUID = UUID.randomUUID();
+        String keycloakId = "keycloakId";
+
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("No review with the UUID : " + reviewUUID + " found")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .build();
+
+        doThrow(new ReviewNotFoundException("No review with the UUID : " + reviewUUID + " found"))
+                .when(reviewService)
+                .deleteByUUID(reviewUUID, keycloakId);
+
+        mockMvc.perform(delete(DELETE_REVIEW_BY_UUID_ENDPOINT, reviewUUID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+                                .jwt(jwt -> jwt.subject("keycloakId")))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
 }

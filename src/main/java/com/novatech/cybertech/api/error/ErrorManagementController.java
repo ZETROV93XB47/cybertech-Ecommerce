@@ -126,4 +126,22 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto("An unexpected error occurred: " + exception.getMessage(), APPLICATION_ERROR.getResponseStatus().value(), APPLICATION_ERROR.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, APPLICATION_ERROR.getResponseStatus());
     }
+
+    @ExceptionHandler(ReviewNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleReviewNotFoundException(ReviewNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), REVIEW_NOT_FOUND.getResponseStatus().value(), REVIEW_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, REVIEW_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleUserNotFoundException(UserNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), USER_NOT_FOUND.getResponseStatus().value(), USER_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, USER_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(UserNotAuthorOfReviewException.class)
+    public ResponseEntity<ErrorResponseDto> handleUserNotAuthorOfReviewException(UserNotAuthorOfReviewException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), USER_NOT_AUTHOR_OF_REVIEW.getResponseStatus().value(), USER_NOT_AUTHOR_OF_REVIEW.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, USER_NOT_AUTHOR_OF_REVIEW.getResponseStatus());
+    }
 }

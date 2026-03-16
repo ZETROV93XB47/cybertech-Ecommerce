@@ -11,11 +11,13 @@ import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ProductSearchRepository;
+import com.novatech.cybertech.services.core.AttributesFactory;
 import com.novatech.cybertech.services.core.ProductManagementService;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import com.novatech.cybertech.services.core.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -32,12 +34,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ProductManagementServiceImp implements ProductManagementService {
 
+    public static final String PRODUCTS_S3_BUCKET_NAME = "products";
+
+    private final S3Service s3Service;
     private final ProductMapper productMapper;
+    private final AttributesFactory attributesFactory;
     private final ProductRepository productRepository;
     private final ProductSearchService productSearchService;
     private final ProductSearchRepository productSearchRepository;
     private final ProductValidationService productValidationService;
-    private final S3Service s3Service;
 
 
     @Override
@@ -62,23 +67,23 @@ public class ProductManagementServiceImp implements ProductManagementService {
     @Transactional
     public ProductResponseDto create(ProductCreateRequestDto productCreateRequestDto) {
         productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
+
         final ProductEntity savedProductEntity = productRepository.save(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
 
-        productSearchRepository.save(productMapper.mapFromProductEntityToProductDocument(savedProductEntity));
+        ProductDocument productDocument = productMapper.mapFromProductEntityToProductDocument(savedProductEntity);
+        productDocument.setAttributes(attributesFactory.create(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes()));
+        productSearchRepository.save(productDocument);
 
         return productMapper.mapFromEntityToResponseDto(savedProductEntity);
     }
 
     @Override
     @Transactional
-    public ProductResponseDto createWithImage(ProductCreateRequestDto productCreateRequestDto, MultipartFile image) {
+    public ProductResponseDto createWithImage(final ProductCreateRequestDto productCreateRequestDto, final MultipartFile image) {
         if (image != null && !image.isEmpty()) {
-            String imageUrl = s3Service.uploadFile(image, "products");
-            productCreateRequestDto.setPhoto(imageUrl);
+            productCreateRequestDto.setPhoto(s3Service.uploadFile(image, PRODUCTS_S3_BUCKET_NAME));
         }
 
-
-        // On délègue à la méthode create existante qui gère déjà la validation et la sauvegarde
         return create(productCreateRequestDto);
     }
 
@@ -101,21 +106,11 @@ public class ProductManagementServiceImp implements ProductManagementService {
         productRepository.deleteAllByUuidIn(uuids);
     }
 
-    public List<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto) {
-        final List<ProductDocument> productDocuments = productSearchService.search(productSearchRequestDto);
-        return productDocuments.stream().map(productMapper::mapFromProductDocumentToProductResponseDto).toList();
+    public Page<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto) {
+        final Page<ProductDocument> productDocuments = productSearchService.search(productSearchRequestDto);
+        return productDocuments.map(productMapper::mapFromProductDocumentToProductResponseDto);
     }
 
-
-    @Transactional
-    public ProductEntity temporarySaveProductEntity(final ProductCreateRequestDto productCreateRequestDto) {
-        productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
-        final ProductEntity savedProductEntity = productRepository.save(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
-        productSearchRepository.save(productMapper.mapFromProductEntityToProductDocument(savedProductEntity));
-
-        //return productMapper.mapFromEntityToResponseDto(savedProductEntity);
-        return savedProductEntity;
-    }
 
     @Transactional
     public List<ProductResponseDto> getBestSellers(final Integer numberOfProducts) {

@@ -38,4 +38,10 @@ public class ProductSearchRequestDto {
      */
     //private Map<String, List<String>> attributes;
     private Map<String, List<String>> attributes;
+
+    // Pour les ranges numériques (ex: RAM min/max)
+    private Map<String, RangeFilter> numericRanges;
+
+    private int page;
+    private int size;
 }

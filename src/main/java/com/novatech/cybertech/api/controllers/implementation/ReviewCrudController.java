@@ -55,7 +55,7 @@ public class ReviewCrudController implements ReviewCrudControllerApiSpec {
     @Override
     @PreAuthorize("hasRole('USER')")
     @DeleteMapping(value = "/delete/{reviewUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deleteReviewByUuid(final UUID reviewUuid, final @AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<Void> deleteReviewByUuid(final @PathVariable("reviewUuid") UUID reviewUuid, @AuthenticationPrincipal final Jwt jwt) {
         reviewService.deleteByUUID(reviewUuid, jwt.getSubject());
         return ResponseEntity.noContent().build();
     }
