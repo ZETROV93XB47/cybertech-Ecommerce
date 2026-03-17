@@ -2,6 +2,7 @@ package com.novatech.cybertech.config;
 
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -27,6 +28,9 @@ public class RedisConfig {
 
     private static final String CART_CACHE = "cart";
     private static final String USER_EXISTENCE_CACHE = "userExistence";
+
+    @Value("${app.cache.default.ttl.expiration.time.seconds}")
+    private static int BASE_TTL_SECONDS;
 
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory, @Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper) {
@@ -63,7 +67,7 @@ public class RedisConfig {
         final JacksonJsonRedisSerializer<CartResponseDto> cartSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(CartResponseDto.class);
 
         final RedisCacheConfiguration cartConfig = defaultConfig
-                .entryTtl(Duration.ofHours(2))
+                .entryTtl(Duration.ofSeconds(BASE_TTL_SECONDS))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(cartSerializer));
 
         final RedisCacheConfiguration userExistConfig = defaultConfig
@@ -85,7 +89,7 @@ public class RedisConfig {
     public RedisCacheConfiguration cacheConfiguration(@Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper) {
         return RedisCacheConfiguration
                 .defaultCacheConfig()
-                .entryTtl(Duration.ofHours(1))
+                .entryTtl(Duration.ofSeconds(BASE_TTL_SECONDS))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJacksonJsonRedisSerializer(redisObjectMapper)));
     }
 }

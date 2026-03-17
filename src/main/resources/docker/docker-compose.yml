@@ -1,14 +1,14 @@
 services:
 
+  # =========================================================
+  # DATABASES
+  # =========================================================
+
   mysql:
     image: mysql:9.3.0
     container_name: mysqlEcommerce
     restart: unless-stopped
     environment:
-      # Vos variables existantes pour la première BDD (cybertechDB)
-      # AJOUT IMPORTANT: Base de données pour Keycloak
-      # L'image MySQL vous permet d'ajouter plusieurs DBs séparées par des virgules.
-      # L'utilisateur 'rookie' sera automatiquement autorisé à y accéder.
       MYSQL_DATABASE: cybertechDB
       MYSQL_USER: rookie
       MYSQL_PASSWORD: pwd
@@ -18,51 +18,31 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - $PWD/../sql/databaseSchemaInitFile.sql:/docker-entrypoint-initdb.d/1_databaseSchemaInitFile.sql
-    healthcheck: # Ajout d'un healthcheck pour une meilleure gestion des dépendances
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 10s
       retries: 5
       start_period: 30s
     networks:
       - ecommerce-net
 
-
-  moderation-api:
-    build:
-      context: ../../java/com/novatech/cybertech/api/external/moderation/
-    container_name: moderation-api
-    ports:
-      - "5000:5000"
+  mongodb:
+    image: mongo:8.2.5
+    container_name: mongodbEcommerce
     restart: unless-stopped
-    networks:
-      - ecommerce-net
-
-
-  mailpit:
-    image: axllent/mailpit
-    container_name: mailpit
-    ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Interface web
     environment:
-      - MP_DATA_FILE=/data/mailpit.db  # Définit le chemin de la base de données
+      MONGO_INITDB_DATABASE: userEventsDB
+    ports:
+      - "27017:27017"
     volumes:
-      - ./mailpit-data:/data           # Crée un dossier local pour persister les emails
+      - mongodb_data:/data/db
     networks:
       - ecommerce-net
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "1025"]
-      interval: 5s
-      timeout: 2s
-      retries: 20
-
 
   redis:
     image: redis:latest
     container_name: redisEcommerce
-    ports:
-      - "6379:6379"
-    # On active les notifications d'expiration (Ex) directement ici sans dépendre d'un fichier externe
+    restart: unless-stopped
     command: >
       redis-server
       --save ""
@@ -70,108 +50,155 @@ services:
       --maxmemory 512mb
       --maxmemory-policy allkeys-lru
       --notify-keyspace-events Ex
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     networks:
       - ecommerce-net
 
+  # =========================================================
+  # SEARCH / RECOMMENDATION
+  # =========================================================
 
   elasticsearch:
-    image: elasticsearch:9.2.5 # Utilisez une version stable et compatible avec votre client Java
+    image: elasticsearch:9.2.5
     container_name: elasticsearch
+    restart: unless-stopped
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false # Désactive la sécurité pour le dev local (plus simple)
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
-      - "9200:9200" # Le port HTTP de l'API
+      - "9200:9200"
     volumes:
-      - esdata:/usr/share/elasticsearch/data # Persistance des données Elastic
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
     networks:
       - ecommerce-net
-    restart: unless-stopped
-
-
-  # ----------------------------------------------------
-  # 5. Serveur d'Authentification : Keycloak
-  # ----------------------------------------------------
-  keycloak:
-    image: quay.io/keycloak/keycloak:24.0.3 # Utiliser une version récente et stable
-    container_name: keycloak
-    environment:
-      KC_DB: mysql # Le type de base de données
-      KC_DB_URL: jdbc:mysql://mysql:3306/keycloakDB?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-      KC_DB_USERNAME: rookie
-      KC_DB_PASSWORD: pwd
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_HEALTH_ENABLED: true
-      KC_HOSTNAME: localhost:8080
-      KC_PROXY_HEADERS: xforwarded
-      KC_PROXY: edge
-
-    ports:
-      - "8080:8080"
-    command: start-dev # Mode de démarrage développement
-    networks:
-      - ecommerce-net
-    depends_on:
-      - mysql
-#        condition: service_healthy # Attend que MySQL soit prêt
-    restart: unless-stopped
-
-  # ----------------------------------------------------
-  # 6. Object Storage : LocalStack (Simulation AWS S3)
-  # ----------------------------------------------------
-  localstack:
-    image: localstack/localstack:4.13.1 # Utilise une version récente et stable
-    container_name: localstack
-    ports:
-      - "4566:4566" # Port par défaut pour les services LocalStack (dont S3)
-    environment:
-      - SERVICES=s3 # On active uniquement le service S3
-      - AWS_DEFAULT_REGION=us-east-1 # Région par défaut
-      - AWS_ACCESS_KEY_ID=test # Clés factices pour le développement
-      - AWS_SECRET_ACCESS_KEY=test
-    volumes:
-      - localstack_data:/var/lib/localstack
-    networks:
-      - ecommerce-net
-    restart: unless-stopped
-
-
-  mongodb:
-    image: mongo:8.2.5
-    container_name: mongodbEcommerce
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: userEventsDB
-    volumes:
-      - mongodb_data:/data/db
-    networks:
-      - ecommerce-net
-
 
   gorse:
     image: zhenghaoz/gorse-in-one:latest
     container_name: gorse
     restart: unless-stopped
-    ports:
-      - "8088:8088"   # API server
-      - "8089:8089"   # Dashboard
     environment:
       GORSE_CACHE_STORE: redis://redisEcommerce:6379
       GORSE_DATA_STORE: mysql://rookie:pwd@tcp(mysql:3306)/cybertechDB
+    ports:
+      - "8088:8088"
+      - "8089:8089"
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - ecommerce-net
 
+  # =========================================================
+  # AUTH / SECRETS / CLOUD MOCK
+  # =========================================================
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.3
+    container_name: keycloak
+    restart: unless-stopped
+    environment:
+      KC_DB: mysql
+      KC_DB_URL: jdbc:mysql://mysql:3306/keycloakDB?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      KC_DB_USERNAME: rookie
+      KC_DB_PASSWORD: pwd
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME: localhost:8080
+      KC_PROXY_HEADERS: xforwarded
+      KC_PROXY: edge
+    command: start-dev
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+
+  localstack:
+    image: localstack/localstack:4.13.1
+    container_name: localstack
+    restart: unless-stopped
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+    networks:
+      - ecommerce-net
+
+  vault:
+    image: hashicorp/vault:latest
+    container_name: vault
+    restart: unless-stopped
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_TOKEN: root
+    command: vault server -dev
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    networks:
+      - ecommerce-net
+
+  # =========================================================
+  # SUPPORTING SERVICES
+  # =========================================================
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: mailpit
+    environment:
+      MP_DATA_FILE: /data/mailpit.db
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    volumes:
+      - ./mailpit-data:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "1025"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    networks:
+      - ecommerce-net
+
+  moderation-api:
+    build:
+      context: ../../java/com/novatech/cybertech/api/external/moderation/
+    container_name: moderation-api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    networks:
+      - ecommerce-net
 
   stripe:
     image: stripe/stripe-cli:v1.37.1
     container_name: stripe-cli
+    restart: unless-stopped
     command: >
       listen
       --api-key sk_test_VePHdqKTYQjKNInc7u56JBrQ
@@ -179,19 +206,18 @@ services:
       --events payment_intent.succeeded,payment_intent.payment_failed,checkout.session.completed,charge.refunded
     environment:
       STRIPE_API_KEY: sk_test_VePHdqKTYQjKNInc7u56JBrQ
-    restart: unless-stopped
-
+    networks:
+      - ecommerce-net
 
 volumes:
   mysql_data:
+    driver: local
+  mongodb_data:
     driver: local
   esdata:
     driver: local
   localstack_data:
     driver: local
-  mongodb_data:
-    driver: local
-
 
 networks:
   ecommerce-net:

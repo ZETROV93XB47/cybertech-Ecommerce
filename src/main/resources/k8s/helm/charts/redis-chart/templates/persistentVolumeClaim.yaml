@@ -1,10 +1,10 @@
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: redis-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: {{ .Values.redis.persistence.size }}
+#apiVersion: v1
+#kind: PersistentVolumeClaim
+#metadata:
+#  name: redis-pvc
+#spec:
+#  accessModes:
+#    - ReadWriteOnce
+#  resources:
+#    requests:
+#      storage: {{ .Values.redis.persistence.size }}
