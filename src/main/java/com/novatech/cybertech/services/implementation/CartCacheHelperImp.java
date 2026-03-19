@@ -6,9 +6,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
@@ -18,6 +21,8 @@ public class CartCacheHelperImp implements CartCacheHelper {
 
     private static final int LOCK_DURATION_IN_SECONDS = 5;
     public static final String LOCK_PLACEHOLDER = "1";
+    private static final String UNLOCK_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+
 
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -29,21 +34,25 @@ public class CartCacheHelperImp implements CartCacheHelper {
 
 
     @Override
-    public boolean acquireLock(final String userId) {
-        log.info("Trying to acquire lock for the user : {}", userId);
+    public String acquireLock(String userId) {
+        String lockKey = "lock:cart:" + userId;
+        String token = UUID.randomUUID().toString();
 
-        final String lockKey = "lock:cart:" + userId;
-        boolean lockAcquisitionStatus = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, LOCK_PLACEHOLDER, Duration.ofSeconds(LOCK_DURATION_IN_SECONDS)));
+        log.info("Acquiring lock for the user : {} with the following token : {}", userId, token);
 
-        log.info("Lock acquisition status for user {}: {}", userId, lockAcquisitionStatus);
+        boolean success = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, token, Duration.ofSeconds(5)));
 
-        return lockAcquisitionStatus;
+        return success ? token : null;
     }
 
+
     @Override
-    public void releaseLock(final String userId) {
-        log.info("Releasing lock for the user : {}", userId);
-        redisTemplate.delete("lock:cart:" + userId);
+    public void releaseLock(final String userId, final String token) {
+        log.info("Releasing lock for the user : {} with the following token : {}", userId, token);
+
+        final String lockKey = "lock:cart:" + userId;
+
+        redisTemplate.execute(new DefaultRedisScript<>(UNLOCK_SCRIPT, Long.class), Collections.singletonList(lockKey), token);
     }
 
     @Override

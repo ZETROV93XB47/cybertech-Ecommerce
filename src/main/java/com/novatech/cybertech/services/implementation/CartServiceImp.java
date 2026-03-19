@@ -147,7 +147,9 @@ public class CartServiceImp implements CartService {
         }
 
         // 2) Cache miss → lock anti-stampede
-        if (!cartCacheHelper.acquireLock(keycloakId)) {
+        final String token = cartCacheHelper.acquireLock(keycloakId);
+
+        if (token != null) {
             // Un autre thread reconstruit le panier → attendre ou renvoyer vide
             CartResponseDto retry = cartCacheHelper.getRaw(keycloakId);
             if (retry != null) return retry;
@@ -165,7 +167,9 @@ public class CartServiceImp implements CartService {
             return dto;
 
         } finally {
-            cartCacheHelper.releaseLock(keycloakId);
+            // 5) Libération du lock
+            log.info("Releasing lock for the user {} with the following token : {}", keycloakId, token);
+            cartCacheHelper.releaseLock(keycloakId, token);
         }
     }
 
