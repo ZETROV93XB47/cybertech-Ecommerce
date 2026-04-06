@@ -1,33 +1,214 @@
+# ============================================================
+# CYBERTECH APP DEPLOYMENT CONFIGURATION
+# ============================================================
+
+# Global Configuration
+global:
+  environment: development  # development, staging, production
+  namespace: default
+
+# Cybertech Application Configuration
 cybertechApp:
-  image: cybertech-app:latest
+  image: cybertech-app:1.2
+  imagePullPolicy: IfNotPresent
+  replicas: 1
   port: 8081
 
+# ============================================================
+# DATABASE CONFIGURATION
+# ============================================================
 mysql:
   host: mysql
   port: 3306
   database: cybertechDB
   username: root
-  password: ""
+  password: ""  # MUST be set via --set or secrets
+  sslEnabled: false
+  allowPublicKeyRetrieval: true
+  serverTimezone: UTC
 
+mongodb:
+  host: mongodb-mongodb
+  port: 27017
+  database: userEventsDB
+  # URI: mongodb://mongodb:27017/userEventsDB
+
+# ============================================================
+# CACHE & SEARCH CONFIGURATION
+# ============================================================
 redis:
   host: redis
   port: 6379
+  timeout: 60000
+  cacheType: redis
+  cacheTtl: "1h"  # Time to live for cache
 
 elasticsearch:
   host: elasticsearch
   port: 9200
+  # URI: http://elasticsearch:9200
 
+# ============================================================
+# AUTHENTICATION & AUTHORIZATION
+# ============================================================
 keycloak:
   host: keycloak
   port: 8080
   realm: cybertech
+  clientId: cybertech-user-management-client
+  clientSecret: ""  # MUST be set via secret
+  issuerUri: null  # Will be set to http://keycloak:8080/realms/cybertech
+  jwkSetUri: null  # Will be set to http://keycloak:8080/realms/cybertech/protocol/openid-connect/certs
 
+# ============================================================
+# COMMUNICATION SERVICES
+# ============================================================
 mailpit:
   host: mailpit
   port: 1025
+  protocol: smtp
+  auth: false
+  starttls:
+    enabled: false
+    required: false
+  timeout:
+    connection: 5000
+    send: 3000
+    write: 3000
+  senderEmail: "abc@email.com"
 
+# ============================================================
+# SECRETS MANAGEMENT
+# ============================================================
+vault:
+  enabled: false
+  host: vault
+  port: 8200
+  token: ""  # MUST be set via secret (root for dev)
+  authentication: token
+  kv:
+    enabled: true
+    backend: secret
+    defaultContext: cybertech
+    profileSeparator: "/"
+
+# ============================================================
+# CLOUD SERVICES (LocalStack)
+# ============================================================
+localstack:
+  host: localstack
+  port: 4566
+  
+aws:
+  s3:
+    endpoint: "http://localstack:4566"
+    region: us-east-1
+    pathStyleAccessEnabled: true
+    accessKeyId: "test"  # MUST be set via secret
+    secretAccessKey: ""  # MUST be set via secret
+    bucket: cybertech-products
+
+# ============================================================
+# PAYMENT GATEWAY
+# ============================================================
+stripe:
+  enabled: true
+  # No port - Stripe CLI uses webhook forwarding
+  apiKey: ""  # MUST be set via secret
+  webhookSecret: ""  # MUST be set via secret
+  webhookUrl: "http://cybertech-app:8081/api/v1/webhooks/stripe"
+  events:
+    - payment_intent.succeeded
+    - payment_intent.payment_failed
+    - checkout.session.completed
+    - charge.refunded
+
+# ============================================================
+# EXTERNAL SERVICES
+# ============================================================
 moderationApi:
-  url: http://moderation-api:5000/analyze
+  url: "http://moderation-api:5000/analyze"
 
 frontend:
-  url: http://localhost:4200
+  url: "http://localhost:4200"
+
+# ============================================================
+# SPRING BOOT CONFIGURATION
+# ============================================================
+spring:
+  jpa:
+    hibernateDdlAuto: update  # validate, update, create, create-drop
+    showSql: false
+    formatSql: true
+    dialect: "org.hibernate.dialect.MySQLDialect"
+    namingStrategy: "org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl"
+
+  batch:
+    jobEnabled: false
+    jdbcInitializeSchema: always
+    jdbcIsolationLevel: "read_committed"
+
+  # Cache Configuration
+  cache:
+    maxTtlJitterSeconds: 3600
+    defaultTtlExpirationSeconds: 7200
+
+  # File Upload
+  upload:
+    maxFileSize: "10MB"
+    maxRequestSize: "10MB"
+    maxPartCount: 30
+
+  # Virtual Threads
+  virtualThreadsEnabled: true
+
+  # Compression
+  compression:
+    enabled: true
+    mimeTypes:
+      - "application/json"
+      - "application/xml"
+      - "text/html"
+      - "text/xml"
+      - "text/plain"
+    minResponseSize: 1024
+
+# ============================================================
+# JOB SCHEDULING
+# ============================================================
+jobs:
+  ordersUpdate:
+    activated: true
+    cron: "0 */10 * * * *"  # Every 10 minutes
+  
+  stockCleanup:
+    activated: true
+    cron: "0 */10 * * * *"  # Every 10 minutes
+
+# ============================================================
+# APPLICATION CONFIGURATION
+# ============================================================
+application:
+  email:
+    sender: "abc@email.com"
+    timeBeforeDeletingOrder: 7  # days
+  
+  apiVersion:
+    default: "1.0"
+    enabled: true
+    supported: "1.0,2.0,3.0"
+    useHeader: "X-API-VERSION"
+
+# ============================================================
+# LOGGING CONFIGURATION
+# ============================================================
+logging:
+  level:
+    root: "INFO"
+    org.springframework.security: "DEBUG"
+    org.springframework.web: "DEBUG"
+    org.springframework.data.mongodb.core: "INFO"
+    org.apache.tomcat.util.http.fileupload: "DEBUG"
+    org.springframework.web.multipart: "DEBUG"
+  
+  logRequestDetails: true

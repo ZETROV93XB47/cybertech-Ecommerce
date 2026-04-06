@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: mongodb
+  name: {{ include "mongodb.fullname" . }}
   labels:
-    app: mongodb
+    app: {{ include "mongodb.name" . }}
 spec:
-  serviceName: "mongodb"
+  serviceName: "{{ include "mongodb.fullname" . }}"
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: mongodb
+      app: {{ include "mongodb.name" . }}
   template:
     metadata:
       labels:
-        app: mongodb
+        app: {{ include "mongodb.name" . }}
     spec:
       containers:
         - name: mongodb
@@ -22,37 +22,74 @@ spec:
           ports:
             - containerPort: {{ .Values.service.port }}
               name: mongodb
+          {{- if .Values.auth.enabled }}
           env:
             - name: MONGO_INITDB_ROOT_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: mongodb-auth
+                  name: {{ include "mongodb.fullname" . }}-auth
                   key: rootUser
             - name: MONGO_INITDB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: mongodb-auth
+                  name: {{ include "mongodb.fullname" . }}-auth
                   key: rootPassword
             - name: MONGO_INITDB_DATABASE
               value: "{{ .Values.auth.database }}"
+          {{- end }}
           command: ["mongod"]
           args: ["--bind_ip_all"]
+          {{- if .Values.resources }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data/db
-      nodeSelector: {{ toYaml .Values.nodeSelector | default "{}" | nindent 6 }}
-      tolerations: {{ toYaml .Values.tolerations | default "[]" | nindent 6 }}
-      affinity: {{ toYaml .Values.affinity | default "{}" | nindent 6 }}
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- end }}
   volumeClaimTemplates:
     - metadata:
         name: data
         labels:
-          app: mongodb
+          app: {{ include "mongodb.name" . }}
       spec:
         accessModes:
           - {{ .Values.persistence.accessMode }}
         resources:
           requests:
             storage: {{ .Values.persistence.size }}
+        {{- if .Values.persistence.storageClass }}
         storageClassName: "{{ .Values.persistence.storageClass }}"
+        {{- end }}
 

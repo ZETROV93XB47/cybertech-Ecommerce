@@ -8,19 +8,19 @@ public class CyberTechAppConstants {
 
     public static final String API_BASE_PATH = "/api/v1";
 
-    public static final String USER_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/user";
-    public static final String PRODUCT_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/product";
-    public static final String CART_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/cart";
-    public static final String USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = "/api/v1/services/admin/user";
-    public static final String PRODUCT_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = "/api/v1/services/admin/management/product";
-    public static final String ORDER_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/order";
-    public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/review";
-    public static final String BANK_CARD_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/bank-card";
-    public static final String USER_WISHLIST_CONTROLLER_BASE_PATH = "/api/v1/services/wishlist";
-    public static final String USER_EVENT_INGESTION_BASE_PATH = "/api/v1/events";
-    public static final String STRIPE_WEBHOOKS_BASE_PATH = "/api/v1/webhooks/stripe";
+    public static final String USER_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/user";
+    public static final String PRODUCT_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/product";
+    public static final String CART_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/cart";
+    public static final String USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/user";
+    public static final String PRODUCT_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/management/product";
+    public static final String ORDER_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/order";
+    public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/review";
+    public static final String BANK_CARD_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/bank-card";
+    public static final String USER_WISHLIST_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/wishlist";
+    public static final String USER_EVENT_INGESTION_BASE_PATH = API_BASE_PATH + "/events";
+    public static final String STRIPE_WEBHOOKS_BASE_PATH = API_BASE_PATH + "/webhooks/stripe";
 
-    public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = "/api/v1/services/management/order";
+    public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/management/order";
 
     public static final String ORDER_SUMMARY_REPORT_JOB = "ORDER_SUMMARY_REPORT_JOB";
 
@@ -34,4 +34,9 @@ public class CyberTechAppConstants {
 
 
     public static final Integer NUMBER_OF_MOST_SELLED_PRODUCTS_TO_GET = 15;
+
+
+    public static final String APP_API_VERSION = "1.0";
+
+    public static final String APPLICATION_ASYNC_TASK_EXECUTOR = "applicationAsyncTaskExecutor";
 }

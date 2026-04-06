@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_EVENT_INGESTION_BASE_PATH;
 import static jakarta.mail.event.FolderEvent.CREATED;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -23,7 +24,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(USER_EVENT_INGESTION_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = USER_EVENT_INGESTION_BASE_PATH)
 public class UserEventController implements UserEventControllerApiSpec {
 
     private final UserEventService userEventService;

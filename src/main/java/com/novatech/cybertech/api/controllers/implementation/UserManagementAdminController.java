@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Collection;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -26,7 +27,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
-@RequestMapping(USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH)
 @Tag(name = "UserAdminController", description = "API for User management (Admin)")
 public class UserManagementAdminController implements UserManagementAdminApiSpec {
 

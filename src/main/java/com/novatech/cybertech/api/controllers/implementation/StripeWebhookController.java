@@ -13,12 +13,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.STRIPE_WEBHOOKS_BASE_PATH;
 
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(STRIPE_WEBHOOKS_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = STRIPE_WEBHOOKS_BASE_PATH)
 @Tag(name = "StripeWebhookController", description = "Stripe Webhook API")
 public class StripeWebhookController implements StripeWebhookApiSpec {
 

@@ -8,16 +8,15 @@ import com.novatech.cybertech.services.core.MailService;
 import com.novatech.cybertech.services.core.NotificationProcessor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 @Slf4j
-@Primary
 @RequiredArgsConstructor
 @Component("emailNotificationProcessor")
 @CommunicationTypeHandler(CommunicationChanel.EMAIL)
 public class EmailNotificationProcessor implements NotificationProcessor {
 
+    private static final String ORDER_CONFIRMATION_DATA_KEY = "OrderConfirmationData";
     private final MailService mailService;
 
     @Override

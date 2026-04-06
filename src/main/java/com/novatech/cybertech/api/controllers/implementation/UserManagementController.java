@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_CRUD_CONTROLLER_BASE_PATH;
 import static com.novatech.cybertech.utils.DataGenerator.generateUserCreateRequestDto;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -31,7 +32,7 @@ import static org.springframework.http.ResponseEntity.ok;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(USER_CRUD_CONTROLLER_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = USER_CRUD_CONTROLLER_BASE_PATH)
 @Tag(name = "UserController", description = "API for user management")
 public class UserManagementController implements UserControllerApiSpec {
 

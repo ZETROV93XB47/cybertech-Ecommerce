@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REVIEW_CRUD_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -25,7 +26,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(REVIEW_CRUD_CONTROLLER_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = REVIEW_CRUD_CONTROLLER_BASE_PATH)
 @Tag(name = "ReviewController", description = "API for Review management")
 public class ReviewCrudController implements ReviewCrudControllerApiSpec {
 

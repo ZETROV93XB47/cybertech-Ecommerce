@@ -19,13 +19,14 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Collection;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.BANK_CARD_CRUD_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(BANK_CARD_CRUD_CONTROLLER_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = BANK_CARD_CRUD_CONTROLLER_BASE_PATH)
 @Tag(name = " BankCardManagementController", description = "API for managing Bank Cards")
 public class BankCardManagementController implements BankCardControllerApiSpec {
 

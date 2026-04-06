@@ -1,17 +1,19 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: elasticsearch
+  name: {{ include "elasticsearch.fullname" . }}
+  labels:
+    {{- include "elasticsearch.labels" . | nindent 4 }}
 spec:
-  serviceName: "elasticsearch"
+  serviceName: "{{ include "elasticsearch.fullname" . }}"
   replicas: 1
   selector:
     matchLabels:
-      app: elasticsearch
+      {{- include "elasticsearch.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: elasticsearch
+        {{- include "elasticsearch.selectorLabels" . | nindent 8 }}
     spec:
       containers:
         - name: elasticsearch

@@ -16,14 +16,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-import static com.novatech.cybertech.constants.CyberTechAppConstants.NUMBER_OF_MOST_SELLED_PRODUCTS_TO_GET;
-import static com.novatech.cybertech.constants.CyberTechAppConstants.PRODUCT_CRUD_CONTROLLER_BASE_PATH;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(PRODUCT_CRUD_CONTROLLER_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = PRODUCT_CRUD_CONTROLLER_BASE_PATH)
 @Tag(name = "ProductSearchController", description = "API for Product Search")
 public class ProductSearchController implements ProductSearchApiSpec {
 

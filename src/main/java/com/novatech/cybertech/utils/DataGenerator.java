@@ -326,7 +326,7 @@ public class DataGenerator {
 //    }
 
 
-    static void main(String[] args) {
+    static void dosmth(String[] args) {
 
         convertToUUID("0x019C3FA4B4D2700D94694FE90CED0D7A");
         /*

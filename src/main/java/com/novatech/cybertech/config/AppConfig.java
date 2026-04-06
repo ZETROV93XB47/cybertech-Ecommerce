@@ -15,21 +15,27 @@ import com.novatech.cybertech.validator.implementation.ActiveUserValidator;
 import com.novatech.cybertech.validator.implementation.BankCardValidityValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.concurrent.Executor;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
 
 @Slf4j
 @Configuration
@@ -145,6 +151,50 @@ public class AppConfig {
                 .clientSecret(clientSecret)
                 .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
                 .build();
+    }
+
+
+    @Bean(name = APPLICATION_ASYNC_TASK_EXECUTOR)
+    public Executor applicationTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("async-");
+        executor.setTaskDecorator(new MdcTaskDecorator());
+        executor.initialize();
+        return executor;
+    }
+
+    static class MdcTaskDecorator implements TaskDecorator {
+
+        @Override
+        public @NonNull Runnable decorate(@NonNull Runnable runnable) {
+            final Map<String, String> contextMap = MDC.getCopyOfContextMap();
+
+            return () -> {
+
+                final Map<String, String> previous = MDC.getCopyOfContextMap();
+
+                try {
+                    if (contextMap != null) {
+                        MDC.setContextMap(contextMap);
+                    }
+                    else {
+                        MDC.clear();
+                    }
+                    runnable.run();
+                }
+                finally {
+                    if (previous != null) {
+                        MDC.setContextMap(previous);
+                    }
+                    else {
+                        MDC.clear();
+                    }
+                }
+            };
+        }
     }
 }
 

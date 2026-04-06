@@ -11,6 +11,7 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.services.implementation.ShippingConfirmationPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
@@ -36,7 +37,7 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         log.info("Starting ShipAllAwaitingShippingOrdersTasklet");
 
         // Récupérer toutes les commandes en attente d'expédition
-        List<OrderEntity> awaitingOrders = orderRepository.findByStatus(OrderStatus.PAID);
+        final List<OrderEntity> awaitingOrders = orderRepository.findByStatus(OrderStatus.PAID);
 
         if (awaitingOrders.isEmpty()) {
             log.info("No orders found in PAID status.");
@@ -49,7 +50,8 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         awaitingOrders.forEach(order -> {
             try {
                 processShipping(order);
-            } catch (Exception e) {
+            }
+            catch (Exception e) {
                 log.error("Error processing shipping for order {}", order.getUuid(), e);
                 // On continue pour les autres commandes même si une échoue
             }
@@ -73,7 +75,6 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         ShippingContext shippingContext = ShippingContext.builder()
                 .user(userContactDto)
                 .packageId(order.getUuid().toString())
-                .payload(order)
                 .shippingType(order.getShippingType())
                 .shippingProvider(order.getShippingProvider())
                 .build();
@@ -83,10 +84,17 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         order.setStatus(OrderStatus.SHIPPED);
         orderRepository.save(order);
 
-        NotificationContext notificationContext = NotificationContext.builder()
+        final ShippingConfirmationPayload payload = ShippingConfirmationPayload.builder()
+                .orderUuid(order.getUuid())
+                .shippingType(order.getShippingType())
+                .shippingProvider(order.getShippingProvider())
+                .userName(order.getUserEntity().getFirstName())
+                .build();
+
+        final NotificationContext notificationContext = NotificationContext.builder()
                 .user(userContactDto)
                 .notificationType(NotificationType.SHIPPING_CONFIRMATION)
-                .payload(order)
+                .payload(payload)
                 .build();
 
         notificationDispatcher.dispatch(notificationContext);

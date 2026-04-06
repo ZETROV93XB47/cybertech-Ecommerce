@@ -2,62 +2,78 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.annotation.NotificationTypeHandler;
 import com.novatech.cybertech.dto.data.NotificationContext;
-import com.novatech.cybertech.dto.data.OrderEventDto;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
 import com.novatech.cybertech.entities.enums.EmailTemplateType;
+import com.novatech.cybertech.entities.enums.NotificationSubject;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.services.core.AbstractNotification;
 import com.novatech.cybertech.services.core.NotificationProcessor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.Map;
-
 @Slf4j
-@Primary
 @Service
 @NotificationTypeHandler(NotificationType.ORDER_CONFIRMATION)
 public class OrderConfirmationNotification extends AbstractNotification {
 
-    public OrderConfirmationNotification(NotificationProcessor notificationProcessor) {
-        super(notificationProcessor);
-    }
+
+    private static final String USER_NAME = "userName";
+    private static final String ORDER_ID = "orderId";
+    private static final String AMOUNT = "amount";
+    private static final String EMAIL = "email";
+    private static final String ORDER_STATUS = "orderStatus";
+    private static final String TITLE = "title";
+    private static final String THEME_COLOR = "themeColor";
+    private static final String THEME_BACKGROUND_COLOR = "themeBackgroundColor";
+    private static final String THEME_BORDER_COLOR = "themeBorderColor";
 
     @Override
-    public void sendNotification(final NotificationContext notificationContext) {
+    public void sendNotification(final NotificationContext notificationContext, final NotificationProcessor notificationProcessor) {
 
-        OrderEventDto orderEventDto = (OrderEventDto) notificationContext.getData().get("orderEventDto");
+        OrderConfirmationPayload orderConfirmationPayload = (OrderConfirmationPayload) notificationContext.getPayload();
 
-        final Map<String, Object> model = new HashMap<>();
+        notificationContext.getData().put(USER_NAME, orderConfirmationPayload.getUserContactDto().getName());
+        notificationContext.getData().put(ORDER_ID, orderConfirmationPayload.getOrderUuid());
+        notificationContext.getData().put(AMOUNT, orderConfirmationPayload.getTotalAmount());
+        notificationContext.getData().put(EMAIL, orderConfirmationPayload.getUserContactDto().getEmail());
+        notificationContext.getData().put(ORDER_STATUS, orderConfirmationPayload.getOrderStatus());
 
-        model.put("userName", orderEventDto.getUserContactDto().getName());
-        model.put("orderId", orderEventDto.getOrderUuid());
-        model.put("amount", orderEventDto.getTotalAmount());
-        model.put("email", orderEventDto.getUserContactDto().getEmail());
-        model.put("orderStatus", orderEventDto.getOrderStatus());
+        String subject = formattingNotification(notificationContext, orderConfirmationPayload);
 
+        notificationContext.setSubject(subject);
+        notificationContext.setTemplatePath(EmailTemplateType.ORDER_CONFIRMATION.getTemplatePath());
+
+        notificationProcessor.sendMessage(notificationContext);
+    }
+
+
+
+    private static String formattingNotification(NotificationContext notificationContext, OrderConfirmationPayload orderConfirmationPayload) {
         // Détermination dynamique du sujet et du titre en fonction du paiement
+        log.info("Préparation de la notification Email pour la confirmation de commande : {}", notificationContext);
+
         String subject;
         String title;
         String themeColor;
         String themeBackgroundColor;
         String themeBorderColor;
 
-        if (PaymentAttemptStatus.SUCCESS.equals(orderEventDto.getPaymentAttemptStatus())) {
-            subject = EmailTemplateType.ORDER_CONFIRMATION.getSubject();
+        if (PaymentAttemptStatus.SUCCESS.equals(orderConfirmationPayload.getPaymentAttemptStatus())) {
+            subject = NotificationSubject.ORDER_CONFIRMATION.getSubject();
             title = "Confirmation de votre commande";
             themeColor = "#27ae60"; // Vert
             themeBackgroundColor = "#eafaf1";
             themeBorderColor = "#d5f5e3";
-        } else if (PaymentAttemptStatus.FAILED.equals(orderEventDto.getPaymentAttemptStatus()) || PaymentAttemptStatus.CANCELED.equals(orderEventDto.getPaymentAttemptStatus())) {
+        }
+        else if (PaymentAttemptStatus.FAILED.equals(orderConfirmationPayload.getPaymentAttemptStatus()) || PaymentAttemptStatus.CANCELED.equals(orderConfirmationPayload.getPaymentAttemptStatus())) {
             subject = "Commande enregistrée - Paiement échoué";
             title = "Commande créée mais paiement non abouti";
             themeColor = "#e74c3c"; // Rouge
             themeBackgroundColor = "#fdedec";
             themeBorderColor = "#fadbd8";
-        } else {
+        }
+        else {
             subject = "Commande enregistrée - Paiement en attente";
             title = "Commande créée - Paiement en cours de validation";
             themeColor = "#f39c12"; // Orange
@@ -65,16 +81,13 @@ public class OrderConfirmationNotification extends AbstractNotification {
             themeBorderColor = "#fdebd0";
         }
 
-        model.put("title", title);
-        model.put("themeColor", themeColor);
-        model.put("themeBackgroundColor", themeBackgroundColor);
-        model.put("themeBorderColor", themeBorderColor);
+        notificationContext.getData().put(TITLE, title);
+        notificationContext.getData().put(THEME_COLOR, themeColor);
+        notificationContext.getData().put(THEME_BACKGROUND_COLOR, themeBackgroundColor);
+        notificationContext.getData().put(THEME_BORDER_COLOR, themeBorderColor);
 
-        notificationContext.setSubject(subject);
-        notificationContext.setTemplatePath(EmailTemplateType.ORDER_CONFIRMATION.getTemplatePath());
-
-        notificationContext.setData(model);
-
-        notificationProcessor.sendMessage(notificationContext);
+        return subject;
     }
+
+
 }

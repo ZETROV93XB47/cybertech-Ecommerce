@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Collection;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.PRODUCT_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
@@ -25,7 +26,7 @@ import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(PRODUCT_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = PRODUCT_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH)
 @Tag(name = "ProductAdminController", description = "API for Product management (Admin)")
 @PreAuthorize("hasRole('ADMIN')")
 public class ProductManagementAdminController implements ProductManagementAdminApiSpec {

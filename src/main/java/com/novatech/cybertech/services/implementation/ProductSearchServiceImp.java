@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.services.core.ProductSearchService;
@@ -18,6 +19,7 @@ import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -36,42 +38,56 @@ public class ProductSearchServiceImp implements ProductSearchService {
     @Override
     public Page<ProductDocument> search(final ProductSearchRequestDto req) {
 
-        BoolQuery.Builder bool = new BoolQuery.Builder();
+        List<Query> filters = new ArrayList<>();
+        List<Query> musts = new ArrayList<>();
         Pageable pageable = PageRequest.of(req.getPage(), req.getSize());
 
+        // Category filter
         if (req.getCategory() != null) {
-            bool.filter(f -> f.term(t -> t.field(CATEGORY).value(req.getCategory().name())));
+            filters.add(new Query.Builder()
+                    .term(t -> t.field(CATEGORY).value(req.getCategory().name()))
+                    .build());
         }
 
+        // Brands filter
         if (req.getBrands() != null && !req.getBrands().isEmpty()) {
             List<FieldValue> brandValues = req.getBrands().stream()
                     .map(Enum::name)
                     .map(FieldValue::of)
                     .toList();
 
-            bool.filter(f -> f.terms(t -> t
-                    .field(BRAND)
-                    .terms(v -> v.value(brandValues))
-            ));
+            filters.add(new Query.Builder()
+                    .terms(t -> t
+                            .field(BRAND)
+                            .terms(v -> v.value(brandValues))
+                    )
+                    .build());
         }
 
+        // Keyword search (multiMatch)
         if (StringUtils.hasText(req.getKeyword())) {
-            bool.must(m -> m.multiMatch(mm -> mm
-                    .query(req.getKeyword())
-                    .fields(NAME_FIELD, DESCRIPTION_FIELD)
-                    .fuzziness("AUTO")
-            ));
+            musts.add(new Query.Builder()
+                    .multiMatch(mm -> mm
+                            .query(req.getKeyword())
+                            .fields(NAME_FIELD, DESCRIPTION_FIELD)
+                            .fuzziness("AUTO")
+                    )
+                    .build());
         }
 
+        // Price range filter
         if (req.getPriceMin() != null || req.getPriceMax() != null) {
-            bool.filter(f -> f.range(r -> r.number(n -> {
-                n.field(PRICE);
-                if (req.getPriceMin() != null) n.gte(req.getPriceMin());
-                if (req.getPriceMax() != null) n.lte(req.getPriceMax());
-                return n;
-            })));
+            filters.add(new Query.Builder()
+                    .range(r -> r.number(n -> {
+                        n.field(PRICE);
+                        if (req.getPriceMin() != null) n.gte(req.getPriceMin());
+                        if (req.getPriceMax() != null) n.lte(req.getPriceMax());
+                        return n;
+                    }))
+                    .build());
         }
 
+        // Category-specific attributes filter
         if (req.getAttributes() != null && req.getCategory() != null) {
             String categoryPrefix = "attributes." + req.getCategory().name() + ".";
 
@@ -79,41 +95,58 @@ public class ProductSearchServiceImp implements ProductSearchService {
                 if (values != null && !values.isEmpty()) {
                     String field = categoryPrefix + key + ".keyword";
 
-                    bool.filter(f -> f.terms(t -> t
-                            .field(field)
-                            .terms(v -> v.value(
-                                    values.stream()
-                                            .map(String::valueOf)
-                                            .map(FieldValue::of)
-                                            .toList()
-                            ))
-                    ));
+                    filters.add(new Query.Builder()
+                            .terms(t -> t
+                                    .field(field)
+                                    .terms(v -> v.value(
+                                            values.stream()
+                                                    .map(String::valueOf)
+                                                    .map(FieldValue::of)
+                                                    .toList()
+                                    ))
+                            )
+                            .build());
                 }
             });
         }
 
+        // Numeric ranges filter
         if (req.getNumericRanges() != null && req.getCategory() != null) {
             String categoryPrefix = "attributes." + req.getCategory().name() + ".";
 
             req.getNumericRanges().forEach((key, range) -> {
                 String field = categoryPrefix + key;
 
-                bool.filter(f -> f.range(r -> r.number(n -> {
-                    n.field(field);
-                    if (range.getMin() != null) n.gte(range.getMin());
-                    if (range.getMax() != null) n.lte(range.getMax());
-                    return n;
-                })));
+                filters.add(new Query.Builder()
+                        .range(r -> r.number(n -> {
+                            n.field(field);
+                            if (range.getMin() != null) n.gte(range.getMin());
+                            if (range.getMax() != null) n.lte(range.getMax());
+                            return n;
+                        }))
+                        .build());
             });
         }
 
-        NativeQuery query = NativeQuery.builder()
-                .withQuery(bool.build()._toQuery())
+        // Build BoolQuery
+        BoolQuery.Builder boolBuilder = new BoolQuery.Builder();
+        if (!musts.isEmpty()) {
+            boolBuilder.must(musts);
+        }
+        if (!filters.isEmpty()) {
+            boolBuilder.filter(filters);
+        }
+
+        BoolQuery boolQuery = boolBuilder.build();
+        Query query = new Query.Builder().bool(boolQuery).build();
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                .withQuery(query)
                 .withPageable(pageable)
                 .build();
 
         SearchHits<ProductDocument> hits =
-                elasticsearchOperations.search(query, ProductDocument.class);
+                elasticsearchOperations.search(nativeQuery, ProductDocument.class);
 
         List<ProductDocument> content = hits.getSearchHits()
                 .stream()

@@ -1,0 +1,7 @@
+1. Stripe CLI is running and listening for webhook events
+2. Service is available at: stripe.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+3. Verify the API key and webhook URL are correctly configured
+4. Check logs with: kubectl logs -l app=stripe
+
+Note: Make sure your webhook URL ({{ .Values.stripe.webhookUrl }}) is accessible from the pod.
+

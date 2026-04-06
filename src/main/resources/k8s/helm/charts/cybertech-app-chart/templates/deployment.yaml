@@ -2,8 +2,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cybertech-app
+  labels:
+    app: cybertech-app
 spec:
-  replicas: 1
+  replicas: {{ .Values.cybertechApp.replicas }}
   selector:
     matchLabels:
       app: cybertech-app
@@ -11,26 +13,132 @@ spec:
     metadata:
       labels:
         app: cybertech-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.cybertechApp.port }}"
     spec:
       containers:
         - name: cybertech-app
-          image: {{ .Values.cybertechApp.image }}
-          imagePullPolicy: IfNotPresent
+          image: "{{ .Values.cybertechApp.image }}"
+          imagePullPolicy: {{ .Values.cybertechApp.imagePullPolicy }}
+          
           ports:
-            - containerPort: {{ .Values.cybertechApp.port }}
+            - name: http
+              containerPort: {{ .Values.cybertechApp.port }}
+              protocol: TCP
+          
+          # ============================================================
+          # ENVIRONMENT VARIABLES FROM CONFIG AND SECRETS
+          # ============================================================
           env:
+            # Application Profile
+            - name: SPRING_PROFILES_ACTIVE
+              value: "kubernetes"
+            
+            # ============================================================
+            # DATABASE CREDENTIALS
+            # ============================================================
             - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: cybertech-app-secret
-                  key: mysql-password
-            - name: SPRING_DATA_ELASTICSEARCH_CLIENT_ENDPOINTS
-              value: "http://elasticsearch:9200"
+                  key: SPRING_DATASOURCE_PASSWORD
 
+            - name: SPRING_CONFIG_LOCATION
+              value: "file:/etc/config/"
+            
+            # ============================================================
+            # KEYCLOAK CREDENTIALS
+            # ============================================================
+            - name: KEYCLOAK_CLIENT_USER_MANAGEMENT_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cybertech-app-secret
+                  key: KEYCLOAK_CLIENT_USER_MANAGEMENT_CLIENT_SECRET
+            
+            # ============================================================
+            # STRIPE CREDENTIALS (IF ENABLED)
+            # ============================================================
+            {{- if .Values.stripe.enabled }}
+            - name: STRIPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cybertech-app-secret
+                  key: STRIPE_API_KEY
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cybertech-app-secret
+                  key: STRIPE_WEBHOOK_SECRET
+            {{- end }}
+            
+            # ============================================================
+            # AWS/S3 CREDENTIALS
+            # ============================================================
+            - name: SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cybertech-app-secret
+                  key: SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY
+            
+            # ============================================================
+            # VAULT TOKEN (IF ENABLED)
+            # ============================================================
+            {{- if .Values.vault.enabled }}
+            - name: SPRING_CLOUD_VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cybertech-app-secret
+                  key: SPRING_CLOUD_VAULT_TOKEN
+            {{- end }}
+
+          # ============================================================
+          # VOLUME MOUNTS
+          # ============================================================
           volumeMounts:
             - name: config-volume
-              mountPath: /config
+              mountPath: /etc/config
+              readOnly: true
+
+          # ============================================================
+          # HEALTH CHECKS
+          # ============================================================
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # ============================================================
+          # RESOURCE LIMITS & REQUESTS
+          # ============================================================
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 500m
+              memory: 512Mi
+
+      # ============================================================
+      # VOLUMES
+      # ============================================================
       volumes:
         - name: config-volume
           configMap:
             name: cybertech-app-config
+            items:
+              - key: application.properties
+                path: application.properties

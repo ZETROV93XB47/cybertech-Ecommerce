@@ -2,9 +2,17 @@ apiVersion: v1
 kind: Service
 metadata:
   name: redis
+  labels:
+    app: redis
 spec:
+  type: {{ .Values.service.type }}
+  {{- if .Values.service.clusterIP }}
+  clusterIP: {{ .Values.service.clusterIP }}
+  {{- end }}
   selector:
     app: redis
   ports:
     - port: {{ .Values.redis.port }}
       targetPort: {{ .Values.redis.port }}
+      protocol: TCP
+      name: redis

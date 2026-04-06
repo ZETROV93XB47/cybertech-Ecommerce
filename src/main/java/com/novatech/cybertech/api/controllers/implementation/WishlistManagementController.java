@@ -16,13 +16,14 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Collection;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_WISHLIST_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(USER_WISHLIST_CONTROLLER_BASE_PATH)
+@RequestMapping(version = APP_API_VERSION, value = USER_WISHLIST_CONTROLLER_BASE_PATH)
 @Tag(name = "WishlistController", description = "API for Wishlist management")
 public class WishlistManagementController implements WishlistManagementApiSpec {
 
@@ -65,7 +66,7 @@ public class WishlistManagementController implements WishlistManagementApiSpec {
     @DeleteMapping(value = "/admin/delete/{uuid}", produces = APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteWishlistEntry(@PathVariable UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
-        log.info("Current admin user made this api call : {}", jwt.getSubject());
+        log.info("Current admin user made this api call : {}", jwt.getNotificationSubject());
         wishlistService.deleteByUUID(uuid);
         return ResponseEntity.noContent().build();
     }

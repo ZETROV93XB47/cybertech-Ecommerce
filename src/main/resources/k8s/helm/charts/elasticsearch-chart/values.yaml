@@ -7,6 +7,12 @@ elasticsearch:
   persistence:
     enabled: true
     size: 5Gi
+    # IMPORTANT: StatefulSet crée 1 PVC par replica via volumeClaimTemplates
+    # Ne pas créer de PVC séparé
+
+service:
+  type: ClusterIP
+  #::::clusterIP: None  # Headless service for StatefulSet DNS
 
 env:
   discoveryType: "single-node"

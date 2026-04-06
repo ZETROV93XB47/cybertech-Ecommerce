@@ -1,32 +1,32 @@
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: mysql-init-job
-spec:
-  backoffLimit: 3
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: mysql-init
-          image: mysql:8.0
-          command:
-            - /bin/bash
-            - -c
-            - |
-              echo "Waiting for MySQL..."
-              until mysqladmin ping -h mysql --silent; do
-                sleep 2
-              done
-              echo "Running SQL init script..."
-              mysql -h mysql -uroot -p"{{ .Values.mysql.rootPassword }}" {{ .Values.mysql.database }} < /init/init.sql
-          volumeMounts:
-            - name: init-sql
-              mountPath: /init
-      volumes:
-        - name: init-sql
-          configMap:
-            name: mysql-init-sql
-            items:
-              - key: init.sql
-                path: init.sql
+#apiVersion: batch/v1
+#kind: Job
+#metadata:
+#  name: mysql-init-job
+#spec:
+#  backoffLimit: 3
+#  template:
+#    spec:
+#      restartPolicy: Never
+#      containers:
+#        - name: mysql-init
+#          image: mysql:9.3.0
+#          command:
+#            - /bin/bash
+#            - -c
+#            - |
+#              echo "Waiting for MySQL..."
+#              until mysqladmin ping -h mysql --silent; do
+#                sleep 2
+#              done
+#              echo "Running SQL init script..."
+#              mysql -h mysql -u root {{ .Values.mysql.database }} < /init/init.sql
+#          volumeMounts:
+#            - name: init-sql
+#              mountPath: /init
+#      volumes:
+#        - name: init-sql
+#          configMap:
+#            name: mysql-init-sql
+#            items:
+#              - key: init.sql
+#                path: init.sql

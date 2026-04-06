@@ -23,7 +23,7 @@ public class NotificationDispatcher {
     //private final Map<NotificationType, Notification> notificationStrategies;
     //private final Map<CommunicationType, NotificationProcessor> processorStrategies;
 
-    public void dispatch(final NotificationContext context) {
+    public void dispatch(final NotificationContext context) throws NoStrategyFoundForProcessingTheRequest {
 
         final UserContactDto user = context.getUser();
 
@@ -36,7 +36,6 @@ public class NotificationDispatcher {
         }
 
         // Injection dynamique du processor dans la notification (Bridge)
-        //notification.setNotificationProcessor(processor);
-        notification.withNotificationProcessor(processor).sendNotification(context);
+        notification.sendNotification(context, processor);
     }
 }

@@ -5,10 +5,15 @@ import com.novatech.cybertech.services.core.CartCacheHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.connection.ReturnType;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.UUID;
@@ -24,6 +29,7 @@ public class CartCacheHelperImp implements CartCacheHelper {
     private static final String UNLOCK_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
 
 
+    private final StringRedisTemplate stringRedisTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Value("${app.cache.max.ttl.jitter.time.seconds}")
@@ -51,8 +57,23 @@ public class CartCacheHelperImp implements CartCacheHelper {
         log.info("Releasing lock for the user : {} with the following token : {}", userId, token);
 
         final String lockKey = "lock:cart:" + userId;
+        final DefaultRedisScript<Long> script = new DefaultRedisScript<>(UNLOCK_SCRIPT, Long.class);
+        final StringRedisSerializer stringSerializer = new StringRedisSerializer();
 
-        redisTemplate.execute(new DefaultRedisScript<>(UNLOCK_SCRIPT, Long.class), Collections.singletonList(lockKey), token);
+        log.info("Executing Lua script to release lock for the user : {} with the following token : {}", userId, token);
+
+        redisTemplate.execute((RedisCallback<Long>) connection -> {
+            byte[] keyBytes = stringSerializer.serialize(lockKey);
+            byte[] tokenBytes = stringSerializer.serialize(token);
+
+            return connection.eval(
+                    script.getScriptAsString().getBytes(StandardCharsets.UTF_8),
+                    ReturnType.INTEGER,
+                    1,          // nombre de KEYS
+                    keyBytes,
+                    tokenBytes
+            );
+        });
     }
 
     @Override

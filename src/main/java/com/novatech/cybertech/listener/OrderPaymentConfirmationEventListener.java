@@ -20,6 +20,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -29,7 +31,7 @@ public class OrderPaymentConfirmationEventListener {
     private final StockService stockService;
     private final OrderRepository orderRepository;
 
-    @Async
+    @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handlePaymentSuccess(final PaymentSucceededEvent event) {
@@ -47,7 +49,7 @@ public class OrderPaymentConfirmationEventListener {
         log.info("Order {} marked as PAID", order.getUuid());
     }
 
-    @Async
+    @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handlePaymentFailed(PaymentFailedEvent event) {
@@ -62,7 +64,7 @@ public class OrderPaymentConfirmationEventListener {
         log.info("Order {} marked as PAYMENT_FAILED", order.getUuid());
     }
 
-    @Async
+    @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleRefund(final PaymentRefundedEvent event) {

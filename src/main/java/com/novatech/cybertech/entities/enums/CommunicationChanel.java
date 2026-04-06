@@ -11,7 +11,8 @@ import static java.util.Arrays.stream;
 @RequiredArgsConstructor
 public enum CommunicationChanel {
     EMAIL(1),
-    SMS(2);
+    SMS(2),
+    PUSH_NOTIFICATION(3);
 
     private final Integer code;
 }

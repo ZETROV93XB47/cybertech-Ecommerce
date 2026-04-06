@@ -1,0 +1,47 @@
+image:
+  repository: localstack/localstack
+  tag: "4.13.1"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 4566
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 5Gi
+
+environment:
+  # Services to emulate (comma-separated or space-separated)
+  services: "s3"
+  # AWS region
+  awsDefaultRegion: "us-east-1"
+  # LocalStack debug mode
+  debug: "0"
+  # Data directory persistence
+  dataDir: "/tmp/localstack"
+
+# AWS credentials - À passer via --set ou secrets (NE PAS laisser en clair)
+# Pour développement local uniquement avec des credentials fictifs
+credentials:
+  # Par défaut, les crédentiels sont des valeurs test
+  # En production, utiliser AWS Secrets Manager ou Vault
+  accessKeyId: "test"      # À surcharger: helm install ... --set credentials.accessKeyId=xxx
+  secretAccessKey: "test"  # À surcharger: helm install ... --set credentials.secretAccessKey=xxx
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+

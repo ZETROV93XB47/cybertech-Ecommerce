@@ -14,7 +14,61 @@ build:
 deploy:
   helm:
     releases:
+      # Déployer les dépendances en premier
+      - name: mongodb-release
+        chartPath: "./src/main/resources/k8s/helm/charts/mongodb-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: mysql-release
+        chartPath: "./src/main/resources/k8s/helm/charts/mysql-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: redis-release
+        chartPath: "./src/main/resources/k8s/helm/charts/redis-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: elasticsearch-release
+        chartPath: "./src/main/resources/k8s/helm/charts/elasticsearch-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: vault-release
+        chartPath: "./src/main/resources/k8s/helm/charts/vault-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: keycloak-release
+        chartPath: "./src/main/resources/k8s/helm/charts/keycloak-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: mailpit-release
+        chartPath: "./src/main/resources/k8s/helm/charts/mailpit-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: localstack-release
+        chartPath: "./src/main/resources/k8s/helm/charts/localstack-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: stripe-release
+        chartPath: "./src/main/resources/k8s/helm/charts/stripe-chart"
+        wait: true
+        timeout: 5m
+      
+      - name: moderation-api-release
+        chartPath: "./src/main/resources/k8s/helm/charts/moderation-api-chart"
+        wait: true
+        timeout: 5m
+      
+      # Déployer l'application principale en dernier
       - name: cybertech-release
-        chartPath: "./src/main/resources/k8s/helm/charts/cybertech-app-chart" # Chemin vers ton chart
+        chartPath: "./src/main/resources/k8s/helm/charts/cybertech-app-chart"
         setValueTemplates:
           cybertechApp.image: "{{.IMAGE_FULLY_QUALIFIED_cybertech_app}}"
+        wait: true
+        timeout: 5m

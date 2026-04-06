@@ -1,25 +1,26 @@
 package com.novatech.cybertech.dto.data;
 
 
+import com.novatech.cybertech.entities.enums.CommunicationChanel;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import lombok.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
-//TODO: à retirer
-@Setter
-
-@With
 @Getter
+@Setter
 @Builder
 @ToString
 @EqualsAndHashCode
-public class NotificationContext {
-    private  Object payload;
-    private final UserContactDto user;
-    private final String message;
-    private Map<String, Object> data;
-    private final NotificationType notificationType;
+@NoArgsConstructor
+@AllArgsConstructor
+public class NotificationContext<T extends NotificationPayload> {
+    private T payload;
     private String subject;
+    private UserContactDto user;
     private String templatePath;
+    private NotificationType notificationType;
+    private CommunicationChanel communicationChanel;
+    private Map<String, Object> data = new HashMap<>();
 }

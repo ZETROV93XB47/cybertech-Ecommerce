@@ -147,7 +147,7 @@ services:
       - ecommerce-net
 
   vault:
-    image: hashicorp/vault:latest
+    image: hashicorp/vault:1.21.4
     container_name: vault
     restart: unless-stopped
     environment:

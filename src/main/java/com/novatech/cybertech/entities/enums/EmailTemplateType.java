@@ -7,11 +7,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum EmailTemplateType {
 
-    ORDER_CANCELLATION("Annulation de commande - Cybertech", "email/order-cancelled"),
-    ORDER_PENDING_PAYMENT("Action requise : Paiement en attente", "email/order-pending-payment"),
-    ORDER_CONFIRMATION("Confirmation de votre commande", "email/order-confirmation"),
-    SHIPPING_CONFIRMATION("Votre commande a été expédiée !", "email/shipping-confirmation");
+    ORDER_CANCELLATION(NotificationSubject.ORDER_CANCELLATION, "email/order-cancelled"),
+    ORDER_PENDING_PAYMENT(NotificationSubject.ORDER_PENDING_PAYMENT, "email/order-pending-payment"),
+    ORDER_CONFIRMATION(NotificationSubject.ORDER_CONFIRMATION, "email/order-confirmation"),
+    SHIPPING_CONFIRMATION(NotificationSubject.SHIPPING_CONFIRMATION, "email/shipping-confirmation");
 
-    private final String subject;
+    private final NotificationSubject notificationSubject;
     private final String templatePath;
 }

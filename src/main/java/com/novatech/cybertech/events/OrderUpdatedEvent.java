@@ -13,4 +13,9 @@ public class OrderUpdatedEvent extends ApplicationEvent {
         super(source);
         this.orderEventDto = orderEventDto;
     }
+
+    public OrderUpdatedEvent(OrderEventDto orderEventDto) {
+        super(orderEventDto);
+        this.orderEventDto = orderEventDto;
+    }
 }

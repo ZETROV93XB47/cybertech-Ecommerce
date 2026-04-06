@@ -15,6 +15,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -22,7 +24,7 @@ public class OrderEventListener {
 
     private final NotificationDispatcher notificationDispatcher;
 
-    @Async
+    @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOrderCreated(final OrderCreatedEvent event) {
 
@@ -35,13 +37,12 @@ public class OrderEventListener {
                 .notificationType(NotificationType.ORDER_CONFIRMATION)
                 .user(event.getOrderEventDto().getUserContactDto())
                 .data(orderEventDto)
-                .message("Votre commande #" + event.getOrderEventDto().getOrderUuid() + " a bien été confirmée.")//!WARNING Potentielle redondance de orderDto
                 .build();
 
         notificationDispatcher.dispatch(context);
     }
 
-    @Async
+    @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOrderUpdated(final OrderUpdatedEvent event) {
 
@@ -54,7 +55,6 @@ public class OrderEventListener {
                 .notificationType(NotificationType.ORDER_UPDATE)
                 .user(event.getOrderEventDto().getUserContactDto())
                 .data(orderEventDto)
-                .message("Votre commande #" + event.getOrderEventDto().getOrderUuid() + " a été mise à jour.")
                 .build();
 
         notificationDispatcher.dispatch(context);
