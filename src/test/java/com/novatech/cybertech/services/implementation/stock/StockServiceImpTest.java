@@ -12,7 +12,6 @@ import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.implementation.StockServiceImp;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -331,7 +330,7 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("commitStock: empty reservation set — current behaviour pin (silent: delete + redis.delete still fire)")
+    @DisplayName("commitStock: empty reservation set — behaviour-preserving cleanup (delete + redis.delete still fire)")
     void commitStock_emptyReservations_currentBehaviour_pinsBug064() {
         UUID orderUuid = UUID.randomUUID();
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
@@ -345,15 +344,29 @@ class StockServiceImpTest {
     }
 
     @Test
-    @Disabled("BUG-064: commitStock should signal (e.g. throw) when called for an order with no reservations; currently silent no-op")
-    @DisplayName("BUG-064: commitStock should signal on empty reservation set (desired behaviour)")
-    void commitStock_emptyReservations_shouldSignal_bug064() {
-        UUID orderUuid = UUID.randomUUID();
+    @DisplayName("BUG-064 FIX: commitStock with no reservation logs a WARN (signal for upstream double-commit)")
+    void commitStock_emptyReservations_logsWarn_bug064() {
+        // BUG-064 FIX: behaviour preserved (no throw), but a WARN is emitted naming the orderUuid
+        // so a double-commit / replayed webhook is observable in logs.
+        final UUID orderUuid = UUID.randomUUID();
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
 
-        // Desired: explicit signal (e.g. domain exception) so upstream double-commit is detectable.
-        assertThatThrownBy(() -> service.commitStock(orderUuid))
-                .isInstanceOf(RuntimeException.class);
+        final ch.qos.logback.classic.Logger stockLogger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(StockServiceImp.class);
+        final ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        stockLogger.addAppender(appender);
+        try {
+            service.commitStock(orderUuid);
+        } finally {
+            stockLogger.detachAppender(appender);
+        }
+
+        assertThat(appender.list)
+                .anyMatch(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN
+                        && e.getFormattedMessage().contains(orderUuid.toString())
+                        && e.getFormattedMessage().contains("commitStock"));
     }
 
     // ---------------------------------------------------------------------

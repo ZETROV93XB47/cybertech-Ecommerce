@@ -46,7 +46,9 @@ public enum ErrorCode {
     PAYMENT_FAILED(HttpStatus.PAYMENT_REQUIRED, ErrorCodeType.FUNCTIONAL),
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     PAYMENT_PROCESSING_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL),
-    DISCOUNT_TYPE_NOT_ACTIVE(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL);
+    DISCOUNT_TYPE_NOT_ACTIVE(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
+    /** BUG-161 — Authenticated user tried to read/update/delete a cart they do not own (IDOR). */
+    UNAUTHORIZED_CART_ACCESS(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;

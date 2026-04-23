@@ -8,6 +8,11 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
+/**
+ * Stateless converter for the credit-card style {@code "MM/yyyy"} expiry date
+ * pattern carried by external payment payloads. Constructor is private — the
+ * class only exposes static helpers.
+ */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class DateConverter {
 

@@ -99,4 +99,28 @@ public interface BankCardControllerApiSpec {
                     @ApiResponse(responseCode = "204", description = "Bank card deleted")
             })
     ResponseEntity<Void> deleteBankCardByUuid(UUID uuid);
+
+    // --- BUG-038 — default-card surface -----------------------------------------------
+
+    @Operation(summary = "Set a bank card as the caller's default",
+            description = "Marks the specified card as the authenticated user's default card, clearing any previous default. Enforces ownership via the JWT subject.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            parameters = {@Parameter(name = "cardUuid", description = "UUID of the card to promote to default")},
+            responses = {
+                    @ApiResponse(responseCode = "204", description = "Default card updated"),
+                    @ApiResponse(responseCode = "403", description = "Caller does not own this card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "Bank card not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<Void> setDefaultBankCard(UUID cardUuid, Jwt jwt);
+
+    @Operation(summary = "Get the caller's default bank card",
+            description = "Returns the authenticated user's default card as a masked response DTO (no PAN is exposed).",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Default card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "No default bank card set", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<BankCardResponseDto> getDefaultBankCard(Jwt jwt);
 }

@@ -27,7 +27,9 @@ public class TestSecurityConfig {
             "/products/list",
             "/swagger-ui/**",
             "/v3/api-docs/**",
-            "/api/v1/services/user/register/**",
+            // BUG-201: narrowed to the exact human-signup path; mirrors the production
+            // SecurityConfig#PUBLIC_URLS change so slice tests exercise the same surface.
+            "/api/v1/services/user/register",
             "/api/v1/services/user/get/all",
             "/test/upload-image/**",
             "/api/v1/services/product/**",

@@ -44,12 +44,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>BUG-015: {@link UserAlreadyExistsException} now mapped to 409 (handler verified in
  *       {@code ErrorManagementController}). Asserted live by
  *       {@link #shouldFailRegisterUserAlreadyExistsAs409}.</li>
- *   <li>BUG-201: {@code POST /register/auto/single} should require ADMIN — currently STILL
- *       reachable anonymously (no {@code @PreAuthorize} on the method, and the URL is whitelisted
- *       in {@code SecurityConfig#PUBLIC_URLS}). Pinned by
- *       {@link #shouldAcceptRegisterAutoSingleAnonymouslyDocumentingBug201}; the desired-behaviour
- *       test {@link #shouldRejectRegisterAutoSingleWhenAnonymousOnceBug201Fixed} is
- *       {@code @org.junit.jupiter.api.Disabled("BUG-201")}.</li>
+ *   <li>BUG-201 — <b>CLOSED</b> (SA-Fix-4, 2026-04-23): {@code POST /register/auto/single}
+ *       now requires ADMIN. The method is annotated {@code @PreAuthorize("hasRole('ADMIN')")}
+ *       on {@link UserManagementController#registerAuto()} and the URL pattern in
+ *       {@code SecurityConfig#PUBLIC_URLS} is narrowed to the exact {@code /register} path
+ *       (no wildcard), so anonymous calls fall through to {@code anyRequest().authenticated()}.
+ *       Asserted by {@link #shouldRejectRegisterAutoSingleWhenAnonymousAfterBug201Fix} and
+ *       {@link #shouldRejectRegisterAutoSingleAsRoleUserReturning403}; happy-path stays
+ *       covered by {@link #shouldRegisterAutoSingleAsAdminReturning201}.</li>
  * </ul>
  */
 @Import({TestSecurityConfig.class, ErrorManagementController.class})
@@ -188,35 +190,27 @@ class UserManagementControllerTest {
     // ---------- POST /register/auto/single ----------
 
     @Test
-    void shouldAcceptRegisterAutoSingleAnonymouslyDocumentingBug201() throws Exception {
-        // BUG-201 (was BUG-181): /register/auto/single is anonymously reachable today.
-        // The endpoint URL pattern /api/v1/services/user/register/** is whitelisted in
-        // SecurityConfig#PUBLIC_URLS AND no @PreAuthorize annotation guards the method.
-        // F1.7 claimed BUG-201 was fixed but the source contradicts that — this test PINS
-        // the current (broken) behaviour so a future tightening surfaces here as a failure.
-        final UserResponseDto created = UserDtoFixtures.aSampleUserResponse();
-        when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
-
-        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
-                        .with(csrf())
-                        .accept(APPLICATION_JSON)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isCreated())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(created), STRICT));
-    }
-
-    @org.junit.jupiter.api.Disabled("BUG-201 — registerAuto() should require ADMIN; currently anonymously reachable.")
-    @Test
-    void shouldRejectRegisterAutoSingleWhenAnonymousOnceBug201Fixed() throws Exception {
-        // Desired behaviour: once @PreAuthorize("hasRole('ADMIN')") is added to registerAuto()
-        // (per F1.7's claim) AND/OR the URL is removed from the public whitelist,
-        // anonymous calls must return 401/403. Flip green when fixed.
+    void shouldRejectRegisterAutoSingleWhenAnonymousAfterBug201Fix() throws Exception {
+        // BUG-201 — CLOSED. registerAuto() is now @PreAuthorize("hasRole('ADMIN')") AND the
+        // SecurityConfig#PUBLIC_URLS whitelist no longer covers /register/auto/** (only the
+        // exact /register path is anonymous). The URL is now `anyRequest().authenticated()`
+        // → CustomAuthenticationEntryPoint translates a missing JWT into 401.
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
                         .with(csrf())
                         .accept(APPLICATION_JSON)
                         .contentType(APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldRejectRegisterAutoSingleAsRoleUserReturning403() throws Exception {
+        // BUG-201 — even an authenticated non-ADMIN must be rejected (403) by @PreAuthorize.
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
     }
 
     @Test

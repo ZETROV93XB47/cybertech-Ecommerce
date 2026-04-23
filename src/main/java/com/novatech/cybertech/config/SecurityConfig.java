@@ -38,7 +38,10 @@ public class SecurityConfig {
             "/v3/api-docs/**",      // Accès à la définition OpenAPI (si utilisé)
             //"/api/v1/services/**",
             //"/public/**",
-            "/api/v1/services/user/register/**",
+            // BUG-201: narrowed from "/api/v1/services/user/register/**" to the exact
+            // human-signup path so /register/auto/** is NO LONGER anonymously reachable.
+            // The /auto endpoints are ADMIN-only via @PreAuthorize on the controllers.
+            "/api/v1/services/user/register",
             //"/api/v1/services/cart/**",
             "/api/v1/services/user/get/all",
             "/test/upload-image/**",

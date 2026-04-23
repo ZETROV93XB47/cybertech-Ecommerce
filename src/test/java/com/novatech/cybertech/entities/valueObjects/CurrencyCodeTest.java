@@ -1,6 +1,5 @@
 package com.novatech.cybertech.entities.valueObjects;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -80,9 +79,10 @@ class CurrencyCodeTest {
     class CurrencyCoverage {
 
         @Test
-        void enumHasExactlyTenCurrenciesToday() {
-            // Pin: USD/EUR/GBP/JPY/AUD/CAD/CHF/CNY/SEK/NZD.
-            assertThat(CurrencyCode.values()).hasSize(10);
+        void enumHasExactlySixteenCurrencies_pinsFix_BUG_133() {
+            // Pin the FIX: 10 historical (USD/EUR/GBP/JPY/AUD/CAD/CHF/CNY/SEK/NZD)
+            // + 6 emerging-market additions (INR/BRL/MXN/RUB/KRW/ZAR).
+            assertThat(CurrencyCode.values()).hasSize(16);
         }
 
         @Test
@@ -102,7 +102,6 @@ class CurrencyCodeTest {
         }
 
         @Test
-        @Disabled("BUG-133 — CurrencyCode missing INR/BRL/MXN/RUB/KRW/ZAR")
         void supportsCommonEmergingMarketCurrencies_BUG_133() {
             final List<String> names = Arrays.stream(CurrencyCode.values()).map(Enum::name).toList();
 
@@ -110,11 +109,11 @@ class CurrencyCodeTest {
         }
 
         @Test
-        void documentsCurrentMissingCurrencies_BUG_133() {
+        void documentsCurrentEmergingMarketCurrencies_pinsFix_BUG_133() {
             final List<String> names = Arrays.stream(CurrencyCode.values()).map(Enum::name).toList();
 
-            // Pin: today these are NOT present.
-            assertThat(names).doesNotContain("INR", "BRL", "MXN", "RUB", "KRW", "ZAR");
+            // Pin the FIX: emerging-market currencies are now present.
+            assertThat(names).contains("INR", "BRL", "MXN", "RUB", "KRW", "ZAR");
         }
     }
 
@@ -123,7 +122,6 @@ class CurrencyCodeTest {
     class ApiSurface {
 
         @Test
-        @Disabled("BUG-134 — brief asks for fromString(String); production exposes only fromCode(String)")
         void shouldExposeFromStringFactory_BUG_134() throws NoSuchMethodException {
             final Method fromString = CurrencyCode.class.getMethod("fromString", String.class);
 
@@ -131,14 +129,20 @@ class CurrencyCodeTest {
         }
 
         @Test
-        void documentsCurrentlyOnlyFromCodeIsExposed_BUG_134() {
+        void fromStringDelegatesToFromCode_BUG_134() {
+            assertThat(CurrencyCode.fromString("eur")).isSameAs(CurrencyCode.EUR);
+            assertThat(CurrencyCode.fromString("USD")).isSameAs(CurrencyCode.USD);
+        }
+
+        @Test
+        void documentsBothFactoriesAreExposed_pinsFix_BUG_134() {
             final List<String> staticFactoryNames = Arrays.stream(CurrencyCode.class.getDeclaredMethods())
                     .map(Method::getName)
                     .filter(n -> n.startsWith("from"))
                     .toList();
 
-            assertThat(staticFactoryNames).contains("fromCode");
-            assertThat(staticFactoryNames).doesNotContain("fromString");
+            // Pin the FIX: both fromCode AND fromString are now exposed.
+            assertThat(staticFactoryNames).contains("fromCode", "fromString");
         }
     }
 }

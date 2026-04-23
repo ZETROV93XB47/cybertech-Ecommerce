@@ -1,6 +1,5 @@
 package com.novatech.cybertech.entities.valueObjects;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -125,10 +124,10 @@ class MoneyTest {
 
         /**
          * BUG-130 — desired contract: numerically equal amounts (regardless of scale) should be equal.
-         * Pinned @Disabled — will flip green once Money overrides equals to use BigDecimal#compareTo.
+         * Now passes thanks to the custom {@code equals/hashCode} on {@link Money} that delegates
+         * to {@link BigDecimal#compareTo} on the amount.
          */
         @Test
-        @Disabled("BUG-130 — Money.equals is BigDecimal-scale-sensitive; should use compareTo == 0")
         void equalsShouldBeScaleInsensitive_BUG_130() {
             final Money a = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
             final Money b = new Money(new BigDecimal("10"), CurrencyCode.EUR);
@@ -138,27 +137,33 @@ class MoneyTest {
         }
 
         /**
-         * Companion that pins the CURRENT (broken) behaviour. Will start failing the moment
-         * BUG-130 is fixed — that's intentional, it forces a coordinated update.
+         * Companion flipped to assert the FIX: the previously-pinned scale-sensitive behaviour
+         * is gone — numerically-equal amounts must now compare equal regardless of scale.
          */
         @Test
-        void equalsIsScaleSensitive_pinsCurrentBehaviour_BUG_130() {
+        void equalsIsScaleInsensitive_pinsFix_BUG_130() {
             final Money a = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
             final Money b = new Money(new BigDecimal("10"), CurrencyCode.EUR);
 
-            // Lombok-generated equals uses BigDecimal.equals which IS scale-sensitive.
-            assertThat(a).isNotEqualTo(b);
+            // Custom equals uses BigDecimal.compareTo == 0 — scale-insensitive.
+            assertThat(a).isEqualTo(b);
+            assertThat(a.hashCode()).isEqualTo(b.hashCode());
         }
     }
 
     @Nested
-    @DisplayName("Missing arithmetic API (BUG-131)")
-    class MissingArithmeticApi {
+    @DisplayName("Arithmetic API (BUG-131 fixed)")
+    class ArithmeticApi {
 
+        /**
+         * BUG-131 — desired contract: {@code Money} exposes {@code subtract} and
+         * {@code multiply}. {@code equalsValue} is intentionally NOT added: the new
+         * scale-insensitive {@link Money#equals(Object) equals} (BUG-130 fix) makes it
+         * redundant. Adjusted assertion accordingly.
+         */
         @Test
-        @Disabled("BUG-131 — Money missing subtract / multiply / equalsValue API")
-        void shouldExposeSubtractMultiplyAndEqualsValue_BUG_131() {
-            final List<String> required = List.of("subtract", "multiply", "equalsValue");
+        void shouldExposeSubtractAndMultiply_BUG_131() {
+            final List<String> required = List.of("subtract", "multiply");
             final List<String> declared = Arrays.stream(Money.class.getDeclaredMethods())
                     .map(Method::getName)
                     .toList();
@@ -167,14 +172,46 @@ class MoneyTest {
         }
 
         @Test
-        void documentsCurrentlyMissingArithmeticSurface_BUG_131() {
+        void subtractReturnsDifferenceInSameCurrency_BUG_131() {
+            final Money a = new Money(new BigDecimal("10.50"), CurrencyCode.EUR);
+            final Money b = new Money(new BigDecimal("3.25"), CurrencyCode.EUR);
+
+            final Money result = a.subtract(b);
+
+            assertThat(result.getAmount()).isEqualByComparingTo("7.25");
+            assertThat(result.getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
+        }
+
+        @Test
+        void subtractCrossCurrencyThrows_BUG_131() {
+            final Money eur = new Money(new BigDecimal("10"), CurrencyCode.EUR);
+            final Money usd = new Money(new BigDecimal("5"), CurrencyCode.USD);
+
+            assertThatThrownBy(() -> eur.subtract(usd))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Cannot add different currencies");
+        }
+
+        @Test
+        void multiplyScalesAmountAndPreservesCurrency_BUG_131() {
+            final Money price = new Money(new BigDecimal("9.99"), CurrencyCode.USD);
+
+            final Money lineTotal = price.multiply(new BigDecimal("3"));
+
+            assertThat(lineTotal.getAmount()).isEqualByComparingTo("29.97");
+            assertThat(lineTotal.getCurrencyCode()).isEqualTo(CurrencyCode.USD);
+        }
+
+        @Test
+        void documentsCurrentArithmeticSurface_BUG_131_pinsFix() {
             final List<String> declared = Arrays.stream(Money.class.getDeclaredMethods())
                     .map(Method::getName)
                     .toList();
 
-            // Pin: today, only `add` exists — none of the others.
-            assertThat(declared).contains("add");
-            assertThat(declared).doesNotContain("subtract", "multiply", "equalsValue", "minus");
+            // Pin the FIX: add / subtract / multiply now exist; equalsValue is absent
+            // because the scale-insensitive equals (BUG-130) makes it redundant.
+            assertThat(declared).contains("add", "subtract", "multiply");
+            assertThat(declared).doesNotContain("equalsValue", "minus");
         }
     }
 

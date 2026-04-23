@@ -79,11 +79,27 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
+
+    /**
+     * Hard-delete an order after verifying ownership and state eligibility.
+     *
+     * <p>BUG-054 guard: resolves the caller via {@link #resolveKeycloakIdFromJwt(Jwt)}, surfacing a
+     * {@link UserNotFoundException} instead of an NPE when the JWT {@code sub} claim is missing.
+     * Stock is released before the row is deleted — no refund is issued here;
+     * use {@link #cancelOrder(UUID, Jwt)} for that.
+     *
+     * @param uuid order UUID to delete.
+     * @param jwt  caller identity; {@code sub} claim must be non-null.
+     * @throws OrderNotFoundException              when no order matches {@code uuid}.
+     * @throws OrderDoesntBelongsToUserException   when the caller is not the order's initiator.
+     * @throws CannotCancelOrderException          when the order is not in a deletable state.
+     * @throws UserNotFoundException               when the JWT subject is missing (BUG-054).
+     */
     @Override
     @Transactional
     public void deleteByUUID(final UUID uuid, final Jwt jwt) {
 
-        final String keycloakId = jwt.getSubject();
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
         final OrderEntity orderEntity = orderRepository.findByUuid(uuid).orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
         if (!isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
@@ -99,13 +115,28 @@ public class OrderManagementServiceImp implements OrderManagementService {
         orderRepository.deleteByUuid(uuid);
     }
 
+    /**
+     * Overwrite an existing order's items + shipping fields, then reconcile payment: charge the
+     * positive delta, refund the negative delta, or commit the existing reservation when the
+     * total is unchanged.
+     *
+     * <p>BUG-054 guard: callers with a missing JWT {@code sub} now get a clean
+     * {@link UserNotFoundException} rather than an NPE on {@code keycloakId.equals(null)}.
+     *
+     * @param dto update payload (new items, new shipping, new total).
+     * @param jwt caller identity; {@code sub} claim must be non-null.
+     * @throws OrderNotFoundException             when no order matches {@code dto.uuid}.
+     * @throws OrderDoesntBelongsToUserException  when the caller is not the order's initiator.
+     * @throws OrderAlreadyShippedException       when the order has already shipped.
+     * @throws UserNotFoundException              when the JWT subject is missing (BUG-054).
+     */
     @Override
     @Transactional
     public OrderResponseDto updateOrder(final OrderUpdateRequestDto dto, final Jwt jwt) {
 
         log.info("in Update Order : {}", dto);
 
-        final String keycloakId = jwt.getSubject();
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
 
         final OrderEntity order = orderRepository.findByUuid(dto.getUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
@@ -191,10 +222,45 @@ public class OrderManagementServiceImp implements OrderManagementService {
         return orderMapper.mapFromEntityToResponseDto(order);
     }
 
+    /**
+     * Retry a failed (or still-pending) payment for an existing order.
+     *
+     * <p><b>BUG-052 contract — no double-discount on retry:</b> {@code order.getTotalAmount()} is the
+     * post-discount final amount set once at {@link #placeOrder} time (placeOrder sums
+     * {@code unitPrice * quantity} for every cart item — the unit price already reflects any
+     * promotional discount applied upstream in the cart service). Retry forwards that stored total
+     * verbatim to {@link PaymentService#processPayment}; NO discount strategy is re-applied here.
+     * Consequently a customer who retries after a transient payment failure pays exactly the same
+     * amount as the original attempt — never 2× the discount.
+     *
+     * <p><b>BUG-054 guard:</b> {@link #resolveKeycloakIdFromJwt(Jwt)} surfaces a
+     * {@link UserNotFoundException} when the JWT {@code sub} claim is missing, instead of an NPE.
+     *
+     * <p>Side effects, in order:
+     * <ol>
+     *   <li>Re-reserves stock (the prior reservation was released on failure — see BUG-050 fix);
+     *       bubbles {@link com.novatech.cybertech.exceptions.NotEnoughStockException} if the stock
+     *       is no longer available.</li>
+     *   <li>Re-uses the {@link PaymentType} from the most recent attempt.</li>
+     *   <li>Calls {@link PaymentService#processPayment} with the stored, already-discounted
+     *       {@code order.getTotalAmount()}.</li>
+     *   <li>Publishes an {@code OrderUpdatedEvent} with the final attempt status.</li>
+     * </ol>
+     *
+     * @param orderUuid target order UUID.
+     * @param jwt      caller identity; {@code sub} claim must be non-null.
+     * @return the order mapped to {@link OrderResponseDto}.
+     * @throws OrderNotFoundException              when no order matches {@code orderUuid}.
+     * @throws OrderDoesntBelongsToUserException   when the caller is not the order's initiator.
+     * @throws FailedRetryingPayment               when the order is not in a retryable state.
+     * @throws NoPreviousPaymentAttemptException   when there is no prior attempt to copy the
+     *                                             payment type from.
+     * @throws UserNotFoundException               when the JWT subject is missing (BUG-054).
+     */
     @Override
     @Transactional
     public OrderResponseDto retryPayment(final UUID orderUuid, final Jwt jwt) {
-        final String keycloakId = jwt.getSubject();
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
         final OrderEntity order = orderRepository.findByUuid(orderUuid).orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
         if (!isCurrentUserOrderInitiator(order, keycloakId)) {
@@ -238,11 +304,23 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
+    /**
+     * Convert the caller's cart into a persisted order, reserve stock, attempt payment, and
+     * publish an {@code OrderCreatedEvent}.
+     *
+     * <p>BUG-054 guard: {@link #resolveKeycloakIdFromJwt(Jwt)} rejects a null JWT subject with
+     * {@link UserNotFoundException} — no more NPE when the token is malformed.
+     *
+     * <p>Pinning for BUG-052: the {@code totalAmount} persisted here is the FINAL,
+     * discount-adjusted amount (sum of cart-item unit prices × quantities — the cart service is
+     * responsible for applying any promotional discount into the unit price before this call).
+     * Any subsequent retry via {@link #retryPayment(UUID, Jwt)} forwards this amount verbatim.
+     */
     @Override
     @Transactional
     public OrderResponseDto placeOrder(final OrderPlacingRequestDto req, final Jwt jwt) {
 
-        final String keycloakId = jwt.getSubject();
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         // 1) Récupération panier
@@ -333,6 +411,14 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
+    /**
+     * Soft-cancel an order: flip status to {@code CANCELED} and refund every prior successful
+     * payment attempt (excluding refunds themselves). Differs from {@link #deleteByUUID}, which
+     * hard-deletes the row and issues no refund.
+     *
+     * <p>BUG-054 guard: the JWT subject is resolved via {@link #resolveKeycloakIdFromJwt(Jwt)}
+     * — a missing {@code sub} claim now throws {@link UserNotFoundException}.
+     */
     @Override
     @Transactional
     public OrderResponseDto cancelOrder(final UUID orderUUID, final Jwt jwt) {
@@ -342,7 +428,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final OrderEntity orderEntity = orderRepository.findByUuid(orderUUID).orElseThrow(() -> new OrderNotFoundException("Order with UUID " + orderUUID + " not found"));
 
         if (!isOrderAlreadyShipped(orderEntity)) {//Il faudra un autre endpoint pour annuler la commande une fois renvoyée
-            final String keycloakId = jwt.getSubject();
+            final String keycloakId = resolveKeycloakIdFromJwt(jwt);
             if (isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
                 orderEntity.setStatus(OrderStatus.CANCELED);
 
@@ -496,6 +582,25 @@ public class OrderManagementServiceImp implements OrderManagementService {
                         .productEntity(product)
                         .build())
                 .collect(Collectors.toUnmodifiableList());
+    }
+
+    /**
+     * BUG-054: defensive null-guard around {@link Jwt#getSubject()}.
+     *
+     * <p>Every user-facing method in this service identifies the caller by the JWT {@code sub}
+     * claim. A malformed / stripped token (missing sub) used to fall through to
+     * {@code userRepository.findByKeycloakId(null)} — an NPE waiting to happen, or worse a silent
+     * query-by-null returning the first-inserted user on some JPA providers. This helper surfaces
+     * the condition up-front as {@link UserNotFoundException} (HTTP 404 via the advice) instead.
+     *
+     * @param jwt caller token; may itself be null — both cases are treated as "no identity".
+     * @return the non-null Keycloak subject.
+     * @throws UserNotFoundException when the JWT is null or has a null {@code sub} claim.
+     */
+    private static String resolveKeycloakIdFromJwt(final Jwt jwt) {
+        return Optional.ofNullable(jwt)
+                .map(Jwt::getSubject)
+                .orElseThrow(() -> new UserNotFoundException("JWT subject missing — cannot resolve user"));
     }
 
     private PaymentEntity handlePaymentUpdate(OrderEntity order, BigDecimal difference, PaymentType paymentType, String idempotencyKey) {

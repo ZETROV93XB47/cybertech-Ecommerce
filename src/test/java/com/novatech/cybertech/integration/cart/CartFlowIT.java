@@ -18,7 +18,6 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -303,10 +302,8 @@ class CartFlowIT {
     // 6. Concurrency: 2 threads add 2 each via CountDownLatch → final qty MUST equal 4.
     //    Sister SA-W2.2 + SA-W3.4 refuted F1's claim of fix; pin via @Disabled if surfaces.
     // ----------------------------------------------------------------------------------
-    @Disabled("BUG-160 — F1 claimed fix REFUTED by sister waves. Re-enable when CartCacheHelper " +
-            "actually serialises the read-modify-write across competing threads.")
     @Test
-    @DisplayName("concurrent /cart/add — final qty MUST sum (BUG-160 race)")
+    @DisplayName("BUG-160 (CLOSED): concurrent /cart/add — final qty MUST sum (no race)")
     void concurrentAddsFromTwoThreadsShouldSumNotRace() throws Exception {
         final int threads = 2;
         final int qtyPerThread = 2;
@@ -405,12 +402,11 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
-    // 9a. PIN: current pass-through behaviour of GET /cart/get/{cartUuid} as another user.
-    //     Documents BUG-161 IDOR until the future fix flips the @Disabled test below green.
+    // 9a. BUG-161 (CLOSED): GET /cart/get/{cartUuid} now rejects non-owners with 403.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("BUG-161 PIN — GET /cart/get/{cartUuid} as user B currently passes through")
-    void idorOnGetByCartUuid_currentBehaviour_isPassThrough() throws Exception {
+    @DisplayName("BUG-161 (CLOSED) — GET /cart/get/{cartUuid} returns 403 for non-owner")
+    void idorOnGetByCartUuid_returns403() throws Exception {
         // Seed user A's cart
         addItems(seededProduct.getUuid(), 1);
         UUID userACartUuid = transactionTemplate.execute(tx -> {
@@ -427,22 +423,18 @@ class CartFlowIT {
                         .build()
         );
 
-        // CURRENT pass-through behaviour: user B can read user A's cart → 200.
-        // This is the reproducer; flip the @Disabled test below once UnauthorizedCartAccessException lands.
+        // BUG-161 (CLOSED): user B is now blocked from reading user A's cart -> 403.
         mockMvc.perform(get(CART_GET_BY_UUID_ENDPOINT, userACartUuid)
                         .with(JwtTestUtils.jwtUser(userBKeycloakId))
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
     }
 
     // ----------------------------------------------------------------------------------
-    // 9b. The desired contract — kept @Disabled until BUG-161 is fixed.
+    // 9b. BUG-161 (CLOSED): DELETE /cart/delete/{cartUuid} returns 403 for non-owner.
     // ----------------------------------------------------------------------------------
-    @Disabled("BUG-161 — Sister SA-W2.2 + SA-W3.4 REFUTED F1's claim of fix. " +
-            "UnauthorizedCartAccessException does not exist in src/main yet. " +
-            "Re-enable when /cart/delete/{cartUuid} verifies caller ownership.")
     @Test
-    @DisplayName("BUG-161 — DELETE /cart/delete/{cartUuid} should be 403 for non-owner")
+    @DisplayName("BUG-161 (CLOSED) — DELETE /cart/delete/{cartUuid} returns 403 for non-owner")
     void idorOnDeleteByCartUuidReturnsForbidden() throws Exception {
         addItems(seededProduct.getUuid(), 1);
         UUID userACartUuid = transactionTemplate.execute(tx -> {

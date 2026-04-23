@@ -11,6 +11,10 @@ import java.util.UUID;
  * Test fixture builder for {@link BankCardEntity}. Presets {@code uuid} explicitly because builders
  * bypass {@code BaseEntity#prePersist}. Default {@code expiryDate} is set 5 years in the future to
  * avoid spurious expiry validation failures.
+ *
+ * <p>SA-BankCard-v2 additions: also presets {@code encryptedNumber}, {@code lastFourDigits} and
+ * {@code isDefault} so sister tests that construct {@code BankCardEntity} directly keep compiling
+ * and exercise a post-fix entity shape without bleeding PCI changes into their setup.</p>
  */
 public final class BankCardEntityBuilder {
 
@@ -28,6 +32,9 @@ public final class BankCardEntityBuilder {
                 .uuid(UUID.randomUUID())
                 .cardHolderName("Jane Doe")
                 .cardNumber("4242424242424242")
+                .encryptedNumber("ENC:placeholder")
+                .lastFourDigits("4242")
+                .isDefault(Boolean.FALSE)
                 .expiryDate(LocalDate.now().plusYears(5).format(EXPIRY_FORMAT))
                 .cardType(BankCardType.VISA)
                 .userEntity(UserEntityBuilder.aValidUser());

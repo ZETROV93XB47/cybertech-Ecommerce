@@ -21,6 +21,15 @@ import java.time.LocalDateTime;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
 import static com.novatech.cybertech.entities.enums.NotificationType.SHIPPING_CONFIRMATION;
 
+/**
+ * Sole consumer of {@link OrderShippedEvent}: builds the
+ * {@link com.novatech.cybertech.entities.enums.NotificationType#SHIPPING_CONFIRMATION} context
+ * and dispatches it through the {@link NotificationDispatcher} for the user's preferred
+ * communication channel, then persists the resulting {@link NotificationEntity}.
+ *
+ * <p>The shipping listener intentionally does NOT dispatch a notification itself — see
+ * {@link ShippingListener} (BUG-122 cleanup).
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -29,6 +38,18 @@ public class NotificationListener {
     private final NotificationRepository notificationRepository;
     private final NotificationDispatcher notificationDispatcher;
 
+    /**
+     * Sends the shipping-confirmation notification once the {@link ShippingListener} has
+     * committed the SHIPPED status update.
+     *
+     * <p>WHY {@link TransactionalEventListener} with {@link TransactionPhase#AFTER_COMMIT}: the
+     * notification (email / SMS) is an external side-effect; we MUST NOT send it before the
+     * SHIPPED status row is durably persisted, otherwise a transaction rollback would leave the
+     * user with a confirmation for a shipment that did not happen.
+     *
+     * <p>Downstream effect: writes a {@link NotificationEntity} row tracking that the
+     * confirmation was sent (recipient, channel, template, sentAt).
+     */
     @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(final OrderShippedEvent orderShippedEvent) {

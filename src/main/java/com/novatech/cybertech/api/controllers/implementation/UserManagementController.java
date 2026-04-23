@@ -14,9 +14,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -29,6 +31,24 @@ import static com.novatech.cybertech.utils.DataGenerator.generateUserCreateReque
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 import static org.springframework.http.ResponseEntity.ok;
 
+/**
+ * User-facing user-management controller.
+ *
+ * <p>Hosts the human signup endpoint ({@code POST /register}) plus a developer-utility
+ * endpoint ({@code POST /register/auto/single}) that mints a synthetic user with random
+ * data via {@link com.novatech.cybertech.utils.DataGenerator}. The auto-register endpoint
+ * is restricted to ADMIN callers (BUG-201) because it forges Keycloak + DB users without
+ * any client-supplied data.</p>
+ *
+ * <p>Security contract:
+ * <ul>
+ *   <li>{@code POST /register} — public (anonymous signup).</li>
+ *   <li>{@code POST /register/auto/single} — ADMIN only, enforced by
+ *       {@code @PreAuthorize("hasRole('ADMIN')")}; the path is also no longer covered by the
+ *       {@code SecurityConfig#PUBLIC_URLS} whitelist (only the exact {@code /register} path is).</li>
+ *   <li>{@code GET /get/{userUuid}} and {@code GET /ok} — authenticated users only (any role).</li>
+ * </ul></p>
+ */
 @Slf4j
 @RestController
 @RequiredArgsConstructor
@@ -38,14 +58,34 @@ public class UserManagementController implements UserControllerApiSpec {
 
     private final UserManagementServiceImp userManagementServiceImp;
 
+    /**
+     * Returns a user by UUID. Authenticated users only — not in the public whitelist.
+     *
+     * @param userUuid the unique identifier of the user to fetch.
+     * @return the {@link UserResponseDto} when found; throws
+     *         {@link com.novatech.cybertech.exceptions.UserNotFoundException} (mapped to
+     *         HTTP 404 by the controller advice) otherwise.
+     */
     @Override
     @GetMapping(value = "/get/{userUuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<UserResponseDto> getUserByUuid(@PathVariable("userUuid") final UUID userUuid) {
         return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.getByUUID(userUuid));
     }
 
+    /**
+     * Anonymous, public human-signup endpoint.
+     *
+     * <p>Whitelisted in {@link com.novatech.cybertech.config.SecurityConfig#PUBLIC_URLS} via the
+     * exact path {@code /api/v1/services/user/register} (no wildcard), so anonymous calls
+     * succeed. The body is validated via {@link Valid}; on success a Keycloak user and a
+     * local {@code UserEntity} are persisted in a single transaction.</p>
+     *
+     * @param userCreateRequestDto the human-supplied signup payload.
+     * @return HTTP 201 with a compact {@code Map} body containing {@code id} (local UUID)
+     *         and {@code keycloakId}.
+     */
     @PostMapping("/register")
-    public ResponseEntity<Map<?, ?>> register(@Valid @org.springframework.web.bind.annotation.RequestBody UserCreateRequestDto userCreateRequestDto) {
+    public ResponseEntity<Map<?, ?>> register(@Valid @RequestBody UserCreateRequestDto userCreateRequestDto) {
         final UserResponseDto created = userManagementServiceImp.create(userCreateRequestDto);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
@@ -54,17 +94,37 @@ public class UserManagementController implements UserControllerApiSpec {
         ));
     }
 
+    /**
+     * Developer / load-test utility — mints a synthetic user via
+     * {@link com.novatech.cybertech.utils.DataGenerator}.
+     *
+     * <p><b>Security (BUG-201):</b> ADMIN-only. The endpoint forges a fully-formed user
+     * (Keycloak + DB) without any client-supplied identity, so leaving it anonymous would
+     * let an attacker pollute the user table and Keycloak realm. The
+     * {@code @PreAuthorize("hasRole('ADMIN')")} below is the primary guard; the
+     * {@code SecurityConfig#PUBLIC_URLS} entry that previously matched
+     * {@code /api/v1/services/user/register/**} has been narrowed to the exact
+     * {@code /register} path so this URL no longer falls into {@code permitAll()}.</p>
+     *
+     * @return HTTP 201 with the generated {@link UserResponseDto}.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/register/auto/single")
     public ResponseEntity<UserResponseDto> registerAuto() {
         return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.create(generateUserCreateRequestDto()));
     }
 
 
+    /**
+     * Lightweight liveness ping. Authenticated users only (not whitelisted in
+     * {@code SecurityConfig#PUBLIC_URLS}). Useful for debugging the JWT auth chain
+     * without hitting any service.
+     */
     @Operation(summary = "Health check endpoint",
             description = "A simple endpoint to check if the UserController is responsive.",
             responses = {
                     @ApiResponse(responseCode = "200", description = "Service is up and running",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(type = "string", example = "Hello Guys !!! 😁🔥🔥🔥")))
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(type = "string", example = "Hello Guys !!!")))
             })
     @GetMapping(value = "/ok", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<String> healthCheck() {

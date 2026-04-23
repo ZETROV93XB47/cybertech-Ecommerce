@@ -6,9 +6,11 @@ import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemAddRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
+import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.UnauthorizedCartAccessException;
 import com.novatech.cybertech.fixtures.dto.CartDtoFixtures;
 import com.novatech.cybertech.fixtures.support.JwtTestUtils;
 import com.novatech.cybertech.services.core.CartService;
@@ -80,7 +82,8 @@ class CartManagementControllerTest {
             UUID cartUuid = UUID.randomUUID();
             CartResponseDto response = CartDtoFixtures.aSampleCartResponseBuilder().cartUuid(cartUuid).build();
 
-            when(cartService.getByUUID(cartUuid)).thenReturn(response);
+            // BUG-161 fix: controller now forwards JWT subject to ownership-checked overload.
+            when(cartService.getByUUID(eq(cartUuid), eq(KEYCLOAK_ID))).thenReturn(response);
 
             mockMvc.perform(get(GET_CART_BY_UUID_ENDPOINT, cartUuid)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -102,7 +105,7 @@ class CartManagementControllerTest {
                     .errorCodeType(FUNCTIONAL)
                     .build();
 
-            when(cartService.getByUUID(cartUuid)).thenThrow(new CartNotFoundException(message));
+            when(cartService.getByUUID(eq(cartUuid), eq(KEYCLOAK_ID))).thenThrow(new CartNotFoundException(message));
 
             mockMvc.perform(get(GET_CART_BY_UUID_ENDPOINT, cartUuid)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -180,12 +183,15 @@ class CartManagementControllerTest {
 
         @Test
         void shouldUpdateCartSuccessfully() throws Exception {
-            // BUG-026 fixed in Wave F2: updateCart now binds @PathVariable + @Valid @RequestBody.
+            // BUG-026 (CLOSED): updateCart now uses CartUpdateRequestDto + JWT subject for BUG-161 ownership.
             UUID cartUuid = UUID.randomUUID();
-            CartItemRemoveRequestDto request = CartDtoFixtures.aValidCartItemRemoveRequest();
+            CartUpdateRequestDto request = CartUpdateRequestDto.builder()
+                    .cartItemAddRequestDtos(List.of(CartDtoFixtures.aValidCartItemAddRequest()))
+                    .build();
             CartResponseDto response = CartDtoFixtures.aSampleCartResponseBuilder().cartUuid(cartUuid).build();
 
-            when(cartService.update(any(CartItemRemoveRequestDto.class))).thenReturn(response);
+            when(cartService.updateCart(eq(cartUuid), any(CartUpdateRequestDto.class), eq(KEYCLOAK_ID)))
+                    .thenReturn(response);
 
             mockMvc.perform(patch(UPDATE_CART_ENDPOINT, cartUuid)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -200,9 +206,9 @@ class CartManagementControllerTest {
 
         @Test
         void failUpdateCart_whenNullBody_thenBadRequest() throws Exception {
-            // BUG-026 fixed: missing body fields trigger @Valid -> 400.
+            // BUG-026 (CLOSED): empty body (no cartItemAddRequestDtos) trips @NotNull on CartUpdateRequestDto -> 400.
             UUID cartUuid = UUID.randomUUID();
-            CartItemRemoveRequestDto bad = new CartItemRemoveRequestDto();
+            CartUpdateRequestDto bad = new CartUpdateRequestDto();
             ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                     .message("Invalid Request or Request Poorly Constructed")
                     .httpStatusCode(400)
@@ -223,8 +229,9 @@ class CartManagementControllerTest {
         @Test
         void shouldDeleteCartByUuidSuccessfully() throws Exception {
             // BUG-027 fixed in Wave F2: deleteCartByUuid now binds @PathVariable("cartUuid").
+            // BUG-161 (CLOSED): controller forwards JWT subject for ownership check.
             UUID cartUuid = UUID.randomUUID();
-            doNothing().when(cartService).deleteByUUID(cartUuid);
+            doNothing().when(cartService).deleteByUUID(eq(cartUuid), eq(KEYCLOAK_ID));
 
             mockMvc.perform(delete(DELETE_CART_ENDPOINT, cartUuid)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -233,14 +240,16 @@ class CartManagementControllerTest {
                             .contentType(APPLICATION_JSON))
                     .andExpect(status().isNoContent());
 
-            verify(cartService).deleteByUUID(cartUuid);
+            verify(cartService).deleteByUUID(eq(cartUuid), eq(KEYCLOAK_ID));
         }
 
-        @org.junit.jupiter.api.Disabled("BUG-161 - IDOR: admin-CRUD endpoints accept attacker-supplied cartUuid; F1 claim of UnauthorizedCartAccessException is FALSE (file does not exist in tree).")
         @Test
         void idorOnDeleteByCartUuidReturnsForbidden() throws Exception {
-            // Desired contract: when JWT subject does not own the cart, deleteByUUID should reject with 403 (or similar).
+            // BUG-161 (CLOSED): caller does not own cart -> service throws
+            // UnauthorizedCartAccessException -> @ExceptionHandler -> HTTP 403.
             UUID otherUserCartUuid = UUID.randomUUID();
+            doThrow(new UnauthorizedCartAccessException("Caller does not own cart " + otherUserCartUuid))
+                    .when(cartService).deleteByUUID(eq(otherUserCartUuid), eq(KEYCLOAK_ID));
 
             mockMvc.perform(delete(DELETE_CART_ENDPOINT, otherUserCartUuid)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -251,19 +260,17 @@ class CartManagementControllerTest {
         }
 
         @Test
-        void idorOnDeleteByCartUuid_currentBehaviour_isPassThrough() throws Exception {
-            // Pinning the current behaviour: any authenticated USER can delete any cartUuid (BUG-161 OPEN).
+        void idorOnGetByCartUuidReturnsForbidden() throws Exception {
+            // BUG-161 (CLOSED): GET /cart/get/{cartUuid} also enforces ownership.
             UUID otherUserCartUuid = UUID.randomUUID();
-            doNothing().when(cartService).deleteByUUID(otherUserCartUuid);
+            when(cartService.getByUUID(eq(otherUserCartUuid), eq(KEYCLOAK_ID)))
+                    .thenThrow(new UnauthorizedCartAccessException("Caller does not own cart " + otherUserCartUuid));
 
-            mockMvc.perform(delete(DELETE_CART_ENDPOINT, otherUserCartUuid)
+            mockMvc.perform(get(GET_CART_BY_UUID_ENDPOINT, otherUserCartUuid)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
-                            .with(csrf())
                             .accept(APPLICATION_JSON)
                             .contentType(APPLICATION_JSON))
-                    .andExpect(status().isNoContent());
-
-            verify(cartService).deleteByUUID(otherUserCartUuid);
+                    .andExpect(status().isForbidden());
         }
     }
 

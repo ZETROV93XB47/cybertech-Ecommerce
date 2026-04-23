@@ -3,6 +3,7 @@ package com.novatech.cybertech.api.controllers.spec;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
+import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -30,7 +31,7 @@ public interface CartManagementControllerApiSpec {
                     @ApiResponse(responseCode = "404", description = "Cart not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<CartResponseDto> getCartByUuid(final UUID cartUuid);
+    ResponseEntity<CartResponseDto> getCartByUuid(final UUID cartUuid, final Jwt jwt);
 
 
     @Operation(summary = "Create a new Cart",
@@ -54,21 +55,21 @@ public interface CartManagementControllerApiSpec {
 
 
     @Operation(summary = "Update an existing Cart by UUID",
-            description = "Updates an existing cart's details based on their unique UUID. Fields not provided will not be updated.",
-            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Cart data for update. Only provide fields that need to be changed.", required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartItemRemoveRequestDto.class))),
+            description = "Updates an existing cart's items based on its unique UUID. Caller must own the cart.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Cart data for update. Provide the new list of items.", required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartUpdateRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Cart updated successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartResponseDto.class))),
                     @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - caller is not the cart owner",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Cart not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error during cart update",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<CartResponseDto> updateCart(final UUID cartUuid, final CartItemRemoveRequestDto cartItemRemoveRequestDto);
+    ResponseEntity<CartResponseDto> updateCart(final UUID cartUuid, final CartUpdateRequestDto cartUpdateRequestDto, final Jwt jwt);
 
 
     @Operation(summary = "Delete a Cart by UUID",
@@ -87,7 +88,7 @@ public interface CartManagementControllerApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during cart deletion",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Void> deleteCartByUuid(final UUID cartUuid);
+    ResponseEntity<Void> deleteCartByUuid(final UUID cartUuid, final Jwt jwt);
 
     @Operation(summary = "Get current user's cart",
             description = "Retrieves the shopping cart associated with the authenticated user.",

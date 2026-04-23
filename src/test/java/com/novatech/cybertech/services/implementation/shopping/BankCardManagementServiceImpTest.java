@@ -6,13 +6,17 @@ import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.BankCardType;
+import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
+import com.novatech.cybertech.exceptions.NoDefaultBankCartSetException;
+import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.mappers.entity.BankCardMapper;
 import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.CardEncryptionService;
 import com.novatech.cybertech.services.implementation.BankCardManagementServiceImp;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -41,6 +45,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -49,19 +54,9 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link BankCardManagementServiceImp}.
  *
- * <p><b>SA-W3.4 — F1 claim verification:</b> the F1 wave claimed BUG-036 (card masking) and
- * BUG-037 (expired-card validation) were closed via a new {@code CardEncryptionService}.
- * Source verification on this branch shows {@code CardEncryptionService} does NOT exist
- * (search returned no files), {@code BankCardEntity} stores raw {@code cardNumber} as a 25-char
- * String with no {@code lastFourDigits} column, and {@code addBankCard} performs no expiry check.
- * Therefore BUG-036 and BUG-037 are <b>OPEN</b>; pinned via passing tests below.</p>
- *
- * <p>BUG-038 (set/get/isDefault for default bank card) — methods do not exist on the service or
- * entity (verified). Pinned with a reflection-based passing assertion documenting absence.</p>
- *
- * <p>BUG-431 (new): the user-context {@code addBankCard} short-circuits if {@code user.bankCardEntity}
- * is non-null, but the generic {@code create(dto)} duplicates the same check using
- * {@code IllegalStateException}. Both paths reject a 2nd card — pinned both ways.</p>
+ * <p><b>SA-BankCard-v2:</b> BUG-036 (PAN encryption + masking), BUG-037 (expiry guard), and
+ * BUG-038 (default-card surface) are now closed. The previously {@code @Disabled} pinning
+ * tests are re-enabled and now verify the <i>fixed</i> contract.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class BankCardManagementServiceImpTest {
@@ -69,6 +64,7 @@ class BankCardManagementServiceImpTest {
     @Mock BankCardMapper bankCardMapper;
     @Mock UserRepository userRepository;
     @Mock BankCardRepository bankCardRepository;
+    @Mock CardEncryptionService cardEncryptionService;
 
     @InjectMocks BankCardManagementServiceImp service;
 
@@ -114,6 +110,7 @@ class BankCardManagementServiceImpTest {
 
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
             when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(mapped);
+            when(cardEncryptionService.encrypt(anyString())).thenReturn("ENC:4242");
             when(bankCardRepository.save(mapped)).thenReturn(saved);
             when(bankCardMapper.mapFromEntityToResponseDto(saved)).thenReturn(responseDto);
 
@@ -151,35 +148,33 @@ class BankCardManagementServiceImpTest {
             verifyNoInteractions(bankCardMapper);
         }
 
+        /**
+         * BUG-037 (re-enabled by SA-BankCard-v2): expiry in the past now throws
+         * {@link BankCardExpiredException} <i>before</i> any repository or mapper call.
+         */
         @Test
-        @Disabled("BUG-037: addBankCard accepts past-dated expiry. F1 claim of fix REFUTED — " +
-                "no CardEncryptionService.java in src/main; no expiry validation in service. Re-enable when service rejects expired cards with ExpiredCardException.")
-        @DisplayName("BUG-037: expired card should throw before save")
-        void expiredCard_shouldThrow_disabled() {
+        @DisplayName("BUG-037: expired card should throw BankCardExpiredException before save")
+        void expiredCard_shouldThrow() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(null).build();
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
-            // Expected behavior: throw on past expiry. Currently the service happily saves it.
             assertThatThrownBy(() -> service.addBankCard(keycloakId, creationDto("01/2000")))
+                    .isInstanceOf(BankCardExpiredException.class)
                     .hasMessageContaining("expired");
+
+            verify(bankCardRepository, never()).save(any());
+            verifyNoInteractions(bankCardMapper, cardEncryptionService);
         }
 
         @Test
-        @DisplayName("BUG-037 PIN: expired card is currently accepted and saved (no validation)")
-        void expiredCard_currentlyAccepted_PIN() {
+        @DisplayName("BUG-037: malformed expiry -> IllegalArgumentException before save")
+        void malformedExpiry_throws() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(null).build();
-            final BankCardEntity mapped = BankCardEntityBuilder.aValidBankCardBuilder().expiryDate("01/2000").build();
-            final BankCardEntity saved = BankCardEntityBuilder.aValidBankCardBuilder().expiryDate("01/2000").build();
-            final BankCardCreationRequestDto dto = creationDto("01/2000");
-
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(mapped);
-            when(bankCardRepository.save(mapped)).thenReturn(saved);
-            when(bankCardMapper.mapFromEntityToResponseDto(saved)).thenReturn(new BankCardResponseDto());
 
-            // PIN: no exception thrown, save is called
-            assertThat(service.addBankCard(keycloakId, dto)).isNotNull();
-            verify(bankCardRepository).save(mapped);
+            assertThatThrownBy(() -> service.addBankCard(keycloakId, creationDto("not-a-date")))
+                    .isInstanceOf(IllegalArgumentException.class);
+            verify(bankCardRepository, never()).save(any());
         }
     }
 
@@ -188,16 +183,19 @@ class BankCardManagementServiceImpTest {
     @DisplayName("BUG-036 — card masking / encryption")
     class CardMaskingBug036 {
 
+        /**
+         * BUG-036 (re-enabled): the saved entity carries an encrypted envelope plus the last four
+         * digits — and the legacy {@code cardNumber} column is NOT populated with the raw PAN.
+         */
         @Test
-        @Disabled("BUG-036: card numbers stored in plaintext. F1 claim of fix via CardEncryptionService " +
-                "REFUTED — no such class exists in src/main. BankCardEntity has no lastFourDigits column. " +
-                "Re-enable once entity adds maskedNumber/lastFourDigits and storage is encrypted.")
-        @DisplayName("saved entity should mask cardNumber to last4 + encrypt full PAN at rest")
-        void cardNumberShouldBeMaskedAndEncrypted_disabled() {
+        @DisplayName("saved entity is encrypted + masked (last4 + encryptedNumber), legacy cardNumber blanked")
+        void cardNumberShouldBeMaskedAndEncrypted() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(null).build();
             final BankCardCreationRequestDto dto = creationDto("12/2030");
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(bankCardMapper.mapFromCreationRequestToEntity(any(BankCardCreationRequestDto.class))).thenReturn(BankCardEntityBuilder.aValidBankCard());
+            when(bankCardMapper.mapFromCreationRequestToEntity(any(BankCardCreationRequestDto.class)))
+                    .thenReturn(BankCardEntityBuilder.aValidBankCard());
+            when(cardEncryptionService.encrypt("4242424242424242")).thenReturn("ENC(base64-blob)");
             when(bankCardRepository.save(any(BankCardEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
             service.addBankCard(keycloakId, dto);
@@ -205,39 +203,20 @@ class BankCardManagementServiceImpTest {
             final ArgumentCaptor<BankCardEntity> captor = ArgumentCaptor.forClass(BankCardEntity.class);
             verify(bankCardRepository).save(captor.capture());
             final BankCardEntity persisted = captor.getValue();
-            // Expectation when fixed: full PAN must NOT be stored as-is
-            assertThat(persisted.getCardNumber()).doesNotContain("4242424242424242");
+            // No full PAN in the legacy column.
+            assertThat(persisted.getCardNumber()).isNull();
+            // Encrypted envelope present.
+            assertThat(persisted.getEncryptedNumber()).isEqualTo("ENC(base64-blob)");
+            // Only last four digits retained for display.
+            assertThat(persisted.getLastFourDigits()).isEqualTo("4242");
         }
 
         @Test
-        @DisplayName("BUG-036 PIN: full card number is currently stored as-is (no masking, no encryption)")
-        void cardNumberStoredPlaintext_PIN() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(null).build();
-            final BankCardCreationRequestDto dto = creationDto("12/2030");
-            // Mapper returns entity with the full PAN copied across
-            final BankCardEntity mapped = BankCardEntityBuilder.aValidBankCardBuilder().cardNumber("4242424242424242").build();
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(mapped);
-            when(bankCardRepository.save(mapped)).thenAnswer(inv -> inv.getArgument(0));
-            when(bankCardMapper.mapFromEntityToResponseDto(any(BankCardEntity.class))).thenReturn(new BankCardResponseDto());
-
-            service.addBankCard(keycloakId, dto);
-
-            final ArgumentCaptor<BankCardEntity> captor = ArgumentCaptor.forClass(BankCardEntity.class);
-            verify(bankCardRepository).save(captor.capture());
-            // PIN current insecure behavior
-            assertThat(captor.getValue().getCardNumber()).isEqualTo("4242424242424242");
-        }
-
-        @Test
-        @DisplayName("BUG-036 PIN: BankCardEntity has no `lastFourDigits` getter (no masked-display column)")
-        void bankCardEntity_lacksLastFourDigitsField_PIN() {
-            // Reflection: confirm absence so we know when prod adds the field (test will fail and prompt update).
-            boolean hasLastFour = Arrays.stream(BankCardEntity.class.getDeclaredFields())
-                    .anyMatch(f -> f.getName().equalsIgnoreCase("lastFourDigits") || f.getName().equalsIgnoreCase("maskedNumber"));
-            assertThat(hasLastFour)
-                    .as("BUG-036: lastFourDigits/maskedNumber column missing — masking not implemented")
-                    .isFalse();
+        @DisplayName("BankCardEntity exposes lastFourDigits + encryptedNumber fields (PCI-DSS surface)")
+        void bankCardEntity_hasLastFourDigitsAndEncryptedNumber() {
+            final List<String> fieldNames = Arrays.stream(BankCardEntity.class.getDeclaredFields())
+                    .map(java.lang.reflect.Field::getName).toList();
+            assertThat(fieldNames).contains("lastFourDigits", "encryptedNumber");
         }
     }
 
@@ -247,32 +226,84 @@ class BankCardManagementServiceImpTest {
     class DefaultCardBug038 {
 
         @Test
-        @DisplayName("BUG-038 PIN: BankCardManagementServiceImp exposes no setDefault/getDefault/isDefault method")
-        void noDefaultCardMethods_PIN() {
+        @DisplayName("BankCardManagementServiceImp exposes setDefault + getDefaultCard methods")
+        void defaultCardMethodsExist() {
             final List<String> methodNames = Arrays.stream(BankCardManagementServiceImp.class.getDeclaredMethods())
                     .map(Method::getName)
                     .toList();
-            assertThat(methodNames)
-                    .as("BUG-038: setDefault/getDefault/isDefault not implemented")
-                    .doesNotContain("setDefault", "getDefault", "isDefault", "setAsDefault", "getDefaultBankCard");
+            assertThat(methodNames).contains("setDefault", "getDefaultCard");
         }
 
         @Test
-        @DisplayName("BUG-038 PIN: BankCardEntity has no `isDefault` field")
-        void noIsDefaultField_PIN() {
+        @DisplayName("BankCardEntity has an `isDefault` field (BUG-038)")
+        void hasIsDefaultField() {
             boolean hasIsDefault = Arrays.stream(BankCardEntity.class.getDeclaredFields())
-                    .anyMatch(f -> f.getName().equalsIgnoreCase("isDefault") || f.getName().equalsIgnoreCase("defaultCard"));
-            assertThat(hasIsDefault)
-                    .as("BUG-038: isDefault column missing on BankCardEntity")
-                    .isFalse();
+                    .anyMatch(f -> f.getName().equalsIgnoreCase("isDefault"));
+            assertThat(hasIsDefault).isTrue();
         }
 
         @Test
-        @Disabled("BUG-038: enable once setDefault/getDefault/isDefault are implemented on BankCardManagementService.")
-        @DisplayName("BUG-038: setDefault should mark a card as default and clear others")
-        void setDefault_shouldFlipFlag_disabled() {
-            // Placeholder for future contract
-            assertThat(true).isTrue();
+        @DisplayName("setDefault: ownership enforced — mismatched keycloakId -> UnauthorizedBankCardAccessException")
+        void setDefault_enforcesOwnership() {
+            final UUID cardUuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId("other-kc").build();
+            final BankCardEntity target = BankCardEntityBuilder.aValidBankCardBuilder().uuid(cardUuid).userEntity(owner).build();
+            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.of(target));
+
+            assertThatThrownBy(() -> service.setDefault(cardUuid, keycloakId))
+                    .isInstanceOf(UnauthorizedBankCardAccessException.class);
+            verify(bankCardRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("setDefault: flips isDefault on target, clears on siblings")
+        void setDefault_flipsFlag() {
+            final UUID targetUuid = UUID.randomUUID();
+            final UUID siblingUuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final BankCardEntity target = BankCardEntityBuilder.aValidBankCardBuilder()
+                    .uuid(targetUuid).userEntity(owner).isDefault(Boolean.FALSE).build();
+            final BankCardEntity sibling = BankCardEntityBuilder.aValidBankCardBuilder()
+                    .uuid(siblingUuid).userEntity(owner).isDefault(Boolean.TRUE).build();
+            when(bankCardRepository.findByUuid(targetUuid)).thenReturn(Optional.of(target));
+            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of(target, sibling));
+
+            service.setDefault(targetUuid, keycloakId);
+
+            assertThat(target.getIsDefault()).isTrue();
+            assertThat(sibling.getIsDefault()).isFalse();
+            verify(bankCardRepository).save(sibling);
+            verify(bankCardRepository).save(target);
+        }
+
+        @Test
+        @DisplayName("setDefault: unknown card -> BankCardNotFoundException")
+        void setDefault_unknownCard_throws() {
+            final UUID cardUuid = UUID.randomUUID();
+            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.setDefault(cardUuid, keycloakId))
+                    .isInstanceOf(BankCardNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("getDefaultCard: returns masked DTO of the default card")
+        void getDefaultCard_happy() {
+            final BankCardEntity defaultCard = BankCardEntityBuilder.aValidBankCardBuilder().isDefault(Boolean.TRUE).build();
+            final BankCardResponseDto dto = new BankCardResponseDto();
+            when(bankCardRepository.findByUserEntity_KeycloakIdAndIsDefaultTrue(keycloakId)).thenReturn(Optional.of(defaultCard));
+            when(bankCardMapper.mapFromEntityToResponseDto(defaultCard)).thenReturn(dto);
+
+            assertThat(service.getDefaultCard(keycloakId)).isSameAs(dto);
+        }
+
+        @Test
+        @DisplayName("getDefaultCard: no default -> NoDefaultBankCartSetException")
+        void getDefaultCard_noneSet_throws() {
+            when(bankCardRepository.findByUserEntity_KeycloakIdAndIsDefaultTrue(keycloakId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getDefaultCard(keycloakId))
+                    .isInstanceOf(NoDefaultBankCartSetException.class);
         }
     }
 

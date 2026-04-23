@@ -61,6 +61,28 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
         return ResponseEntity.ok(bankCardService.updateBankCard(jwt.getSubject(), dto));
     }
 
+    /**
+     * BUG-038: marks the supplied card as the caller's default. The JWT subject drives
+     * ownership and sibling lookup at the service layer.
+     */
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PatchMapping(value = "/set-default/{cardUuid}", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> setDefaultBankCard(@PathVariable UUID cardUuid, @AuthenticationPrincipal Jwt jwt) {
+        bankCardService.setDefault(cardUuid, jwt.getSubject());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * BUG-038: returns the caller's default card as a masked response DTO.
+     */
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @GetMapping(value = "/default", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<BankCardResponseDto> getDefaultBankCard(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(bankCardService.getDefaultCard(jwt.getSubject()));
+    }
+
     // --- Endpoints CRUD Basiques (Non sécurisés) ---
 
     @Override

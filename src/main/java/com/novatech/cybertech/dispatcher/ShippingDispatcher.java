@@ -8,6 +8,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+/**
+ * Routes a {@link ShippingContext} to the configured {@link ShippingProviderService}
+ * (DHL, FedEx, ...) selected by the {@link ShippingContext#getShippingProvider()} discriminator.
+ *
+ * <p>Used by {@link com.novatech.cybertech.listener.ShippingListener} after an order is paid:
+ * the dispatcher hides the per-provider HTTP/SDK plumbing behind a single call surface.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -15,6 +22,13 @@ public class ShippingDispatcher {
 
     private final ShippingProviderStrategyFactory shippingProviderStrategyFactory;
 
+    /**
+     * Resolves the shipping provider strategy and triggers the actual delivery call.
+     *
+     * @param shippingContext fully populated shipping request (provider, type, package id, user)
+     * @throws NoStrategyFoundForProcessingTheRequest when no provider strategy exists for the
+     *                                                requested {@code shippingProvider}
+     */
     public void dispatch(final ShippingContext shippingContext) {
         final ShippingProviderService shippingProvider = shippingProviderStrategyFactory.getStrategy(shippingContext.getShippingProvider());
 

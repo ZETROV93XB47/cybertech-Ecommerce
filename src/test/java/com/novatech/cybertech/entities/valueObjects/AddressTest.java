@@ -1,6 +1,5 @@
 package com.novatech.cybertech.entities.valueObjects;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -100,42 +99,21 @@ class AddressTest {
     }
 
     @Nested
-    @DisplayName("Mutability gap (BUG-132)")
-    class MutabilityGap {
+    @DisplayName("Immutability (BUG-132 fixed)")
+    class Immutability {
 
         @Test
-        void settersExistDespiteBeingAValueObject_pinsCurrentBehaviour_BUG_132() throws NoSuchMethodException {
-            // Address is annotated @Embeddable yet carries Lombok @Setter — these methods exist today.
-            // Pin to surface the design gap without requiring a production change.
-            final Method setStreet = Address.class.getMethod("setStreet", String.class);
-            final Method setCity = Address.class.getMethod("setCity", String.class);
-            final Method setZipCode = Address.class.getMethod("setZipCode", String.class);
-            final Method setCountry = Address.class.getMethod("setCountry", String.class);
+        void noPublicSettersExposed_pinsFix_BUG_132() {
+            // Address no longer carries Lombok @Setter — confirm zero set* methods exist.
+            final long setterCount = java.util.Arrays.stream(Address.class.getDeclaredMethods())
+                    .map(Method::getName)
+                    .filter(n -> n.startsWith("set"))
+                    .count();
 
-            assertThat(setStreet).isNotNull();
-            assertThat(setCity).isNotNull();
-            assertThat(setZipCode).isNotNull();
-            assertThat(setCountry).isNotNull();
+            assertThat(setterCount).isZero();
         }
 
         @Test
-        void mutationActuallyChangesEqualsAndHashCode_BUG_132() {
-            // The dangerous symptom of BUG-132: a hashed Address whose city is mutated
-            // becomes "lost" inside a HashSet — this test reproduces the divergence.
-            final Address address = new Address("street", "Paris", "75000", "FR");
-            final int hashBefore = address.hashCode();
-            final Address twin = new Address("street", "Paris", "75000", "FR");
-
-            assertThat(address).isEqualTo(twin);
-
-            address.setCity("Lyon");
-
-            assertThat(address.hashCode()).isNotEqualTo(hashBefore);
-            assertThat(address).isNotEqualTo(twin);
-        }
-
-        @Test
-        @Disabled("BUG-132 — Address should be immutable: drop @Setter")
         void addressShouldBeImmutable_BUG_132() {
             // Desired contract: there should be no public setter on a value object.
             final long setterCount = java.util.Arrays.stream(Address.class.getDeclaredMethods())
@@ -144,6 +122,28 @@ class AddressTest {
                     .count();
 
             assertThat(setterCount).isZero();
+        }
+
+        @Test
+        void witherReturnsFreshInstanceLeavingOriginalUntouched_BUG_132() {
+            final Address original = new Address("street", "Paris", "75000", "FR");
+
+            final Address mutated = original.withCity("Lyon");
+
+            assertThat(mutated).isNotSameAs(original);
+            assertThat(original.getCity()).isEqualTo("Paris");
+            assertThat(mutated.getCity()).isEqualTo("Lyon");
+            assertThat(mutated.getStreet()).isEqualTo(original.getStreet());
+            assertThat(mutated.getZipCode()).isEqualTo(original.getZipCode());
+            assertThat(mutated.getCountry()).isEqualTo(original.getCountry());
+        }
+
+        @Test
+        void witherSurfaceCoversAllFields_BUG_132() throws NoSuchMethodException {
+            assertThat(Address.class.getMethod("withStreet", String.class)).isNotNull();
+            assertThat(Address.class.getMethod("withCity", String.class)).isNotNull();
+            assertThat(Address.class.getMethod("withZipCode", String.class)).isNotNull();
+            assertThat(Address.class.getMethod("withCountry", String.class)).isNotNull();
         }
     }
 }

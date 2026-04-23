@@ -9,7 +9,6 @@ import com.novatech.cybertech.fixtures.builders.StockEntityBuilder;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -131,16 +130,11 @@ class RedisExpirationListenerTest {
     }
 
     @Test
-    @Disabled("BUG-121: RedisExpirationListener.onMessage does not guard UUID.fromString against malformed key tails; should swallow/log not propagate IllegalArgumentException")
     void bug121_malformedUuidAfterPrefix_shouldNotPropagateIllegalArgumentException() {
-        // Expected behaviour after a fix: silently log + skip the malformed key, no exception out.
+        // BUG-121 FIX: malformed UUID tails are now caught, logged at WARN, and short-circuit the
+        // handler instead of propagating an IllegalArgumentException out to the listener container.
         listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + "not-a-uuid"), null);
-    }
 
-    @Test
-    void bug121_pin_malformedUuidAfterPrefixCurrentlyThrowsIllegalArgument() {
-        // Pin: the current implementation propagates IAE up through the listener callback.
-        assertThatThrownBy(() -> listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + "not-a-uuid"), null))
-                .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(stockRepository, productRepository);
     }
 }

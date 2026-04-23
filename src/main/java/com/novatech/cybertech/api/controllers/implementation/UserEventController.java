@@ -21,6 +21,11 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VER
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_EVENT_INGESTION_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
+/**
+ * Behavioural-analytics ingestion HTTP surface. Front-end emits low-volume click / view events to be
+ * persisted in MongoDB by {@link UserEventService}; the events feed the recommendation training
+ * pipeline. Authentication is required so the calling user identity can be attached.
+ */
 @Slf4j
 @RestController
 @RequiredArgsConstructor
@@ -29,6 +34,13 @@ public class UserEventController implements UserEventControllerApiSpec {
 
     private final UserEventService userEventService;
 
+    /**
+     * POST /consume-event — accepts a behavioural event for the calling user.
+     *
+     * @param eventDto the inbound event payload
+     * @param jwt      the caller identity
+     * @return 201 with the persisted event document
+     */
     @Override
     @PreAuthorize("hasRole('USER')")
     @PostMapping(value = "/consume-event", produces = APPLICATION_JSON_VALUE, consumes = APPLICATION_JSON_VALUE)

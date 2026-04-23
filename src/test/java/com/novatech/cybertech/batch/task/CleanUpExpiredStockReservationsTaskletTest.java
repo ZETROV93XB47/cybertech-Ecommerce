@@ -8,7 +8,6 @@ import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.StockService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -223,14 +222,22 @@ class CleanUpExpiredStockReservationsTaskletTest {
     }
 
     @Nested
-    @DisplayName("BUG-110 reproducer (kept @Disabled per original pin)")
-    class Bug110OriginalPin {
+    @DisplayName("BUG-110 fix verification — narrow query in use")
+    class Bug110FixVerification {
 
-        @Disabled("BUG-110: original pin against findAll() — fixed in F2; CleanUpExpiredStockReservationsTasklet now uses the narrow query")
         @Test
-        @DisplayName("BUG-110: original behaviour was findAll(); reproducer kept disabled to preserve traceability")
-        void originalPin_findAll() {
-            // Disabled — fix landed; see RepoQuery#usesNarrowQueryNotFindAll for the green pin.
+        @DisplayName("BUG-110 FIX (F2): tasklet calls findByReservationStatusAndCreatedAtBefore and never findAll")
+        void bug110_narrowQueryUsed_findAllNeverCalled() throws Exception {
+            // BUG-110 FIX: original behaviour loaded every reservation via stockRepository.findAll()
+            // and filtered in memory. F2 switched to the narrow server-side query. We pin the fix
+            // here as a green assertion (companion to RepoQuery#usesNarrowQueryNotFindAll).
+            when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
+                    .thenReturn(Collections.emptyList());
+
+            tasklet.execute(stepContribution, stepArguments);
+
+            verify(stockRepository).findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class));
+            verify(stockRepository, never()).findAll();
         }
     }
 }

@@ -7,7 +7,6 @@ import com.novatech.cybertech.fixtures.support.stubs.StripeEventBuilder;
 import com.novatech.cybertech.services.core.PaymentWebhookService;
 import com.stripe.model.Event;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -288,43 +287,17 @@ class StripeWebhookControllerTest {
         verifyNoInteractions(paymentWebhookService);
     }
 
-    // ----- BUG-2501: orphan PaymentIntent — service throws → 500 (still broken) ---------
+    // ----- BUG-2501: orphan PaymentIntent — controller now ACKs 200 (FIXED by SA-Fix-3) ---
 
     /**
-     * F1.4 claimed BUG-2501 closed by adding {@code ProcessedWebhookEventEntity} dedup + 200-ACK on
-     * non-retriable. Direct file search confirms that entity does NOT exist in {@code src/main}, and
-     * {@link StripeWebhookController#handleStripeEvent} still has no try/catch around
-     * {@code paymentWebhookService.handleEvent(...)}. So a service-thrown
-     * {@link PaymentNotFoundException} surfaces through the {@code @ExceptionHandler} chain — F1.1
-     * registered a 404 handler for it, so today the response is 404 NOT_FOUND. Stripe will retry
-     * any non-2xx response, including 404. Pin BOTH:
-     * <ul>
-     *   <li>Current behaviour: 404 surfaces (would be 500 pre-F1.1, is 404 post-F1.1 — Stripe will
-     *       still retry).</li>
-     *   <li>Desired behaviour: 200-ACK on non-retriable faults — disabled.</li>
-     * </ul>
+     * BUG-2501 fix verification — when the service throws for a non-retriable downstream fault
+     * (orphan PaymentIntent / unknown order id), the controller now wraps the service call in a
+     * try/catch and 200-ACKs to prevent a Stripe retry storm. Stripe stops re-delivering the event
+     * once it sees the 2xx; the on-call team learns of the inconsistency via the controller's
+     * error log line.
      */
     @Test
-    void shouldNotAck200WhenServiceThrowsForOrphanPaymentIntent_BUG_2501_currentBehaviour() throws Exception {
-        StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, VALID_EVENT_JSON);
-        doThrow(new PaymentNotFoundException("Payment attempt not found for stripePaymentID: pi_test_123"))
-                .when(paymentWebhookService).handleEvent(any(Event.class), anyString());
-
-        // Controller has no try/catch; PaymentNotFoundException → 404 via @ControllerAdvice.
-        // Stripe will retry any non-2xx response — this is the BUG-2501 leak vector.
-        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
-                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
-                        .contentType(APPLICATION_JSON)
-                        .content(signed.payload()))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
-    @Disabled("BUG-2501 — controller should ACK 200 on non-retriable service failures (e.g., orphan " +
-            "PaymentIntent / unknown order id). Today any service exception leaks as a non-2xx, " +
-            "causing Stripe to retry. Flip green when controller wraps service.handleEvent in a " +
-            "try/catch that 200-ACKs unrecoverable cases.")
-    void shouldAck200WhenServiceThrowsForOrphanPaymentIntent_BUG_2501_desired() throws Exception {
+    void shouldAck200WhenServiceThrowsForOrphanPaymentIntent_BUG_2501() throws Exception {
         StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, VALID_EVENT_JSON);
         doThrow(new PaymentNotFoundException("Payment attempt not found for stripePaymentID: pi_test_123"))
                 .when(paymentWebhookService).handleEvent(any(Event.class), anyString());
@@ -336,38 +309,16 @@ class StripeWebhookControllerTest {
                 .andExpect(status().isOk());
     }
 
-    // ----- BUG-2502: signed-but-malformed-JSON → 500 (still broken) ----------------------
+    // ----- BUG-2502: signed-but-malformed-JSON → 400 (FIXED by SA-Fix-3) ----------------
 
     /**
-     * {@code Webhook.constructEvent} deserializes the payload via {@code StripeObject.deserializeStripeObject}
-     * BEFORE running signature verification. A malformed JSON body therefore throws a
-     * {@code JsonSyntaxException} (RuntimeException) — NOT a
-     * {@link com.stripe.exception.SignatureVerificationException} — and the controller has no catch
-     * for it. The {@code @ExceptionHandler(RuntimeException.class)} catch-all wraps it as 500
-     * APPLICATION_ERROR.
-     *
-     * <p>Pin BOTH the current 500 leak and the desired 400 — F1 has not addressed this surface.
+     * BUG-2502 fix verification — the Stripe SDK's {@code constructEvent} throws
+     * {@code JsonSyntaxException} (a RuntimeException) BEFORE signature verification when given a
+     * malformed JSON body. The controller now catches that RuntimeException branch and returns
+     * 400 BAD_REQUEST so Stripe surfaces the schema mismatch on the on-call dashboard.
      */
     @Test
-    void shouldReturn500WhenSignedPayloadIsMalformedJson_BUG_2502_currentBehaviour() throws Exception {
-        String malformed = "{\"id\":\"evt_test\",\"this is not valid JSON";
-        StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, malformed);
-
-        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
-                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
-                        .contentType(APPLICATION_JSON)
-                        .content(signed.payload()))
-                .andExpect(status().isInternalServerError());
-
-        verifyNoInteractions(paymentWebhookService);
-    }
-
-    @Test
-    @Disabled("BUG-2502 — signed-but-malformed-JSON should return 400 BAD_REQUEST. Today the Stripe " +
-            "SDK throws JsonSyntaxException from constructEvent BEFORE signature verification, " +
-            "the controller does not catch it, and the global advice wraps it as 500. Flip green " +
-            "when the controller catches RuntimeException from constructEvent and returns 400.")
-    void shouldReturn400WhenSignedPayloadIsMalformedJson_BUG_2502_desired() throws Exception {
+    void shouldReturn400WhenSignedPayloadIsMalformedJson_BUG_2502() throws Exception {
         String malformed = "{\"id\":\"evt_test\",\"this is not valid JSON";
         StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, malformed);
 
@@ -376,5 +327,7 @@ class StripeWebhookControllerTest {
                         .contentType(APPLICATION_JSON)
                         .content(signed.payload()))
                 .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(paymentWebhookService);
     }
 }

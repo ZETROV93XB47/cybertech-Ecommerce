@@ -11,6 +11,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+/**
+ * Bridge dispatcher that pairs a {@link AbstractNotification} (selected by
+ * {@link com.novatech.cybertech.entities.enums.NotificationType}) with a
+ * {@link NotificationProcessor} (selected by the user's preferred communication channel) and
+ * fires the notification.
+ *
+ * <p>The dispatcher is the single fan-in point used by {@link
+ * com.novatech.cybertech.listener.NotificationListener} and
+ * {@link com.novatech.cybertech.listener.OrderEventListener} to send user-facing notifications,
+ * ensuring strategy selection logic is not duplicated across listeners.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -23,6 +34,15 @@ public class NotificationDispatcher {
     //private final Map<NotificationType, Notification> notificationStrategies;
     //private final Map<CommunicationType, NotificationProcessor> processorStrategies;
 
+    /**
+     * Resolves the notification strategy and processor for the given context, then fires the
+     * notification through the bridge ({@link AbstractNotification#sendNotification}).
+     *
+     * @param context the fully populated notification context (type, channel, payload, user)
+     * @throws NoStrategyFoundForProcessingTheRequest when either the notification strategy or
+     *                                                the processor strategy cannot be resolved
+     *                                                for the requested type/channel pair
+     */
     public void dispatch(final NotificationContext context) throws NoStrategyFoundForProcessingTheRequest {
 
         final UserContactDto user = context.getUser();
@@ -35,7 +55,7 @@ public class NotificationDispatcher {
             throw new NoStrategyFoundForProcessingTheRequest("Aucune stratégie trouvée pour NotificationType=" + context.getNotificationType() + " ou CommunicationType=" + user.getDefaultCommunicationChanel());
         }
 
-        // Injection dynamique du processor dans la notification (Bridge)
+        // Bridge: dynamically inject the processor into the notification at dispatch time.
         notification.sendNotification(context, processor);
     }
 }

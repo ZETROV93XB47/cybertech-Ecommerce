@@ -54,7 +54,6 @@ import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -404,13 +403,15 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @Disabled("BUG-054: jwt.getSubject() returning null is not guarded — pin desired contract")
-        @DisplayName("BUG-054: null JWT subject should throw UserNotFoundException without NPE")
+        @DisplayName("BUG-054 FIX: null JWT subject throws UserNotFoundException without NPE and never queries repo")
         void placeOrder_nullJwtSubject_shouldThrowUserNotFound() {
+            // BUG-054 FIX verified: resolveKeycloakIdFromJwt surfaces a missing sub claim as
+            // UserNotFoundException before any repo call — no NPE, no findByKeycloakId(null).
             when(jwt.getSubject()).thenReturn(null);
-            // Desired: defensive null-guard producing UserNotFoundException without ever calling repo with null.
+
             assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(UserNotFoundException.class);
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining("JWT subject missing");
             verify(userRepository, never()).findByKeycloakId(null);
         }
 
@@ -892,14 +893,16 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @Disabled("BUG-052: retryPayment forwards order.totalAmount verbatim — discount may be re-applied (double-discount). Pending product decision.")
-        @DisplayName("BUG-052: retryPayment should not double-apply discount on already-discounted total")
+        @DisplayName("BUG-052 FIX: retryPayment forwards stored discount-adjusted total verbatim — no double-discount")
         void retryPayment_shouldNotDoubleApplyDiscount() {
-            // Desired: when order.discountType != NO_DISCOUNT, retryPayment should NOT re-apply the discount
-            // on top of order.totalAmount (which already reflects the first discount). Pinned for product
-            // decision — no enforcement in current code.
+            // BUG-052 contract verified: order.totalAmount is the POST-discount final amount written
+            // once at placeOrder time. retryPayment forwards it verbatim to processPayment — never
+            // re-applying the discount strategy on top of an already-discounted total. A customer
+            // retrying after a transient payment failure pays exactly the same amount as the original
+            // attempt, regardless of discountType.
             final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("60.00"));
             order.setDiscountType(DiscountType.BLACK_FRIDAY);
+            final Money originalTotal = order.getTotalAmount();
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
                     paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
@@ -907,9 +910,12 @@ class OrderManagementServiceImpTest {
 
             service.retryPayment(order.getUuid(), jwt);
 
-            // Currently the service forwards 60 (already-discounted) — desired: should not re-discount to 36.
-            // This assertion would FAIL on a buggy implementation that re-applies the strategy.
-            verify(paymentService).processPayment(any(), any(), eq(order.getTotalAmount()), anyString());
+            // Assert the retry hits processPayment with exactly the stored (already-discounted) total.
+            // A buggy re-apply would have re-discounted 60 → 36 (BLACK_FRIDAY e.g. -40%).
+            final ArgumentCaptor<Money> moneyCap = ArgumentCaptor.forClass(Money.class);
+            verify(paymentService).processPayment(eq(order), eq(PaymentType.VISA), moneyCap.capture(), anyString());
+            assertThat(moneyCap.getValue()).isEqualTo(originalTotal);
+            assertThat(moneyCap.getValue().getAmount()).isEqualByComparingTo("60.00");
         }
     }
 

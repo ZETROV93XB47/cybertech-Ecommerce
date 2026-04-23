@@ -66,6 +66,20 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, ACCESS_DENIED.getResponseStatus());
     }
 
+    /**
+     * BUG-161 — Maps {@link UnauthorizedCartAccessException} to a 403 FUNCTIONAL
+     * error. The exception is raised by {@code CartServiceImp} when an
+     * authenticated user attempts to read, update or delete a cart whose owner's
+     * Keycloak subject differs from the caller's — closing the IDOR hole on
+     * {@code GET /cart/get/{cartUuid}}, {@code PATCH /cart/update/{cartUuid}}
+     * and {@code DELETE /cart/delete/{cartUuid}}.
+     */
+    @ExceptionHandler(UnauthorizedCartAccessException.class)
+    public ResponseEntity<ErrorResponseDto> handleUnauthorizedCartAccessException(UnauthorizedCartAccessException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), UNAUTHORIZED_CART_ACCESS.getResponseStatus().value(), UNAUTHORIZED_CART_ACCESS.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, UNAUTHORIZED_CART_ACCESS.getResponseStatus());
+    }
+
     @ExceptionHandler(CannotRemoveItemFromEmptyCartException.class)
     public ResponseEntity<ErrorResponseDto> handleCannotRemoveItemFromEmptyCartException(CannotRemoveItemFromEmptyCartException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto("Cannot remove item from empty cart.", CANNOT_REMOVE_ITEM_FROM_EMPTY_CART.getResponseStatus().value(), CANNOT_REMOVE_ITEM_FROM_EMPTY_CART.getErrorCodeType());
@@ -273,8 +287,14 @@ public class ErrorManagementController {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponseDto> handleRuntimeException(RuntimeException exception) {
+        // BUG-140 fix: the raw exception message can carry SQL fragments, stack traces, internal
+        // paths or leaked secrets. Log it server-side in full, but return a sanitized generic
+        // message to the client.
         log.error("Unhandled exception surfaced to @ControllerAdvice", exception);
-        final ErrorResponseDto errorResponseDto = new ErrorResponseDto("An unexpected error occurred: " + exception.getMessage(), APPLICATION_ERROR.getResponseStatus().value(), APPLICATION_ERROR.getErrorCodeType());
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(
+                "An unexpected error occurred. Please contact support if the issue persists.",
+                APPLICATION_ERROR.getResponseStatus().value(),
+                APPLICATION_ERROR.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, APPLICATION_ERROR.getResponseStatus());
     }
 

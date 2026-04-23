@@ -17,7 +17,6 @@ import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.repositories.OrderRepository;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -125,27 +124,17 @@ class ShippingListenerTest {
     }
 
     @Test
-    @Disabled("BUG-122: ShippingListener builds a NotificationContext local but never dispatches it; either wire NotificationDispatcher.dispatch or remove dead code")
-    void bug122_localNotificationContextShouldBeDispatched() {
-        // Expectation if the bug were fixed: the local NotificationContext is dispatched directly,
-        // independent of the OrderShippedEvent fan-out.
-        OrderEntity order = paidOrder();
-        when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-
-        listener.on(new OrderPaidEvent(order.getUuid()));
-
-        verify(notificationDispatcher).dispatch(org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void bug122_pin_shippingListenerCurrentlyDoesNotDispatchTheLocalNotificationContext() {
-        // Pin: NotificationDispatcher receives no calls from ShippingListener — the locally built
-        // NotificationContext is dead code today.
+    void bug122_shippingListenerDoesNotDispatchNotification_notificationGoesViaOrderShippedEvent() {
+        // BUG-122 FIX: the orphan NotificationContext local was removed. ShippingListener now
+        // hands off the notification side-effect to NotificationListener via OrderShippedEvent.
+        // It must never call NotificationDispatcher itself.
         OrderEntity order = paidOrder();
         when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
 
         listener.on(new OrderPaidEvent(order.getUuid()));
 
         verifyNoInteractions(notificationDispatcher);
+        // Sanity: the OrderShippedEvent IS published so NotificationListener can pick it up.
+        verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers.any(OrderShippedEvent.class));
     }
 }

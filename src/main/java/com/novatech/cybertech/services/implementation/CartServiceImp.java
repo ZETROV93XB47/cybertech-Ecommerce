@@ -4,6 +4,7 @@ import com.github.f4b6a3.uuid.UuidCreator;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemAddRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
+import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.entities.CartEntity;
 import com.novatech.cybertech.entities.CartItemEntity;
@@ -39,6 +40,39 @@ public class CartServiceImp implements CartService {
     private final ProductRepository productRepository;
 
 
+    /**
+     * Maximum time {@link #addItemsToCart(CartCreateRequestDto, String)} will
+     * wait for the per-user lock before giving up. Kept just under the 5s TTL
+     * on the lock key itself (see {@link CartCacheHelperImp#LOCK_DURATION_IN_SECONDS})
+     * so a stuck worker releases its slot well before we stop retrying.
+     */
+    private static final long CART_ADD_LOCK_WAIT_MS = 4_000L;
+
+    /**
+     * BUG-160 — Add items to the authenticated user's cart inside a
+     * per-user distributed Redis lock.
+     * <p>
+     * The lock spans the full <em>load cart → mutate → save → cache-write</em>
+     * section. Before BUG-160, two concurrent {@code POST /cart/add} requests
+     * for the same user could both read the same cart row, each mutate their
+     * in-memory copy, and have the second save silently overwrite the first
+     * (classic lost-update). With the lock in place only one write path runs
+     * at a time per user, so the final quantity is the sum of all concurrent
+     * additions.
+     * <p>
+     * Validation that throws (negative quantity, missing product, not enough
+     * stock) is done inside the lock too, but it was intentionally kept
+     * <em>after</em> the input-level null/negative guard so obviously-bogus
+     * payloads fail fast without taking the lock.
+     *
+     * @param cartCreateRequestDto items to add; each quantity must be {@code >= 1}.
+     * @param keycloakId           Keycloak subject of the caller.
+     * @return the updated cart DTO.
+     * @throws NegativeQuantityException when any requested quantity is null or below 1.
+     * @throws UserNotFoundException     when no user matches {@code keycloakId}.
+     * @throws ProductNotFoundException  when a requested product UUID has no product.
+     * @throws NotEnoughStockException   when the resulting total exceeds available stock.
+     */
     @Override
     @Transactional
     @CachePut(cacheNames = "cart", key = "#keycloakId")
@@ -46,12 +80,35 @@ public class CartServiceImp implements CartService {
 
         log.info("cart request dto : {}", cartCreateRequestDto);
 
+        // Fast-fail before taking the lock — saves contention on obviously-bogus input.
         cartCreateRequestDto.getCartItemAddRequestDtos().forEach(item -> {
             if (item.getQuantity() == null || item.getQuantity() < 1) {
                 throw new NegativeQuantityException("Quantity must be >= 1 (got " + item.getQuantity() + ") for product " + item.getProductUuid());
             }
         });
 
+        final String lockToken = cartCacheHelper.acquireLockBlocking(keycloakId, CART_ADD_LOCK_WAIT_MS);
+        if (lockToken == null) {
+            // Couldn't get the lock in time — surface a retryable error rather than racing.
+            log.warn("Could not acquire cart lock for user {} within {}ms — aborting addItemsToCart", keycloakId, CART_ADD_LOCK_WAIT_MS);
+            throw new IllegalStateException("Cart is temporarily locked by a concurrent operation, please retry.");
+        }
+
+        try {
+            return doAddItemsToCart(cartCreateRequestDto, keycloakId);
+        } finally {
+            cartCacheHelper.releaseLock(keycloakId, lockToken);
+        }
+    }
+
+    /**
+     * BUG-160 — Core read-modify-write for {@link #addItemsToCart}.
+     * <p>
+     * Extracted so the lock-acquire / lock-release wrapper in
+     * {@link #addItemsToCart(CartCreateRequestDto, String)} stays readable.
+     * This method assumes the caller already holds the per-user write lock.
+     */
+    private CartResponseDto doAddItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
         final Map<UUID, Integer> productsToAdd = cartCreateRequestDto.getCartItemAddRequestDtos().stream().collect(Collectors.toMap(CartItemAddRequestDto::getProductUuid, CartItemAddRequestDto::getQuantity));
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
@@ -261,6 +318,31 @@ public class CartServiceImp implements CartService {
         return cartMapper.mapFromEntityToResponseDto(cartRepository.findByUuid(uuid).orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + uuid + " found")));
     }
 
+    /**
+     * BUG-161 — Ownership-checked read-by-UUID.
+     * <p>
+     * Loads the cart, asserts the caller's Keycloak subject matches
+     * {@code cart.userEntity.keycloakId}, then maps. The single-arg
+     * {@link #getByUUID(UUID)} stays in place because several places still rely
+     * on the {@link com.novatech.cybertech.services.core.CrudBaseService}
+     * contract — adding an overload rather than changing the signature keeps the
+     * blast radius of the fix scoped to the cart cluster.
+     *
+     * @param cartUuid   cart to read.
+     * @param keycloakId Keycloak subject of the caller.
+     * @return the cart DTO owned by the caller.
+     * @throws CartNotFoundException           when no cart with that UUID exists.
+     * @throws UnauthorizedCartAccessException when the cart's owner is not the caller.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public CartResponseDto getByUUID(final UUID cartUuid, final String keycloakId) {
+        final CartEntity cart = cartRepository.findByUuid(cartUuid)
+                .orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + cartUuid + " found"));
+        assertCallerOwnsCart(cart, cartUuid, keycloakId);
+        return cartMapper.mapFromEntityToResponseDto(cart);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public Collection<CartResponseDto> getByUUIDs(Collection<UUID> uuids) {
@@ -279,15 +361,123 @@ public class CartServiceImp implements CartService {
         return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cartMapper.mapFromUpdateRequestToEntity(cartCreateRequestDto)));
     }
 
+    /**
+     * BUG-026 / BUG-161 — New, correctly-typed, ownership-checked cart update.
+     * <p>
+     * Loads the cart by UUID, asserts the caller owns it, replaces its items
+     * with the incoming list (existing lines are cleared and re-created from
+     * {@link CartUpdateRequestDto#getCartItemAddRequestDtos()}), persists, and
+     * refreshes the cache. Using a dedicated DTO rather than the historical
+     * {@link CartItemRemoveRequestDto} makes the intent explicit ("replace my
+     * cart items with this list").
+     * <p>
+     * Kept as a NEW method instead of modifying
+     * {@link #update(CartItemRemoveRequestDto)} so the
+     * {@link com.novatech.cybertech.services.core.CrudBaseService}
+     * generics contract (and every caller elsewhere) stays untouched.
+     *
+     * @param cartUuid   target cart UUID.
+     * @param dto        new items payload.
+     * @param keycloakId caller identity.
+     * @return the updated cart DTO.
+     * @throws CartNotFoundException           when no cart matches {@code cartUuid}.
+     * @throws UnauthorizedCartAccessException when the caller does not own the cart.
+     * @throws ProductNotFoundException        when any item points at an unknown product.
+     */
+    @Override
+    @Transactional
+    public CartResponseDto updateCart(final UUID cartUuid, final CartUpdateRequestDto dto, final String keycloakId) {
+        final CartEntity cart = cartRepository.findByUuid(cartUuid)
+                .orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + cartUuid + " found"));
+        assertCallerOwnsCart(cart, cartUuid, keycloakId);
+
+        final List<CartItemAddRequestDto> items = dto.getCartItemAddRequestDtos();
+
+        if (cart.getCartItems() != null) {
+            cart.getCartItems().clear();
+        }
+
+        if (items != null && !items.isEmpty()) {
+            final List<UUID> productUuids = items.stream()
+                    .map(CartItemAddRequestDto::getProductUuid)
+                    .collect(Collectors.toList());
+            final Map<UUID, ProductEntity> productMap = productRepository.findAllByUuidIn(productUuids).stream()
+                    .collect(Collectors.toMap(ProductEntity::getUuid, p -> p));
+
+            for (final CartItemAddRequestDto line : items) {
+                final ProductEntity product = productMap.get(line.getProductUuid());
+                if (product == null) {
+                    throw new ProductNotFoundException("No product with the UUID : " + line.getProductUuid() + " found");
+                }
+                final CartItemEntity newItem = CartItemEntity.builder()
+                        .quantity(line.getQuantity())
+                        .unitPrice(product.getPrice())
+                        .productEntity(product)
+                        .cart(cart)
+                        .uuid(UuidCreator.getTimeOrderedEpoch())
+                        .build();
+                cart.getCartItems().add(newItem);
+            }
+        }
+
+        final CartEntity saved = cartRepository.save(cart);
+        final CartResponseDto resp = cartMapper.mapFromEntityToResponseDto(saved);
+        cartCacheHelper.putWithJitter(keycloakId, resp);
+        return resp;
+    }
+
     @Override
     @Transactional
     public void deleteByUUID(UUID uuid) {
         cartRepository.deleteByUuid(uuid);
     }
 
+    /**
+     * BUG-161 — Ownership-checked delete-by-UUID.
+     * <p>
+     * Loads the cart, asserts ownership, then delegates to the repository. The
+     * single-arg {@link #deleteByUUID(UUID)} is kept for the
+     * {@link com.novatech.cybertech.services.core.CrudBaseService} contract.
+     *
+     * @param cartUuid   cart to delete.
+     * @param keycloakId caller identity.
+     * @throws CartNotFoundException           when no cart with that UUID exists.
+     * @throws UnauthorizedCartAccessException when the caller does not own the cart.
+     */
+    @Override
+    @Transactional
+    public void deleteByUUID(final UUID cartUuid, final String keycloakId) {
+        final CartEntity cart = cartRepository.findByUuid(cartUuid)
+                .orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + cartUuid + " found"));
+        assertCallerOwnsCart(cart, cartUuid, keycloakId);
+        cartRepository.deleteByUuid(cartUuid);
+    }
+
     @Override
     @Transactional
     public void deleteByUUIDs(Collection<UUID> uuids) {
         cartRepository.deleteAllByUuidIn(uuids);
+    }
+
+    /**
+     * BUG-161 — Central ownership guard.
+     * <p>
+     * Throws {@link UnauthorizedCartAccessException} when the caller's
+     * Keycloak id does not match the cart's owner. Extracted so the three
+     * ownership-checked entrypoints ({@link #getByUUID(UUID, String)},
+     * {@link #deleteByUUID(UUID, String)}, {@link #updateCart(UUID, CartUpdateRequestDto, String)})
+     * share a single implementation and error message shape.
+     *
+     * @param cart       cart entity loaded from the repository.
+     * @param cartUuid   the UUID that identified the cart (for error logging).
+     * @param keycloakId caller identity.
+     * @throws UnauthorizedCartAccessException when the caller does not own the cart.
+     */
+    private void assertCallerOwnsCart(final CartEntity cart, final UUID cartUuid, final String keycloakId) {
+        final UserEntity owner = cart.getUserEntity();
+        if (owner == null || owner.getKeycloakId() == null || !owner.getKeycloakId().equals(keycloakId)) {
+            log.warn("BUG-161 — Unauthorized cart access attempt: caller {} on cart {}", keycloakId, cartUuid);
+            throw new UnauthorizedCartAccessException("Caller does not own cart " + cartUuid);
+        }
     }
 }

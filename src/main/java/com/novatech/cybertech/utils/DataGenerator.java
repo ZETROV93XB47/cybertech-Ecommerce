@@ -234,9 +234,19 @@ public class DataGenerator {
         return users;
     }
 
+    /**
+     * Build a fully-populated {@link OrderPlacingRequestDto} suitable for happy-path
+     * tests and demo data. Each invocation now produces a fresh {@code userUuid}
+     * (mirroring {@link #generateOrderUpdateRequestDto()}); the previous hard-coded
+     * UUID introduced cross-test coupling and was tracked as BUG-135.
+     *
+     * @return a freshly-built DTO carrying {@link PaymentType#VISA} / {@link ShippingType#STANDARD}
+     *         / {@link ShippingProvider#FEDEX} defaults, or {@code null} if Jackson
+     *         serialisation unexpectedly fails (preserved legacy contract).
+     */
     public static OrderPlacingRequestDto orderGenerator() {
         OrderPlacingRequestDto build = OrderPlacingRequestDto.builder()
-                .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
+                .userUuid(UUID.randomUUID())
                 .shippingStreet(FAKER.address().streetAddress())
                 .shippingCity(FAKER.address().city())
                 .shippingZipCode(FAKER.address().zipCode())

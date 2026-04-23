@@ -18,6 +18,19 @@ import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.RESERVATION_KEY_PREFIX;
 
+/**
+ * Redis Pub/Sub listener that reacts to keyspace expiration events for stock-reservation keys.
+ *
+ * <p>When a {@code reservation:order:&lt;uuid&gt;} key TTLs out, this listener walks every
+ * {@link StockEntity} for that order, flips its {@link ReservationStatus} from
+ * {@link ReservationStatus#ACTIVE ACTIVE} to {@link ReservationStatus#EXPIRED EXPIRED},
+ * decrements the matching {@link ProductEntity#getReservedStock() product.reservedStock},
+ * then deletes the reservation rows in a single batch.
+ *
+ * <p>The transition to {@code EXPIRED} (rather than direct deletion before the per-product
+ * release) is important to avoid double-release when both this listener and the cleanup
+ * batch race to clean up the same expired reservation.
+ */
 @Slf4j
 @Component
 public class RedisExpirationListener extends KeyExpirationEventMessageListener {
@@ -33,34 +46,62 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
         this.stockRepository = stockRepository;
     }
 
+    /**
+     * Handles a Redis key-expiration event.
+     *
+     * <p>Implementation notes:
+     * <ul>
+     *   <li>Early-returns when the expired key does not start with {@link
+     *       com.novatech.cybertech.constants.CyberTechAppConstants#RESERVATION_KEY_PREFIX}, so we
+     *       only do work for keys we own.</li>
+     *   <li>Wraps {@link UUID#fromString(String)} in a try/catch (BUG-121 fix). A malformed key
+     *       tail used to surface as an {@link IllegalArgumentException} swallowed by the Redis
+     *       listener container, silently dropping the event. We now log a WARN and return early
+     *       so the malformed key is observable in logs but does not crash the listener loop.</li>
+     *   <li>Skips reservations not in {@link ReservationStatus#ACTIVE} state (e.g. already
+     *       {@code EXPIRED}/{@code RELEASED} by a competing path) to keep the operation
+     *       idempotent.</li>
+     * </ul>
+     *
+     * @param message the Redis message whose body is the expired key
+     * @param pattern the subscription pattern (unused)
+     */
     @Override
     @Transactional
     public void onMessage(Message message, byte[] pattern) {
 
-        String key = message.toString();
+        final String key = message.toString();
         if (!key.startsWith(RESERVATION_KEY_PREFIX)) return;
 
-        UUID orderUuid = UUID.fromString(key.substring(RESERVATION_KEY_PREFIX.length()));
+        final UUID orderUuid;
+        try {
+            orderUuid = UUID.fromString(key.substring(RESERVATION_KEY_PREFIX.length()));
+        } catch (IllegalArgumentException ex) {
+            // BUG-121: a malformed UUID tail used to bubble up as IllegalArgumentException and be
+            // swallowed by the Redis listener container, losing the event entirely. We log it now
+            // so the bad key is visible in logs and return early without further work.
+            log.warn("Ignoring malformed reservation expiration key '{}': {}", key, ex.getMessage());
+            return;
+        }
 
         log.warn("Reservation expired for order {}", orderUuid);
 
-        List<StockEntity> reservations = stockRepository.findByOrderUuid(orderUuid);
+        final List<StockEntity> reservations = stockRepository.findByOrderUuid(orderUuid);
         if (reservations.isEmpty()) return;
 
         for (StockEntity r : reservations) {
             if (r.getReservationStatus() != ReservationStatus.ACTIVE) continue;
-            // Marquer comme EXPIRED pour éviter double release
+            // Mark as EXPIRED to avoid a double release between this listener and the cleanup batch.
             r.setReservationStatus(ReservationStatus.EXPIRED);
             stockRepository.save(r);
 
-            ProductEntity product = productRepository.lockByUuid(r.getProductUuid())
+            final ProductEntity product = productRepository.lockByUuid(r.getProductUuid())
                     .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + r.getProductUuid() + " found"));
 
             product.setReservedStock(product.getReservedStock() - r.getQuantity());
             productRepository.save(product);
         }
-        // delete en 1 seule fois
+        // Bulk delete keeps the WAL/journal small versus per-row deletes.
         stockRepository.deleteByOrderUuid(orderUuid);
     }
 }
-

@@ -11,7 +11,6 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,14 +58,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       now mapped to 403 (combined handler at lines 57-61 of
  *       {@code ErrorManagementController}). F2 fix <b>CONFIRMED</b> live. Asserted by
  *       {@link #adminGetAllAsRoleUserReturns403PerBug031}.</li>
- *   <li><b>BUG-201</b> — {@code POST /register/auto/single} should require ADMIN.
- *       Source read of {@code UserManagementController#registerAuto()} confirms it has
- *       NO {@code @PreAuthorize} annotation, AND the URL pattern
- *       {@code /api/v1/services/user/register/**} is whitelisted in
- *       {@code SecurityConfig#PUBLIC_URLS}. F1.7 claim REFUTED. Pinned via
- *       {@link #registerAutoSingleReachableAnonymouslyPerBug201} (current behaviour) and
- *       the desired-behaviour test {@link #registerAutoSingleShouldRejectAnonymousOnceBug201Fixed}
- *       is {@code @Disabled("BUG-201")}.</li>
+ *   <li><b>BUG-201</b> — <b>CLOSED</b> by SA-Fix-4 (2026-04-23). {@code registerAuto()} is
+ *       now annotated {@code @PreAuthorize("hasRole('ADMIN')")} and the
+ *       {@code SecurityConfig#PUBLIC_URLS} whitelist entry has been narrowed from
+ *       {@code /api/v1/services/user/register/**} to the exact
+ *       {@code /api/v1/services/user/register} path. Anonymous calls to
+ *       {@code /register/auto/single} now hit the auth entry point → 401.
+ *       Asserted by {@link #registerAutoSingleRejectsAnonymousAfterBug201Fix}.</li>
  * </ul>
  */
 @Slf4j
@@ -195,46 +193,49 @@ class UserRegistrationFlowIT {
     }
 
     // -----------------------------------------------------------------------------------
-    // 5a. BUG-201 PIN — POST /register/auto/single is currently anonymously reachable.
-    //     Source-read confirms UserManagementController#registerAuto() has NO @PreAuthorize
-    //     annotation AND the URL pattern /api/v1/services/user/register/** is whitelisted in
-    //     SecurityConfig#PUBLIC_URLS. F1.7 claim REFUTED. This test pins the broken behaviour
-    //     so a future tightening surfaces here as a failure.
+    // 5. BUG-201 — CLOSED. POST /register/auto/single now requires ADMIN.
+    //    The @PreAuthorize annotation lives on UserManagementController#registerAuto() and
+    //    the SecurityConfig#PUBLIC_URLS whitelist entry has been narrowed to the exact
+    //    /register path (no wildcard), so anonymous calls fall through to
+    //    `anyRequest().authenticated()` and return 401 via CustomAuthenticationEntryPoint.
     // -----------------------------------------------------------------------------------
     @Test
-    @DisplayName("BUG-201 PIN — POST /register/auto/single is reachable anonymously today")
-    void registerAutoSingleReachableAnonymouslyPerBug201() throws Exception {
-        // No JWT, no auth — the public whitelist + missing @PreAuthorize lets this through.
-        // The endpoint generates a synthetic user via DataGenerator and the Keycloak stub
-        // returns a 201 → the service writes a user row and the controller returns 201.
-        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
-                        .with(csrf())
-                        .accept(MediaType.APPLICATION_JSON)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.uuid").exists())
-                .andExpect(jsonPath("$.keycloakId").exists());
-    }
-
-    // -----------------------------------------------------------------------------------
-    // 5b. BUG-201 — desired contract; flip green when the @PreAuthorize lands AND the URL
-    //     is removed from PUBLIC_URLS.
-    // -----------------------------------------------------------------------------------
-    @Disabled("BUG-201 — registerAuto() should require ADMIN; currently anonymously reachable. " +
-            "F1.7 claim of fix REFUTED by direct source read of UserManagementController. " +
-            "Re-enable when the @PreAuthorize annotation lands AND the URL is removed from " +
-            "SecurityConfig#PUBLIC_URLS.")
-    @Test
-    @DisplayName("BUG-201 — POST /register/auto/single should reject anonymous once fixed")
-    void registerAutoSingleShouldRejectAnonymousOnceBug201Fixed() throws Exception {
+    @DisplayName("BUG-201 fix — POST /register/auto/single rejects anonymous (401)")
+    void registerAutoSingleRejectsAnonymousAfterBug201Fix() throws Exception {
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
                         .with(csrf())
                         .accept(MediaType.APPLICATION_JSON)
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(result -> {
                     final int s = result.getResponse().getStatus();
-                    assertThat(s).as("anonymous must be 401 or 403").isIn(401, 403);
+                    assertThat(s).as("anonymous must be 401 or 403 — fix landed").isIn(401, 403);
                 });
+    }
+
+    @Test
+    @DisplayName("BUG-201 fix — POST /register/auto/single as ROLE_USER returns 403")
+    void registerAutoSingleAsRoleUserReturns403AfterBug201Fix() throws Exception {
+        final String keycloakId = "kc-it-user-" + UUID.randomUUID();
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(jwtUser(keycloakId))
+                        .with(csrf())
+                        .accept(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("BUG-201 fix — POST /register/auto/single as ROLE_ADMIN returns 201")
+    void registerAutoSingleAsRoleAdminReturns201AfterBug201Fix() throws Exception {
+        final String adminKeycloakId = "kc-it-admin-" + UUID.randomUUID();
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(jwtAdmin(adminKeycloakId))
+                        .with(csrf())
+                        .accept(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.uuid").exists())
+                .andExpect(jsonPath("$.keycloakId").exists());
     }
 
     // -----------------------------------------------------------------------------------

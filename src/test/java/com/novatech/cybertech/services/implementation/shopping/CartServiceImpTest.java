@@ -8,6 +8,7 @@ import com.novatech.cybertech.entities.CartEntity;
 import com.novatech.cybertech.entities.CartItemEntity;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.exceptions.CannotRemoveItemFromEmptyCartException;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
 import com.novatech.cybertech.exceptions.CartItemNotFoundException;
@@ -15,6 +16,7 @@ import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.NegativeQuantityException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.exceptions.UnauthorizedCartAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.CartEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.CartItemEntityBuilder;
@@ -27,7 +29,6 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.implementation.CartServiceImp;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -49,9 +50,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -59,18 +62,20 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link CartServiceImp}.
  *
- * <p><b>SA-W3.4 wave — Source verification of F1/F2 claims:</b></p>
+ * <p><b>SA-Cart-v2 — Cart cluster closures:</b></p>
  * <ul>
- *   <li><b>BUG-039 (Wave F2)</b>: CONFIRMED CLOSED. Source lines 50-52 throw
- *       {@link NegativeQuantityException} for {@code quantity == null || quantity &lt; 1}. Verified.</li>
- *   <li><b>BUG-026 (Wave F1)</b>: REFUTED. F1 claimed a new {@code CartUpdateRequestDto} replaced
- *       {@link CartItemRemoveRequestDto} on {@code update(...)} — no such DTO exists in src/main.
- *       The signature is still {@code update(CartItemRemoveRequestDto)} and still routes through
- *       {@code mapFromUpdateRequestToEntity} which is the bug. Pinned.</li>
- *   <li><b>BUG-160 / BUG-161 (Wave F1)</b>: REFUTED. F1 claimed a new
- *       {@code UnauthorizedCartAccessException} guarded {@code getByUUID}/{@code deleteByUUID}.
- *       No such class exists; methods perform no ownership check. Pinned via @Disabled +
- *       passing PIN tests showing current insecure behavior.</li>
+ *   <li><b>BUG-026</b>: CLOSED. New {@link CartUpdateRequestDto} carries the correct
+ *       update payload, and {@code updateCart(UUID, CartUpdateRequestDto, keycloakId)}
+ *       loads the existing cart, verifies ownership, and replaces its items. The
+ *       historical {@code update(CartItemRemoveRequestDto)} stays wired to keep
+ *       {@code CrudBaseService} happy.</li>
+ *   <li><b>BUG-160</b>: CLOSED. {@link CartServiceImp#addItemsToCart} now takes a
+ *       per-user distributed Redis lock around the full read-modify-write path.</li>
+ *   <li><b>BUG-161</b>: CLOSED. Ownership-checked overloads
+ *       {@code getByUUID(UUID, String)} / {@code deleteByUUID(UUID, String)} throw
+ *       {@link UnauthorizedCartAccessException} when the caller's Keycloak subject
+ *       does not match the cart's owner.</li>
+ *   <li><b>BUG-039</b>: remains CLOSED (negative/null quantity rejected).</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -89,6 +94,11 @@ class CartServiceImpTest {
     @BeforeEach
     void setUp() {
         keycloakId = "kc-" + UUID.randomUUID();
+        // BUG-160 — addItemsToCart now wraps its read-modify-write in the distributed lock.
+        // Use lenient so tests which never exercise addItemsToCart (e.g. getCart, remove,
+        // decreaseQuantity, CRUD paths) don't fail with Mockito strict-stubbing.
+        lenient().when(cartCacheHelper.acquireLockBlocking(anyString(), anyLong()))
+                .thenReturn("test-lock-token");
     }
 
     // ---- helpers ---------------------------------------------------
@@ -203,18 +213,20 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("user missing -> UserNotFoundException, no save/cache")
+        @DisplayName("user missing -> UserNotFoundException, no save/cache, lock released")
         void userMissing_throws() {
-            // Note: productRepository.findAllByUuidIn IS called BEFORE userRepository.findByKeycloakId
-            // (see CartServiceImp lines 59 vs 56 — actually findByKeycloakId at line 56, findAllByUuidIn at 59).
-            // userRepo throws first; product repo not invoked.
+            // userRepo throws first; product repo not invoked. Post BUG-160 the lock is
+            // acquired *before* user lookup, so cartCacheHelper IS touched (lock +
+            // release). What must NOT happen is a putWithJitter on the cache.
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.addItemsToCart(requestFor(UUID.randomUUID(), 1), keycloakId))
                     .isInstanceOf(UserNotFoundException.class);
 
             verify(cartRepository, never()).save(any());
-            verifyNoInteractions(cartCacheHelper);
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
+            // BUG-160: lock is still released even when the rebuild fails.
+            verify(cartCacheHelper).releaseLock(eq(keycloakId), anyString());
         }
 
         @Test
@@ -749,19 +761,60 @@ class CartServiceImpTest {
         }
 
         @Test
-        @Disabled("BUG-026: F1 wave claimed update(...) was migrated to a new CartUpdateRequestDto. " +
-                "Source verification: no CartUpdateRequestDto.java in src/main; signature is still " +
-                "update(CartItemRemoveRequestDto). Re-enable when the signature is corrected and the " +
-                "method updates an existing cart instead of routing through mapFromUpdateRequestToEntity.")
-        @DisplayName("BUG-026: update should accept proper update DTO and modify existing cart")
-        void update_shouldUseProperDto_disabled() {
-            // expected behavior placeholder
+        @DisplayName("BUG-026 (CLOSED): updateCart(UUID, CartUpdateRequestDto, keycloakId) " +
+                "replaces the cart's items and returns the updated DTO")
+        void updateCart_shouldReplaceItems_BUG026_closed() {
+            final UUID cartUuid = UUID.randomUUID();
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().build();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(cartUuid)
+                    .userEntity(owner)
+                    .cartItems(new ArrayList<>())
+                    .build();
+            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
+                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
+                            CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(4).build())))
+                    .build();
+            final CartResponseDto mapped = stubMappedResponse();
+
+            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
+            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
+            when(cartRepository.save(existingCart)).thenReturn(existingCart);
+            when(cartMapper.mapFromEntityToResponseDto(existingCart)).thenReturn(mapped);
+
+            final CartResponseDto result = service.updateCart(cartUuid, dto, keycloakId);
+
+            assertThat(result).isSameAs(mapped);
+            assertThat(existingCart.getCartItems()).hasSize(1);
+            assertThat(existingCart.getCartItems().get(0).getQuantity()).isEqualTo(4);
+            verify(cartCacheHelper).putWithJitter(keycloakId, mapped);
         }
 
         @Test
-        @DisplayName("BUG-026 PIN: update(CartItemRemoveRequestDto) currently round-trips via " +
-                "mapFromUpdateRequestToEntity then save -> response (no fetch-then-merge)")
+        @DisplayName("BUG-026 + BUG-161: updateCart rejects caller that doesn't own the cart")
+        void updateCart_rejectsNonOwner_BUG026_BUG161_closed() {
+            final UUID cartUuid = UUID.randomUUID();
+            final UserEntity otherOwner = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER_USER").build();
+            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(cartUuid).userEntity(otherOwner).cartItems(new ArrayList<>()).build();
+            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(cart));
+
+            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
+                    .cartItemAddRequestDtos(new ArrayList<>()).build();
+
+            assertThatThrownBy(() -> service.updateCart(cartUuid, dto, keycloakId))
+                    .isInstanceOf(UnauthorizedCartAccessException.class);
+            verify(cartRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("BUG-026 PIN: legacy update(CartItemRemoveRequestDto) preserved for base CRUD contract")
         void update_currentBehavior_PIN() {
+            // Intentionally kept: the generic CrudBaseService contract still points at
+            // update(CartItemRemoveRequestDto). The correct fix surface is the new
+            // updateCart(...) overload above — this test guarantees the legacy method
+            // stays wired so external CRUD callers don't break.
             final CartItemRemoveRequestDto dto = CartItemRemoveRequestDto.builder()
                     .productUuid(UUID.randomUUID()).quantity(1).build();
             final CartEntity entity = CartEntityBuilder.aValidCart();
@@ -776,17 +829,39 @@ class CartServiceImpTest {
         }
 
         @Test
-        @Disabled("BUG-160: getByUUID should perform an ownership check (caller matches cart.userEntity). " +
-                "F1 wave claimed UnauthorizedCartAccessException was added. Source verification: no such " +
-                "exception exists. Re-enable once the service rejects access to other users' carts.")
-        @DisplayName("BUG-160: getByUUID should reject access to a cart not owned by caller")
-        void getByUuid_shouldEnforceOwnership_disabled() {
-            // placeholder
+        @DisplayName("BUG-160 (CLOSED): getByUUID(UUID, keycloakId) rejects non-owner with " +
+                "UnauthorizedCartAccessException")
+        void getByUuid_shouldEnforceOwnership_BUG160_closed() {
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity otherUser = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER").build();
+            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(uuid).userEntity(otherUser).cartItems(new ArrayList<>()).build();
+            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
+
+            assertThatThrownBy(() -> service.getByUUID(uuid, keycloakId))
+                    .isInstanceOf(UnauthorizedCartAccessException.class);
         }
 
         @Test
-        @DisplayName("BUG-160 PIN: getByUUID currently returns ANY cart by UUID with no caller check")
+        @DisplayName("BUG-160 (CLOSED): getByUUID(UUID, keycloakId) returns mapped DTO for owner")
+        void getByUuid_owner_returnsMapped_BUG160_closed() {
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(uuid).userEntity(owner).cartItems(new ArrayList<>()).build();
+            final CartResponseDto resp = stubMappedResponse();
+            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
+            when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(resp);
+
+            assertThat(service.getByUUID(uuid, keycloakId)).isSameAs(resp);
+        }
+
+        @Test
+        @DisplayName("BUG-160 PIN: legacy getByUUID(UUID) still honored for CrudBaseService contract")
         void getByUuid_noOwnershipCheck_PIN() {
+            // The single-arg getByUUID is intentionally preserved to keep the
+            // CrudBaseService generic contract. External code wanting ownership
+            // enforcement must use the new two-arg overload.
             final UUID uuid = UUID.randomUUID();
             final UserEntity otherUser = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER").build();
             final CartEntity cart = CartEntityBuilder.aValidCartBuilder().uuid(uuid).userEntity(otherUser).build();
@@ -794,17 +869,36 @@ class CartServiceImpTest {
             when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
             when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(resp);
 
-            // No keycloakId/Jwt parameter -> no possibility of caller check; pin current insecure shape
             assertThat(service.getByUUID(uuid)).isSameAs(resp);
         }
 
         @Test
-        @Disabled("BUG-161: deleteByUUID should perform an ownership check before deletion. " +
-                "F1 wave claimed UnauthorizedCartAccessException was added. Source verification: no such " +
-                "exception exists; deleteByUUID has no caller arg. Re-enable once fixed.")
-        @DisplayName("BUG-161: deleteByUUID should reject deletion of a cart not owned by caller")
-        void deleteByUuid_shouldEnforceOwnership_disabled() {
-            // placeholder
+        @DisplayName("BUG-161 (CLOSED): deleteByUUID(UUID, keycloakId) rejects non-owner")
+        void deleteByUuid_shouldEnforceOwnership_BUG161_closed() {
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity otherUser = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER").build();
+            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(uuid).userEntity(otherUser).cartItems(new ArrayList<>()).build();
+            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
+
+            assertThatThrownBy(() -> service.deleteByUUID(uuid, keycloakId))
+                    .isInstanceOf(UnauthorizedCartAccessException.class);
+
+            verify(cartRepository, never()).deleteByUuid(any());
+        }
+
+        @Test
+        @DisplayName("BUG-161 (CLOSED): deleteByUUID(UUID, keycloakId) deletes when caller is owner")
+        void deleteByUuid_owner_deletes_BUG161_closed() {
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(uuid).userEntity(owner).cartItems(new ArrayList<>()).build();
+            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
+
+            service.deleteByUUID(uuid, keycloakId);
+
+            verify(cartRepository).deleteByUuid(uuid);
         }
 
         @Test

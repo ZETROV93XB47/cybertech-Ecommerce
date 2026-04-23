@@ -24,7 +24,6 @@ import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -350,25 +349,20 @@ class DataGeneratorTest {
         }
 
         @Test
-        @DisplayName("PIN BUG-135: two consecutive orderGenerator() calls produce IDENTICAL userUuid")
-        void orderGeneratorProducesIdenticalUuids_pinsBug() {
-            // Given – BUG-135: userUuid is hardcoded to ac1d3001-9bce-1597-819b-ce15dac20000
-            final UUID hardcoded = UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000");
+        @DisplayName("FIX BUG-135: orderGenerator() no longer returns the hardcoded UUID")
+        void orderGeneratorNoLongerReturnsHardcodedUuid_pinsFix() {
+            // Given – BUG-135 fix: userUuid is now a fresh UUID.randomUUID() per invocation.
+            final UUID previouslyHardcoded = UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000");
 
             // When
             final OrderPlacingRequestDto a = DataGenerator.orderGenerator();
-            final OrderPlacingRequestDto b = DataGenerator.orderGenerator();
 
-            // Then – pin the buggy current behaviour
-            assertThat(a.getUserUuid()).isEqualTo(hardcoded);
-            assertThat(b.getUserUuid()).isEqualTo(hardcoded);
-            assertThat(a.getUserUuid()).isEqualTo(b.getUserUuid());
+            // Then – the previously-pinned hardcoded value is gone.
+            assertThat(a.getUserUuid()).isNotEqualTo(previouslyHardcoded);
         }
 
         @Test
-        @Disabled("BUG-135: orderGenerator() hardcodes userUuid to ac1d3001-9bce-1597-819b-ce15dac20000;"
-                + " desired contract is a fresh random UUID per invocation. See progress.md.")
-        @DisplayName("DESIRED: two consecutive orderGenerator() calls should produce DIFFERENT userUuid")
+        @DisplayName("FIX BUG-135: two consecutive orderGenerator() calls produce DIFFERENT userUuid")
         void orderGeneratorProducesDifferentUuids() {
             // When
             final OrderPlacingRequestDto a = DataGenerator.orderGenerator();

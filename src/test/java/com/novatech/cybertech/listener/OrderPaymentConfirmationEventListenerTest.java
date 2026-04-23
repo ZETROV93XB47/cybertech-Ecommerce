@@ -1,6 +1,5 @@
 package com.novatech.cybertech.listener;
 
-import com.novatech.cybertech.dto.request.stripe.PaymentIntentPayload;
 import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.UserEntity;
@@ -15,7 +14,6 @@ import com.novatech.cybertech.fixtures.dto.PaymentDtoFixtures;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.services.core.CartService;
 import com.novatech.cybertech.services.core.StockService;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -156,22 +154,34 @@ class OrderPaymentConfirmationEventListenerTest {
     // ---------- BUG-124: no null-guard on metadata.order_uuid ----------
 
     @Test
-    @Disabled("BUG-124: OrderPaymentConfirmationEventListener.handlePaymentSuccess does not guard against missing 'order_uuid' metadata; UUID.fromString(null) throws NPE instead of a domain error")
     void bug124_handlePaymentSuccess_nullOrderUuidInMetadata_shouldThrowDomainError() {
         StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
         stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
-        // Expectation if the bug were fixed: a domain-level PaymentNotFoundException (or similar)
+        // BUG-124 FIX: missing order_uuid is now translated to a domain-level PaymentNotFoundException
+        // (was: raw NullPointerException out of UUID.fromString(null) bubbling to the listener container).
         assertThatThrownBy(() -> listener.handlePaymentSuccess(new PaymentSucceededEvent(stripe)))
-                .isInstanceOf(PaymentNotFoundException.class);
+                .isInstanceOf(PaymentNotFoundException.class)
+                .hasMessageContaining("order_uuid");
+        verifyNoInteractions(stockService, cartService, orderRepository);
     }
 
     @Test
-    void bug124_pin_handlePaymentSuccess_nullOrderUuidInMetadataCurrentlyThrowsNpeOrIae() {
-        // Pin: null metadata key currently surfaces as NullPointerException (UUID.fromString(null)).
+    void bug124_handlePaymentFailed_nullOrderUuidInMetadata_shouldThrowDomainError() {
         StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
-        PaymentIntentPayload payload = stripe.getData().getPaymentIntentPayload();
-        payload.getMetadata().remove("order_uuid");
-        assertThatThrownBy(() -> listener.handlePaymentSuccess(new PaymentSucceededEvent(stripe)))
-                .isInstanceOfAny(NullPointerException.class, IllegalArgumentException.class);
+        stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
+        assertThatThrownBy(() -> listener.handlePaymentFailed(new PaymentFailedEvent(stripe)))
+                .isInstanceOf(PaymentNotFoundException.class)
+                .hasMessageContaining("order_uuid");
+        verifyNoInteractions(stockService, orderRepository);
+    }
+
+    @Test
+    void bug124_handleRefund_nullOrderUuidInMetadata_shouldThrowDomainError() {
+        StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+        stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
+        assertThatThrownBy(() -> listener.handleRefund(new PaymentRefundedEvent(stripe)))
+                .isInstanceOf(PaymentNotFoundException.class)
+                .hasMessageContaining("order_uuid");
+        verifyNoInteractions(stockService, orderRepository);
     }
 }

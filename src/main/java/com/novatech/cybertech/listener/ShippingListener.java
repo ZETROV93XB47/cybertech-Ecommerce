@@ -1,19 +1,16 @@
 package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.dispatcher.ShippingDispatcher;
-import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.ShippingContext;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.UserEntity;
-import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.OrderShippedEvent;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
-import com.novatech.cybertech.services.implementation.ShippingConfirmationPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -27,6 +24,17 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
 
 
+/**
+ * Listens for {@link OrderPaidEvent} and orchestrates the shipping side-effects: dispatch to the
+ * configured shipping provider, flip the {@link OrderEntity} status to
+ * {@link OrderStatus#SHIPPED}, then republish an {@link OrderShippedEvent} that
+ * {@link NotificationListener} consumes to send the shipping-confirmation notification.
+ *
+ * <p>Notifications are intentionally NOT dispatched from this listener: the
+ * {@link OrderShippedEvent} fan-out via {@link NotificationListener} is the single source of
+ * truth for the shipping-confirmation channel (BUG-122 fix removed an orphan local
+ * {@code NotificationContext} that was built but never dispatched).
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -37,6 +45,22 @@ public class ShippingListener {
     private final ApplicationEventPublisher eventPublisher;
 
 
+    /**
+     * Handles {@link OrderPaidEvent} after the publishing transaction commits.
+     *
+     * <p>WHY {@link TransactionalEventListener} with {@link TransactionPhase#AFTER_COMMIT}: we
+     * MUST NOT trigger external shipping or downstream notifications until the order's PAID
+     * state is durably persisted. Listening before commit would race the DB write and could
+     * dispatch a real shipment for a transaction that ultimately rolled back.
+     *
+     * <p>WHY {@link Propagation#REQUIRES_NEW}: this listener runs asynchronously and writes the
+     * SHIPPED status; it must do so in its own transaction so its outcome cannot interfere with
+     * the (already committed) caller's transaction state.
+     *
+     * <p>Downstream effect: the {@link OrderShippedEvent} published at the end is consumed by
+     * {@link NotificationListener#on(OrderShippedEvent)} which sends the user-facing shipping
+     * confirmation. This listener does not dispatch a notification directly.
+     */
     @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -71,18 +95,9 @@ public class ShippingListener {
 
         orderRepository.save(order);
 
-        final ShippingConfirmationPayload payload = ShippingConfirmationPayload.builder()
-                .orderUuid(order.getUuid())
-                .shippingType(order.getShippingType())
-                .shippingProvider(order.getShippingProvider())
-                .userName(order.getUserEntity().getFirstName())
-                .build();
-
-        final NotificationContext notificationContext = NotificationContext.builder()
-                .user(userContactDto)
-                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
-                .payload(payload)
-                .build();
+        // BUG-122: an orphan NotificationContext local was built here but never dispatched —
+        // the actual shipping-confirmation notification is sent by NotificationListener
+        // when it consumes the OrderShippedEvent below. Dead code removed.
 
         final OrderEventDto orderEventDto = OrderEventDto.builder()
                 .orderUuid(order.getUuid())
