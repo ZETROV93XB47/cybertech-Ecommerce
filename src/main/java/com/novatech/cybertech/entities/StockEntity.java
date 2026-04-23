@@ -5,13 +5,12 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -21,7 +20,14 @@ import java.util.UUID;
 @EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "stockTable", uniqueConstraints = @UniqueConstraint(columnNames = {"order_uuid", "product_uuid"}))
+@Table(
+        name = "stockTable",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"order_uuid", "product_uuid"}),
+        indexes = {
+                @Index(name = "idx_stock_order_uuid", columnList = "order_uuid"),
+                @Index(name = "idx_stock_product_uuid", columnList = "product_uuid")
+        }
+)
 public class StockEntity extends BaseEntity<Long> {
 
     @Column(name = "order_uuid", nullable = false)
@@ -36,7 +42,4 @@ public class StockEntity extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     @Column(name = "reservationStatus", nullable = false)
     private ReservationStatus reservationStatus;
-
-    @CreationTimestamp
-    private LocalDateTime createdAt;
 }

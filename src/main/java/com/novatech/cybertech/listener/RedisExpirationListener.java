@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESERVATION_KEY_PREFIX;
+
 @Slf4j
 @Component
 public class RedisExpirationListener extends KeyExpirationEventMessageListener {
@@ -36,9 +38,9 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
     public void onMessage(Message message, byte[] pattern) {
 
         String key = message.toString();
-        if (!key.startsWith("reservation:order:")) return;
+        if (!key.startsWith(RESERVATION_KEY_PREFIX)) return;
 
-        UUID orderUuid = UUID.fromString(key.replace("reservation:order:", ""));
+        UUID orderUuid = UUID.fromString(key.substring(RESERVATION_KEY_PREFIX.length()));
 
         log.warn("Reservation expired for order {}", orderUuid);
 

@@ -2,7 +2,6 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.StockEntity;
-import com.novatech.cybertech.entities.enums.ReservationStatus;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.repositories.ProductRepository;
@@ -15,10 +14,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESERVATION_KEY_PREFIX;
 import static com.novatech.cybertech.entities.enums.ReservationStatus.ACTIVE;
 
 
@@ -39,15 +41,20 @@ public class StockServiceImp implements StockService {
     public void reserveStock(UUID orderUuid, Map<UUID, Integer> quantities) {
         log.info("Starting stock Reservation for order {}", orderUuid);
 
+        // A retried reserveStock must be idempotent: if a reservation already exists,
+        // just refresh the Redis TTL. Rebuilding would open a concurrency window
+        // where another order could grab the freed stock between release and re-lock.
         if (!stockRepository.findByOrderUuid(orderUuid).isEmpty()) {
-            log.info("Stock reservation already exists for order {}. Extending reservation time.", orderUuid);
-            redisTemplate.opsForValue().set("reservation:order:" + orderUuid, "ACTIVE", RESERVATION_TTL);
+            log.info("Existing reservation found for order {}, refreshing TTL.", orderUuid);
+            redisTemplate.expire(reservationKey(orderUuid), RESERVATION_TTL);
             return;
         }
 
-        quantities.entrySet().forEach(entry -> lockAndReserveProduct(orderUuid, entry));
-        // 3️⃣ Redis TTL (cache + expiration)
-        redisTemplate.opsForValue().set("reservation:order:" + orderUuid, "ACTIVE", RESERVATION_TTL);
+        // Canonical lock order across all callers to prevent A-B / B-A deadlocks on concurrent orders.
+        final Map<UUID, Integer> ordered = new TreeMap<>(Comparator.comparing(UUID::toString));
+        ordered.putAll(quantities);
+        ordered.entrySet().forEach(entry -> lockAndReserveProduct(orderUuid, entry));
+        redisTemplate.opsForValue().set(reservationKey(orderUuid), ACTIVE.name(), RESERVATION_TTL);
 
         log.info("Reserved successfully stock for order {}", orderUuid);
     }
@@ -65,8 +72,7 @@ public class StockServiceImp implements StockService {
 
         stockRepository.deleteByOrderUuid(orderUuid);
 
-        log.info("Redis : {}", redisTemplate.opsForValue().get("reservation:order:" + orderUuid));
-        redisTemplate.delete("reservation:order:" + orderUuid);
+        redisTemplate.delete(reservationKey(orderUuid));
 
         log.info("Stock successfully committed for order {}", orderUuid);
     }
@@ -84,14 +90,19 @@ public class StockServiceImp implements StockService {
         reservations.forEach(this::updateStockForRelease);
 
         stockRepository.deleteByOrderUuid(orderUuid);
-        redisTemplate.delete("reservation:order:" + orderUuid);
+        redisTemplate.delete(reservationKey(orderUuid));
 
         log.info("Stock successfully released for order {}", orderUuid);
     }
 
+    private static String reservationKey(UUID orderUuid) {
+        return RESERVATION_KEY_PREFIX + orderUuid;
+    }
+
 
     private void updateStockForRelease(StockEntity r) {
-        ProductEntity product = productRepository.lockByUuid(r.getProductUuid()).orElseThrow();
+        ProductEntity product = productRepository.lockByUuid(r.getProductUuid())
+                .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + r.getProductUuid() + " found"));
         product.setReservedStock(product.getReservedStock() - r.getQuantity());
         productRepository.save(product);
     }
@@ -108,16 +119,18 @@ public class StockServiceImp implements StockService {
         UUID productUuid = entry.getKey();
         int qty = entry.getValue();
 
-        ProductEntity product = productRepository.lockByUuid(productUuid).orElseThrow(() -> new ProductNotFoundException("Product not found"));
+        if (qty <= 0) {
+            throw new IllegalArgumentException("Reservation quantity must be > 0 for product " + productUuid + " (got " + qty + ")");
+        }
+
+        ProductEntity product = productRepository.lockByUuid(productUuid).orElseThrow(() -> new ProductNotFoundException("Product " + productUuid + " not found"));
 
         int available = product.getStock() - product.getReservedStock();
         if (available < qty) {
-            throw new NotEnoughStockException("Not enough stock");
+            throw new NotEnoughStockException("Not enough stock for product " + productUuid + ": requested=" + qty + ", available=" + available);
         }
 
-        // 1️⃣ réserver en DB
         StockEntity reservation = StockEntity.builder()
-                //.uuid(UUID.randomUUID())
                 .orderUuid(orderUuid)
                 .productUuid(productUuid)
                 .reservationStatus(ACTIVE)
@@ -126,7 +139,6 @@ public class StockServiceImp implements StockService {
 
         stockRepository.save(reservation);
 
-        // 2️⃣ incrémenter l’agrégat
         product.setReservedStock(product.getReservedStock() + qty);
         productRepository.save(product);
     }

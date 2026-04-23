@@ -29,9 +29,6 @@ public class RedisConfig {
     private static final String CART_CACHE = "cart";
     private static final String USER_EXISTENCE_CACHE = "userExistence";
 
-    @Value("${app.cache.default.ttl.expiration.time.seconds}")
-    private static int BASE_TTL_SECONDS;
-
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory, @Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
@@ -59,7 +56,11 @@ public class RedisConfig {
 
 
     @Bean
-    public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory, RedisCacheConfiguration baseConfig) {
+    public RedisCacheManager cacheManager(
+            RedisConnectionFactory connectionFactory,
+            RedisCacheConfiguration baseConfig,
+            @Value("${app.cache.default.ttl.expiration.time.seconds}") int baseTtlSeconds
+    ) {
 
         final RedisCacheConfiguration defaultConfig = baseConfig.entryTtl(Duration.ofHours(1));
 
@@ -67,7 +68,7 @@ public class RedisConfig {
         final JacksonJsonRedisSerializer<CartResponseDto> cartSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(CartResponseDto.class);
 
         final RedisCacheConfiguration cartConfig = defaultConfig
-                .entryTtl(Duration.ofSeconds(BASE_TTL_SECONDS))
+                .entryTtl(Duration.ofSeconds(baseTtlSeconds))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(cartSerializer));
 
         final RedisCacheConfiguration userExistConfig = defaultConfig
@@ -86,10 +87,13 @@ public class RedisConfig {
     }
 
     @Bean
-    public RedisCacheConfiguration cacheConfiguration(@Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper) {
+    public RedisCacheConfiguration cacheConfiguration(
+            @Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper,
+            @Value("${app.cache.default.ttl.expiration.time.seconds}") int baseTtlSeconds
+    ) {
         return RedisCacheConfiguration
                 .defaultCacheConfig()
-                .entryTtl(Duration.ofSeconds(BASE_TTL_SECONDS))
+                .entryTtl(Duration.ofSeconds(baseTtlSeconds))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJacksonJsonRedisSerializer(redisObjectMapper)));
     }
 }

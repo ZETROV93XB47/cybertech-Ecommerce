@@ -7,6 +7,7 @@ import com.novatech.cybertech.services.core.UserEventService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,7 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_EVENT_INGESTION_BASE_PATH;
-import static jakarta.mail.event.FolderEvent.CREATED;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @Slf4j
@@ -36,6 +36,6 @@ public class UserEventController implements UserEventControllerApiSpec {
 
         log.info("Received event for user {} : ", jwt.getSubject());
 
-        return ResponseEntity.status(CREATED).body(userEventService.processEvent(eventDto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(userEventService.processEvent(eventDto));
     }
 }

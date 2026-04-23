@@ -8,14 +8,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.ReturnType;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -25,28 +23,29 @@ import java.util.concurrent.ThreadLocalRandom;
 public class CartCacheHelperImp implements CartCacheHelper {
 
     private static final int LOCK_DURATION_IN_SECONDS = 5;
-    public static final String LOCK_PLACEHOLDER = "1";
     private static final String UNLOCK_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+    private static final DefaultRedisScript<Long> UNLOCK_REDIS_SCRIPT = new DefaultRedisScript<>(UNLOCK_SCRIPT, Long.class);
+    private static final StringRedisSerializer STRING_SERIALIZER = new StringRedisSerializer();
 
-
-    private final StringRedisTemplate stringRedisTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Value("${app.cache.max.ttl.jitter.time.seconds}")
-    private static int JITTER_MAX_SECONDS;
+    private int jitterMaxSeconds;
 
     @Value("${app.cache.default.ttl.expiration.time.seconds}")
-    private static int BASE_TTL_SECONDS;
+    private int baseTtlSeconds;
 
 
     @Override
-    public String acquireLock(String userId) {
-        String lockKey = "lock:cart:" + userId;
-        String token = UUID.randomUUID().toString();
+    public String acquireLock(final String userId) {
+        final String lockKey = lockKey(userId);
+        final String token = UUID.randomUUID().toString();
 
-        log.info("Acquiring lock for the user : {} with the following token : {}", userId, token);
+        log.info("Acquiring lock for user: {} with token: {}", userId, token);
 
-        boolean success = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, token, Duration.ofSeconds(5)));
+        boolean success = Boolean.TRUE.equals(
+                redisTemplate.opsForValue().setIfAbsent(lockKey, token, Duration.ofSeconds(LOCK_DURATION_IN_SECONDS))
+        );
 
         return success ? token : null;
     }
@@ -54,22 +53,18 @@ public class CartCacheHelperImp implements CartCacheHelper {
 
     @Override
     public void releaseLock(final String userId, final String token) {
-        log.info("Releasing lock for the user : {} with the following token : {}", userId, token);
+        log.info("Releasing lock for user: {} with token: {}", userId, token);
 
-        final String lockKey = "lock:cart:" + userId;
-        final DefaultRedisScript<Long> script = new DefaultRedisScript<>(UNLOCK_SCRIPT, Long.class);
-        final StringRedisSerializer stringSerializer = new StringRedisSerializer();
-
-        log.info("Executing Lua script to release lock for the user : {} with the following token : {}", userId, token);
+        final String lockKey = lockKey(userId);
 
         redisTemplate.execute((RedisCallback<Long>) connection -> {
-            byte[] keyBytes = stringSerializer.serialize(lockKey);
-            byte[] tokenBytes = stringSerializer.serialize(token);
+            byte[] keyBytes = STRING_SERIALIZER.serialize(lockKey);
+            byte[] tokenBytes = STRING_SERIALIZER.serialize(token);
 
             return connection.eval(
-                    script.getScriptAsString().getBytes(StandardCharsets.UTF_8),
+                    UNLOCK_REDIS_SCRIPT.getScriptAsString().getBytes(StandardCharsets.UTF_8),
                     ReturnType.INTEGER,
-                    1,          // nombre de KEYS
+                    1,
                     keyBytes,
                     tokenBytes
             );
@@ -78,31 +73,37 @@ public class CartCacheHelperImp implements CartCacheHelper {
 
     @Override
     public void refreshTtlWithJitter(final String userId) {
-
         log.info("Refreshing TTL with jitter for user: {}", userId);
-
-        int jitter = ThreadLocalRandom.current().nextInt(0, JITTER_MAX_SECONDS);
-        redisTemplate.expire("cart::" + userId, Duration.ofSeconds(BASE_TTL_SECONDS + jitter));
+        redisTemplate.expire(cartKey(userId), getTtlWithJitter());
     }
 
     @Override
     public void putWithJitter(final String userId, final CartResponseDto cart) {
-
         log.info("Putting cart in cache with jitter for user: {}", userId);
+        redisTemplate.opsForValue().set(cartKey(userId), cart, getTtlWithJitter());
+    }
 
-        int jitter = ThreadLocalRandom.current().nextInt(0, JITTER_MAX_SECONDS);
-        redisTemplate.opsForValue().set(
-                "cart::" + userId,
-                cart,
-                Duration.ofSeconds(BASE_TTL_SECONDS + jitter)
-        );
+    private Duration getTtlWithJitter() {
+        return Duration.ofSeconds(Math.max(1, baseTtlSeconds + getJitter()));
     }
 
     @Override
     public CartResponseDto getRaw(final String userId) {
-
         log.info("Getting raw cart from cache for user: {}", userId);
+        return (CartResponseDto) redisTemplate.opsForValue().get(cartKey(userId));
+    }
 
-        return (CartResponseDto) redisTemplate.opsForValue().get("cart::" + userId);
+    private static String cartKey(final String userId) {
+        return "cart::" + userId;
+    }
+
+    private static String lockKey(final String userId) {
+        return "lock:cart:" + userId;
+    }
+
+    // Symmetric jitter around baseTtlSeconds so writes at the same instant don't all expire together.
+    private int getJitter() {
+        if (jitterMaxSeconds <= 0) return 0;
+        return ThreadLocalRandom.current().nextInt(-jitterMaxSeconds, jitterMaxSeconds + 1);
     }
 }

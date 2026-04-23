@@ -9,11 +9,12 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 
-import java.util.Collection;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -72,7 +73,10 @@ public interface WishlistManagementApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal Server Error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Collection<WishlistResponseDto>> getMyWishlist(@Parameter(hidden = true) @AuthenticationPrincipal final Jwt jwt);
+    ResponseEntity<Page<WishlistResponseDto>> getMyWishlist(
+            @Parameter(hidden = true) @AuthenticationPrincipal final Jwt jwt,
+            @Parameter(hidden = true) final Pageable pageable
+    );
 
     // --- ADMIN ENDPOINTS ---
 

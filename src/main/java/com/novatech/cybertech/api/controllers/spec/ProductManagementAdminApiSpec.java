@@ -13,10 +13,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Collection;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -34,7 +35,7 @@ public interface ProductManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Collection<ProductResponseDto>> getAllProducts();
+    ResponseEntity<Page<ProductResponseDto>> getAllProducts(final Pageable pageable);
 
     @Operation(summary = "Create a new Product (Admin)",
             description = "Registers a new Product in the system.",
@@ -72,7 +73,7 @@ public interface ProductManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during product update",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<ProductResponseDto> updateProduct(final ProductUpdateRequestDto productUpdateRequestDto);
+    ResponseEntity<ProductResponseDto> updateProduct(final UUID productUuid, final ProductUpdateRequestDto productUpdateRequestDto);
 
     @Operation(summary = "Delete a Product by UUID (Admin)",
             description = "Deletes a product based on their unique UUID.",

@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 
 import java.util.Collection;
@@ -32,7 +34,7 @@ public interface UserManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Collection<UserResponseDto>> getAllUsers();
+    ResponseEntity<Page<UserResponseDto>> getAllUsers(final Pageable pageable);
 
     @Operation(summary = "Create a new User (Admin)",
             description = "Registers a new user in the system via Admin console.",

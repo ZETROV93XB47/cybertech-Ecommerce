@@ -7,9 +7,13 @@ import com.novatech.cybertech.exceptions.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCode.*;
@@ -31,10 +35,35 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
     }
 
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponseDto> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException exception) {
+        final String message = "Invalid value for parameter '" + exception.getName() + "'";
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(message, METHOD_ARGUMENT_TYPE_MISMATCH.getResponseStatus().value(), METHOD_ARGUMENT_TYPE_MISMATCH.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, METHOD_ARGUMENT_TYPE_MISMATCH.getResponseStatus());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponseDto> handleHttpMessageNotReadableException(HttpMessageNotReadableException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto("Malformed JSON request body", MALFORMED_JSON.getResponseStatus().value(), MALFORMED_JSON.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, MALFORMED_JSON.getResponseStatus());
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleNoResourceFoundException(NoResourceFoundException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto("The page you're asking for doesn't exists :(", RESOURCE_NOT_FOUND.getResponseStatus().value(), RESOURCE_NOT_FOUND.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, RESOURCE_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler({AuthorizationDeniedException.class, AccessDeniedException.class})
+    public ResponseEntity<ErrorResponseDto> handleAuthorizationDeniedException(RuntimeException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto("Access denied", ACCESS_DENIED.getResponseStatus().value(), ACCESS_DENIED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ACCESS_DENIED.getResponseStatus());
+    }
+
+    @ExceptionHandler(UnauthorizedBankCardAccessException.class)
+    public ResponseEntity<ErrorResponseDto> handleUnauthorizedBankCardAccessException(UnauthorizedBankCardAccessException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ACCESS_DENIED.getResponseStatus().value(), ACCESS_DENIED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ACCESS_DENIED.getResponseStatus());
     }
 
     @ExceptionHandler(CannotRemoveItemFromEmptyCartException.class)
@@ -44,8 +73,10 @@ public class ErrorManagementController {
     }
 
     @ExceptionHandler(UnrecognizedPropertyException.class)
-    public ResponseEntity<String> handleUnrecognizedPropertyException(UnrecognizedPropertyException ex) {
-        return new ResponseEntity<>("Invalid request: Unknown property '" + ex.getPropertyName() + "'", HttpStatus.BAD_REQUEST);
+    public ResponseEntity<ErrorResponseDto> handleUnrecognizedPropertyException(UnrecognizedPropertyException ex) {
+        final String message = "Invalid request: Unknown property '" + ex.getPropertyName() + "'";
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(message, INVALID_REQUEST.getResponseStatus().value(), INVALID_REQUEST.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
     }
 
     @ExceptionHandler(ProductConstraintsViolationException.class)
@@ -62,7 +93,7 @@ public class ErrorManagementController {
 
     @ExceptionHandler(ProductNotFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleProductNotFoundException(ProductNotFoundException exception) {
-        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), RESOURCE_NOT_FOUND.getResponseStatus().value(), PRODUCT_NOT_FOUND.getErrorCodeType());
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PRODUCT_NOT_FOUND.getResponseStatus().value(), PRODUCT_NOT_FOUND.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, PRODUCT_NOT_FOUND.getResponseStatus());
     }
 
@@ -80,8 +111,8 @@ public class ErrorManagementController {
 
     @ExceptionHandler(CartNotFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleCartNotFoundException(CartNotFoundException exception) {
-        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), CART_IS_EMPTY.getResponseStatus().value(), CART_IS_EMPTY.getErrorCodeType());
-        return new ResponseEntity<>(errorResponseDto, CART_IS_EMPTY.getResponseStatus());
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), CART_NOT_FOUND.getResponseStatus().value(), CART_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, CART_NOT_FOUND.getResponseStatus());
     }
 
     @ExceptionHandler(OrderAlreadyShippedException.class)
@@ -120,9 +151,129 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, CART_IS_EMPTY.getResponseStatus());
     }
 
-    // Gestionnaire global pour toutes les erreurs non prévues (500)
+    @ExceptionHandler(AccessTokenRetrievalException.class)
+    public ResponseEntity<ErrorResponseDto> handleAccessTokenRetrievalException(AccessTokenRetrievalException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ACCESS_TOKEN_RETRIEVAL_FAILED.getResponseStatus().value(), ACCESS_TOKEN_RETRIEVAL_FAILED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ACCESS_TOKEN_RETRIEVAL_FAILED.getResponseStatus());
+    }
+
+    @ExceptionHandler(BankCardExpiredException.class)
+    public ResponseEntity<ErrorResponseDto> handleBankCardExpiredException(BankCardExpiredException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), BANK_CARD_EXPIRED.getResponseStatus().value(), BANK_CARD_EXPIRED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, BANK_CARD_EXPIRED.getResponseStatus());
+    }
+
+    @ExceptionHandler(BankCardNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleBankCardNotFoundException(BankCardNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), BANK_CARD_NOT_FOUND.getResponseStatus().value(), BANK_CARD_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, BANK_CARD_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(CommentPostNotAllowedException.class)
+    public ResponseEntity<ErrorResponseDto> handleCommentPostNotAllowedException(CommentPostNotAllowedException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), COMMENT_POST_NOT_ALLOWED.getResponseStatus().value(), COMMENT_POST_NOT_ALLOWED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, COMMENT_POST_NOT_ALLOWED.getResponseStatus());
+    }
+
+    @ExceptionHandler(IdempotencyKeyGenerationException.class)
+    public ResponseEntity<ErrorResponseDto> handleIdempotencyKeyGenerationException(IdempotencyKeyGenerationException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), IDEMPOTENCY_KEY_GENERATION_FAILED.getResponseStatus().value(), IDEMPOTENCY_KEY_GENERATION_FAILED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, IDEMPOTENCY_KEY_GENERATION_FAILED.getResponseStatus());
+    }
+
+    @ExceptionHandler(NoDefaultBankCartSetException.class)
+    public ResponseEntity<ErrorResponseDto> handleNoDefaultBankCartSetException(NoDefaultBankCartSetException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), NO_DEFAULT_BANK_CARD_SET.getResponseStatus().value(), NO_DEFAULT_BANK_CARD_SET.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, NO_DEFAULT_BANK_CARD_SET.getResponseStatus());
+    }
+
+    @ExceptionHandler(NoStrategyFoundForProcessingTheRequest.class)
+    public ResponseEntity<ErrorResponseDto> handleNoStrategyFoundForProcessingTheRequest(NoStrategyFoundForProcessingTheRequest exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), NO_STRATEGY_FOUND.getResponseStatus().value(), NO_STRATEGY_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, NO_STRATEGY_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(NotEnoughStockException.class)
+    public ResponseEntity<ErrorResponseDto> handleNotEnoughStockException(NotEnoughStockException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), NOT_ENOUGH_STOCK.getResponseStatus().value(), NOT_ENOUGH_STOCK.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, NOT_ENOUGH_STOCK.getResponseStatus());
+    }
+
+    @ExceptionHandler(OrderNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleOrderNotFoundException(OrderNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_NOT_FOUND.getResponseStatus().value(), ORDER_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ORDER_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(OrderSummuryReportJobFailedException.class)
+    public ResponseEntity<ErrorResponseDto> handleOrderSummaryReportJobFailedException(OrderSummuryReportJobFailedException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_SUMMARY_REPORT_JOB_FAILED.getResponseStatus().value(), ORDER_SUMMARY_REPORT_JOB_FAILED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ORDER_SUMMARY_REPORT_JOB_FAILED.getResponseStatus());
+    }
+
+    @ExceptionHandler(PaymentAlreadyCompletedForThisOrderException.class)
+    public ResponseEntity<ErrorResponseDto> handlePaymentAlreadyCompletedException(PaymentAlreadyCompletedForThisOrderException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PAYMENT_ALREADY_COMPLETED.getResponseStatus().value(), PAYMENT_ALREADY_COMPLETED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, PAYMENT_ALREADY_COMPLETED.getResponseStatus());
+    }
+
+    @ExceptionHandler(PaymentFailedException.class)
+    public ResponseEntity<ErrorResponseDto> handlePaymentFailedException(PaymentFailedException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PAYMENT_FAILED.getResponseStatus().value(), PAYMENT_FAILED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, PAYMENT_FAILED.getResponseStatus());
+    }
+
+    @ExceptionHandler(PaymentNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handlePaymentNotFoundException(PaymentNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PAYMENT_NOT_FOUND.getResponseStatus().value(), PAYMENT_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, PAYMENT_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(PaymentProcessingException.class)
+    public ResponseEntity<ErrorResponseDto> handlePaymentProcessingException(PaymentProcessingException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PAYMENT_PROCESSING_ERROR.getResponseStatus().value(), PAYMENT_PROCESSING_ERROR.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, PAYMENT_PROCESSING_ERROR.getResponseStatus());
+    }
+
+    @ExceptionHandler(UserAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponseDto> handleUserAlreadyExistsException(UserAlreadyExistsException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), USER_ALREADY_EXISTS.getResponseStatus().value(), USER_ALREADY_EXISTS.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, USER_ALREADY_EXISTS.getResponseStatus());
+    }
+
+    @ExceptionHandler(UserNotActiveException.class)
+    public ResponseEntity<ErrorResponseDto> handleUserNotActiveException(UserNotActiveException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), USER_NOT_ACTIVE.getResponseStatus().value(), USER_NOT_ACTIVE.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, USER_NOT_ACTIVE.getResponseStatus());
+    }
+
+    @ExceptionHandler(DiscountTypeNotActiveException.class)
+    public ResponseEntity<ErrorResponseDto> handleDiscountTypeNotActiveException(DiscountTypeNotActiveException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), DISCOUNT_TYPE_NOT_ACTIVE.getResponseStatus().value(), DISCOUNT_TYPE_NOT_ACTIVE.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, DISCOUNT_TYPE_NOT_ACTIVE.getResponseStatus());
+    }
+
+    @ExceptionHandler(DiscountTypeCannotBeNullForStrategy.class)
+    public ResponseEntity<ErrorResponseDto> handleDiscountTypeCannotBeNullForStrategy(DiscountTypeCannotBeNullForStrategy exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), NO_STRATEGY_FOUND.getResponseStatus().value(), NO_STRATEGY_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, NO_STRATEGY_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(NegativeQuantityException.class)
+    public ResponseEntity<ErrorResponseDto> handleNegativeQuantityException(NegativeQuantityException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), INVALID_REQUEST.getResponseStatus().value(), INVALID_REQUEST.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponseDto> handleIllegalArgumentException(IllegalArgumentException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), INVALID_REQUEST.getResponseStatus().value(), INVALID_REQUEST.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponseDto> handleRuntimeException(RuntimeException exception) {
+        log.error("Unhandled exception surfaced to @ControllerAdvice", exception);
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto("An unexpected error occurred: " + exception.getMessage(), APPLICATION_ERROR.getResponseStatus().value(), APPLICATION_ERROR.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, APPLICATION_ERROR.getResponseStatus());
     }

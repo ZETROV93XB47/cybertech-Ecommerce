@@ -4,4 +4,8 @@ public class NoDefaultBankCartSetException extends RuntimeException {
     public NoDefaultBankCartSetException(String message) {
         super(message);
     }
+
+    public NoDefaultBankCartSetException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

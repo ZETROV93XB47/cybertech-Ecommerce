@@ -12,10 +12,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
-import java.util.Collection;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -64,7 +65,7 @@ public interface BankCardControllerApiSpec {
             responses = {
                     @ApiResponse(responseCode = "200", description = "List of bank cards", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = BankCardResponseDto.class))))
             })
-    ResponseEntity<Collection<BankCardResponseDto>> getAllBankCards();
+    ResponseEntity<Page<BankCardResponseDto>> getAllBankCards(final Pageable pageable);
 
     @Operation(summary = "Get bank card by UUID",
             description = "Retrieves a specific bank card by its UUID.",

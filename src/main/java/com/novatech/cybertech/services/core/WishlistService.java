@@ -1,8 +1,9 @@
 package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.response.wishlist.WishlistResponseDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
-import java.util.Collection;
 import java.util.UUID;
 
 public interface WishlistService {
@@ -11,5 +12,5 @@ public interface WishlistService {
 
     void removeProductFromMyWishlist(String userKeycloakId, UUID productUuid);
 
-    Collection<WishlistResponseDto> getMyWishlist(String userKeycloakId);
+    Page<WishlistResponseDto> getMyWishlist(String userKeycloakId, Pageable pageable);
 }

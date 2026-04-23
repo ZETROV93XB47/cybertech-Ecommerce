@@ -29,8 +29,15 @@ public interface CartMapper extends BaseMapper<CartEntity, CartCreateRequestDto,
     @Mapping(source = "productEntity.name", target = "productName")
     @Mapping(source = "productEntity.price", target = "unitPrice")
     @Mapping(source = "quantity", target = "quantity")
-    @Mapping(target = "lineItemTotalPrice", expression = "java(cartItemEntity.getUnitPrice().multiply(java.math.BigDecimal.valueOf(cartItemEntity.getQuantity())))")
+    @Mapping(target = "lineItemTotalPrice", expression = "java(lineItemTotalPrice(cartItemEntity))")
     CartItemResponseDto mapFromCartItemEntityToResponseDto(CartItemEntity cartItemEntity);
+
+    default BigDecimal lineItemTotalPrice(CartItemEntity cartItemEntity) {
+        if (cartItemEntity == null || cartItemEntity.getUnitPrice() == null) {
+            return BigDecimal.ZERO;
+        }
+        return cartItemEntity.getUnitPrice().multiply(BigDecimal.valueOf(cartItemEntity.getQuantity()));
+    }
 
     @Named("calculateTotalPrice")
     default BigDecimal calculateTotalPrice(List<CartItemEntity> items) {
@@ -38,7 +45,7 @@ public interface CartMapper extends BaseMapper<CartEntity, CartCreateRequestDto,
             return BigDecimal.ZERO;
         }
         return items.stream()
-                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .map(this::lineItemTotalPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

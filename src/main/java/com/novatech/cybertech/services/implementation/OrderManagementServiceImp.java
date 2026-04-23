@@ -20,6 +20,7 @@ import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import com.novatech.cybertech.services.core.OrderManagementService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
@@ -56,6 +57,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
     private final OrderValidator orderValidatorChain;
     private final ApplicationEventPublisher eventPublisher;
+    private final IdempotencyKeyServiceGenerator idempotencyKeyService;
 
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
@@ -84,14 +86,17 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final String keycloakId = jwt.getSubject();
         final OrderEntity orderEntity = orderRepository.findByUuid(uuid).orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
-        if (isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
-            if (isInDeletableState(orderEntity)) orderRepository.deleteByUuid(uuid);
-            else {
-                log.info("Order is not in Deletable state, order current state : {}", orderEntity.getStatus().name());
-                throw new CannotCancelOrderException("Order is not in Deletable state, order current state : " + orderEntity.getStatus().name());
-            }
+        if (!isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order not found for this user account");
         }
-        throw new OrderDoesntBelongsToUserException("Order not found for this user account");
+
+        if (!isInDeletableState(orderEntity)) {
+            log.info("Order is not in Deletable state, order current state : {}", orderEntity.getStatus().name());
+            throw new CannotCancelOrderException("Order is not in Deletable state, order current state : " + orderEntity.getStatus().name());
+        }
+
+        stockService.releaseStock(uuid);
+        orderRepository.deleteByUuid(uuid);
     }
 
     @Override
@@ -162,7 +167,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
         stockService.reserveStock(order.getUuid(), quantities);
 
         // 7) Paiement attempt (idempotent)
-        //final String idemKey = generateIdempotencyKey(order.getUuid(), "update");
+        final List<String> updatedProductUuids = dto.getItemUpdateRequestDtoList().stream()
+                .map(i -> i.getProductUuid().toString())
+                .toList();
+        final String updateIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), updatedProductUuids);
 
         if (difference.compareTo(BigDecimal.ZERO) == 0) {
             // Cas 3 : Pas de différence de prix
@@ -176,7 +184,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         }
 
 
-        final PaymentEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), order.getPaymentAttempts().getLast().getIdempotencyKey());
+        final PaymentEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), updateIdempotencyKey);
 
         sendOrderUpdatedEvent(order, order.getUserEntity(), total.getAmount(), attempt.getStatus());
 
@@ -214,7 +222,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .orElseThrow(() -> new NoPreviousPaymentAttemptException("No previous payment attempt found for failed order"));
 
         // 3. Tenter le paiement
-        final String idempotencyKey = generateIdempotencyKey(order.getUuid(), "retry");
+        final String idempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), "retry");
         final PaymentEntity attempt = paymentService.processPayment(
                 order,
                 paymentType,
@@ -224,8 +232,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         log.info("Retry payment attempt :: {}", attempt);
 
-        // 4. Gérer le résultat (Commit stock si succès, Release si échec)
-        sendOrderCreationEvent(order, order.getUserEntity(), order.getTotalAmount().getAmount(), attempt.getStatus());
+        sendOrderUpdatedEvent(order, order.getUserEntity(), order.getTotalAmount().getAmount(), attempt.getStatus());
 
         return orderMapper.mapFromEntityToResponseDto(order);
     }
@@ -302,11 +309,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
         stockService.reserveStock(orderUuid, quantities);
 
         // 8) Paiement attempt (idempotent)
-        // Reco: ajoute req.getIdempotencyKey() côté DTO.
-        final String idempotencyKey = generateIdempotencyKey(orderUuid, "place");
+        final List<String> productUuids = cartItems.stream().map(i -> i.getProductEntity().getUuid().toString()).toList();
+        final String idempotencyKey = idempotencyKeyService.generateKey(orderUuid.toString(), productUuids);
         final PaymentEntity attempt;
 
-        //TODO: je pense que ça n'a pas de sens de faire un try catch ici parce qu'une commande nouvellement passée n'a pas lieu d'aboutir sur un paiement déjà effectué
         attempt = paymentService.processPayment(
                 savedOrder,
                 req.getPaymentType(),
@@ -316,11 +322,12 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         log.info("payment :: {}", attempt);
 
-        // 9) Vider le panier après la tentative (commande existante + stock réservé)
-        //    Si tu préfères ne vider qu'après SUCCESS, déplace-le dans le case SUCCESS.
-        // 10) Statuts + stock + events
+        if (attempt.getStatus() == PaymentAttemptStatus.FAILED) {
+            log.warn("Payment FAILED for order {} — releasing stock reservation.", orderUuid);
+            stockService.releaseStock(orderUuid);
+        }
 
-        sendOrderCreationEvent(savedOrder, user, totalAmount, attempt.getStatus());//TODO: vérifier cette partie plus tard si saved order est good
+        sendOrderCreationEvent(savedOrder, user, totalAmount, attempt.getStatus());
 
         return orderMapper.mapFromEntityToResponseDto(savedOrder);
     }
@@ -408,26 +415,20 @@ public class OrderManagementServiceImp implements OrderManagementService {
             final BigDecimal totalPrice,
             final PaymentAttemptStatus paymentAttemptStatus
     ) {
-        OrderEventDto orderEventDto = OrderEventDto.builder()
-                .orderUuid(orderEntity.getUuid())
-                .orderStatus(orderEntity.getStatus())
-                .paymentAttemptStatus(paymentAttemptStatus)
-                .totalAmount(totalPrice)
-                .shippingProvider(orderEntity.getShippingProvider())
-                .shippingType(orderEntity.getShippingType())
-                .userContactDto(UserContactDto.builder()
-                        .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
-                        .email(user.getEmail())
-                        .name(user.getFirstName())
-                        .phoneNumber(user.getPhoneNumber())
-                        .build())
-                .build();
-
-        eventPublisher.publishEvent(new OrderCreatedEvent(this, orderEventDto));
+        eventPublisher.publishEvent(new OrderCreatedEvent(this, buildOrderEventDto(orderEntity, user, totalPrice, paymentAttemptStatus)));
     }
 
     private void sendOrderUpdatedEvent(final OrderEntity orderEntity, final UserEntity user, final BigDecimal totalPrice, final PaymentAttemptStatus paymentAttemptStatus) {
-        OrderEventDto orderEventDto = OrderEventDto.builder()
+        eventPublisher.publishEvent(new OrderUpdatedEvent(this, buildOrderEventDto(orderEntity, user, totalPrice, paymentAttemptStatus)));
+    }
+
+    private static OrderEventDto buildOrderEventDto(
+            final OrderEntity orderEntity,
+            final UserEntity user,
+            final BigDecimal totalPrice,
+            final PaymentAttemptStatus paymentAttemptStatus
+    ) {
+        return OrderEventDto.builder()
                 .orderUuid(orderEntity.getUuid())
                 .orderStatus(orderEntity.getStatus())
                 .paymentAttemptStatus(paymentAttemptStatus)
@@ -441,9 +442,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
                         .phoneNumber(user.getPhoneNumber())
                         .build())
                 .build();
-
-        eventPublisher.publishEvent(new OrderUpdatedEvent(this, orderEventDto));
-
     }
 
 
@@ -484,7 +482,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     private static boolean isInDeletableState(final OrderEntity order) {
-        final Set<OrderStatus> deletableStates = Set.of(AWAITING_PAYMENT, DELIVERED, RETURNED, CANCELED, REFUNDED);
+        final Set<OrderStatus> deletableStates = Set.of(CREATED, AWAITING_PAYMENT, PAYMENT_FAILED, DELIVERED, RETURNED, CANCELED, REFUNDED);
         return deletableStates.contains(order.getStatus());
     }
 
@@ -512,7 +510,4 @@ public class OrderManagementServiceImp implements OrderManagementService {
         }
     }
 
-    private String generateIdempotencyKey(UUID orderUuid, String action) {
-        return orderUuid + ":" + action + ":" + System.currentTimeMillis();
-    }
 }

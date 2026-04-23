@@ -33,10 +33,17 @@ public class CyberTechAppConstants {
     public static final String CLEAN_UP_EXPIRED_STOCK_JOB = "CLEAN_UP_EXPIRED_STOCK_JOB";
 
 
-    public static final Integer NUMBER_OF_MOST_SELLED_PRODUCTS_TO_GET = 15;
-
-
     public static final String APP_API_VERSION = "1.0";
 
     public static final String APPLICATION_ASYNC_TASK_EXECUTOR = "applicationAsyncTaskExecutor";
+
+    public static final String RESERVATION_KEY_PREFIX = "reservation:order:";
+
+    // Pagination defaults. Used by @PageableDefault — the global hard cap lives in application.properties
+    // (spring.data.web.pageable.max-page-size). Per-endpoint size defaults are per-resource for UX.
+    public static final int DEFAULT_PAGE_SIZE_ADMIN = 20;
+    public static final int DEFAULT_PAGE_SIZE_BANK_CARD = 10;
+    public static final int DEFAULT_PAGE_SIZE_WISHLIST = 20;
+    public static final int DEFAULT_PAGE_SIZE_BEST_SELLERS = 15;
+    public static final String DEFAULT_SORT_FIELD = "createdAt";
 }

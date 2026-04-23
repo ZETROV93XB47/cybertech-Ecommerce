@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(mvn -q -DskipTests clean compile)"
+    ]
+  }
+}

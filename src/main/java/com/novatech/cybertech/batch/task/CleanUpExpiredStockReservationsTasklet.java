@@ -32,17 +32,12 @@ public class CleanUpExpiredStockReservationsTasklet extends BaseTasklet {
     public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) {
         log.info("Starting CleanUpExpiredStockReservationsTasklet");
 
-        // On prend une marge de sécurité : 15 minutes (le TTL Redis est de 10 min)
-        // Si une réservation est ACTIVE et vieille de plus de 15 min, c'est qu'elle a échappé au listener Redis.
         LocalDateTime threshold = LocalDateTime.now().minusMinutes(15);
 
-        // Note : Idéalement, il faudrait une méthode findByReservationStatusAndCreatedAtBefore dans le repository
-        // pour éviter de charger toute la table. Ici on filtre en Java pour l'exemple.
-        List<StockEntity> allStocks = stockRepository.findAll();
+        List<StockEntity> expired = stockRepository
+                .findByReservationStatusAndCreatedAtBefore(ReservationStatus.ACTIVE, threshold);
 
-        Set<UUID> expiredOrderUuids = allStocks.stream()
-                .filter(s -> s.getReservationStatus() == ReservationStatus.ACTIVE)
-                .filter(s -> s.getCreatedAt().isBefore(threshold))
+        Set<UUID> expiredOrderUuids = expired.stream()
                 .map(StockEntity::getOrderUuid)
                 .collect(Collectors.toSet());
 

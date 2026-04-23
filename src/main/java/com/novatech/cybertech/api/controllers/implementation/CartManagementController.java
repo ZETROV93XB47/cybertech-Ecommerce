@@ -31,30 +31,38 @@ public class CartManagementController implements CartManagementControllerApiSpec
 
     private final CartService cartService;
 
+    //Base CRUD Endpoints, maybe delete these endpoints in the future
     @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @GetMapping(value = "/get/{cartUuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> getCartByUuid(@PathVariable("cartUuid") UUID cartUuid) {
         return ResponseEntity.status(HttpStatus.OK).body(cartService.getByUUID(cartUuid));
     }
 
     @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> createCart(@Valid @RequestBody CartCreateRequestDto cartCreateRequestDto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cartService.create(cartCreateRequestDto));
     }
 
     @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PatchMapping(value = "/update/{cartUuid}", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<CartResponseDto> updateCart(final CartItemRemoveRequestDto cartItemRemoveRequestDto) {
+    public ResponseEntity<CartResponseDto> updateCart(@PathVariable("cartUuid") final UUID cartUuid, @Valid @RequestBody final CartItemRemoveRequestDto cartItemRemoveRequestDto) {
         return ResponseEntity.status(HttpStatus.OK).body(cartService.update(cartItemRemoveRequestDto));
     }
 
     @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @DeleteMapping(value = "/delete/{cartUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deleteCartByUuid(UUID cartUuid) {
+    public ResponseEntity<Void> deleteCartByUuid(@PathVariable("cartUuid") UUID cartUuid) {
         cartService.deleteByUUID(cartUuid);
         return ResponseEntity.noContent().build();
     }
+
+
+
 
 
     @Override

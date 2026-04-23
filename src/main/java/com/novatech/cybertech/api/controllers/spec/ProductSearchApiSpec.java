@@ -11,9 +11,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -33,14 +33,11 @@ public interface ProductSearchApiSpec {
 
 
     @Operation(summary = "Get best-selling products",
-            description = "Returns the list of products sorted by total quantity sold, descending.",
-            parameters = {
-                    @Parameter(name = "number of products to get", description = "Integer representing the number of products to get", required = true, schema = @Schema(implementation = Integer.class))
-            },
+            description = "Returns products ranked by total quantity sold, descending. Paginated.",
             responses = {
-            @ApiResponse(responseCode = "200", description = "List of best-selling products", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductResponseDto.class))),
+            @ApiResponse(responseCode = "200", description = "Page of best-selling products", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductResponseDto.class))),
             @ApiResponse(responseCode = "400", description = "Bad request", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))})
-    ResponseEntity<List<ProductResponseDto>> getBestSellers();
+    ResponseEntity<Page<ProductResponseDto>> getBestSellers(final Pageable pageable);
 
     @Operation(
             summary = "Search products",

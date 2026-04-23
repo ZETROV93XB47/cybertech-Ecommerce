@@ -14,6 +14,8 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.UserManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -89,6 +91,11 @@ public class UserManagementServiceImp implements UserManagementService {
     @Transactional(readOnly = true)
     public Collection<UserResponseDto> getAll() {
         return userMapper.mapFromEntityToResponseDto(userRepository.findAll());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<UserResponseDto> getAll(final Pageable pageable) {
+        return userRepository.findAll(pageable).map(userMapper::mapFromEntityToResponseDto);
     }
 
     @Override

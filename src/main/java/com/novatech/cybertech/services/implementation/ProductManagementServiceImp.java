@@ -18,14 +18,12 @@ import com.novatech.cybertech.services.core.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Collection;
-import java.util.List;
 import java.util.UUID;
 
 
@@ -49,6 +47,11 @@ public class ProductManagementServiceImp implements ProductManagementService {
     @Transactional(readOnly = true)
     public Collection<ProductResponseDto> getAll() {
         return productMapper.mapFromEntityToResponseDto(productRepository.findAll());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDto> getAll(final Pageable pageable) {
+        return productRepository.findAll(pageable).map(productMapper::mapFromEntityToResponseDto);
     }
 
     @Override
@@ -89,8 +92,25 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
     @Override
     @Transactional
-    public ProductResponseDto update(final ProductUpdateRequestDto productCreateRequestDto) {
-        return productMapper.mapFromEntityToResponseDto(productRepository.save(productMapper.mapFromUpdateRequestToEntity(productCreateRequestDto)));
+    public ProductResponseDto update(final ProductUpdateRequestDto productUpdateRequestDto) {
+        final UUID uuid = productUpdateRequestDto.getProductUuid();
+        final ProductEntity existing = productRepository.lockByUuid(uuid)
+                .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + uuid + " found"));
+
+        if (productUpdateRequestDto.getName() != null) existing.setName(productUpdateRequestDto.getName());
+        if (productUpdateRequestDto.getPrice() != null) existing.setPrice(productUpdateRequestDto.getPrice());
+        if (productUpdateRequestDto.getBrand() != null) existing.setBrand(productUpdateRequestDto.getBrand());
+        if (productUpdateRequestDto.getCategory() != null) existing.setCategory(productUpdateRequestDto.getCategory());
+        if (productUpdateRequestDto.getPhoto() != null) existing.setPhoto(productUpdateRequestDto.getPhoto());
+        if (productUpdateRequestDto.getStock() != null) existing.setStock(productUpdateRequestDto.getStock());
+        if (productUpdateRequestDto.getDescription() != null) existing.setDescription(productUpdateRequestDto.getDescription());
+
+        final ProductEntity saved = productRepository.save(existing);
+
+        final ProductDocument document = productMapper.mapFromProductEntityToProductDocument(saved);
+        productSearchRepository.save(document);
+
+        return productMapper.mapFromEntityToResponseDto(saved);
     }
 
     @Override
@@ -104,6 +124,9 @@ public class ProductManagementServiceImp implements ProductManagementService {
     @Transactional
     public void deleteByUUIDs(Collection<UUID> uuids) {
         productRepository.deleteAllByUuidIn(uuids);
+        if (uuids != null) {
+            uuids.forEach(productSearchRepository::deleteByUuid);
+        }
     }
 
     public Page<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto) {
@@ -112,14 +135,8 @@ public class ProductManagementServiceImp implements ProductManagementService {
     }
 
 
-    @Transactional
-    public List<ProductResponseDto> getBestSellers(final Integer numberOfProducts) {
-        final Pageable pageable = PageRequest.of(0, numberOfProducts);
-
-        final List<ProductEntity> productEntities = productRepository.findBestSellers(pageable);
-
-        return productEntities.stream()
-                .map(productMapper::mapFromEntityToResponseDto)
-                .toList();
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDto> getBestSellers(final Pageable pageable) {
+        return productRepository.findBestSellers(pageable).map(productMapper::mapFromEntityToResponseDto);
     }
 }

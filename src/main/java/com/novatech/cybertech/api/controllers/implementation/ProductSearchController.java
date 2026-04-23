@@ -9,11 +9,12 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.*;
@@ -39,8 +40,11 @@ public class ProductSearchController implements ProductSearchApiSpec {
         return productService.searchProducts(productSearchRequestDto);
     }
 
+    @Override
     @GetMapping(value = "/best-sellers", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<ProductResponseDto>> getBestSellers() {
-        return ResponseEntity.ok(productService.getBestSellers(NUMBER_OF_MOST_SELLED_PRODUCTS_TO_GET));
+    public ResponseEntity<Page<ProductResponseDto>> getBestSellers(
+            @PageableDefault(size = DEFAULT_PAGE_SIZE_BEST_SELLERS) final Pageable pageable
+    ) {
+        return ResponseEntity.ok(productService.getBestSellers(pageable));
     }
 }

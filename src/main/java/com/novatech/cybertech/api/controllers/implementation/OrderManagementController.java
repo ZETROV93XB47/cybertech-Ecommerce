@@ -75,6 +75,7 @@ public class OrderManagementController implements OrderManagementControllerApiSp
 
 
     @Override
+    @PreAuthorize("hasRole('USER')")
     @GetMapping(value = "/get/{uuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponseDto> getOrderByUuid(@PathVariable("uuid") UUID orderUuid) {
         return ResponseEntity.status(HttpStatus.OK).body(orderManagementService.getByUUID(orderUuid));

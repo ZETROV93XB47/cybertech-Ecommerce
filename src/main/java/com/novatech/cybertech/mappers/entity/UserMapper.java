@@ -15,7 +15,7 @@ public interface UserMapper extends BaseMapper<UserEntity, UserCreateRequestDto,
 
     // Il me faut l'uuid pour pouvoir retrouver le User, pas pour le maj
     @Mapping(target = "uuid", ignore = true)
-    @Mapping(target = "address", expression = "java(mapStringToAddress(dto.getAddress()))")
+    @Mapping(target = "address", expression = "java(dto.getAddress() != null ? mapStringToAddress(dto.getAddress()) : entity.getAddress())")
     void updateEntityFromDto(UserUpdateRequestDto dto, @MappingTarget UserEntity entity);
 
     // Mapping direct des champs éclatés du DTO vers l'objet Address de l'entité

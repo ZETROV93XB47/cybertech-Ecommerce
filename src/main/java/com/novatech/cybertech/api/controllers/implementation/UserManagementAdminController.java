@@ -11,6 +11,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +24,8 @@ import java.util.Collection;
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_ADMIN;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_SORT_FIELD;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -35,8 +41,10 @@ public class UserManagementAdminController implements UserManagementAdminApiSpec
 
     @Override
     @GetMapping(value = "/get/all", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Collection<UserResponseDto>> getAllUsers() {
-        return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.getAll());
+    public ResponseEntity<Page<UserResponseDto>> getAllUsers(
+            @PageableDefault(size = DEFAULT_PAGE_SIZE_ADMIN, sort = DEFAULT_SORT_FIELD, direction = Sort.Direction.DESC) final Pageable pageable
+    ) {
+        return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.getAll(pageable));
     }
 
     @Override

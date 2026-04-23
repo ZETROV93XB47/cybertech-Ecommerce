@@ -41,7 +41,7 @@ public class CybertechOrdersUpdateJob {
         try {
             if (activated) {
                 final LocalDateTime now = LocalDateTime.now();
-                return jobLauncher.run(job, new JobParametersBuilder().addLocalDateTime(now.toString(), now).toJobParameters());
+                return jobLauncher.run(job, new JobParametersBuilder().addLocalDateTime("runDate", now).toJobParameters());
             }
 
             log.info("REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB is not scheduled, the Job won't be executed.");

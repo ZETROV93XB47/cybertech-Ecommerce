@@ -23,6 +23,10 @@ public interface ProductMapper extends BaseMapper<ProductEntity, ProductCreateRe
     @Mapping(target = "reservedStock", expression = "java(0)")
     ProductEntity mapFromCreationRequestToEntity(ProductCreateRequestDto productCreateRequestDto);
 
+    @Override
+    @Mapping(target = "photoUrl", source = "photo")
+    ProductResponseDto mapFromEntityToResponseDto(ProductEntity entity);
+
     ProductResponseDto mapFromProductDocumentToProductResponseDto(ProductDocument productDocument);
 
     //@Mapping(source = "reviewEntities", target = "averageRating", qualifiedByName = "calculateAverageRating")

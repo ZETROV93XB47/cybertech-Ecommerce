@@ -14,6 +14,8 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.BankCardManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -83,6 +85,12 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     @Transactional(readOnly = true)
     public Collection<BankCardResponseDto> getAll() {
         return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.findAll());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<BankCardResponseDto> getAll(final Pageable pageable) {
+        return bankCardRepository.findAll(pageable).map(bankCardMapper::mapFromEntityToResponseDto);
     }
 
     @Override

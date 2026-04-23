@@ -46,6 +46,12 @@ public class CartServiceImp implements CartService {
 
         log.info("cart request dto : {}", cartCreateRequestDto);
 
+        cartCreateRequestDto.getCartItemAddRequestDtos().forEach(item -> {
+            if (item.getQuantity() == null || item.getQuantity() < 1) {
+                throw new NegativeQuantityException("Quantity must be >= 1 (got " + item.getQuantity() + ") for product " + item.getProductUuid());
+            }
+        });
+
         final Map<UUID, Integer> productsToAdd = cartCreateRequestDto.getCartItemAddRequestDtos().stream().collect(Collectors.toMap(CartItemAddRequestDto::getProductUuid, CartItemAddRequestDto::getQuantity));
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
@@ -68,8 +74,6 @@ public class CartServiceImp implements CartService {
                     .cartItems(new ArrayList<>())
                     .uuid(UuidCreator.getTimeOrderedEpoch())
                     .build();
-            // Important : lier le panier à l'utilisateur si ce n'est pas fait automatiquement par le save du cart
-            // user.setCartEntity(cartEntity);
         }
 
         // Pour chaque produit à ajouter
@@ -139,36 +143,39 @@ public class CartServiceImp implements CartService {
     @Cacheable(cacheNames = "cart", key = "#keycloakId", unless = "#result == null || #result.cartUuid == null")
     public CartResponseDto getCart(final String keycloakId) {
 
-        // 1) Lire directement dans Redis pour sliding TTL
-        CartResponseDto cached = cartCacheHelper.getRaw(keycloakId);
+        // 1) Try cache first — sliding TTL refresh on hit
+        final CartResponseDto cached = cartCacheHelper.getRaw(keycloakId);
         if (cached != null) {
             cartCacheHelper.refreshTtlWithJitter(keycloakId);
             return cached;
         }
 
-        // 2) Cache miss → lock anti-stampede
+        // 2) Cache miss → try to acquire the rebuild lock
         final String token = cartCacheHelper.acquireLock(keycloakId);
 
-        if (token != null) {
-            // Un autre thread reconstruit le panier → attendre ou renvoyer vide
-            CartResponseDto retry = cartCacheHelper.getRaw(keycloakId);
-            if (retry != null) return retry;
+        if (token == null) {
+            // Another thread holds the lock and is already rebuilding.
+            // Re-read: if they just populated the cache, return it; otherwise return empty.
+            final CartResponseDto retry = cartCacheHelper.getRaw(keycloakId);
+            return retry != null ? retry : new CartResponseDto();
         }
 
         try {
-            // 3) Reconstruction depuis la DB
-            UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
+            // 3) We hold the lock — rebuild from DB
+            final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
-            CartResponseDto dto = user.getCartEntity() == null ? new CartResponseDto() : cartMapper.mapFromEntityToResponseDto(user.getCartEntity());
+            final CartResponseDto dto = user.getCartEntity() == null
+                    ? new CartResponseDto()
+                    : cartMapper.mapFromEntityToResponseDto(user.getCartEntity());
 
-            // 4) Mise en cache avec jitter
+            // 4) Populate cache with jitter TTL
             cartCacheHelper.putWithJitter(keycloakId, dto);
 
             return dto;
 
         } finally {
-            // 5) Libération du lock
-            log.info("Releasing lock for the user {} with the following token : {}", keycloakId, token);
+            // 5) Always release the lock
+            log.info("Releasing lock for user {} with token : {}", keycloakId, token);
             cartCacheHelper.releaseLock(keycloakId, token);
         }
     }

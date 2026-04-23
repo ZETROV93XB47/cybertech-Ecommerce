@@ -68,7 +68,7 @@ public interface CartManagementControllerApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during cart update",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<CartResponseDto> updateCart(final CartItemRemoveRequestDto cartItemRemoveRequestDto);
+    ResponseEntity<CartResponseDto> updateCart(final UUID cartUuid, final CartItemRemoveRequestDto cartItemRemoveRequestDto);
 
 
     @Operation(summary = "Delete a Cart by UUID",

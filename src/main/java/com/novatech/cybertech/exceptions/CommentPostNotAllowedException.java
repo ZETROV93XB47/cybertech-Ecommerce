@@ -4,4 +4,8 @@ public class CommentPostNotAllowedException extends RuntimeException {
     public CommentPostNotAllowedException(String message) {
         super(message);
     }
+
+    public CommentPostNotAllowedException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

@@ -60,7 +60,6 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint) // 401
                         .accessDeniedHandler(accessDeniedHandler)           // 403
                 );
-        ;
         return http.build();
     }
 

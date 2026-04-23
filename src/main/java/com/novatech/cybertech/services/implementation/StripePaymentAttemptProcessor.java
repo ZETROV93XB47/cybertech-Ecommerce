@@ -15,6 +15,7 @@ import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.RefundCreateParams;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -27,6 +28,9 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
 
     private static final String ORDER_UUID = "orderUuid";
     private static final String IDEMPOTENCY_KEY = "idempotencyKey";
+
+    @Value("${stripe.payment-method:}")
+    private String defaultPaymentMethod;
 
     @Override
     public PaymentAttemptResult processPayment(
@@ -91,8 +95,8 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
         log.info("idempotencykey : {}", idempotencyKey);
 
         RefundCreateParams params = RefundCreateParams.builder()
-                .setPaymentIntent(stripePaymentID) // important
-                .setAmount(amount.getAmount().toBigInteger().longValue()) //TODO: WARNING: this conversion can cause issues, refactor later
+                .setPaymentIntent(stripePaymentID)
+                .setAmount(toMinorUnit(amount))
                 .putMetadata("orderUuid", orderUuid.toString())
                 .build();
 
@@ -104,21 +108,21 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             Refund refund = Refund.create(params, options);
 
             return new PaymentAttemptResult(
-                    PaymentAttemptStatus.PROCESSING,
+                    mapRefundStatus(refund.getStatus()),
                     refund.getId()
             );
 
         } catch (StripeException e) {
-            log.error("Error creating Stripe Refund for order {}: {}", orderUuid, e.getMessage());//TODO: handle specific Stripe exceptions (ex: insufficient funds, invalid payment intent, etc.) and map them to more specific error messages or codes in the PaymentAttemptResult
-            throw new RuntimeException(e);
+            log.error("Error creating Stripe Refund for order {}: {}", orderUuid, e.getMessage());
+            throw new PaymentProcessingException("Stripe refund failed for order " + orderUuid + ": " + e.getMessage(), e);
         }
     }
 
     private long toMinorUnit(final Money money) {
 
         return money.getAmount()
-                .movePointRight(2) // euros → cents
-                .longValueExact(); // 💥 throw si décimales incorrectes
+                .movePointRight(2)
+                .longValueExact();
     }
 
     private PaymentIntentCreateParams buildPaymentIntentParams(
@@ -128,13 +132,11 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             String idempotencyKey
     ) {
 
-        return PaymentIntentCreateParams.builder()
+        final PaymentIntentCreateParams.Builder builder = PaymentIntentCreateParams.builder()
                 .setAmount(amountInMinorUnit)
                 .setCurrency(amount.getCurrencyCode().getCode().toLowerCase())
                 .putMetadata("order_uuid", orderUuid.toString())
                 .putMetadata("idempotency_key", idempotencyKey)
-
-                // 🔥 Important
                 .setAutomaticPaymentMethods(
                         PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
                                 .setEnabled(true)
@@ -143,20 +145,29 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
                                 )
                                 .build()
                 )
+                .setConfirm(true);
 
-                .setConfirm(true)
-                .setPaymentMethod("pm_card_visa") // DEV test
-                .build();
+        if (defaultPaymentMethod != null && !defaultPaymentMethod.isBlank()) {
+            builder.setPaymentMethod(defaultPaymentMethod);
+        }
+
+        return builder.build();
     }
 
     private PaymentAttemptStatus mapStripeStatus(String stripeStatus) {
 
         return switch (stripeStatus) {
-
             case "succeeded" -> PaymentAttemptStatus.SUCCESS;
-
             case "requires_payment_method", "canceled" -> PaymentAttemptStatus.FAILED;
+            default -> PaymentAttemptStatus.PROCESSING;
+        };
+    }
 
+    private PaymentAttemptStatus mapRefundStatus(String refundStatus) {
+        return switch (refundStatus) {
+            case "succeeded" -> PaymentAttemptStatus.SUCCESS;
+            case "failed" -> PaymentAttemptStatus.FAILED;
+            case "canceled" -> PaymentAttemptStatus.CANCELED;
             default -> PaymentAttemptStatus.PROCESSING;
         };
     }

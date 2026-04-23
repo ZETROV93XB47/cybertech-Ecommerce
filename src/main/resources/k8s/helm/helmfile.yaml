@@ -1,0 +1,131 @@
+environments:
+  default:
+    values:
+      - environments/default.yaml
+  production:
+    values:
+      - environments/production.yaml
+
+---
+
+helmDefaults:
+  wait: true
+  timeout: 300
+  recreatePods: false
+  force: false
+
+releases:
+
+  # ============================================================
+  # LAYER 1 — Secrets management (no dependencies)
+  # ============================================================
+
+  - name: vault
+    chart: ./charts/vault-chart
+    namespace: default
+    values:
+      - ./charts/vault-chart/values.yaml
+
+  # ============================================================
+  # LAYER 2 — Databases & infrastructure (no dependencies)
+  # ============================================================
+
+  - name: mysql
+    chart: ./charts/mysql-chart
+    namespace: default
+    values:
+      - ./charts/mysql-chart/values.yaml
+    set:
+      - name: mysql.rootPassword
+        value: {{ requiredEnv "MYSQL_ROOT_PASSWORD" }}
+
+  - name: mongodb
+    chart: ./charts/mongodb-chart
+    namespace: default
+    values:
+      - ./charts/mongodb-chart/values.yaml
+
+  - name: redis
+    chart: ./charts/redis-chart
+    namespace: default
+    values:
+      - ./charts/redis-chart/values.yaml
+
+  - name: elasticsearch
+    chart: ./charts/elasticsearch-chart
+    namespace: default
+    values:
+      - ./charts/elasticsearch-chart/values.yaml
+
+  # ============================================================
+  # LAYER 3 — Services that depend on Layer 2
+  # ============================================================
+
+  - name: keycloak
+    chart: ./charts/keycloak-chart
+    namespace: default
+    needs:
+      - mysql
+    values:
+      - ./charts/keycloak-chart/values.yaml
+
+  - name: localstack
+    chart: ./charts/localstack-chart
+    namespace: default
+    values:
+      - ./charts/localstack-chart/values.yaml
+
+  - name: mailpit
+    chart: ./charts/mailpit-chart
+    namespace: default
+    values:
+      - ./charts/mailpit-chart/values.yaml
+
+  - name: moderation-api
+    chart: ./charts/moderation-api-chart
+    namespace: default
+    values:
+      - ./charts/moderation-api-chart/values.yaml
+
+  - name: stripe
+    chart: ./charts/stripe-chart
+    namespace: default
+    values:
+      - ./charts/stripe-chart/values.yaml
+    set:
+      - name: stripe.apiKey
+        value: {{ requiredEnv "STRIPE_API_KEY" }}
+
+  # ============================================================
+  # LAYER 4 — Main application (depends on everything)
+  # ============================================================
+
+  - name: cybertech-app
+    chart: ./charts/cybertech-app-chart
+    namespace: default
+    needs:
+      - mysql
+      - mongodb
+      - redis
+      - elasticsearch
+      - keycloak
+      - localstack
+      - mailpit
+      - moderation-api
+      - stripe
+      - vault
+    values:
+      - ./charts/cybertech-app-chart/values.yaml
+    set:
+      - name: mysql.password
+        value: {{ requiredEnv "MYSQL_ROOT_PASSWORD" }}
+      - name: keycloak.clientSecret
+        value: {{ requiredEnv "KEYCLOAK_CLIENT_SECRET" }}
+      - name: vault.token
+        value: {{ requiredEnv "VAULT_TOKEN" }}
+      - name: aws.s3.secretAccessKey
+        value: {{ requiredEnv "AWS_SECRET_ACCESS_KEY" }}
+      - name: stripe.apiKey
+        value: {{ requiredEnv "STRIPE_API_KEY" }}
+      - name: stripe.webhookSecret
+        value: {{ requiredEnv "STRIPE_WEBHOOK_SECRET" }}
