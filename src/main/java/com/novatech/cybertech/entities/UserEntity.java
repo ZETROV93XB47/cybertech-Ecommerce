@@ -24,7 +24,7 @@ import java.util.Set;
 @EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntities", "wishlistItems", "recommendations"})
 public class UserEntity extends BaseEntity<Long> {
 
-    @Column(name = "email", nullable = false, unique = true, length = 50)
+    @Column(name = "email", nullable = false, unique = true, length = 254)
     private String email;
 
     @Column(name = "firstName", length = 50)

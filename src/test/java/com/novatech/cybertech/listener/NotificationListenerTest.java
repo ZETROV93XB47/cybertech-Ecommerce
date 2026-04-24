@@ -6,6 +6,7 @@ import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.NotificationEntity;
 import com.novatech.cybertech.entities.enums.CommunicationChanel;
+import com.novatech.cybertech.entities.enums.NotificationStatus;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
@@ -26,7 +27,11 @@ import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import static com.novatech.cybertech.listener.NotificationListener.MAX_DISPATCH_RETRIES;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -85,5 +90,50 @@ class NotificationListenerTest {
         assertThat(ent.getCommunicationChannel()).isEqualTo(CommunicationChanel.EMAIL);
         assertThat(ent.getRecipient()).isEqualTo("jane@example.com");
         assertThat(ent.getRetryCount()).isZero();
+        assertThat(ent.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(ent.getSentAt()).isNotNull();
+        assertThat(ent.getErrorMessage()).isNull();
+    }
+
+    @Test
+    void onShouldPersistFailedStatusWhenAllRetriesExhausted() {
+        OrderEventDto dto = sampleEventDto();
+        OrderShippedEvent event = new OrderShippedEvent(dto);
+        doThrow(new RuntimeException("SMTP unreachable")).when(notificationDispatcher).dispatch(any());
+
+        listener.on(event);
+
+        verify(notificationDispatcher, times(MAX_DISPATCH_RETRIES)).dispatch(any());
+
+        ArgumentCaptor<NotificationEntity> entityCap = ArgumentCaptor.forClass(NotificationEntity.class);
+        verify(notificationRepository).save(entityCap.capture());
+        NotificationEntity ent = entityCap.getValue();
+        assertThat(ent.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(ent.getRetryCount()).isEqualTo(MAX_DISPATCH_RETRIES);
+        assertThat(ent.getErrorMessage()).contains("SMTP unreachable");
+        assertThat(ent.getSentAt()).isNull();
+        assertThat(ent.getLastAttemptAt()).isNotNull();
+        assertThat(ent.getOrderUuid()).isEqualTo(dto.getOrderUuid());
+    }
+
+    @Test
+    void onShouldRetryAndSucceedOnSecondAttempt() {
+        OrderEventDto dto = sampleEventDto();
+        OrderShippedEvent event = new OrderShippedEvent(dto);
+        doThrow(new RuntimeException("transient"))
+                .doNothing()
+                .when(notificationDispatcher).dispatch(any());
+
+        listener.on(event);
+
+        verify(notificationDispatcher, times(2)).dispatch(any());
+
+        ArgumentCaptor<NotificationEntity> entityCap = ArgumentCaptor.forClass(NotificationEntity.class);
+        verify(notificationRepository).save(entityCap.capture());
+        NotificationEntity ent = entityCap.getValue();
+        assertThat(ent.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(ent.getRetryCount()).isEqualTo(1);
+        assertThat(ent.getSentAt()).isNotNull();
+        assertThat(ent.getErrorMessage()).isNull();
     }
 }

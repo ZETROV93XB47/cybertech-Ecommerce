@@ -29,11 +29,18 @@ import static com.novatech.cybertech.entities.enums.NotificationType.SHIPPING_CO
  *
  * <p>The shipping listener intentionally does NOT dispatch a notification itself — see
  * {@link ShippingListener} (BUG-122 cleanup).
+ *
+ * <p>Retry contract: dispatch is attempted up to {@link #MAX_DISPATCH_RETRIES} times.
+ * The persisted {@link NotificationEntity} reflects the final outcome — {@code SENT} on any
+ * successful attempt, {@code FAILED} (with {@code errorMessage} + {@code retryCount}) only
+ * once all retries are exhausted.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class NotificationListener {
+
+    static final int MAX_DISPATCH_RETRIES = 3;
 
     private final NotificationRepository notificationRepository;
     private final NotificationDispatcher notificationDispatcher;
@@ -48,45 +55,73 @@ public class NotificationListener {
      * user with a confirmation for a shipment that did not happen.
      *
      * <p>Downstream effect: writes a {@link NotificationEntity} row tracking that the
-     * confirmation was sent (recipient, channel, template, sentAt).
+     * confirmation was sent (recipient, channel, template, sentAt) or failed after all retries
+     * (status FAILED, errorMessage, retryCount).
      */
     @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(final OrderShippedEvent orderShippedEvent) {
-        log.info("Received OrderShippedEvent for order with context: {}", orderShippedEvent.getOrderEventDto());
-
-        final ShippingConfirmationPayload shippingConfirmationPayload = ShippingConfirmationPayload.builder()
-                .orderUuid(orderShippedEvent.getOrderEventDto().getOrderUuid())
-                .shippingType(orderShippedEvent.getOrderEventDto().getShippingType())
-                .shippingProvider(orderShippedEvent.getOrderEventDto().getShippingProvider())
-                .userName(orderShippedEvent.getOrderEventDto().getUserContactDto().getName())
-                .build();
+        final var dto = orderShippedEvent.getOrderEventDto();
+        log.info("Received OrderShippedEvent for order {}", dto.getOrderUuid());
 
         final NotificationContext notificationContext = NotificationContext.builder()
-                .payload(shippingConfirmationPayload)
+                .payload(ShippingConfirmationPayload.builder()
+                        .orderUuid(dto.getOrderUuid())
+                        .shippingType(dto.getShippingType())
+                        .shippingProvider(dto.getShippingProvider())
+                        .userName(dto.getUserContactDto().getName())
+                        .build())
                 .subject(NotificationSubject.SHIPPING_CONFIRMATION.getSubject())
-                .user(orderShippedEvent.getOrderEventDto().getUserContactDto())
+                .user(dto.getUserContactDto())
                 .templatePath(EmailTemplateType.SHIPPING_CONFIRMATION.getTemplatePath())
                 .notificationType(SHIPPING_CONFIRMATION)
-                .communicationChanel(orderShippedEvent.getOrderEventDto().getUserContactDto().getDefaultCommunicationChanel())
+                .communicationChanel(dto.getUserContactDto().getDefaultCommunicationChanel())
                 .build();
 
-        notificationDispatcher.dispatch(notificationContext);
+        Exception lastException = null;
+        int attempts = 0;
+        for (int attempt = 1; attempt <= MAX_DISPATCH_RETRIES; attempt++) {
+            try {
+                notificationDispatcher.dispatch(notificationContext);
+                attempts = attempt;
+                lastException = null;
+                break;
+            } catch (Exception ex) {
+                lastException = ex;
+                attempts = attempt;
+                log.warn("Notification dispatch attempt {}/{} failed for order {}: {}",
+                        attempt, MAX_DISPATCH_RETRIES, dto.getOrderUuid(), ex.getMessage());
+            }
+        }
 
-
-        //TODO: improve and finish this part implementing retry mechanism and error handling
-        final NotificationEntity notificationEntity = NotificationEntity.builder()
-                .orderUuid(orderShippedEvent.getOrderEventDto().getOrderUuid())
-                .notificationType(SHIPPING_CONFIRMATION)
-                .communicationChannel(orderShippedEvent.getOrderEventDto().getUserContactDto().getDefaultCommunicationChanel())
-                .status(NotificationStatus.SENT)
-                .recipient(orderShippedEvent.getOrderEventDto().getUserContactDto().getEmail())
-                .retryCount(0)
-                .lastAttemptAt(null)
-                .sentAt(LocalDateTime.now())
-                .build();
-
+        final NotificationEntity notificationEntity;
+        if (lastException == null) {
+            notificationEntity = NotificationEntity.builder()
+                    .orderUuid(dto.getOrderUuid())
+                    .notificationType(SHIPPING_CONFIRMATION)
+                    .communicationChannel(dto.getUserContactDto().getDefaultCommunicationChanel())
+                    .status(NotificationStatus.SENT)
+                    .recipient(dto.getUserContactDto().getEmail())
+                    .retryCount(attempts - 1)
+                    .lastAttemptAt(LocalDateTime.now())
+                    .sentAt(LocalDateTime.now())
+                    .build();
+            log.info("Shipping notification sent for order {} after {} attempt(s)", dto.getOrderUuid(), attempts);
+        } else {
+            notificationEntity = NotificationEntity.builder()
+                    .orderUuid(dto.getOrderUuid())
+                    .notificationType(SHIPPING_CONFIRMATION)
+                    .communicationChannel(dto.getUserContactDto().getDefaultCommunicationChanel())
+                    .status(NotificationStatus.FAILED)
+                    .recipient(dto.getUserContactDto().getEmail())
+                    .retryCount(attempts)
+                    .lastAttemptAt(LocalDateTime.now())
+                    .sentAt(null)
+                    .errorMessage(lastException.getMessage())
+                    .build();
+            log.error("All {} dispatch attempts failed for order {}; persisting FAILED status",
+                    MAX_DISPATCH_RETRIES, dto.getOrderUuid(), lastException);
+        }
         notificationRepository.save(notificationEntity);
-        log.info("Shipping Notification sent successfully");
     }
 }
