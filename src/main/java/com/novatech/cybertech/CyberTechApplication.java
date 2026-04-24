@@ -20,7 +20,7 @@ import java.util.Arrays;
 @RequiredArgsConstructor
 @EnableConfigurationProperties
 public class CyberTechApplication {
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(CyberTechApplication.class, args);
     }
 }

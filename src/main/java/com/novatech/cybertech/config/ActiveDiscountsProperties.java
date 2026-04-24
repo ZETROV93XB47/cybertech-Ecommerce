@@ -4,6 +4,7 @@ import com.novatech.cybertech.entities.enums.DiscountType;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 import java.util.EnumSet;
 import java.util.Set;
@@ -12,6 +13,7 @@ import java.util.stream.Stream;
 
 @Getter
 @Setter
+@Component
 @ConfigurationProperties(prefix = "active-discounts")
 public class ActiveDiscountsProperties {
 

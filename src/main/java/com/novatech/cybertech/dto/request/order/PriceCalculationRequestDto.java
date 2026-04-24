@@ -18,8 +18,8 @@ import java.util.List;
 @AllArgsConstructor
 public class PriceCalculationRequestDto {
 
-    @NotEmpty
     @Valid
+    @NotEmpty
     private List<OrderItemPriceDto> items;
 
     @NotNull

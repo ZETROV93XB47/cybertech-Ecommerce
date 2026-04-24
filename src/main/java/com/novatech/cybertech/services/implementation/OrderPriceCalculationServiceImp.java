@@ -29,9 +29,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
         final DiscountType discountType = request.getDiscountType();
 
         if (!activeDiscountsProperties.isActive(discountType)) {
-            throw new DiscountTypeNotActiveException(
-                    "DiscountType " + discountType + " is not currently active. Active types: "
-                            + activeDiscountsProperties.getEnabled());
+            throw new DiscountTypeNotActiveException("DiscountType " + discountType + " is not currently active. Active types: " + activeDiscountsProperties.getEnabled());
         }
 
         final BigDecimal baseAmount = request.getItems().stream()
@@ -66,9 +64,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
     private DiscountStrategy resolveStrategy(final DiscountType type) {
         final DiscountStrategy strategy = discountStrategyFactory.getStrategy(type);
         if (strategy == null) {
-            throw new DiscountTypeNotActiveException(
-                    "No DiscountStrategy is wired for active DiscountType " + type
-                            + " — check strategy beans and DiscountTypeHandler annotations.");
+            throw new DiscountTypeNotActiveException("No DiscountStrategy is wired for active DiscountType " + type + " — check strategy beans and DiscountTypeHandler annotations.");
         }
         return strategy;
     }
