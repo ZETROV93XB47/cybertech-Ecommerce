@@ -14,7 +14,7 @@ CREATE TABLE userTable
     version                    BIGINT       NOT NULL,
 
     -- Champs spécifiques à UserEntity
-    email                      VARCHAR(50)  NOT NULL UNIQUE,
+    email                      VARCHAR(254) NOT NULL UNIQUE,
     firstName                  VARCHAR(50),
     lastName                   VARCHAR(50),
     sex                        VARCHAR(255) NOT NULL, -- EnumType.STRING
@@ -203,3 +203,25 @@ CREATE TABLE orderItemTable
     -- On suppose l'existence de la table productTable
     FOREIGN KEY (productEntity) REFERENCES productTable (id)
 );
+CREATE TABLE discount_campaign
+(
+    id                 BIGINT        NOT NULL AUTO_INCREMENT,
+    uuid               BINARY(16)    NOT NULL UNIQUE,
+    version            BIGINT        NOT NULL,
+    createdAt          DATETIME(6)   NOT NULL,
+    updatedAt          DATETIME(6),
+    discountType       VARCHAR(50)   NOT NULL UNIQUE,
+    calculationType    VARCHAR(50)   NOT NULL,
+    enabled            BOOLEAN       NOT NULL DEFAULT FALSE,
+    percentage         DECIMAL(5, 2),
+    fixedAmount        DECIMAL(10, 2),
+    minOrderAmount     DECIMAL(10, 2),
+    maxDiscountAmount  DECIMAL(10, 2),
+    startsAt           DATETIME(6),
+    endsAt             DATETIME(6),
+    priority           INT,
+    PRIMARY KEY (id),
+    INDEX idx_discount_campaign_type (discountType),
+    INDEX idx_discount_campaign_enabled (enabled)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4;

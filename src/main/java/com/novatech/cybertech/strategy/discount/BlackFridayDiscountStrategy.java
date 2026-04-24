@@ -11,7 +11,9 @@ import java.math.RoundingMode;
 @DiscountTypeHandler(DiscountType.BLACK_FRIDAY)
 public class BlackFridayDiscountStrategy implements DiscountStrategy {
 
-    private static final BigDecimal PERCENTAGE = BigDecimal.valueOf(DiscountType.BLACK_FRIDAY.getDiscountPercentage());
+    // Previously derived from DiscountType.BLACK_FRIDAY.getDiscountPercentage() (0.4f).
+    // Field removed from enum; hardcoded here pending full DiscountCampaign refactor.
+    private static final BigDecimal PERCENTAGE = BigDecimal.valueOf(0.4);
 
     @Override
     public BigDecimal calculateDiscount(final BigDecimal baseAmount) {
