@@ -19,7 +19,6 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CardEncryptionService;
 import com.novatech.cybertech.services.implementation.BankCardManagementServiceImp;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -623,12 +622,48 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @Disabled("BUG-161 (cart/admin IDOR): no ownership check on deleteByUUID — same shape as the open " +
-                "BUG-161 on cart deleteByUUID. Pinned across F1 wave too. Re-enable when service verifies " +
-                "the bank card belongs to the caller before deletion.")
-        @DisplayName("BUG-161-shape: deleteByUUID should reject when card belongs to a different user")
-        void deleteByUuid_shouldEnforceOwnership_disabled() {
-            // placeholder
+        @DisplayName("BUG-161 fixed: deleteByUUID(uuid, keycloakId) deletes when caller owns the card")
+        void deleteByUuidWithKeycloakId_ownerMatches_deletes() {
+            final UUID cardUuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final BankCardEntity card = BankCardEntityBuilder.aValidBankCardBuilder()
+                    .uuid(cardUuid)
+                    .userEntity(owner)
+                    .build();
+            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.of(card));
+
+            service.deleteByUUID(cardUuid, keycloakId);
+
+            verify(bankCardRepository).deleteByUuid(cardUuid);
+        }
+
+        @Test
+        @DisplayName("BUG-161 fixed: deleteByUUID(uuid, keycloakId) rejects with UnauthorizedBankCardAccessException when caller is not owner")
+        void deleteByUuidWithKeycloakId_callerIsNotOwner_throwsUnauthorized() {
+            final UUID cardUuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-owner").build();
+            final BankCardEntity card = BankCardEntityBuilder.aValidBankCardBuilder()
+                    .uuid(cardUuid)
+                    .userEntity(owner)
+                    .build();
+            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.of(card));
+
+            assertThatThrownBy(() -> service.deleteByUUID(cardUuid, "kc-not-owner"))
+                    .isInstanceOf(UnauthorizedBankCardAccessException.class);
+
+            verify(bankCardRepository, never()).deleteByUuid(any(UUID.class));
+        }
+
+        @Test
+        @DisplayName("BUG-161 fixed: deleteByUUID(uuid, keycloakId) raises BankCardNotFoundException when the card is missing")
+        void deleteByUuidWithKeycloakId_missingCard_throwsNotFound() {
+            final UUID cardUuid = UUID.randomUUID();
+            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.deleteByUUID(cardUuid, keycloakId))
+                    .isInstanceOf(BankCardNotFoundException.class);
+
+            verify(bankCardRepository, never()).deleteByUuid(any(UUID.class));
         }
     }
 }

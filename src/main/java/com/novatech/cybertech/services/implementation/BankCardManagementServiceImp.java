@@ -180,6 +180,19 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         bankCardRepository.deleteByUuid(uuid);
     }
 
+    /**
+     * BUG-161: ownership-checked variant. Loads the card, verifies the caller owns it,
+     * and only then deletes. Mirrors {@code CartServiceImp#deleteByUUID(UUID, String)}.
+     */
+    @Override
+    @Transactional
+    public void deleteByUUID(final UUID uuid, final String keycloakId) {
+        final BankCardEntity card = bankCardRepository.findByUuid(uuid)
+                .orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + uuid));
+        assertCallerOwnsCard(card, uuid, keycloakId);
+        bankCardRepository.deleteByUuid(uuid);
+    }
+
     @Override
     @Transactional
     public void deleteByUUIDs(Collection<UUID> uuids) {
@@ -208,12 +221,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         final BankCardEntity target = bankCardRepository.findByUuid(cardUuid)
                 .orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + cardUuid));
 
-        if (target.getUserEntity() == null
-                || target.getUserEntity().getKeycloakId() == null
-                || !target.getUserEntity().getKeycloakId().equals(keycloakId)) {
-            throw new UnauthorizedBankCardAccessException(
-                    "Caller does not own the bank card: " + cardUuid);
-        }
+        assertCallerOwnsCard(target, cardUuid, keycloakId);
 
         final List<BankCardEntity> siblings = bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId);
         siblings.stream()
@@ -260,6 +268,21 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         }
         if (expiry.isBefore(YearMonth.now())) {
             throw new BankCardExpiredException("Card is expired (expiry=" + expiryDate + ")");
+        }
+    }
+
+    /**
+     * BUG-161 / BUG-038 — Central ownership guard. Throws {@link UnauthorizedBankCardAccessException}
+     * when the caller's Keycloak id does not match the card's owner. Shared by
+     * {@link #setDefault(UUID, String)} and {@link #deleteByUUID(UUID, String)}.
+     */
+    private void assertCallerOwnsCard(final BankCardEntity card, final UUID cardUuid, final String keycloakId) {
+        if (card.getUserEntity() == null
+                || card.getUserEntity().getKeycloakId() == null
+                || !card.getUserEntity().getKeycloakId().equals(keycloakId)) {
+            log.warn("BUG-161 — Unauthorized bank card access attempt: caller {} on card {}", keycloakId, cardUuid);
+            throw new UnauthorizedBankCardAccessException(
+                    "Caller does not own the bank card: " + cardUuid);
         }
     }
 

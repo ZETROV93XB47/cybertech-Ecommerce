@@ -83,9 +83,10 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
         return ResponseEntity.ok(bankCardService.getDefaultCard(jwt.getSubject()));
     }
 
-    // --- Endpoints CRUD Basiques (Non sécurisés) ---
+    // --- Admin CRUD endpoints — BUG-161: now require ROLE_ADMIN ---
 
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping(produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<Page<BankCardResponseDto>> getAllBankCards(
             @PageableDefault(size = DEFAULT_PAGE_SIZE_BANK_CARD, sort = DEFAULT_SORT_FIELD, direction = Sort.Direction.DESC) final Pageable pageable
@@ -94,24 +95,28 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping(value = "/{uuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<BankCardResponseDto> getBankCardByUuid(@PathVariable UUID uuid) {
         return ResponseEntity.ok(bankCardService.getByUUID(uuid));
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping(consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<BankCardResponseDto> createBankCard(@Valid @RequestBody BankCardCreationRequestDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(bankCardService.create(dto));
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping(consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<BankCardResponseDto> updateBankCardAdmin(@Valid @RequestBody BankCardUpdateRequestDto dto) {
         return ResponseEntity.ok(bankCardService.update(dto));
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping(value = "/{uuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> deleteBankCardByUuid(@PathVariable UUID uuid) {
         bankCardService.deleteByUUID(uuid);

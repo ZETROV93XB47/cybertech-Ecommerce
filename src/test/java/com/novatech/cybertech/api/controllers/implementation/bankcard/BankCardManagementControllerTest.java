@@ -28,6 +28,7 @@ import java.util.UUID;
 
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNICAL;
+import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -267,7 +268,7 @@ class BankCardManagementControllerTest {
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
     }
 
-    // ---------- GET / (admin/all — endpoint is not @PreAuthorize-guarded but requires authentication) ----------
+    // ---------- GET / (admin/all — BUG-161: now @PreAuthorize("hasRole('ADMIN')")) ----------
 
     @Test
     void shouldGetAllBankCardsSuccessfully() throws Exception {
@@ -278,7 +279,7 @@ class BankCardManagementControllerTest {
         when(bankCardService.getAll(any())).thenReturn(page);
 
         mockMvc.perform(get(GET_ALL)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
@@ -296,6 +297,15 @@ class BankCardManagementControllerTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void shouldFailGettingAllBankCardsAsNonAdminCauseForbidden() throws Exception {
+        // BUG-161: admin CRUD endpoint now requires ROLE_ADMIN.
+        mockMvc.perform(get(GET_ALL)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
     // ---------- GET /{uuid} ----------
 
     @Test
@@ -306,7 +316,7 @@ class BankCardManagementControllerTest {
         when(bankCardService.getByUUID(cardUuid)).thenReturn(response);
 
         mockMvc.perform(get(GET_BY_UUID, cardUuid)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
@@ -326,7 +336,7 @@ class BankCardManagementControllerTest {
                 .thenThrow(new BankCardNotFoundException("Bank card not found by UUID"));
 
         mockMvc.perform(get(GET_BY_UUID, cardUuid)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(APPLICATION_JSON))
@@ -343,11 +353,21 @@ class BankCardManagementControllerTest {
                 .build();
 
         mockMvc.perform(get(BASE + "/not-a-uuid")
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldFailGettingBankCardByUuidAsNonAdminCauseForbidden() throws Exception {
+        // BUG-161: admin CRUD endpoint now requires ROLE_ADMIN.
+        UUID cardUuid = UUID.randomUUID();
+        mockMvc.perform(get(GET_BY_UUID, cardUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
     }
 
     // ---------- POST / (admin create) ----------
@@ -360,7 +380,7 @@ class BankCardManagementControllerTest {
         when(bankCardService.create(any(BankCardCreationRequestDto.class))).thenReturn(response);
 
         mockMvc.perform(post(CREATE_ADMIN)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .with(csrf())
                         .contentType(APPLICATION_JSON)
                         .accept(APPLICATION_JSON)
@@ -375,7 +395,7 @@ class BankCardManagementControllerTest {
         BankCardCreationRequestDto bad = new BankCardCreationRequestDto();
 
         mockMvc.perform(post(CREATE_ADMIN)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .with(csrf())
                         .contentType(APPLICATION_JSON)
                         .accept(APPLICATION_JSON)
@@ -385,6 +405,19 @@ class BankCardManagementControllerTest {
                 .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
                 .andExpect(jsonPath("$.httpStatusCode").value(400))
                 .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailCreatingBankCardAdminAsNonAdminCauseForbidden() throws Exception {
+        // BUG-161: admin CRUD endpoint now requires ROLE_ADMIN.
+        BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
+        mockMvc.perform(post(CREATE_ADMIN)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isForbidden());
     }
 
     // ---------- PUT / (admin update) ----------
@@ -397,7 +430,7 @@ class BankCardManagementControllerTest {
         when(bankCardService.update(any(BankCardUpdateRequestDto.class))).thenReturn(response);
 
         mockMvc.perform(put(UPDATE_ADMIN)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .with(csrf())
                         .contentType(APPLICATION_JSON)
                         .accept(APPLICATION_JSON)
@@ -405,6 +438,19 @@ class BankCardManagementControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailUpdatingBankCardAdminAsNonAdminCauseForbidden() throws Exception {
+        // BUG-161: admin CRUD endpoint now requires ROLE_ADMIN.
+        BankCardUpdateRequestDto request = UserDtoFixtures.aValidBankCardUpdateRequest();
+        mockMvc.perform(put(UPDATE_ADMIN)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isForbidden());
     }
 
     // ---------- DELETE /{uuid} (admin) ----------
@@ -415,7 +461,7 @@ class BankCardManagementControllerTest {
         doNothing().when(bankCardService).deleteByUUID(cardUuid);
 
         mockMvc.perform(delete(DELETE_ADMIN_BY_UUID, cardUuid)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .with(csrf())
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isNoContent());
@@ -436,7 +482,7 @@ class BankCardManagementControllerTest {
                 .when(bankCardService).deleteByUUID(cardUuid);
 
         mockMvc.perform(delete(DELETE_ADMIN_BY_UUID, cardUuid)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin(KEYCLOAK_ID))
                         .with(csrf())
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isNotFound())
@@ -452,5 +498,16 @@ class BankCardManagementControllerTest {
                         .with(csrf())
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldFailDeletingBankCardByUuidAsNonAdminCauseForbidden() throws Exception {
+        // BUG-161: admin CRUD endpoint now requires ROLE_ADMIN.
+        UUID cardUuid = UUID.randomUUID();
+        mockMvc.perform(delete(DELETE_ADMIN_BY_UUID, cardUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
     }
 }

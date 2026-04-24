@@ -37,4 +37,19 @@ public interface BankCardManagementService extends CrudBaseService<UUID, BankCar
      * @return the masked DTO of the default card.
      */
     BankCardResponseDto getDefaultCard(String keycloakId);
+
+    /**
+     * BUG-161: ownership-checked delete-by-UUID for non-admin callers.
+     *
+     * <p>Loads the card, asserts the caller's keycloakId matches the card owner,
+     * then deletes. Mirrors {@code CartServiceImp#deleteByUUID(UUID, String)}.
+     * The single-arg {@link #deleteByUUID(java.util.UUID)} is kept for the
+     * {@link CrudBaseService} contract and admin-only call sites.</p>
+     *
+     * @param uuid       card to delete.
+     * @param keycloakId caller identity (JWT subject).
+     * @throws com.novatech.cybertech.exceptions.BankCardNotFoundException        when no card with that UUID exists.
+     * @throws com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException when the caller does not own the card.
+     */
+    void deleteByUUID(java.util.UUID uuid, String keycloakId);
 }
