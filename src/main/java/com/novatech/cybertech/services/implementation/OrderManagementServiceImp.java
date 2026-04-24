@@ -5,13 +5,17 @@ import com.github.f4b6a3.uuid.UuidCreator;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
 import com.novatech.cybertech.dto.data.UserContactDto;
+import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.entities.valueObjects.Address;
+import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.events.OrderUpdatedEvent;
@@ -22,6 +26,7 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import com.novatech.cybertech.services.core.OrderManagementService;
+import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.validator.core.OrderValidator;
@@ -37,7 +42,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.novatech.cybertech.entities.enums.DiscountType.NO_DISCOUNT;
 import static com.novatech.cybertech.entities.enums.OrderStatus.*;
 
 @Slf4j
@@ -58,6 +62,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final OrderValidator orderValidatorChain;
     private final ApplicationEventPublisher eventPublisher;
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
+    private final OrderPriceCalculationService orderPriceCalculationService;
 
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
@@ -162,8 +167,28 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 2) Validation
         validateUserBeforeProcessingPayment(order.getUserEntity());//TODO: is it really necessary to make this check here ? maybe make it before launching the order placing process
 
-        // 3) Calculer le total
-        final BigDecimal amount = processOrderTotalPrice(dto.getItemUpdateRequestDtoList(), products);
+        // 3) Calculer le total — delegated to OrderPriceCalculationService (no re-discount on updates)
+        final BigDecimal amount;
+        if (products.isEmpty()) {
+            // Guard: no matched products -> treat total as zero (preserves legacy behaviour for missing-product edge case)
+            amount = BigDecimal.ZERO;
+        } else {
+            final List<OrderItemPriceDto> priceDtos = products.stream()
+                    .map(p -> OrderItemPriceDto.builder()
+                            .productUuid(p.getUuid())
+                            .unitPrice(p.getPrice())
+                            .quantity(quantities.get(p.getUuid()))
+                            .build())
+                    .toList();
+
+            final PriceCalculationRequestDto priceReq = PriceCalculationRequestDto.builder()
+                    .items(priceDtos)
+                    .discountType(DiscountType.NO_DISCOUNT)
+                    .currencyCode(CurrencyCode.fromCode("EUR"))
+                    .build();
+
+            amount = orderPriceCalculationService.calculate(priceReq).getFinalAmount();
+        }
         final Money total = Money.of(amount);
 
         // Calcul du montant déjà payé (Paiements - Remboursements)
@@ -344,12 +369,24 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 3) UUID commande (v7/ordered)
         final UUID orderUuid = UuidCreator.getTimeOrderedEpoch();
 
-        // 4) Total
-        final BigDecimal totalAmount = cartItems.stream()
-                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // 4) Total — delegated to OrderPriceCalculationService for proper discount support
+        final List<OrderItemPriceDto> priceDtos = cartItems.stream()
+                .map(item -> OrderItemPriceDto.builder()
+                        .productUuid(item.getProductEntity().getUuid())
+                        .unitPrice(item.getUnitPrice())
+                        .quantity(item.getQuantity())
+                        .build())
+                .toList();
 
-        final Money totalMoney = Money.of(totalAmount);
+        final PriceCalculationRequestDto priceRequest = PriceCalculationRequestDto.builder()
+                .items(priceDtos)
+                .discountType(req.getDiscountType())
+                .currencyCode(CurrencyCode.fromCode("EUR"))
+                .build();
+
+        final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceRequest);
+        final Money totalMoney = priceResult.asFinalMoney();
+        final BigDecimal totalAmount = totalMoney.getAmount();
 
         // 5) Items commande
         final List<OrderItemEntity> orderItems = cartItems.stream()
@@ -373,6 +410,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 req.getShippingType(),
                 req.getShippingProvider(),
                 totalAmount,
+                req.getDiscountType(),
                 orderItems,
                 user
         );
@@ -473,6 +511,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                                                final ShippingType shippingType,
                                                final ShippingProvider shippingProvider,
                                                final BigDecimal totalPrice,
+                                               final DiscountType discountType,
                                                final List<OrderItemEntity> orderItemEntities,
                                                final UserEntity user) {
         return OrderEntity.builder()
@@ -480,7 +519,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .userEntity(user)
                 .orderItemEntities(orderItemEntities)
                 .totalAmount(Money.of(totalPrice))
-                .discountType(NO_DISCOUNT)
+                .discountType(discountType)
                 .status(CREATED)
                 .orderDate(LocalDateTime.now())
                 .shippingProvider(shippingProvider)

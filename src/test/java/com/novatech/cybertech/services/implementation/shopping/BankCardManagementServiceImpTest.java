@@ -474,11 +474,83 @@ class BankCardManagementServiceImpTest {
 
             when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));
             when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(mapped);
+            // BUG-036 fix: admin create() now calls applyPciStorageRules -> encrypt must be stubbed
+            when(cardEncryptionService.encrypt(anyString())).thenReturn("ENC:4242");
             when(bankCardRepository.save(mapped)).thenReturn(saved);
             when(bankCardMapper.mapFromEntityToResponseDto(saved)).thenReturn(resp);
 
             assertThat(service.create(dto)).isSameAs(resp);
             assertThat(mapped.getUserEntity()).isSameAs(user);
+        }
+
+        @Test
+        @DisplayName("FIX BUG-036 remaining: admin create() path encrypts PAN via applyPciStorageRules")
+        void create_adminPath_shouldEncryptPan() {
+            // Arrange
+            final UUID userUuid = UUID.randomUUID();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                    .uuid(userUuid)
+                    .keycloakId("kc-admin")
+                    .bankCardEntity(null)
+                    .build();
+
+            final BankCardCreationRequestDto dto = BankCardCreationRequestDto.builder()
+                    .userUuid(userUuid)
+                    .cardNumber("4111111111111111")
+                    .expiryDate("12/2099")
+                    .cardHolderName("Admin User")
+                    .cardType(BankCardType.VISA)
+                    .build();
+
+            final BankCardEntity entity = BankCardEntity.builder()
+                    .cardNumber("4111111111111111")
+                    .expiryDate("12/2099")
+                    .build();
+
+            when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));
+            when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(entity);
+            when(cardEncryptionService.encrypt("4111111111111111")).thenReturn("ENCRYPTED_PAN");
+            when(bankCardRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(bankCardMapper.mapFromEntityToResponseDto(any(BankCardEntity.class))).thenReturn(new BankCardResponseDto());
+
+            // Act
+            service.create(dto);
+
+            // Assert: encryption service was called, last 4 digits stored, cardNumber cleared
+            verify(cardEncryptionService).encrypt("4111111111111111");
+            assertThat(entity.getEncryptedNumber()).isEqualTo("ENCRYPTED_PAN");
+            assertThat(entity.getLastFourDigits()).isEqualTo("1111");
+            assertThat(entity.getCardNumber()).isNull();
+        }
+
+        @Test
+        @DisplayName("FIX BUG-036 remaining: admin create() path rejects expired cards")
+        void create_adminPath_expiredCard_shouldThrowBankCardExpiredException() {
+            final UUID userUuid = UUID.randomUUID();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                    .uuid(userUuid)
+                    .bankCardEntity(null)
+                    .build();
+
+            final BankCardCreationRequestDto dto = BankCardCreationRequestDto.builder()
+                    .userUuid(userUuid)
+                    .cardNumber("4111111111111111")
+                    .expiryDate("01/2000")   // expired
+                    .cardHolderName("User")
+                    .cardType(BankCardType.VISA)
+                    .build();
+
+            final BankCardEntity entity = BankCardEntity.builder()
+                    .cardNumber("4111111111111111")
+                    .build();
+
+            when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));
+            when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(entity);
+
+            assertThatThrownBy(() -> service.create(dto))
+                    .isInstanceOf(BankCardExpiredException.class);
+
+            verify(bankCardRepository, never()).save(any());
         }
 
         @Test

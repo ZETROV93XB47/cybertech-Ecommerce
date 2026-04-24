@@ -77,8 +77,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   - BUG-029 (MethodArgumentTypeMismatchException → 400): handler exists. CONFIRMED FIXED.
  *   - BUG-031 (AccessDeniedException + AuthorizationDeniedException → 403): combined handler exists. CONFIRMED FIXED.
  *   - BUG-139 (UnrecognizedProperty returns ErrorResponseDto, not String): CONFIRMED FIXED.
- *   - BUG-138 still BROKEN — desired-behaviour test stays @Disabled, current-behaviour test passes.
- *   - BUG-140 still BROKEN — same pattern.
+ *   - BUG-138 FIXED — handler now surfaces field-level validation errors; tests re-enabled.
+ *   - BUG-140 FIXED — catch-all handler returns a generic message and never leaks ex.getMessage().
  */
 class ErrorManagementControllerBranchTest {
 
@@ -522,8 +522,32 @@ class ErrorManagementControllerBranchTest {
     @DisplayName("MethodArgumentNotValidException — BUG-138 (fixed)")
     class MethodArgumentNotValid {
 
-        // BUG-138 fix tests removed in revert — re-add when fieldErrors enrichment lands cleanly without
-        // breaking the existing canned-message contract that ~30 controller tests rely on.
+        @Test
+        @DisplayName("FIX BUG-138: field errors are surfaced in the response message")
+        void fieldErrorsAreSurfacedInMessage() throws Exception {
+            final MethodArgumentNotValidException ex = buildMethodArgumentNotValidExceptionWithFieldErrors();
+
+            final ResponseEntity<ErrorResponseDto> response =
+                    controller.handleMethodArgumentNotValidException(ex);
+
+            assertEnvelope(response, HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL, "Validation failed:");
+            assertThat(response.getBody().getMessage()).contains("name (name must not be blank)");
+            assertThat(response.getBody().getMessage()).contains("email (email must be a valid address)");
+        }
+
+        @Test
+        @DisplayName("FIX BUG-138: fallback to canned message when no field errors present")
+        void fallbackToCannedMessageWhenNoFieldErrors() throws Exception {
+            final BindingResult emptyResult = new BeanPropertyBindingResult(new SyntheticTarget(), "syntheticTarget");
+            final Method m = ErrorManagementControllerBranchTest.class.getDeclaredMethod("syntheticMethodForMethodParameter", String.class);
+            final MethodParameter methodParameter = new MethodParameter(m, 0);
+            final MethodArgumentNotValidException ex = new MethodArgumentNotValidException(methodParameter, emptyResult);
+
+            final ResponseEntity<ErrorResponseDto> response =
+                    controller.handleMethodArgumentNotValidException(ex);
+
+            assertEnvelope(response, HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL, "Invalid Request or Request Poorly Constructed");
+        }
 
         private MethodArgumentNotValidException buildMethodArgumentNotValidExceptionWithFieldErrors() throws Exception {
             final BindingResult bindingResult = new BeanPropertyBindingResult(new SyntheticTarget(), "syntheticTarget");

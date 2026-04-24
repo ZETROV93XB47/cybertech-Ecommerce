@@ -24,6 +24,7 @@ import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNIC
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -147,11 +148,6 @@ class UserManagementControllerTest {
     @Test
     void shouldFailRegisterCauseDtoBadRequestReturning400() throws Exception {
         final UserCreateRequestDto invalid = new UserCreateRequestDto();
-        final ErrorResponseDto error = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(REGISTER_ENDPOINT)
                         .with(csrf())
@@ -160,7 +156,9 @@ class UserManagementControllerTest {
                         .content(asJsonString(invalid)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(error), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test

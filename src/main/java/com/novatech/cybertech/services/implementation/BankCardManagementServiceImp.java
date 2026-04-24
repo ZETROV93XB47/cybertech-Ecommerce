@@ -158,6 +158,10 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         BankCardEntity entity = bankCardMapper.mapFromCreationRequestToEntity(dto);
         entity.setUserEntity(user);
 
+        // BUG-036: apply same PCI + expiry rules as the user-facing path
+        validateExpiryNotInThePast(dto.getExpiryDate());
+        applyPciStorageRules(entity, dto.getCardNumber());
+
         return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.save(entity));
     }
 

@@ -18,7 +18,6 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -29,7 +28,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -81,7 +79,9 @@ class S3ServiceImpTest {
         @DisplayName("IOException reading the file is wrapped into RuntimeException")
         void uploadFile_ioException_wrapped() throws Exception {
             org.springframework.web.multipart.MultipartFile broken = mock(org.springframework.web.multipart.MultipartFile.class);
-            when(broken.getOriginalFilename()).thenReturn("evil.bin");
+            when(broken.getContentType()).thenReturn("image/jpeg");
+            when(broken.getSize()).thenReturn(1024L);
+            when(broken.getOriginalFilename()).thenReturn("photo.jpg");
             when(broken.getInputStream()).thenThrow(new IOException("disk gone"));
 
             assertThatThrownBy(() -> service.uploadFile(broken, "products"))
@@ -90,34 +90,71 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-082: no content-type allow-list — application/x-msdownload uploads exactly like an image")
-        void bug082_noContentTypeAllowList() throws Exception {
+        @DisplayName("BUG-082 fixed: application/x-msdownload is rejected with IllegalArgumentException")
+        void bug082_contentTypeAllowList_rejectsExecutable() {
             MockMultipartFile exe = new MockMultipartFile(
                     "f", "trojan.exe", "application/x-msdownload", new byte[]{0x4d, 0x5a});
-            S3Resource resource = mock(S3Resource.class);
-            when(resource.getURL()).thenReturn(new URL("https://s3.example/test-bucket/products/abc_trojan.exe"));
-            when(s3Template.upload(eq(BUCKET), anyString(), any(InputStream.class))).thenReturn(resource);
 
-            String url = service.uploadFile(exe, "products");
-
-            assertThat(url).contains("trojan.exe");
-            verify(s3Template).upload(eq(BUCKET), anyString(), any(InputStream.class));
+            assertThatThrownBy(() -> service.uploadFile(exe, "products"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Unsupported file type")
+                    .hasMessageContaining("application/x-msdownload");
+            verifyNoInteractions(s3Template);
         }
 
         @Test
-        @DisplayName("BUG-083: no MultipartFile.getSize() cap — getSize() is never queried")
-        void bug083_noSizeCap_sizeIsNeverInspected() throws Exception {
+        @DisplayName("BUG-082 fixed: null content type is rejected with IllegalArgumentException")
+        void bug082_contentTypeAllowList_rejectsNullContentType() {
+            org.springframework.web.multipart.MultipartFile noType = mock(org.springframework.web.multipart.MultipartFile.class);
+            when(noType.getContentType()).thenReturn(null);
+
+            assertThatThrownBy(() -> service.uploadFile(noType, "products"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Unsupported file type");
+            verifyNoInteractions(s3Template);
+        }
+
+        @Test
+        @DisplayName("BUG-082 fixed: allowed content types (jpeg, png, webp, gif) pass the allow-list check")
+        void bug082_contentTypeAllowList_permitsAllowedTypes() throws Exception {
+            for (String type : java.util.List.of("image/jpeg", "image/png", "image/webp", "image/gif")) {
+                MockMultipartFile file = new MockMultipartFile("photo", "file.img", type, new byte[]{1});
+                S3Resource resource = mock(S3Resource.class);
+                when(resource.getURL()).thenReturn(new URL("https://s3.example/test-bucket/products/x_file.img"));
+                when(s3Template.upload(eq(BUCKET), anyString(), any(InputStream.class))).thenReturn(resource);
+
+                String url = service.uploadFile(file, "products");
+
+                assertThat(url).isNotNull();
+            }
+        }
+
+        @Test
+        @DisplayName("BUG-083 fixed: file exceeding 10 MB is rejected with IllegalArgumentException")
+        void bug083_sizeCap_rejectsOversizedFile() {
             org.springframework.web.multipart.MultipartFile huge = mock(org.springframework.web.multipart.MultipartFile.class);
-            when(huge.getOriginalFilename()).thenReturn("massive.bin");
-            when(huge.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
+            when(huge.getContentType()).thenReturn("image/jpeg");
+            when(huge.getSize()).thenReturn(10L * 1024 * 1024 + 1); // 10 MB + 1 byte
+
+            assertThatThrownBy(() -> service.uploadFile(huge, "products"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("exceeds the maximum")
+                    .hasMessageContaining("10 MB");
+            verifyNoInteractions(s3Template);
+        }
+
+        @Test
+        @DisplayName("BUG-083 fixed: file exactly at 10 MB is accepted")
+        void bug083_sizeCap_permitsTenMbExactly() throws Exception {
+            MockMultipartFile file = new MockMultipartFile(
+                    "photo", "big.jpg", "image/jpeg", new byte[10 * 1024 * 1024]);
             S3Resource resource = mock(S3Resource.class);
-            when(resource.getURL()).thenReturn(new URL("https://s3.example/test-bucket/products/abc_massive.bin"));
+            when(resource.getURL()).thenReturn(new URL("https://s3.example/test-bucket/products/x_big.jpg"));
             when(s3Template.upload(eq(BUCKET), anyString(), any(InputStream.class))).thenReturn(resource);
 
-            service.uploadFile(huge, "products");
+            String url = service.uploadFile(file, "products");
 
-            // Service never inspected size — pin the missing guard.
-            verify(huge, never()).getSize();
+            assertThat(url).isNotNull();
         }
 
         @Test
@@ -132,7 +169,7 @@ class S3ServiceImpTest {
 
             ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
             verify(s3Template).upload(eq(BUCKET), keyCaptor.capture(), any(InputStream.class));
-            assertThat(keyCaptor.getValue()).matches("avatars/[0-9a-fA-F-]{36}_name with spaces\\.png");
+            assertThat(keyCaptor.getValue()).matches("avatars/[0-9a-fA-F-]{36}_name_with_spaces\\.png");
         }
     }
 

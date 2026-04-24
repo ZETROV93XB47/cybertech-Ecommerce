@@ -41,7 +41,9 @@ import static org.springframework.test.json.JsonCompareMode.STRICT;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -100,11 +102,6 @@ class OrderManagementControllerTest {
     @Test
     void shouldFailPlacingOrderWhenDtoBadRequest() throws Exception {
         OrderPlacingRequestDto bad = new OrderPlacingRequestDto();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(PLACE)
                         .with(jwtUser(KEYCLOAK_ID))
@@ -114,7 +111,9 @@ class OrderManagementControllerTest {
                         .content(asJsonString(bad)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
@@ -271,11 +270,6 @@ class OrderManagementControllerTest {
     @Test
     void shouldFailUpdatingOrderWhenDtoBadRequest() throws Exception {
         OrderUpdateRequestDto bad = new OrderUpdateRequestDto();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(UPDATE)
                         .with(jwtUser(KEYCLOAK_ID))
@@ -285,7 +279,9 @@ class OrderManagementControllerTest {
                         .content(asJsonString(bad)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test

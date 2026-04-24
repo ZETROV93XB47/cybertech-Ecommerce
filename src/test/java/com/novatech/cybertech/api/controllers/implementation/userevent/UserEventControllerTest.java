@@ -25,6 +25,7 @@ import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNIC
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -130,11 +131,6 @@ class UserEventControllerTest {
     void shouldFailCollectEventCauseDtoBadRequestReturning400() throws Exception {
         // Empty DTO violates @NotBlank/@NotNull on userId, eventType, productId, sessionId.
         final UserEventDto invalid = new UserEventDto();
-        final ErrorResponseDto error = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(COLLECT_EVENT_ENDPOINT)
                         .with(jwtUser(USER_KEYCLOAK_ID))
@@ -144,7 +140,9 @@ class UserEventControllerTest {
                         .content(asJsonString(invalid)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(error), LENIENT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test

@@ -1,184 +1,191 @@
-# 🛒 Cybertech – Backend E-commerce (Spring Boot)
+# Cybertech — E-Commerce Backend Platform
 
-**Cybertech** est un projet e-commerce backend développé en **Java avec Spring Boot**, conçu comme un **monolithe modulaire évolutif**, avec une architecture claire et des choix techniques proches de ceux rencontrés en production.
-
-L’objectif du projet est double :
-- mettre en œuvre des **bonnes pratiques backend** (architecture, sécurité, transactions, concurrence)
-- servir de **support pédagogique et démonstrateur technique** (monolithe → microservices)
+A production-grade e-commerce backend built with **Spring Boot 4** and **Java 21**, implementing a clean monolithic architecture with domain-driven separation of concerns and enterprise-grade patterns.
 
 ---
 
-## 🚀 Fonctionnalités principales
+## Overview
 
-### 🧑‍💼 Utilisateurs & Sécurité
-- Authentification et autorisation via **Keycloak**
-- Standard **OAuth2 / OpenID Connect (OIDC)**
-- Gestion des rôles (USER / ADMIN)
-- Backend Spring Boot configuré en **OAuth2 Resource Server**
-- JWT validés automatiquement (stateless)
-
-### 🛍️ Catalogue & Produits
-- Gestion des produits
-- Recherche et indexation via **Elasticsearch**
-- Gestion du stock et du stock réservé
-- Protection contre l’**overselling**
-
-### 📦 Commandes
-- Création et gestion des commandes
-- Workflow de commande clair :
-  - validation
-  - réservation du stock
-  - paiement
-  - confirmation
-- Historique des commandes par utilisateur
-
-### 💳 Paiement
-- Simulation d’un workflow de paiement
-- Gestion des statuts (SUCCESS / FAILED / PENDING)
-- Intégration transactionnelle avec la commande
-
-### 🏗️ Gestion avancée du stock
-- Réservations temporaires de stock
-- Système robuste face aux requêtes concurrentes
-- Utilisation combinée de :
-  - Base relationnelle (source de vérité)
-  - Redis (TTL & gestion du temps)
-- Libération automatique du stock via **RedisExpirationListener**
-- Verrous pessimistes pour garantir la cohérence
+Cybertech is a full-featured online marketplace backend covering the complete customer journey: browsing products, managing a shopping cart, placing orders, processing payments, and receiving notifications. It is designed with scalability in mind, using industry-standard tooling across authentication, caching, search, and infrastructure — and is structured to evolve toward a microservices architecture if needed.
 
 ---
 
-## 🧠 Architecture & choix techniques
+## Features
 
-### ⚙️ Architecture générale
-- Monolithe Spring Boot structuré par domaines
-- Séparation claire des responsabilités :
-  - Order
-  - Stock
-  - Payment
-  - User
-  - Notification
-- Architecture pensée pour une **évolution vers les microservices**
-
-### 🔁 Gestion événementielle
-- Events métier via `ApplicationEventPublisher`
-- Écoute post-transaction via `@TransactionalEventListener`
-- Préparation possible à Kafka / event-driven architecture
-
-### 🗄️ Persistance
-- Base relationnelle (MySQL / PostgreSQL)
-- JPA / Hibernate
-- Gestion fine des transactions
-- Versionnement des entités (`@Version` – optimistic locking)
+| Domain | Capabilities |
+|---|---|
+| **User Management** | OAuth2/OIDC via Keycloak, role-based access (USER / ADMIN), user registration |
+| **Product Catalog** | CRUD, multi-brand/category support, image storage (S3), JSON attributes, stock tracking |
+| **Search & Discovery** | Full-text search (Elasticsearch), product recommendations (Gorse ML engine) |
+| **Shopping Cart** | Cart lifecycle management, Redis-backed persistence with TTL |
+| **Orders** | Full order lifecycle: PENDING → PAID → SHIPPED → DELIVERED |
+| **Payments** | Stripe integration with webhook handling, refund support, and transaction logging |
+| **Inventory** | Concurrent stock reservation with Redis TTL, optimistic/pessimistic locking, oversell prevention |
+| **Notifications** | Event-driven multi-channel dispatch (email, SMS) with templated messages |
+| **Reviews & Ratings** | User-submitted product reviews with content moderation |
+| **Wishlists** | Per-user wishlist management |
+| **Batch Jobs** | Scheduled order status updates, stock cleanup, automatic order cancellation |
 
 ---
 
-## 🧰 Stack technique
+## Architecture
 
-### Backend
-- Java 21+
-- Spring Boot 3
-- Spring Security
-- Spring Data JPA
-- Spring Data Redis
-- Spring Events
-- Lombok
+Cybertech follows a **layered monolithic architecture** with clear domain boundaries:
 
-### Sécurité
-- Keycloak
-- OAuth2
-- OpenID Connect (OIDC)
-- JWT
+```
+Controller → Service → Repository → Entity
+```
 
-### Données
-- MySQL (ou PostgreSQL)
-- Redis (in-memory + TTL)
-- Elasticsearch
+Key architectural patterns in use:
+
+- **Event-Driven** — Spring `ApplicationEventPublisher` with `@TransactionalEventListener` for post-commit domain events (`OrderCreatedEvent`, `OrderPaidEvent`, `PaymentSucceededEvent`, …)
+- **Strategy Pattern** — Pluggable payment processors, discount strategies, notification channels, and shipping providers, wired via annotated Maps
+- **Chain of Responsibility** — Order validator chain (active user check → bank card validity check)
+- **Factory / Dispatcher** — `NotificationDispatcher`, `ShippingDispatcher` for dynamic strategy selection
+- **Repository Pattern** — Spring Data repositories for all data access
+- **DTO Mapping** — Compile-time MapStruct mappers between entities and request/response DTOs
+- **Concurrency Safety** — Redis TTL-based stock reservations, keyspace notifications for automatic expiry, pessimistic DB locks to prevent overselling
+
+---
+
+## Technology Stack
+
+### Core
+| | |
+|---|---|
+| Language | Java 21 (virtual threads enabled) |
+| Framework | Spring Boot 4.0.4 |
+| Build | Maven 3.x |
+
+### Spring Ecosystem
+- Spring Security (OAuth2 Resource Server, JWT)
+- Spring Data JPA / MongoDB / Elasticsearch / Redis
+- Spring Batch (scheduled jobs)
+- Spring Cloud Vault (secrets management)
+- Spring Cloud AWS (S3 integration)
+- Spring Kafka (event bus, prepared for future use)
+- Spring Mail, Spring Cache, Spring Async, Spring Events
+
+### Authentication & Security
+- **Keycloak 24** — OAuth2 / OIDC identity provider
+- **JWT** (JJWT 0.12.6) — stateless token validation
+- Role-based access control with custom Keycloak JWT role converter
+- HashiCorp **Vault** for secrets management
+
+### Databases & Storage
+| Store | Purpose |
+|---|---|
+| **MySQL 9.3** | Primary relational store (orders, products, payments, users) |
+| **Redis 7** | Caching (cart, user existence), stock reservations with TTL, keyspace notifications |
+| **MongoDB 8** | User event / analytics document store |
+| **Elasticsearch 9** | Full-text product search and indexing |
+| **AWS S3** (LocalStack in dev) | Product image storage |
+
+### External Services
+| Service | Purpose |
+|---|---|
+| **Stripe** (SDK 31.4.0) | Payment processing, webhooks, refunds |
+| **Gorse** | ML-based product recommendation engine |
+| **Moderation API** | Custom Python/Flask service for review content moderation |
+| **Mailpit** | SMTP testing server (dev) |
 
 ### Infrastructure & DevOps
-- Docker
-- Docker Compose
-- Redis Keyspace Notifications
-- Mailhog (envoi d’e-mails en développement)
-- LocalStack (exploration DynamoDB – optionnel)
+| Tool | Purpose |
+|---|---|
+| **Docker / Docker Compose** | Local containerised environment |
+| **Kubernetes + Helm** | Production-grade orchestration (charts for every service) |
+| **Skaffold** | Local Kubernetes development loop |
+| **Jib** | Maven plugin for OCI-compliant container image builds |
+| **GitHub Actions** | CI pipeline (build, test, code quality) |
+| **Qodana** | Static code analysis in CI |
+
+### Testing
+- **JUnit 5** + **Mockito** — unit tests
+- **TestContainers** — integration tests with real MySQL, Kafka, and Elasticsearch containers
+- **ArchUnit** — architecture compliance tests
+- **Spring REST Docs** — API documentation generated from tests
+- **Spring Batch Test** — batch job testing
+- **DataFaker** — test data generation
+
+### Code Quality & Utilities
+- **Lombok** — boilerplate reduction
+- **MapStruct** — compile-time DTO mapping
+- **Resilience4j** — circuit breakers
+- **Apache Commons** (Collections4, Lang3)
+- **springdoc-openapi** — Swagger / OpenAPI 3 documentation at `/swagger-ui`
+- **Spring Boot Actuator** — health checks and metrics
 
 ---
 
-## 🔐 Workflow d’authentification
+## API
+
+RESTful API with JSON payloads, versioned via the `X-API-VERSION` header (versions 1.0, 2.0, 3.0).
+
+| Prefix | Domain |
+|---|---|
+| `/api/v1/services/product/**` | Product catalog |
+| `/api/v1/services/cart/**` | Cart management |
+| `/api/v1/services/order/**` | Orders |
+| `/api/v1/services/user/**` | User accounts |
+| `/api/v1/webhooks/stripe` | Stripe webhook receiver |
+
+Interactive docs available at `/swagger-ui` when the application is running.
+
+### Authentication flow
 
 ```
-Frontend (Angular)
+Client (e.g. Angular frontend)
     │
     ▼
-Keycloak ── JWT ──▶ Spring Boot Backend
+Keycloak ── JWT ──▶ Spring Boot Backend (Resource Server)
 ```
 
-- Le backend ne gère **aucun mot de passe**
-- Keycloak est la source d’identité
-- L’utilisateur métier est lié via le claim `sub` du token
+The backend stores no passwords. Keycloak is the identity source; users are linked via the `sub` claim of the JWT.
+
+### Stock reservation flow (Redis)
+
+1. User places an order
+2. Stock is reserved in MySQL (`reservedStock`)
+3. A Redis key with TTL is created: `reservation:order:<uuid>`
+4. Outcomes:
+   - Payment succeeds → stock consumed
+   - Payment fails → stock released immediately
+   - Abandoned → Redis key expires → `RedisExpirationListener` releases stock automatically
+5. Pessimistic locks in the DB prevent overselling under concurrent load
 
 ---
 
-## 🕒 Workflow de réservation de stock (Redis)
+## Local Development
 
-1. L’utilisateur déclenche une commande
-2. Le stock est **réservé en base** (reservedStock)
-3. Création d’une clé Redis avec TTL :
-   `reservation:order:<uuid>`
-4. Cas possibles :
-   - paiement OK → stock consommé
-   - paiement KO → stock libéré
-   - abandon → expiration Redis → libération automatique
-5. Le système empêche l’overselling même en forte concurrence
+### Prerequisites
+- Java 21
+- Docker & Docker Compose
+- Maven 3.x
 
----
+### Start all infrastructure services
+```bash
+docker compose up -d
+```
 
-## 🧪 Environnement de développement
+Services started: MySQL, MongoDB, Redis, Elasticsearch, Keycloak, Vault, LocalStack (S3), Mailpit, Gorse, Stripe CLI, Moderation API.
 
-L’environnement local est entièrement **dockerisé** via Docker Compose.
+### Run the application
+```bash
+./mvnw spring-boot:run
+```
 
-Services embarqués :
-- MySQL
-- Redis
-- Elasticsearch
-- Keycloak
-- Mailhog
+### Run tests
+```bash
+./mvnw test
+```
 
-Configuration simplifiée via un fichier `.env`.
-
----
-
-## 🎯 Objectifs pédagogiques
-
-- Concevoir une **architecture backend réaliste**
-- Comprendre les enjeux de :
-  - transactions
-  - concurrence
-  - cohérence des données
-  - sécurité moderne
-- Préparer une migration vers :
-  - microservices
-  - Kafka / event-driven
-- Servir de **support technique en entretien**
+### Kubernetes (Skaffold)
+```bash
+skaffold dev
+```
 
 ---
 
-## 🔮 Évolutions possibles
+## Author
 
-- Migration vers une architecture microservices
-- Introduction de Kafka + Outbox Pattern
-- Extraction d’un Stock Service dédié
-- Ajout d’un frontend Angular
-- Monitoring (Prometheus, Grafana)
-- Intégration DynamoDB (LocalStack)
-
----
-
-## 👨‍💻 Auteur
-
-Développé par **Hideyoshi**, développeur backend Java,
-passionné par :
-- l’architecture logicielle
-- les systèmes distribués
-- la performance et la cohérence des données
-
+Developed by **Loïc GOTTOH**, backend Java developer focused on software architecture, distributed systems, and data consistency.

@@ -56,6 +56,10 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         final OrderEntity order = orderRepository.findByUuid(reviewCreateRequestDto.getOrderUuid()).orElseThrow(() -> new OrderNotFoundException("Order related to this review doesn't exists, order UUID : " + reviewCreateRequestDto.getOrderUuid()));
 
+        if (!order.getUserEntity().getKeycloakId().equals(keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order " + reviewCreateRequestDto.getOrderUuid() + " does not belong to the current user");
+        }
+
         checkIfUserAlreadyBoughtThisProduct(reviewCreateRequestDto, keycloakId, order, user);
 
         ReviewEntity reviewEntity = reviewMapper.mapFromCreationRequestToEntity(reviewCreateRequestDto);

@@ -10,6 +10,7 @@ import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.ReviewEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.exceptions.CommentPostNotAllowedException;
+import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.ReviewNotFoundException;
@@ -84,12 +85,18 @@ class ReviewManagementServiceImpTest {
         return ProductEntityBuilder.aValidProductBuilder().uuid(uuid).build();
     }
 
-    private OrderEntity orderContainingProduct(final UUID uuid) {
+    private OrderEntity orderContainingProduct(final UUID uuid, final UserEntity owner) {
         ProductEntity p = productWith(uuid);
         OrderItemEntity oi = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(p).build();
         List<OrderItemEntity> items = new ArrayList<>();
         items.add(oi);
-        return OrderEntityBuilder.aValidOrderBuilder().uuid(orderUuid).orderItemEntities(items).build();
+        return OrderEntityBuilder.aValidOrderBuilder().uuid(orderUuid).orderItemEntities(items).userEntity(owner).build();
+    }
+
+    /** Convenience overload: builds a caller-owned order (keycloakId = {@code "kc-1"}). */
+    private OrderEntity callerOrderContainingProduct(final UUID uuid) {
+        UserEntity caller = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+        return orderContainingProduct(uuid, caller);
     }
 
     private ReviewCreateRequestDto createDto() {
@@ -148,7 +155,7 @@ class ReviewManagementServiceImpTest {
         void createHappyPath() {
             ReviewCreateRequestDto dto = createDto();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            OrderEntity order = orderContainingProduct(productUuid);
+            OrderEntity order = callerOrderContainingProduct(productUuid);
             ProductEntity product = productWith(productUuid);
             ReviewEntity reviewEntity = entityFromDto(dto);
             ReviewResponseDto responseDto = ReviewResponseDto.builder().rating(5).build();
@@ -206,7 +213,8 @@ class ReviewManagementServiceImpTest {
             OrderItemEntity otherItem = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(otherProduct).build();
             List<OrderItemEntity> items = new ArrayList<>();
             items.add(otherItem);
-            OrderEntity order = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).build();
+            // Order belongs to the caller so the ownership check passes; product check fails.
+            OrderEntity order = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).build();
 
             when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
             when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
@@ -222,12 +230,17 @@ class ReviewManagementServiceImpTest {
         void productNotInThisOrderButInAnotherUserOrderPasses() {
             ReviewCreateRequestDto dto = createDto();
 
-            // request order contains a DIFFERENT product
+            UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                    .keycloakId(keycloakId)
+                    .orderEntities(new ArrayList<>())
+                    .build();
+
+            // request order contains a DIFFERENT product but belongs to the caller
             ProductEntity otherProduct = productWith(UUID.randomUUID());
             OrderItemEntity otherItem = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(otherProduct).build();
             List<OrderItemEntity> items = new ArrayList<>();
             items.add(otherItem);
-            OrderEntity requestOrder = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).build();
+            OrderEntity requestOrder = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).build();
 
             // a HISTORICAL order DOES contain the product
             ProductEntity historicalProduct = productWith(productUuid);
@@ -236,10 +249,7 @@ class ReviewManagementServiceImpTest {
             hItems.add(historicalItem);
             OrderEntity historicalOrder = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(hItems).build();
 
-            UserEntity user = UserEntityBuilder.aValidUserBuilder()
-                    .keycloakId(keycloakId)
-                    .orderEntities(new ArrayList<>(List.of(historicalOrder)))
-                    .build();
+            user.getOrderEntities().add(historicalOrder);
 
             ReviewEntity reviewEntity = ReviewEntity.builder().comment("Excellent").build();
             ProductEntity product = productWith(productUuid);
@@ -258,36 +268,45 @@ class ReviewManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-2506: order ownership is NOT verified — caller can review a product in any order belonging to anyone")
-        void createDoesNotVerifyOrderOwnership() {
-            // The 'orderUuid' in the request belongs to user B (any UUID).
-            // User A (caller) has bought the same product in another order.
-            ReviewCreateRequestDto dto = createDto();
-            ProductEntity product = productWith(productUuid);
+        @DisplayName("FIX BUG-2506: order belonging to another user is rejected even when product matches")
+        void create_orderBelongsToAnotherUser_shouldThrowOrderDoesntBelongsToUserException() {
+            // Arrange
+            final String callerKeycloakId = "caller-kc-id";
+            final String otherKeycloakId  = "other-user-kc-id";
 
-            // Order returned by the repository includes the product, but its owner is NOT
-            // checked against keycloakId. We don't even set order.userEntity below.
-            OrderEntity foreignOrder = orderContainingProduct(productUuid);
-            // Defensive: foreignOrder.userEntity is null (default).
-
-            UserEntity callerWithNoLink = UserEntityBuilder.aValidUserBuilder()
-                    .keycloakId(keycloakId)
-                    .orderEntities(new ArrayList<>())
+            final UserEntity callerUser = UserEntityBuilder.aValidUserBuilder()
+                    .keycloakId(callerKeycloakId)
                     .build();
 
-            ReviewEntity reviewEntity = ReviewEntity.builder().comment("nice").build();
-            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(callerWithNoLink));
-            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(foreignOrder));
-            when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
-            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
-            when(moderationService.checkIfIsHateful(any())).thenReturn(ModerationResponseDto.builder().score(0.1).build());
-            when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
-            when(reviewMapper.mapFromEntityToResponseDto(reviewEntity))
-                    .thenReturn(ReviewResponseDto.builder().build());
+            final UserEntity otherUser = UserEntityBuilder.aValidUserBuilder()
+                    .keycloakId(otherKeycloakId)
+                    .build();
 
-            // BUG-2506: this must throw an "order doesn't belong to user" exception, but it does NOT.
-            assertThat(service.create(dto, keycloakId)).isNotNull();
-            verify(reviewRepository).save(reviewEntity);
+            final UUID foreignOrderUuid = UUID.randomUUID();
+            final OrderEntity foreignOrder = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(foreignOrderUuid)
+                    .userEntity(otherUser)      // order belongs to a different user
+                    .orderItemEntities(new ArrayList<>())
+                    .build();
+
+            final ReviewCreateRequestDto dto = ReviewCreateRequestDto.builder()
+                    .orderUuid(foreignOrderUuid)
+                    .productUuid(UUID.randomUUID())
+                    .rating(5)
+                    .comment("Test")
+                    .build();
+
+            when(userRepository.findByKeycloakIdAndIsActive(callerKeycloakId, true))
+                    .thenReturn(Optional.of(callerUser));
+            when(orderRepository.findByUuid(foreignOrderUuid))
+                    .thenReturn(Optional.of(foreignOrder));
+
+            // Act + Assert
+            assertThatThrownBy(() -> service.create(dto, callerKeycloakId))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+
+            // Verify no review was saved
+            verify(reviewRepository, never()).save(any());
         }
 
         @Test
@@ -295,7 +314,7 @@ class ReviewManagementServiceImpTest {
         void missingProductRejects() {
             ReviewCreateRequestDto dto = createDto();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            OrderEntity order = orderContainingProduct(productUuid);
+            OrderEntity order = callerOrderContainingProduct(productUuid);
             ReviewEntity reviewEntity = ReviewEntity.builder().comment("hi").build();
 
             when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
@@ -312,7 +331,7 @@ class ReviewManagementServiceImpTest {
         void hatefulCommentIsBlocked() {
             ReviewCreateRequestDto dto = createDto();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            OrderEntity order = orderContainingProduct(productUuid);
+            OrderEntity order = callerOrderContainingProduct(productUuid);
             ProductEntity product = productWith(productUuid);
             ReviewEntity reviewEntity = ReviewEntity.builder().comment("hateful text").build();
 
@@ -334,7 +353,7 @@ class ReviewManagementServiceImpTest {
         void thresholdIsStrictlyGreaterThan0_7() {
             ReviewCreateRequestDto dto = createDto();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            OrderEntity order = orderContainingProduct(productUuid);
+            OrderEntity order = callerOrderContainingProduct(productUuid);
             ProductEntity product = productWith(productUuid);
             ReviewEntity reviewEntity = ReviewEntity.builder().comment("borderline").build();
 

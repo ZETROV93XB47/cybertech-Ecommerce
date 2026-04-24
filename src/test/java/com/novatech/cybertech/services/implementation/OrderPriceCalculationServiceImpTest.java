@@ -18,7 +18,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -46,7 +45,8 @@ class OrderPriceCalculationServiceImpTest {
     @BeforeEach
     void setUp() {
         activeDiscountsProperties = new ActiveDiscountsProperties();
-        activeDiscountsProperties.setEnabled(EnumSet.of(DiscountType.NO_DISCOUNT, DiscountType.BLACK_FRIDAY));
+        // noDiscount=true by default; explicitly enable BLACK_FRIDAY for most tests
+        activeDiscountsProperties.setBlackFriday(true);
         service = new OrderPriceCalculationServiceImp(discountStrategyFactory, activeDiscountsProperties);
     }
 
@@ -110,7 +110,8 @@ class OrderPriceCalculationServiceImpTest {
     @Test
     @DisplayName("inactive DiscountType throws DiscountTypeNotActiveException without touching the factory")
     void inactiveDiscountTypeThrows() {
-        activeDiscountsProperties.setEnabled(EnumSet.of(DiscountType.NO_DISCOUNT));
+        // Only NO_DISCOUNT active (disable BLACK_FRIDAY which was set in setUp)
+        activeDiscountsProperties.setBlackFriday(false);
         service = new OrderPriceCalculationServiceImp(discountStrategyFactory, activeDiscountsProperties);
 
         assertThatThrownBy(() -> service.calculate(
@@ -124,7 +125,9 @@ class OrderPriceCalculationServiceImpTest {
     @Test
     @DisplayName("active type with no wired strategy throws DiscountTypeNotActiveException (wiring gap)")
     void activeTypeWithMissingStrategyThrows() {
-        activeDiscountsProperties.setEnabled(EnumSet.of(DiscountType.NO_DISCOUNT, DiscountType.WINTER_SALES));
+        // NO_DISCOUNT + WINTER_SALES active (blackFriday was set true in setUp, so disable it)
+        activeDiscountsProperties.setBlackFriday(false);
+        activeDiscountsProperties.setWinterSales(true);
         service = new OrderPriceCalculationServiceImp(discountStrategyFactory, activeDiscountsProperties);
         when(discountStrategyFactory.getStrategy(DiscountType.WINTER_SALES)).thenReturn(null);
 

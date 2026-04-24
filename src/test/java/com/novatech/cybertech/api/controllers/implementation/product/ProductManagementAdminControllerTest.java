@@ -31,6 +31,7 @@ import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAnonymous;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -138,11 +139,6 @@ class ProductManagementAdminControllerTest {
     @Test
     void shouldFailCreateProductCauseDtoBadRequest() throws Exception {
         ProductCreateRequestDto invalidDto = new ProductCreateRequestDto();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(CREATE_PRODUCT_ENDPOINT)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -152,7 +148,9 @@ class ProductManagementAdminControllerTest {
                         .content(asJsonString(invalidDto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
@@ -249,12 +247,6 @@ class ProductManagementAdminControllerTest {
         ProductUpdateRequestDto updateRequestDto = ProductDtoFixtures.aValidUpdateRequest();
         updateRequestDto.setProductUuid(null);
 
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
-
         mockMvc.perform(patch(UPDATE_PRODUCT_ENDPOINT, productUuid)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
                         .with(csrf())
@@ -263,7 +255,9 @@ class ProductManagementAdminControllerTest {
                         .content(asJsonString(updateRequestDto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
@@ -300,12 +294,6 @@ class ProductManagementAdminControllerTest {
         invalidDto.setProductUuid(productUuid);
         // brand/category/description are @NotNull → triggers MethodArgumentNotValidException.
 
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
-
         mockMvc.perform(patch(UPDATE_PRODUCT_ENDPOINT, productUuid)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
                         .with(csrf())
@@ -314,7 +302,9 @@ class ProductManagementAdminControllerTest {
                         .content(asJsonString(invalidDto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test

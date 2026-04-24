@@ -1,5 +1,6 @@
 package com.novatech.cybertech.dto.request.order;
 
+import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
@@ -38,5 +39,8 @@ public class OrderPlacingRequestDto {
     private String shippingZipCode;
     @NotBlank
     private String shippingCountry;
+
+    @Builder.Default
+    private DiscountType discountType = DiscountType.NO_DISCOUNT;
 
 }

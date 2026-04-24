@@ -45,6 +45,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -105,11 +106,6 @@ class BankCardManagementControllerTest {
     @Test
     void shouldFailAddingBankCardWhenDtoBadRequest() throws Exception {
         BankCardCreationRequestDto bad = new BankCardCreationRequestDto();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(ADD)
                         .with(jwtUser(KEYCLOAK_ID))
@@ -119,7 +115,9 @@ class BankCardManagementControllerTest {
                         .content(asJsonString(bad)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
@@ -231,11 +229,6 @@ class BankCardManagementControllerTest {
     @Test
     void shouldFailUpdatingBankCardWhenDtoBadRequest() throws Exception {
         BankCardUpdateRequestDto bad = new BankCardUpdateRequestDto();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(put(UPDATE_USER)
                         .with(jwtUser(KEYCLOAK_ID))
@@ -245,7 +238,9 @@ class BankCardManagementControllerTest {
                         .content(asJsonString(bad)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
@@ -378,11 +373,6 @@ class BankCardManagementControllerTest {
     @Test
     void shouldFailCreatingBankCardAdminWhenDtoBadRequest() throws Exception {
         BankCardCreationRequestDto bad = new BankCardCreationRequestDto();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(CREATE_ADMIN)
                         .with(jwtUser(KEYCLOAK_ID))
@@ -392,7 +382,9 @@ class BankCardManagementControllerTest {
                         .content(asJsonString(bad)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     // ---------- PUT / (admin update) ----------

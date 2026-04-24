@@ -14,6 +14,8 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 
@@ -21,6 +23,11 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class S3ServiceImp implements S3Service {
+
+    private static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024; // 10 MB
+    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
+            "image/jpeg", "image/png", "image/webp", "image/gif"
+    );
 
     private final S3Client s3Client; // <-- AJOUT IMPORTANT
     private final S3Template s3Template;
@@ -30,7 +37,19 @@ public class S3ServiceImp implements S3Service {
 
     @Override
     public String uploadFile(MultipartFile file, String folder) {
-        String key = folder + "/" + UUID.randomUUID() + "_" + file.getOriginalFilename();
+        final String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
+            throw new IllegalArgumentException(
+                    "Unsupported file type: " + contentType + ". Allowed: " + String.join(", ", new TreeSet<>(ALLOWED_CONTENT_TYPES)));
+        }
+        if (file.getSize() > MAX_FILE_SIZE_BYTES) {
+            throw new IllegalArgumentException("File size " + file.getSize() + " bytes exceeds the maximum of " + MAX_FILE_SIZE_BYTES + " bytes (10 MB).");
+        }
+
+        final String originalFilename = file.getOriginalFilename();
+        final String safeFilename = (originalFilename == null) ? "upload"
+                : originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_");
+        String key = folder + "/" + UUID.randomUUID() + "_" + safeFilename;
 
         try {
             log.info("Uploading file {} to bucket {} with key {}", file.getOriginalFilename(), bucketName, key);

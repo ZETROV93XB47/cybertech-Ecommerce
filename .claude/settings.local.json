@@ -2,7 +2,27 @@
   "permissions": {
     "allow": [
       "Bash(python3 -c ' *)",
-      "Bash(mvn -q -DskipTests clean compile)"
+      "Bash(mvn -q -DskipTests clean compile)",
+      "Bash(grep -E \"test.*\\\\.java$\")",
+      "Bash(./mvnw test *)",
+      "Bash(java -version)",
+      "Bash(javac -version)",
+      "Read(//c/Program Files/Java/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Java/jdk-26.0.1\" ./mvnw test -Dtest=\"S3ServiceImpTest\" -Dsurefire.failIfNoSpecifiedTests=false)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Java/jdk-26.0.1\" ./mvnw test -pl . -Dtest=\"ErrorManagementControllerBranchTest\" -DskipCompile=false --offline -q)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Java/jdk-26.0.1\" ./mvnw dependency:resolve -q)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Java/jdk-26.0.1\" ./mvnw test -pl . -Dtest=\"ErrorManagementControllerBranchTest\" -am)",
+      "Bash(git stash *)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Java/jdk-26.0.1\" ./mvnw test -pl . -Dtest=\"ErrorManagementControllerBranchTest\")",
+      "Bash(./mvnw -version)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-26.0.1\" ./mvnw test -DskipITs)",
+      "Bash(jar tf *)",
+      "Bash(cd /tmp)",
+      "Bash(jar xf *)",
+      "Bash(javap -p -c org/springframework/mail/javamail/MimeMessageHelper.class)",
+      "Bash(./mvnw --version)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Java/jdk-26.0.1\" ./mvnw test -pl . -Dtest=\"CartManagementControllerTest,OrderManagementControllerTest,ProductManagementAdminControllerTest,ProductSearchControllerTest,ReviewCrudControllerAdditionalTest,UserManagementAdminControllerTest,UserManagementControllerTest,UserEventControllerTest\" -Dsurefire.failIfNoSpecifiedTests=false)"
     ]
   }
 }

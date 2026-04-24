@@ -44,7 +44,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -137,11 +139,6 @@ class CartManagementControllerTest {
         void failCreateCart_whenNullCartItems_thenBadRequest() throws Exception {
             // Outer DTO @NotNull on cartItemAddRequestDtos
             CartCreateRequestDto bad = new CartCreateRequestDto();
-            ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                    .message("Invalid Request or Request Poorly Constructed")
-                    .httpStatusCode(400)
-                    .errorCodeType(TECHNICAL)
-                    .build();
 
             mockMvc.perform(post(CREATE_CART_ENDPOINT)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -151,7 +148,9 @@ class CartManagementControllerTest {
                             .content(asJsonString(bad)))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentType(APPLICATION_JSON))
-                    .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                    .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                    .andExpect(jsonPath("$.httpStatusCode").value(400))
+                    .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
         }
 
         @Test
@@ -164,11 +163,6 @@ class CartManagementControllerTest {
             CartCreateRequestDto request = CartCreateRequestDto.builder()
                     .cartItemAddRequestDtos(List.of(badItem))
                     .build();
-            ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                    .message("Invalid Request or Request Poorly Constructed")
-                    .httpStatusCode(400)
-                    .errorCodeType(TECHNICAL)
-                    .build();
 
             mockMvc.perform(post(CREATE_CART_ENDPOINT)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -178,7 +172,9 @@ class CartManagementControllerTest {
                             .content(asJsonString(request)))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentType(APPLICATION_JSON))
-                    .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                    .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                    .andExpect(jsonPath("$.httpStatusCode").value(400))
+                    .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
         }
 
         @Test
@@ -209,11 +205,6 @@ class CartManagementControllerTest {
             // BUG-026 (CLOSED): empty body (no cartItemAddRequestDtos) trips @NotNull on CartUpdateRequestDto -> 400.
             UUID cartUuid = UUID.randomUUID();
             CartUpdateRequestDto bad = new CartUpdateRequestDto();
-            ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                    .message("Invalid Request or Request Poorly Constructed")
-                    .httpStatusCode(400)
-                    .errorCodeType(TECHNICAL)
-                    .build();
 
             mockMvc.perform(patch(UPDATE_CART_ENDPOINT, cartUuid)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -223,7 +214,9 @@ class CartManagementControllerTest {
                             .content(asJsonString(bad)))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentType(APPLICATION_JSON))
-                    .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                    .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                    .andExpect(jsonPath("$.httpStatusCode").value(400))
+                    .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
         }
 
         @Test
@@ -370,11 +363,6 @@ class CartManagementControllerTest {
             CartCreateRequestDto request = CartCreateRequestDto.builder()
                     .cartItemAddRequestDtos(List.of(badItem))
                     .build();
-            ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                    .message("Invalid Request or Request Poorly Constructed")
-                    .httpStatusCode(400)
-                    .errorCodeType(TECHNICAL)
-                    .build();
 
             mockMvc.perform(post(ADD_TO_CART_ENDPOINT)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -384,7 +372,9 @@ class CartManagementControllerTest {
                             .content(asJsonString(request)))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentType(APPLICATION_JSON))
-                    .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                    .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                    .andExpect(jsonPath("$.httpStatusCode").value(400))
+                    .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
         }
 
         @Test
@@ -491,11 +481,6 @@ class CartManagementControllerTest {
                     .productUuid(UUID.randomUUID())
                     .quantity(-3)
                     .build();
-            ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                    .message("Invalid Request or Request Poorly Constructed")
-                    .httpStatusCode(400)
-                    .errorCodeType(TECHNICAL)
-                    .build();
 
             mockMvc.perform(delete(DECREASE_QUANTITY_ENDPOINT)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -505,7 +490,9 @@ class CartManagementControllerTest {
                             .content(asJsonString(bad)))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentType(APPLICATION_JSON))
-                    .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                    .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                    .andExpect(jsonPath("$.httpStatusCode").value(400))
+                    .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
         }
     }
 

@@ -1,5 +1,9 @@
 package com.novatech.cybertech.services.implementation.support;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.novatech.cybertech.dto.data.EmailDto;
 import com.novatech.cybertech.services.implementation.MailServiceImp;
 import jakarta.mail.Session;
@@ -13,6 +17,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
@@ -26,16 +31,17 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link MailServiceImp}.
  *
- * Pins {@code BUG-2507}: {@code MessagingException} is caught and only logged; the code then still
- * calls {@code javaMailSender.send(message)} with a half-configured {@link MimeMessage}.
+ * FIX-2507: {@code MessagingException} from {@link org.springframework.mail.javamail.MimeMessageHelper}
+ * now causes an early {@code return} so {@code javaMailSender.send()} is never called with a broken message.
  *
- * Pins {@code BUG-2508}: the full {@link EmailDto} (PII) is logged at INFO.
+ * FIX-2508: PII is no longer logged at INFO — recipient address is logged at DEBUG only.
  *
  * Pins {@code BUG-2511}: no NotificationEntity is persisted with SENT/FAILED — the service has no
  * notification-repository field and no dedup lookup.
@@ -90,14 +96,6 @@ class MailServiceImpTest {
         order.verify(javaMailSender).createMimeMessage();
         order.verify(javaMailSender).send(mimeMessage);
 
-        // BUG-2508: the EmailDto (with PII: name, email, totals) is logged at INFO.
-        // Documented here — there is no log assertion library wired, but the call ordering & input
-        // shape is what gets logged verbatim by the production line `log.info("EmailDto value : {}", emailDto);`.
-        assertThat(dto.toString())
-                .as("BUG-2508: EmailDto.toString() exposes PII, and prod logs it at INFO")
-                .contains("user@example.com")
-                .contains("Order confirmation");
-
         // The MimeMessage was actually configured by MimeMessageHelper.
         assertThat(mimeMessage.getAllRecipients()).isNotNull();
         assertThat(mimeMessage.getSubject()).isEqualTo("Order confirmation");
@@ -121,23 +119,54 @@ class MailServiceImpTest {
     }
 
     @Test
-    @DisplayName("BUG-2507: MessagingException from MimeMessageHelper is swallowed; send() is still called")
-    void swallowsMessagingExceptionAndStillCallsSend() {
-        // A MimeMessage that throws on setSubject — MimeMessageHelper will surface a MessagingException.
+    @DisplayName("FIX-2507: MessagingException from MimeMessageHelper is caught; send() is NOT called")
+    void doesNotCallSendAfterMessagingException() {
+        // MimeMessageHelper internally calls the 2-arg setSubject(String, String charset) variant,
+        // so both overloads must throw to trigger the MessagingException path.
         MimeMessage broken = new MimeMessage((Session) null) {
             @Override
             public void setSubject(String subject) throws jakarta.mail.MessagingException {
+                throw new jakarta.mail.MessagingException("boom");
+            }
+            @Override
+            public void setSubject(String subject, String charset) throws jakarta.mail.MessagingException {
                 throw new jakarta.mail.MessagingException("boom");
             }
         };
         when(javaMailSender.createMimeMessage()).thenReturn(broken);
         when(templateEngine.process(any(String.class), any(Context.class))).thenReturn("rendered");
 
-        // BUG-2507: no exception propagates — production silently swallows MessagingException.
+        // Exception is still swallowed (no propagation), but send() must NOT be called after the fix.
         assertThatCode(() -> service.sendEmail(sampleEmail())).doesNotThrowAnyException();
 
-        // BUG-2507 second symptom: send() is still invoked with the half-configured message.
-        verify(javaMailSender).send(broken);
+        // FIX-2507: send() must NOT be invoked after a MessagingException during helper setup.
+        verify(javaMailSender, never()).send(broken);
+    }
+
+    @Test
+    @DisplayName("FIX BUG-2508: recipient is logged at DEBUG only — no INFO log, no PII leaked")
+    void doesNotLogPiiAtInfo() {
+        final Logger logger = (Logger) LoggerFactory.getLogger(MailServiceImp.class);
+        final Level originalLevel = logger.getLevel();
+        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.setLevel(Level.DEBUG);
+        logger.addAppender(appender);
+        try {
+            when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
+            when(templateEngine.process(any(String.class), any())).thenReturn("<html>body</html>");
+
+            service.sendEmail(sampleEmail());
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(originalLevel);
+        }
+
+        assertThat(appender.list)
+                .noneMatch(e -> e.getLevel() == Level.INFO);
+        assertThat(appender.list)
+                .anyMatch(e -> e.getLevel() == Level.DEBUG
+                        && e.getFormattedMessage().contains("user@example.com"));
     }
 
     @Test

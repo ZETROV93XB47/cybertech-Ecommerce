@@ -27,6 +27,7 @@ import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNIC
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
@@ -40,6 +41,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -90,11 +92,6 @@ class ReviewCrudControllerAdditionalTest {
     @Test
     void shouldRejectCreateWithRatingZero() throws Exception {
         ReviewCreateRequestDto dto = ReviewDtoFixtures.aValidCreateRequestBuilder().rating(0).build();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(CREATE_REVIEW_ENDPOINT)
                         .with(jwtUser("keycloakId"))
@@ -104,17 +101,14 @@ class ReviewCrudControllerAdditionalTest {
                         .content(asJsonString(dto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
     void shouldRejectCreateWithRatingSix() throws Exception {
         ReviewCreateRequestDto dto = ReviewDtoFixtures.aValidCreateRequestBuilder().rating(6).build();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(CREATE_REVIEW_ENDPOINT)
                         .with(jwtUser("keycloakId"))
@@ -124,7 +118,9 @@ class ReviewCrudControllerAdditionalTest {
                         .content(asJsonString(dto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
@@ -172,11 +168,6 @@ class ReviewCrudControllerAdditionalTest {
                 .reviewUuid(reviewUuid)
                 .rating(7)
                 .build();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(patch(UPDATE_REVIEW_ENDPOINT, reviewUuid)
                         .with(jwtUser("keycloakId"))
@@ -186,7 +177,9 @@ class ReviewCrudControllerAdditionalTest {
                         .content(asJsonString(dto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     // ----- Malformed JSON body (BUG-2503 — F2 fix verification) -------------------------

@@ -28,6 +28,7 @@ import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNIC
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAnonymous;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -175,12 +176,6 @@ class ProductSearchControllerTest {
                 .priceMin(200.0)
                 .build();
 
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
-
         mockMvc.perform(post(SEARCH_PRODUCTS_ENDPOINT)
                         .with(jwtAnonymous())
                         .with(csrf())
@@ -189,7 +184,9 @@ class ProductSearchControllerTest {
                         .content(asJsonString(invalidDto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
@@ -201,12 +198,6 @@ class ProductSearchControllerTest {
                 .priceMin(50.0) // below 100 threshold
                 .build();
 
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
-
         mockMvc.perform(post(SEARCH_PRODUCTS_ENDPOINT)
                         .with(jwtAnonymous())
                         .with(csrf())
@@ -215,7 +206,9 @@ class ProductSearchControllerTest {
                         .content(asJsonString(invalidDto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test

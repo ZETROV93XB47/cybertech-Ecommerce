@@ -30,7 +30,9 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.json.JsonCompareMode.STRICT;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Slf4j
@@ -103,11 +105,6 @@ class ReviewCrudControllerTest {
     @Test
     void shouldFailCreatingReviewCauseDtoBadRequest() throws Exception {
         ReviewCreateRequestDto reviewCreateRequestDto = new ReviewCreateRequestDto();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(post(CREATE_REVIEW_ENDPOINT)
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
@@ -117,8 +114,9 @@ class ReviewCrudControllerTest {
                         .content(asJsonString(reviewCreateRequestDto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
-
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test
@@ -151,11 +149,6 @@ class ReviewCrudControllerTest {
     @Test
     void shouldFailUpdatingReviewCauseDtoBadRequest() throws Exception {
         ReviewUpdateRequestDto reviewUpdateRequestDto = new ReviewUpdateRequestDto();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Invalid Request or Request Poorly Constructed")
-                .httpStatusCode(400)
-                .errorCodeType(TECHNICAL)
-                .build();
 
         mockMvc.perform(patch(UPDATE_REVIEW_ENDPOINT, UUID.randomUUID())
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
@@ -165,7 +158,9 @@ class ReviewCrudControllerTest {
                         .content(asJsonString(reviewUpdateRequestDto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     @Test

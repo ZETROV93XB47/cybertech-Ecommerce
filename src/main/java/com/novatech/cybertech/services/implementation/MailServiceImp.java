@@ -30,7 +30,7 @@ public class MailServiceImp implements MailService {
     public void sendEmail(final EmailDto emailDto) {
         final Context context = toEmailContext(emailDto.getContext());
 
-        log.info("EmailDto value : {}", emailDto);
+        log.debug("Sending email to={}", emailDto.getTo());
 
         final String content = templateEngine.process(emailDto.getTemplatePath(), context);
 
@@ -44,6 +44,7 @@ public class MailServiceImp implements MailService {
             helper.setText(content, true); // HTML content
         } catch (MessagingException e) {
             log.error("Erreur lors de l'envoi de l'e-mail", e);
+            return;   // BUG-2507: was missing — still called send() on broken message
         }
 
         javaMailSender.send(message);

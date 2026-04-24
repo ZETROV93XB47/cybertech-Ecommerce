@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.util.stream.Collectors;
+
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCode.*;
 
 @Slf4j
@@ -31,7 +33,12 @@ public class ErrorManagementController {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponseDto> handleMethodArgumentNotValidException(MethodArgumentNotValidException exception) {
-        final ErrorResponseDto errorResponseDto = new ErrorResponseDto("Invalid Request or Request Poorly Constructed", INVALID_REQUEST.getResponseStatus().value(), INVALID_REQUEST.getErrorCodeType());
+        final String fieldErrors = exception.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fe.getField() + " (" + fe.getDefaultMessage() + ")")
+                .collect(Collectors.joining(", "));
+        final String message = fieldErrors.isBlank() ? "Invalid Request or Request Poorly Constructed"
+                : "Validation failed: " + fieldErrors;
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(message, INVALID_REQUEST.getResponseStatus().value(), INVALID_REQUEST.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
     }
 

@@ -4,8 +4,10 @@ import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.CartEntity;
 import com.novatech.cybertech.entities.CartItemEntity;
@@ -49,6 +51,7 @@ import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
+import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
@@ -114,6 +117,7 @@ class OrderManagementServiceImpTest {
     @Mock OrderValidator orderValidator;
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock IdempotencyKeyServiceGenerator idempotencyKeyService;
+    @Mock OrderPriceCalculationService orderPriceCalculationService;
 
     @InjectMocks OrderManagementServiceImp service;
 
@@ -136,6 +140,16 @@ class OrderManagementServiceImpTest {
         // Mapper just needs to return SOMETHING non-null when service maps the saved entity for the response.
         lenient().when(orderMapper.mapFromEntityToResponseDto(any(OrderEntity.class)))
                 .thenReturn(OrderDtoFixtures.aSampleOrderResponse());
+
+        // Default stub for orderPriceCalculationService — tests that need a specific amount override this.
+        lenient().when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                .thenReturn(PriceCalculationResultDto.builder()
+                        .baseAmount(new BigDecimal("10.00"))
+                        .discountAmount(BigDecimal.ZERO)
+                        .finalAmount(new BigDecimal("10.00"))
+                        .currencyCode(CurrencyCode.EUR)
+                        .discountType(DiscountType.NO_DISCOUNT)
+                        .build());
     }
 
     // ---- helpers --------------------------------------------------------
@@ -365,11 +379,20 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("total computed as sum(unitPrice * quantity) and saved as Money.EUR")
+        @DisplayName("total computed via OrderPriceCalculationService and saved as Money.EUR")
         void totalAmountIsSumAndEurByDefault() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
             final UserEntity user = userWithCart(product, 3, new BigDecimal("12.50"));
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            // Override default stub: price calculation service returns 37.50 (= 3 × 12.50, no discount)
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("37.50"))
+                            .discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("37.50"))
+                            .currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT)
+                            .build());
 
             final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
             when(orderRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
@@ -581,6 +604,11 @@ class OrderManagementServiceImpTest {
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("100.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("100.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
 
             final OrderUpdateRequestDto req = requestFor(order.getUuid(), product, 1);
             service.updateOrder(req, jwt);
@@ -603,6 +631,11 @@ class OrderManagementServiceImpTest {
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
             when(paymentService.processPayment(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -626,6 +659,11 @@ class OrderManagementServiceImpTest {
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
             when(paymentService.refund(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
                             new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -692,6 +730,11 @@ class OrderManagementServiceImpTest {
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("70.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("70.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
 
             service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
 
@@ -742,6 +785,11 @@ class OrderManagementServiceImpTest {
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("99.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("99.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
 
             final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder()
                     .uuid(order.getUuid())
