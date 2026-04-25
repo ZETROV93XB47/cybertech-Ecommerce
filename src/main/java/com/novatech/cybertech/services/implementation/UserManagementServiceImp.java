@@ -5,11 +5,9 @@ import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Role;
-import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
-import com.novatech.cybertech.services.core.BankCardManagementService;
 import com.novatech.cybertech.services.core.UserManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,53 +28,39 @@ public class UserManagementServiceImp implements UserManagementService {
 
     private final UserMapper userMapper;
     private final UserRepository userRepository;
-    private final BankCardManagementService bankCardManagementService;
     private final KeycloakUserManagementService keycloakUserManagementService;
+    private final UserPersistenceService userPersistenceService;
 
+    /**
+     * Create a user across Keycloak and the local DB without coupling them in a single TX.
+     *
+     * <p>Phase 1 (no transaction): create the user in Keycloak. If this throws, abort — there is
+     * nothing to compensate.
+     *
+     * <p>Phase 2 (REQUIRES_NEW transaction inside {@link UserPersistenceService}): persist the
+     * local entity (and optional bank card). If this throws, the inner TX rolls back the SQL
+     * work cleanly. We then run a compensating Keycloak {@code deleteUser} from OUTSIDE any
+     * transactional context. If compensation itself fails we log loudly so an operator can
+     * reconcile manually — and we still rethrow the original cause to the caller.
+     */
     @Override
-    @Transactional
     public UserResponseDto create(final UserCreateRequestDto req) {
-        String keycloakId = null;
-
         log.info("user creation request : {}", req);
 
+        // Phase 1 — Keycloak only, NO transaction. A failure here is terminal: no compensation needed.
+        final String keycloakId = keycloakUserManagementService.createUser(
+                req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword(), Role.USER);
+        log.info("Keycloak id : {}", keycloakId);
+
+        // Phase 2 — DB persistence in its own REQUIRES_NEW transaction; compensate if it fails.
         try {
-            keycloakId = keycloakUserManagementService.createUser(req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword(), Role.USER);
-
-            log.info("Keycloak id : {}", keycloakId);
-
-            UserEntity user = UserEntity.builder()
-                    //.uuid(UUID.randomUUID())
-                    .email(req.getEmail())
-                    .firstName(req.getFirstName())
-                    .lastName(req.getLastName())
-                    .sex(req.getSex())
-                    .address(new Address(req.getStreet(), req.getCity(), req.getZipCode(), req.getCountry()))
-                    .birthDate(req.getBirthDate())
-                    .phoneNumber(req.getPhoneNumber())
-                    .favoriteCommunicationChanel(req.getFavoriteCommunicationChanel())
-                    .role(Role.USER)
-                    .keycloakId(keycloakId)
-                    .isActive(true)
-                    .numberOfHatefulComments(0)
-                    .build();
-
-            final UserEntity savedUser = userRepository.save(user);
-            log.info("Saved user : {}", savedUser);
-
-            // Bank card is optional. When provided, delegate to BankCardManagementService.addBankCard
-            // so PCI-DSS rules (PAN encryption + last4 masking, expiry guard) are applied — fixes
-            // the registration-path leg of BUG-036 (previously stored PAN as plaintext inline).
-            if (req.getBankCardCreationRequestDto() != null) {
-                bankCardManagementService.addBankCard(keycloakId, req.getBankCardCreationRequestDto());
-            }
-
-            return userMapper.mapFromEntityToResponseDto(savedUser);
-
-        }
-        catch (RuntimeException e) {
-            if (keycloakId != null) {
+            return userPersistenceService.saveNewUser(req, keycloakId);
+        } catch (RuntimeException e) {
+            try {
                 keycloakUserManagementService.deleteUser(keycloakId);
+            } catch (RuntimeException compensationFailure) {
+                log.error("Compensation failed for keycloakId={} — manual reconciliation required",
+                        keycloakId, compensationFailure);
             }
             throw e;
         }

@@ -1,9 +1,7 @@
 package com.novatech.cybertech.services.implementation.catalog;
 
-import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
-import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Role;
@@ -12,9 +10,9 @@ import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
-import com.novatech.cybertech.services.core.BankCardManagementService;
 import com.novatech.cybertech.services.implementation.KeycloakUserManagementService;
 import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
+import com.novatech.cybertech.services.implementation.UserPersistenceService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -43,13 +41,14 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link UserManagementServiceImp}.
  *
- * <p>SA-W3.5 wave — services/catalog. Pins:
+ * <p>SA-W3.5 wave — services/catalog. Pins (post H1 fix):
  * <ul>
  *   <li>auto-admin guard: {@code create()} hardcodes {@link Role#USER} — request payload cannot
  *       elevate.</li>
- *   <li>compensating Keycloak delete when MySQL save fails after a successful Keycloak create.</li>
+ *   <li>compensating Keycloak delete when DB persistence fails — runs OUTSIDE any transaction
+ *       (delegated to {@link UserPersistenceService} for the SQL work).</li>
+ *   <li>compensation failure is logged but the original cause still propagates.</li>
  *   <li>email-change push to Keycloak with no verify-new-email step (tech debt — pinned).</li>
- *   <li>BankCard save relies on outer {@code @Transactional} for MySQL rollback (no manual catch).</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -57,8 +56,8 @@ class UserManagementServiceImpTest {
 
     @Mock UserMapper userMapper;
     @Mock UserRepository userRepository;
-    @Mock BankCardManagementService bankCardManagementService;
     @Mock KeycloakUserManagementService keycloakUserManagementService;
+    @Mock UserPersistenceService userPersistenceService;
 
     @InjectMocks UserManagementServiceImp service;
 
@@ -68,25 +67,23 @@ class UserManagementServiceImpTest {
     class Create {
 
         @Test
-        @DisplayName("happy path — Keycloak create, then SQL user, then delegates card add via BankCardManagementService, returns mapped DTO")
+        @DisplayName("happy path — Keycloak first, then delegates DB persistence to UserPersistenceService, returns mapped DTO")
         void create_happyPath() {
             UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
             String kcId = "kc-123";
             when(keycloakUserManagementService.createUser(req.getEmail(), req.getFirstName(),
                     req.getLastName(), req.getPassword(), Role.USER)).thenReturn(kcId);
-            UserEntity savedUser = UserEntityBuilder.aValidUser();
-            when(userRepository.save(any(UserEntity.class))).thenReturn(savedUser);
             UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
-            when(userMapper.mapFromEntityToResponseDto(savedUser)).thenReturn(expected);
+            when(userPersistenceService.saveNewUser(req, kcId)).thenReturn(expected);
 
             UserResponseDto result = service.create(req);
 
             assertThat(result).isSameAs(expected);
-            InOrder order = inOrder(keycloakUserManagementService, userRepository, bankCardManagementService);
+            InOrder order = inOrder(keycloakUserManagementService, userPersistenceService);
             order.verify(keycloakUserManagementService).createUser(req.getEmail(), req.getFirstName(),
                     req.getLastName(), req.getPassword(), Role.USER);
-            order.verify(userRepository).save(any(UserEntity.class));
-            order.verify(bankCardManagementService).addBankCard(eq(kcId), any(BankCardCreationRequestDto.class));
+            order.verify(userPersistenceService).saveNewUser(req, kcId);
+            verify(keycloakUserManagementService, never()).deleteUser(any());
         }
 
         @Test
@@ -95,37 +92,31 @@ class UserManagementServiceImpTest {
             UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
             String kcId = "kc-x";
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
-            UserEntity savedUser = UserEntityBuilder.aValidUser();
-            when(userRepository.save(any(UserEntity.class))).thenReturn(savedUser);
-            when(userMapper.mapFromEntityToResponseDto(savedUser)).thenReturn(UserDtoFixtures.aSampleUserResponse());
+            when(userPersistenceService.saveNewUser(any(), eq(kcId))).thenReturn(UserDtoFixtures.aSampleUserResponse());
 
             service.create(req);
 
             verify(keycloakUserManagementService).createUser(req.getEmail(), req.getFirstName(),
                     req.getLastName(), req.getPassword(), Role.USER);
-            ArgumentCaptor<UserEntity> userCaptor = ArgumentCaptor.forClass(UserEntity.class);
-            verify(userRepository).save(userCaptor.capture());
-            assertThat(userCaptor.getValue().getRole()).isEqualTo(Role.USER);
         }
 
         @Test
-        @DisplayName("MySQL user.save fails after Keycloak success → compensating Keycloak delete")
-        void create_mysqlFailAfterKeycloak_compensatesKeycloakDelete() {
+        @DisplayName("DB persistence fails after Keycloak success → compensating Keycloak delete + propagates original cause")
+        void create_persistenceFailAfterKeycloak_compensatesKeycloakDelete() {
             UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
             String kcId = "kc-rollback";
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
-            when(userRepository.save(any(UserEntity.class))).thenThrow(new RuntimeException("db down"));
+            when(userPersistenceService.saveNewUser(req, kcId)).thenThrow(new RuntimeException("db down"));
 
             assertThatThrownBy(() -> service.create(req))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("db down");
 
             verify(keycloakUserManagementService).deleteUser(kcId);
-            verify(bankCardManagementService, never()).addBankCard(any(), any());
         }
 
         @Test
-        @DisplayName("Keycloak create itself fails → no compensating delete (no kcId yet)")
+        @DisplayName("Keycloak create itself fails → no compensating delete (no kcId yet) and DB never touched")
         void create_keycloakFails_noCompensation() {
             UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any()))
@@ -136,60 +127,24 @@ class UserManagementServiceImpTest {
                     .hasMessage("kc 500");
 
             verify(keycloakUserManagementService, never()).deleteUser(any());
-            verifyNoInteractions(userRepository);
-            verifyNoInteractions(bankCardManagementService);
+            verifyNoInteractions(userPersistenceService);
         }
 
         @Test
-        @DisplayName("BankCard add fails — Keycloak compensated, exception propagates")
-        void create_bankCardFails_keycloakDeletedAndPropagates() {
+        @DisplayName("compensating delete itself fails → original cause still propagates (operator must reconcile)")
+        void create_compensationFails_originalCausePropagates() {
             UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
-            String kcId = "kc-bank-fail";
+            String kcId = "kc-double-fail";
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
-            UserEntity savedUser = UserEntityBuilder.aValidUser();
-            when(userRepository.save(any(UserEntity.class))).thenReturn(savedUser);
-            doThrow(new RuntimeException("constraint violation"))
-                    .when(bankCardManagementService).addBankCard(eq(kcId), any(BankCardCreationRequestDto.class));
+            when(userPersistenceService.saveNewUser(req, kcId)).thenThrow(new RuntimeException("db down"));
+            doThrow(new RuntimeException("kc delete 500"))
+                    .when(keycloakUserManagementService).deleteUser(kcId);
 
-            assertThatThrownBy(() -> service.create(req)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> service.create(req))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("db down");
 
             verify(keycloakUserManagementService).deleteUser(kcId);
-        }
-
-        @Test
-        @DisplayName("BankCard add receives the request DTO and the new keycloakId — PCI rules applied by addBankCard")
-        void create_bankCardDelegatedWithKeycloakId() {
-            UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
-            String kcId = "kc-link-test";
-            when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
-            UserEntity savedUser = UserEntityBuilder.aValidUser();
-            when(userRepository.save(any(UserEntity.class))).thenReturn(savedUser);
-            when(userMapper.mapFromEntityToResponseDto(savedUser)).thenReturn(UserDtoFixtures.aSampleUserResponse());
-
-            service.create(req);
-
-            ArgumentCaptor<String> kcCaptor = ArgumentCaptor.forClass(String.class);
-            ArgumentCaptor<BankCardCreationRequestDto> dtoCaptor = ArgumentCaptor.forClass(BankCardCreationRequestDto.class);
-            verify(bankCardManagementService).addBankCard(kcCaptor.capture(), dtoCaptor.capture());
-            assertThat(kcCaptor.getValue()).isEqualTo(kcId);
-            assertThat(dtoCaptor.getValue()).isSameAs(req.getBankCardCreationRequestDto());
-        }
-
-        @Test
-        @DisplayName("Bank card is optional — null bankCardCreationRequestDto skips the addBankCard call entirely")
-        void create_bankCardOptional_skipsCardWhenNull() {
-            UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
-            req.setBankCardCreationRequestDto(null);
-            String kcId = "kc-no-card";
-            when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
-            UserEntity savedUser = UserEntityBuilder.aValidUser();
-            when(userRepository.save(any(UserEntity.class))).thenReturn(savedUser);
-            when(userMapper.mapFromEntityToResponseDto(savedUser)).thenReturn(UserDtoFixtures.aSampleUserResponse());
-
-            service.create(req);
-
-            verify(bankCardManagementService, never()).addBankCard(any(), any());
-            verify(keycloakUserManagementService, never()).deleteUser(any());
         }
     }
 
