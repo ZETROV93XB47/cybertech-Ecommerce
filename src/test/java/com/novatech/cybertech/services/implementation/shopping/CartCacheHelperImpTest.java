@@ -223,11 +223,13 @@ class CartCacheHelperImpTest {
     class Locking {
 
         @Test
-        @DisplayName("acquireLock returns token when setIfAbsent succeeds, on key lock:cart:<userId>")
+        @DisplayName("acquireLock returns token when SET NX succeeds via raw connection callback")
         void acquireLock_success_returnsToken() {
-            when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-            when(valueOperations.setIfAbsent(eq("lock:cart:user-A"), anyString(), any(Duration.class)))
-                    .thenReturn(true);
+            // BUG-160 (PRE-2) — acquireLock now goes through redisTemplate.execute(RedisCallback)
+            // so the value bytes match what the unlock Lua script reads (raw token bytes, not the
+            // JSON-serialized template-default form). The unit test stubs the callback path.
+            when(redisTemplate.execute(any(org.springframework.data.redis.core.RedisCallback.class)))
+                    .thenReturn(Boolean.TRUE);
 
             final String token = helper.acquireLock("user-A");
 
@@ -237,10 +239,10 @@ class CartCacheHelperImpTest {
         }
 
         @Test
-        @DisplayName("acquireLock returns null when setIfAbsent returns false")
+        @DisplayName("acquireLock returns null when SET NX returns false (key already held)")
         void acquireLock_failure_returnsNull() {
-            when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-            when(valueOperations.setIfAbsent(anyString(), any(), any(Duration.class))).thenReturn(false);
+            when(redisTemplate.execute(any(org.springframework.data.redis.core.RedisCallback.class)))
+                    .thenReturn(Boolean.FALSE);
 
             final String token = helper.acquireLock("user-B");
 
@@ -248,10 +250,10 @@ class CartCacheHelperImpTest {
         }
 
         @Test
-        @DisplayName("acquireLock returns null when setIfAbsent returns null (no Boolean)")
+        @DisplayName("acquireLock returns null when SET NX returns null (no Boolean from connection)")
         void acquireLock_nullResponse_returnsNull() {
-            when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-            when(valueOperations.setIfAbsent(anyString(), any(), any(Duration.class))).thenReturn(null);
+            when(redisTemplate.execute(any(org.springframework.data.redis.core.RedisCallback.class)))
+                    .thenReturn(null);
 
             final String token = helper.acquireLock("user-C");
 

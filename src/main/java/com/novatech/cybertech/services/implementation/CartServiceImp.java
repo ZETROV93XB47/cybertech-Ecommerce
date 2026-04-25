@@ -21,6 +21,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -125,11 +126,27 @@ public class CartServiceImp implements CartService {
             // the lock and read the pre-commit cart row, causing a lost-update race. Using
             // TransactionTemplate keeps the lifecycle as: acquire-lock -> tx-begin -> mutate ->
             // tx-commit -> release-lock.
-            if (transactionTemplate != null) {
-                return transactionTemplate.execute(status -> doAddItemsToCart(cartCreateRequestDto, keycloakId));
+            try {
+                if (transactionTemplate != null) {
+                    return transactionTemplate.execute(status -> doAddItemsToCart(cartCreateRequestDto, keycloakId));
+                }
+                // Fallback for unit tests where no PlatformTransactionManager is wired in.
+                return doAddItemsToCart(cartCreateRequestDto, keycloakId);
+            } catch (DataIntegrityViolationException dive) {
+                // BUG-160 (PRE-2) — Schema-level UNIQUE(userId) on cartTable closes the
+                // first-time-insert race: when two concurrent /cart/add requests for a brand-
+                // new user both attempt to INSERT a cart row, the loser hits a unique-violation.
+                // We retry exactly once: by now the winning thread has committed, so the cart
+                // row exists and the SELECT ... FOR UPDATE in doAddItemsToCart will find it
+                // and properly serialise on it. No infinite loop — a second DIVE would imply
+                // a different constraint violation and is allowed to propagate.
+                log.warn("BUG-160 — concurrent cart insert raced for user {} (DataIntegrityViolation: {}). Retrying once.",
+                        keycloakId, dive.getMostSpecificCause() != null ? dive.getMostSpecificCause().getMessage() : dive.getMessage());
+                if (transactionTemplate != null) {
+                    return transactionTemplate.execute(status -> doAddItemsToCart(cartCreateRequestDto, keycloakId));
+                }
+                return doAddItemsToCart(cartCreateRequestDto, keycloakId);
             }
-            // Fallback for unit tests where no PlatformTransactionManager is wired in.
-            return doAddItemsToCart(cartCreateRequestDto, keycloakId);
         } finally {
             cartCacheHelper.releaseLock(keycloakId, lockToken);
         }

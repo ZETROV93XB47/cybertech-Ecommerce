@@ -18,7 +18,6 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -304,17 +303,6 @@ class CartFlowIT {
     //    Sister SA-W2.2 + SA-W3.4 refuted F1's claim of fix; pin via @Disabled if surfaces.
     // ----------------------------------------------------------------------------------
     @Test
-    @Disabled("BUG-160: pre-existing read-modify-write race in CartServiceImp.addItemsToCart that "
-            + "survives the per-user Redis lock + a SELECT ... FOR UPDATE second-line-of-defence "
-            + "(see commit bf51d7c). Two concurrent /cart/add requests for the same brand-new user "
-            + "still each end up creating a separate cartTable row because (a) the cart row does "
-            + "not yet exist when both threads enter the locked region for the first time, so the "
-            + "FOR UPDATE has nothing to lock; and (b) cartTable.userId has no UNIQUE constraint "
-            + "in the schema, so the duplicate INSERTs both succeed. The proper fix requires either "
-            + "a schema migration to add `UNIQUE(userId)` on cartTable + retry-on-DataIntegrityViolation "
-            + "on the create path, or a JPA @Version-aware optimistic-lock retry loop with an outer "
-            + "create-if-absent that goes through a second tx after a SELECT. Both are out of scope "
-            + "for this wave; tracked separately. Re-enable once the schema/contract change lands.")
     @DisplayName("BUG-160 (CLOSED): concurrent /cart/add — final qty MUST sum (no race)")
     void concurrentAddsFromTwoThreadsShouldSumNotRace() throws Exception {
         final int threads = 2;

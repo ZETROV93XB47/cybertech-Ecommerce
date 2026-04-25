@@ -182,6 +182,14 @@ CREATE TABLE cartTable
     updatedAt     DATETIME,
 
     PRIMARY KEY (id),
+    -- BUG-160 (PRE-2): one cart per user — closes the concurrent-add race in
+    -- CartServiceImp.addItemsToCart. The Redis lock + SELECT ... FOR UPDATE serialise
+    -- the read-modify-write *when a row already exists*, but two concurrent first-time
+    -- inserts could both succeed without this constraint. Combined with the
+    -- retry-once-on-DataIntegrityViolationException path in the service, the second
+    -- insert deterministically falls back to "load the row the other thread just wrote
+    -- and continue mutating".
+    UNIQUE KEY uk_cart_user (userId),
     FOREIGN KEY (userId) REFERENCES userTable (id)
 );
 

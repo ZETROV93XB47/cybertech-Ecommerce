@@ -6,9 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.ReturnType;
+import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.stereotype.Component;
 
@@ -59,6 +61,17 @@ public class CartCacheHelperImp implements CartCacheHelper {
      * {@link #releaseLock(String, String)} so the unlock Lua script can CAS-check
      * ownership before deleting the key — preventing the classic "release someone
      * else's lock after my TTL expired" race.
+     * <p>
+     * BUG-160 (PRE-2) — The lock value is written as RAW STRING BYTES via the
+     * connection callback rather than through {@code redisTemplate.opsForValue()}.
+     * The template's value serializer is {@code GenericJacksonJsonRedisSerializer},
+     * which would JSON-encode the token (wrapping it in {@code "..."}). The unlock
+     * Lua script reads the raw bytes via {@code GET KEYS[1]} and compares to
+     * {@code ARGV[1]} which we serialise with {@link StringRedisSerializer} (no
+     * quotes). The two encodings would never match, so the unlock would silently
+     * no-op and the lock would only be released by its TTL — starving any waiting
+     * thread for a full {@link #LOCK_DURATION_IN_SECONDS} seconds and breaking the
+     * concurrent-add test. Using raw bytes on both write and compare is the fix.
      */
     @Override
     public String acquireLock(final String userId) {
@@ -67,11 +80,18 @@ public class CartCacheHelperImp implements CartCacheHelper {
 
         log.info("Acquiring lock for user: {} with token: {}", userId, token);
 
-        boolean success = Boolean.TRUE.equals(
-                redisTemplate.opsForValue().setIfAbsent(lockKey, token, Duration.ofSeconds(LOCK_DURATION_IN_SECONDS))
-        );
+        Boolean success = redisTemplate.execute((RedisCallback<Boolean>) connection -> {
+            byte[] keyBytes = STRING_SERIALIZER.serialize(lockKey);
+            byte[] tokenBytes = STRING_SERIALIZER.serialize(token);
+            return connection.stringCommands().set(
+                    keyBytes,
+                    tokenBytes,
+                    Expiration.seconds(LOCK_DURATION_IN_SECONDS),
+                    RedisStringCommands.SetOption.SET_IF_ABSENT
+            );
+        });
 
-        return success ? token : null;
+        return Boolean.TRUE.equals(success) ? token : null;
     }
 
 

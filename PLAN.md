@@ -109,3 +109,23 @@ Foreign files to leave alone (other agents): `NotificationListener.java`, `Notif
 - [x] Create `front/app/Dockerfile` (multi-stage, standalone output).
 - [x] `helm lint` and `helm template` clean for both new chart and modified backend chart.
 
+---
+
+## Wave 8A2 — PRE-2 close BUG-160 cart race + harden mysql-chart (this session)
+
+- [x] Add `UNIQUE KEY uk_cart_user (userId)` to `sql/databaseSchemaInitFile.sql` cartTable
+- [x] mysql-chart `databaseSchemaInitFile.sql` does NOT contain a cartTable -> no edit there (chart only seeds DBs + a subset of tables; runtime tables created by Hibernate `ddl-auto=update` or by the source SQL via init Job pointing at `sql/databaseSchemaInitFile.sql`).
+- [x] CartServiceImp: retry-once on `DataIntegrityViolationException` in `addItemsToCart`
+- [x] Re-enable `CartFlowIT.concurrentAddsFromTwoThreadsShouldSumNotRace` (remove `@Disabled`)
+- [x] mysql-chart deployment.yaml: add liveness (TCP 3306), readiness (mysqladmin ping), resources requests/limits
+- [x] mysql-chart values.yaml: expose probes/resources knobs
+- [x] `helm lint mysql-chart` PASS
+- [x] `mvn test -DskipITs` GREEN (1681/1681)
+- [x] CartFlowIT.concurrentAddsFromTwoThreadsShouldSumNotRace PASSES
+- [x] Discovered & fixed root cause: CartCacheHelperImp.acquireLock used
+      template.opsForValue().setIfAbsent which JSON-encodes the token, breaking
+      the unlock Lua script's CAS comparison. Switched to a raw-byte connection
+      callback so set/get/delete all agree on byte-for-byte equality.
+- [x] CartCacheHelperImpTest updated (3 tests) to mock the new callback path.
+- [ ] commit
+

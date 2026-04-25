@@ -36,6 +36,38 @@ spec:
                   key: user-password
             - name: MYSQL_ALLOW_EMPTY_PASSWORD
               value: "true"
+          # PRE-2 — Liveness: cheap TCP probe on the MySQL port. mysqld accepts TCP early
+          # in the boot cycle so this catches "the process died" without flapping during
+          # the heavier init phase that the readiness probe gates.
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.mysql.port }}
+            initialDelaySeconds: {{ .Values.mysql.probes.liveness.initialDelaySeconds | default 30 }}
+            periodSeconds: {{ .Values.mysql.probes.liveness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.mysql.probes.liveness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.mysql.probes.liveness.failureThreshold | default 3 }}
+          # PRE-2 — Readiness: actually exercises the SQL plane via mysqladmin ping. Held
+          # off on takeover-of-traffic until init scripts (databaseSchemaInitFile.sql) have
+          # been replayed and the server is answering queries.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - 'mysqladmin ping -h 127.0.0.1 -uroot -p"$MYSQL_ROOT_PASSWORD"'
+            initialDelaySeconds: {{ .Values.mysql.probes.readiness.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.mysql.probes.readiness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.mysql.probes.readiness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.mysql.probes.readiness.failureThreshold | default 6 }}
+          # PRE-2 — Resource requests/limits. Defaults sized for a dev cluster; bump via
+          # values.yaml in production (e.g. memory 2-4Gi for a hot working set).
+          resources:
+            requests:
+              cpu: {{ .Values.mysql.resources.requests.cpu | default "100m" | quote }}
+              memory: {{ .Values.mysql.resources.requests.memory | default "512Mi" | quote }}
+            limits:
+              cpu: {{ .Values.mysql.resources.limits.cpu | default "1000m" | quote }}
+              memory: {{ .Values.mysql.resources.limits.memory | default "1Gi" | quote }}
           volumeMounts:
             - name: mysql-data # Doit correspondre au nom dans volumeClaimTemplates
               mountPath: /var/lib/mysql

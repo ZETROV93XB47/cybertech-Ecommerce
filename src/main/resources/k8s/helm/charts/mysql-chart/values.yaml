@@ -13,6 +13,31 @@ mysql:
     # IMPORTANT: StatefulSet crée 1 PVC par replica via volumeClaimTemplates
     # Ne pas créer de PVC séparé
 
+  # PRE-2 — Liveness/readiness probes. Liveness uses a cheap TCP socket on the MySQL
+  # port; readiness execs `mysqladmin ping` so traffic only routes once init scripts
+  # have been replayed and the SQL plane answers.
+  probes:
+    liveness:
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+
+  # PRE-2 — Container resource requests/limits. Sized for a dev/minikube cluster;
+  # raise memory in prod once the working-set is profiled.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
 service:
   type: ClusterIP
   #::::clusterIP: None  # Headless service for StatefulSet DNS
