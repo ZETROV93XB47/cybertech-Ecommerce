@@ -1,12 +1,19 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: keycloak
+  name: {{ include "keycloak.fullname" . }}
+  labels:
+    {{- include "keycloak.labels" . | nindent 4 }}
 spec:
-  type: NodePort # <--- On change le type ici
+  type: {{ .Values.service.type }}
   selector:
-    app: keycloak
+    {{- include "keycloak.selectorLabels" . | nindent 4 }}
   ports:
-    - port: {{ .Values.keycloak.port }}      # Port interne au cluster
-      targetPort: {{ .Values.keycloak.port }} # Port sur le Pod
-      nodePort: 30080                        # Port exposé sur ton "nœud" (Minikube)
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+    - name: management
+      port: {{ .Values.service.managementPort }}
+      targetPort: management
+      protocol: TCP

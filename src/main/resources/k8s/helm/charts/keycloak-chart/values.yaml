@@ -1,14 +1,98 @@
+# ============================================================
+# KEYCLOAK CHART — portfolio defaults
+# ------------------------------------------------------------
+# Keycloak runs in `start-dev` mode for portfolio simplicity:
+# no HTTPS, no pre-build optimisation, hostname-strict disabled.
+# REPLACE every plaintext credential below via Vault before any
+# real deploy.
+# ============================================================
+
+replicaCount: 1
+
+image:
+  repository: quay.io/keycloak/keycloak
+  tag: "26.0.4"
+  pullPolicy: IfNotPresent
+
+# Keycloak runtime tuning
 keycloak:
-  image: quay.io/keycloak/keycloak:24.0.3
+  # Admin bootstrap user (created on first start). Override in prod.
+  admin:
+    username: admin
+    password: admin  # REPLACE in prod via Vault
+
+  # MySQL backend (provisioned by mysql-chart).
+  # The mysql-chart's init SQL pre-creates keycloakDB and grants
+  # the `rookie` user full privileges on that database.
+  database:
+    host: mysql
+    port: 3306
+    name: keycloakDB
+    username: rookie
+    password: pwd  # REPLACE in prod via Vault
+
+  # Hostname Keycloak will advertise / honour from X-Forwarded-Host.
+  # Frontend reaches it through nginx-ingress on this host.
+  hostname: keycloak.cybertech.local
+  hostnameStrict: false
+
+  # Trust the ingress's X-Forwarded-* headers (HTTP-only ingress).
+  proxyHeaders: xforwarded
+  httpEnabled: true
+
+  # Extra JDBC params appended to KC_DB_URL.
+  jdbcParams: "useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+
+# Service exposes Keycloak's HTTP API (8080) and management/health (9000).
+service:
+  type: ClusterIP
   port: 8080
+  managementPort: 9000
 
-mysql:
-  host: mysql
-  port: 3306
-  database: keycloakDB
-  user: rookie
-  password: pwd
+# Ingress publishes Keycloak at http://keycloak.cybertech.local/.
+ingress:
+  enabled: true
+  className: nginx
+  host: keycloak.cybertech.local
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: false
+    secretName: ""
 
-admin:
-  user: admin
-  password: admin
+# Resource budget tuned for minikube (4 vCPU / 8 GiB).
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Probes hit the dedicated management port (9000) — Keycloak 26
+# exposes /health/{live,ready,started} there when KC_HEALTH_ENABLED=true.
+probes:
+  liveness:
+    initialDelaySeconds: 60
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readiness:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+  startup:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30  # ~5 min budget for first boot + DB schema
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# initContainer waits for MySQL TCP to come up before Keycloak starts.
+waitForMysql:
+  enabled: true
+  image: busybox:1.36

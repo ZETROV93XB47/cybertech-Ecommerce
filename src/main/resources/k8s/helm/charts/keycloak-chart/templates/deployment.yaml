@@ -1,55 +1,117 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: keycloak
+  name: {{ include "keycloak.fullname" . }}
+  labels:
+    {{- include "keycloak.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: keycloak
+      {{- include "keycloak.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: keycloak
+        {{- include "keycloak.labels" . | nindent 8 }}
     spec:
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+      {{- if .Values.waitForMysql.enabled }}
       initContainers:
         - name: wait-for-mysql
-          image: busybox:latest
+          image: {{ .Values.waitForMysql.image | quote }}
           command:
             - sh
             - -c
             - |
-              echo "Waiting for MySQL..."
-              # On utilise nc (netcat) pour vérifier que le port 3306 répond
-              until nc -zv {{ .Values.mysql.host }} {{ .Values.mysql.port }}; do
+              echo "Waiting for MySQL at {{ .Values.keycloak.database.host }}:{{ .Values.keycloak.database.port }}..."
+              until nc -zv {{ .Values.keycloak.database.host }} {{ .Values.keycloak.database.port }}; do
                 sleep 2
               done
-              echo "MySQL is ready!"
+              echo "MySQL is reachable."
+      {{- end }}
       containers:
         - name: keycloak
-          image: {{ .Values.keycloak.image }}
-          args: ["start-dev"]
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # `start-dev` skips the optimised build step (no need to bake hostname
+          # / HTTPS into an image) — appropriate for the portfolio runbook.
+          args:
+            - "start-dev"
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: management
+              containerPort: 9000
+              protocol: TCP
           env:
-            - name: KC_DB
-              value: "mysql"
-            - name: KC_DB_URL
-              value: "jdbc:mysql://{{ .Values.mysql.host }}:{{ .Values.mysql.port }}/{{ .Values.mysql.database }}?useSSL=false&allowPublicKeyRetrieval=true"
-            - name: KC_DB_USERNAME
-              value: "{{ .Values.mysql.user }}"
-            - name: KC_DB_PASSWORD
+            # ----- Admin bootstrap -----
+            - name: KEYCLOAK_ADMIN
               valueFrom:
                 secretKeyRef:
-                  name: keycloak-secret
-                  key: db-password
-            - name: KC_HOSTNAME_STRICT
-              value: "false"
-            - name: KC_HTTP_ENABLED
-              value: "true"
-            - name: KEYCLOAK_ADMIN
-              value: {{ .Values.admin.user | quote }}
+                  name: {{ include "keycloak.fullname" . }}-secret
+                  key: admin-username
             - name: KEYCLOAK_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: keycloak-secret
+                  name: {{ include "keycloak.fullname" . }}-secret
                   key: admin-password
-            # ... tes autres variables admin ...
+            # ----- Database -----
+            - name: KC_DB
+              value: "mysql"
+            - name: KC_DB_URL
+              value: "jdbc:mysql://{{ .Values.keycloak.database.host }}:{{ .Values.keycloak.database.port }}/{{ .Values.keycloak.database.name }}?{{ .Values.keycloak.jdbcParams }}"
+            - name: KC_DB_USERNAME
+              value: {{ .Values.keycloak.database.username | quote }}
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "keycloak.fullname" . }}-secret
+                  key: db-password
+            # ----- Hostname / proxy -----
+            - name: KC_HOSTNAME
+              value: {{ .Values.keycloak.hostname | quote }}
+            - name: KC_HOSTNAME_STRICT
+              value: {{ .Values.keycloak.hostnameStrict | quote }}
+            - name: KC_HTTP_ENABLED
+              value: {{ .Values.keycloak.httpEnabled | quote }}
+            - name: KC_PROXY_HEADERS
+              value: {{ .Values.keycloak.proxyHeaders | quote }}
+            # ----- Health / metrics on dedicated management port -----
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: management
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu | quote }}
+              memory: {{ .Values.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu | quote }}
+              memory: {{ .Values.resources.limits.memory | quote }}

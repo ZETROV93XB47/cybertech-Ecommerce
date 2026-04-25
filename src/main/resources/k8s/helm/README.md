@@ -131,11 +131,12 @@ minikube ip
 Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 
 ```
-192.168.49.2  cybertech.local api.cybertech.local
+192.168.49.2  cybertech.local api.cybertech.local keycloak.cybertech.local
 ```
 
 `cybertech.local` -> Next.js frontend Service.
 `api.cybertech.local` -> Spring Boot backend Service (path `/api/`).
+`keycloak.cybertech.local` -> Keycloak admin console + OIDC issuer (path `/`).
 
 ## 7. Open the app
 
@@ -164,6 +165,24 @@ Common causes:
 - MySQL initContainer still waiting (Spring Boot will not boot until MySQL is reachable).
 - `MYSQL_ROOT_PASSWORD` env var not set in the shell that ran `helmfile apply`.
 - `cybertech-app:1.2` not present in the minikube daemon (re-run step 3).
+
+### Keycloak slow to become Ready
+
+Keycloak in `start-dev` mode boots in ~45 – 90 s on minikube: it provisions
+its MySQL schema (90+ Liquibase changesets), bootstraps the master realm,
+and only then starts answering on `/health/ready`. The chart's `startupProbe`
+gives it a generous ~5 min budget before the kubelet declares the pod
+unhealthy. Watch the boot live:
+
+```bash
+kubectl logs -f deploy/keycloak
+kubectl describe pod -l app=keycloak     # probe transitions
+```
+
+If the pod is `CrashLoopBackOff`, the usual culprits are a missing
+`keycloakDB` (the mysql-chart init SQL pre-creates it — re-apply mysql if
+you wiped its PVC), or a `KEYCLOAK_ADMIN_PASSWORD` mismatch between the
+Secret and any environment override.
 
 ### Frontend pod stuck `ImagePullBackOff`
 
@@ -212,9 +231,11 @@ minikube deploy works without standing up Vault first.
 Captured during the Wave 7B audit; track in a follow-up if you care about
 production-readiness:
 
-- **keycloak-chart/templates/deployment.yaml** is truncated (ends with a
-  comment "tes autres variables admin" and has no `ports`, no probes, no
-  resources). Will deploy but is incomplete.
+- **keycloak-chart** rewritten in Wave 8 (chart `0.2.0`, app `26.0.4`):
+  full deployment with ports, startup/liveness/readiness probes against
+  `:9000/health/*`, resource requests + limits, runAsNonRoot security
+  context, dedicated Secret, Service (8080 + 9000) and Ingress on
+  `keycloak.cybertech.local`. Runs in `start-dev` mode for portfolio.
 - **moderation-api-chart** has no probes and no resources block.
 - **vault-chart** ships its PVC commented out — runs ephemeral. Fine for
   dev (root token is hardcoded), unacceptable for prod.

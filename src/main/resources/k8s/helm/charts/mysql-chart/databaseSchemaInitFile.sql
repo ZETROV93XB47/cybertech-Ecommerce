@@ -1,5 +1,18 @@
-CREATE DATABASE IF NOT EXISTS cybertechDB;
-CREATE DATABASE IF NOT EXISTS keycloakDB;
+-- ============================================================
+-- Database bootstrap (executed before any cybertech schema)
+-- ------------------------------------------------------------
+-- Two databases share this MySQL instance:
+--   * cybertechDB — Spring Boot backend (tables defined below)
+--   * keycloakDB  — Keycloak 26.0.4 OAuth2 / OIDC store
+-- Both are owned by the `rookie` MySQL user provisioned by
+-- mysql-chart's Secret. Keycloak auto-migrates its own schema on
+-- first start; we just need the empty database + grants here.
+-- ============================================================
+CREATE DATABASE IF NOT EXISTS cybertechDB
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS keycloakDB
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON cybertechDB.* TO 'rookie'@'%';
 GRANT ALL PRIVILEGES ON keycloakDB.* TO 'rookie'@'%';
 
 FLUSH PRIVILEGES;
