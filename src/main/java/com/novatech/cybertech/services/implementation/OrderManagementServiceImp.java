@@ -34,6 +34,9 @@ import com.novatech.cybertech.validator.core.OrderValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -87,24 +90,42 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * to HTTP 403 by {@code ErrorManagementController}). Used by the user-facing
      * {@code GET /order/get/{uuid}} endpoint to prevent IDOR.
      *
+     * <p>Wave 3 regression-fix: callers carrying {@code ROLE_ADMIN} bypass the ownership
+     * check (read from the {@link SecurityContextHolder}). USERs still get the IDOR
+     * protection.</p>
+     *
      * @param uuid       order UUID to fetch.
-     * @param keycloakId caller's Keycloak subject; must equal the order's owner.
-     * @return the order DTO when ownership matches.
+     * @param keycloakId caller's Keycloak subject; must equal the order's owner (USER role only).
+     * @return the order DTO when ownership matches (USER) or unconditionally (ADMIN).
      * @throws OrderNotFoundException             when no order matches {@code uuid}.
-     * @throws OrderDoesntBelongsToUserException  when the caller is not the order's initiator.
+     * @throws OrderDoesntBelongsToUserException  when a non-admin caller is not the order's initiator.
      */
     @Transactional(readOnly = true)
     public OrderResponseDto getByUUID(final UUID uuid, final String keycloakId) {
         final OrderEntity order = orderRepository.findByUuid(uuid)
                 .orElseThrow(() -> new OrderNotFoundException("No product with the UUID : " + uuid + " found"));
 
-        if (order.getUserEntity() == null
-                || order.getUserEntity().getKeycloakId() == null
-                || !order.getUserEntity().getKeycloakId().equals(keycloakId)) {
+        if (!isCurrentCallerAdmin()
+                && (order.getUserEntity() == null
+                    || order.getUserEntity().getKeycloakId() == null
+                    || !order.getUserEntity().getKeycloakId().equals(keycloakId))) {
             throw new OrderDoesntBelongsToUserException("Order " + uuid + " does not belong to the current user");
         }
 
         return orderMapper.mapFromEntityToResponseDto(order);
+    }
+
+    /**
+     * Returns {@code true} when the current {@link SecurityContextHolder} authentication
+     * carries {@code ROLE_ADMIN}. Mirrors {@code KeycloakRoleConverter}'s naming convention
+     * ({@code ROLE_ + uppercase}). Returns {@code false} on null / anonymous authentication.
+     */
+    private static boolean isCurrentCallerAdmin() {
+        final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch("ROLE_ADMIN"::equals);
     }
 
     /**

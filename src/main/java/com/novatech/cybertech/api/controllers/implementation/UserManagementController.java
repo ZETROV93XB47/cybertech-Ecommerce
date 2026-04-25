@@ -138,12 +138,25 @@ public class UserManagementController implements UserControllerApiSpec {
      * {@code /api/v1/services/user/register/**} has been narrowed to the exact
      * {@code /register} path so this URL no longer falls into {@code permitAll()}.</p>
      *
-     * @return HTTP 201 with the generated {@link UserResponseDto}.
+     * <p>Wave 3 regression-fix: returns a {@code Map.of(...)} body (mirrors the
+     * {@link #register(UserCreateRequestDto)} pattern) so the synthetic user's
+     * {@code keycloakId} is exposed to the admin caller. Returning a {@link UserResponseDto}
+     * directly suppressed {@code keycloakId} via the {@code @JsonIgnore} on the DTO field —
+     * the admin caller cannot identify the synthetic user without it.</p>
+     *
+     * @return HTTP 201 with a compact {@code Map} body containing {@code id} (local UUID),
+     *         {@code keycloakId}, {@code email} and {@code username}.
      */
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/register/auto/single")
-    public ResponseEntity<UserResponseDto> registerAuto() {
-        return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.create(generateUserCreateRequestDto()));
+    public ResponseEntity<Map<String, Object>> registerAuto() {
+        final UserResponseDto created = userManagementServiceImp.create(generateUserCreateRequestDto());
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                "id", created.getUuid(),
+                "keycloakId", created.getKeycloakId(),
+                "email", created.getEmail(),
+                "username", created.getUsername()
+        ));
     }
 
 

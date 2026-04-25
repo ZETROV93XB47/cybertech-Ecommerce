@@ -55,10 +55,35 @@ public class RedisConfig {
     public ObjectMapper redisObjectMapper() {
         // GenericJacksonJsonRedisSerializer relies on @class type hints to
         // reconstruct domain objects on read. Without DefaultTyping every cached
-        // object would silently come back as a LinkedHashMap. We control every
-        // writer of this cache so allowing any base type (Object) is safe.
+        // object would silently come back as a LinkedHashMap.
+        //
+        // Wave 3 regression-fix: tighten the polymorphic type validator from a blanket
+        // `allowIfBaseType(Object.class)` to an explicit per-class allowlist of cached
+        // domain DTOs and the JDK collection / wrapper types that show up inside their
+        // serialised graphs. Allowing arbitrary base types lets a malicious cache writer
+        // (or a poisoned cache row) trigger gadget-chain deserialisation on read; the
+        // whitelist below limits the attack surface to types we actually round-trip.
         final PolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
-                .allowIfBaseType(Object.class)
+                // Cached domain DTOs — the actual @Cacheable / putWithJitter payloads.
+                .allowIfSubType(com.novatech.cybertech.dto.response.cart.CartResponseDto.class)
+                .allowIfSubType(com.novatech.cybertech.dto.response.cart.CartItemResponseDto.class)
+                .allowIfSubType(com.novatech.cybertech.dto.data.DiscountContext.class)
+                // Domain enums embedded in the DTOs above.
+                .allowIfSubType(com.novatech.cybertech.entities.enums.DiscountType.class)
+                .allowIfSubType(com.novatech.cybertech.entities.enums.DiscountCalculationType.class)
+                // JDK collection / wrapper types referenced by the DTO graphs (CartResponseDto.items
+                // is a List<CartItemResponseDto>, DiscountContext fields are LocalDateTime/BigDecimal,
+                // userExistence cache stores Boolean, etc.).
+                .allowIfSubType(java.util.List.class)
+                .allowIfSubType(java.util.Map.class)
+                .allowIfSubType(java.util.Set.class)
+                .allowIfSubType(java.util.Collection.class)
+                .allowIfSubType(java.util.UUID.class)
+                .allowIfSubType(java.math.BigDecimal.class)
+                .allowIfSubType(java.time.LocalDateTime.class)
+                .allowIfSubType(Boolean.class)
+                .allowIfSubType(String.class)
+                .allowIfSubType(Number.class)
                 .build();
 
         return JsonMapper.builder()

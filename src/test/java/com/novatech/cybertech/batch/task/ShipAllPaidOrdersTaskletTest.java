@@ -2,7 +2,6 @@ package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
 import com.novatech.cybertech.dispatcher.NotificationDispatcher;
-import com.novatech.cybertech.dispatcher.ShippingDispatcher;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.ShippingContext;
 import com.novatech.cybertech.entities.OrderEntity;
@@ -29,6 +28,7 @@ import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -37,7 +37,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -45,8 +45,18 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link ShipAllPaidOrdersTasklet}. Per progress.md (SA4.3R) the per-order
- * try/catch is already correctly implemented in production — we verify it green.
+ * Unit tests for {@link ShipAllPaidOrdersTasklet}.
+ *
+ * <p>Wave 3 regression-fix: the per-order claim+dispatch now runs through
+ * {@link ShipOrderTransactionalDelegate#claimAndShip(OrderEntity, ShippingContext)}
+ * (REQUIRES_NEW). The tasklet itself is no longer {@code @Transactional}, so the
+ * optimistic-lock flush commits inside the delegate call and the per-order
+ * try/catch on {@link OptimisticLockingFailureException} actually fires. The mocks
+ * for the delegate replicate that contract: when the real delegate would set
+ * {@code AWAITING_SHIPPING} + save and then dispatch, the test's
+ * {@code doAnswer(...)} on {@code claimAndShip} mutates the order's status and
+ * delegates dispatch back to the {@link com.novatech.cybertech.dispatcher.ShippingDispatcher}
+ * mock so existing failure-isolation assertions still cover the dispatch path.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class ShipAllPaidOrdersTaskletTest {
@@ -55,10 +65,13 @@ class ShipAllPaidOrdersTaskletTest {
     private OrderRepository orderRepository;
 
     @Mock
-    private ShippingDispatcher shippingDispatcher;
+    private com.novatech.cybertech.dispatcher.ShippingDispatcher shippingDispatcher;
 
     @Mock
     private NotificationDispatcher notificationDispatcher;
+
+    @Mock
+    private ShipOrderTransactionalDelegate shipOrderDelegate;
 
     @InjectMocks
     private ShipAllPaidOrdersTasklet tasklet;
@@ -78,6 +91,23 @@ class ShipAllPaidOrdersTaskletTest {
                 new JobParameters(),
                 stepExecution
         );
+    }
+
+    /**
+     * Default delegate behavior: simulate the production REQUIRES_NEW delegate by mutating
+     * the in-memory order status, persisting the claim via the orderRepository mock and
+     * forwarding dispatch to the shippingDispatcher mock — keeping the existing failure
+     * isolation assertions valid against the new wiring.
+     */
+    private void wireDelegateToSimulateClaimAndShip() {
+        doAnswer(invocation -> {
+            final OrderEntity ord = invocation.getArgument(0);
+            final ShippingContext ctx = invocation.getArgument(1);
+            ord.setStatus(OrderStatus.AWAITING_SHIPPING);
+            orderRepository.save(ord);
+            shippingDispatcher.dispatch(ctx);
+            return null;
+        }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
     }
 
     private OrderEntity paidOrderForUser(final String email) {
@@ -104,6 +134,7 @@ class ShipAllPaidOrdersTaskletTest {
             assertThat(stepContribution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
             verifyNoInteractions(shippingDispatcher);
             verifyNoInteractions(notificationDispatcher);
+            verifyNoInteractions(shipOrderDelegate);
         }
     }
 
@@ -112,8 +143,9 @@ class ShipAllPaidOrdersTaskletTest {
     class HappyPath {
 
         @Test
-        @DisplayName("ships every PAID order: dispatch, save with SHIPPED status, notify")
+        @DisplayName("ships every PAID order: delegate.claimAndShip then save SHIPPED, notify")
         void shipsEveryOrder() throws Exception {
+            wireDelegateToSimulateClaimAndShip();
             final OrderEntity o1 = paidOrderForUser("a@example.com");
             final OrderEntity o2 = paidOrderForUser("b@example.com");
             when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1, o2));
@@ -121,10 +153,10 @@ class ShipAllPaidOrdersTaskletTest {
             final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
 
             assertThat(status).isEqualTo(RepeatStatus.FINISHED);
+            verify(shipOrderDelegate, times(2)).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
             verify(shippingDispatcher, times(2)).dispatch(any(ShippingContext.class));
             verify(notificationDispatcher, times(2)).dispatch(any(NotificationContext.class));
-            // Atomic-claim fix: each order is saved twice — once with AWAITING_SHIPPING (claim)
-            // and once with SHIPPED (after successful dispatch).
+            // Each order: claim save (inside delegate) + SHIPPED save (after dispatch).
             verify(orderRepository, times(2)).save(o1);
             verify(orderRepository, times(2)).save(o2);
             assertThat(o1.getStatus()).isEqualTo(OrderStatus.SHIPPED);
@@ -135,6 +167,7 @@ class ShipAllPaidOrdersTaskletTest {
         @Test
         @DisplayName("the dispatched ShippingContext carries packageId = order.uuid.toString()")
         void shippingContextHasOrderUuidAsPackageId() throws Exception {
+            wireDelegateToSimulateClaimAndShip();
             final OrderEntity o1 = paidOrderForUser("a@example.com");
             when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1));
 
@@ -148,6 +181,7 @@ class ShipAllPaidOrdersTaskletTest {
         @Test
         @DisplayName("the dispatched NotificationContext is SHIPPING_CONFIRMATION carrying a ShippingConfirmationPayload")
         void notificationContextIsShippingConfirmation() throws Exception {
+            wireDelegateToSimulateClaimAndShip();
             final OrderEntity o1 = paidOrderForUser("a@example.com");
             when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1));
 
@@ -173,24 +207,27 @@ class ShipAllPaidOrdersTaskletTest {
             final OrderEntity o3 = paidOrderForUser("c@example.com");
             when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1, o2, o3));
             // Throw only when the dispatched ShippingContext is for o2
-            org.mockito.Mockito.doAnswer(invocation -> {
-                final ShippingContext ctx = invocation.getArgument(0);
+            doAnswer(invocation -> {
+                final OrderEntity ord = invocation.getArgument(0);
+                final ShippingContext ctx = invocation.getArgument(1);
+                ord.setStatus(OrderStatus.AWAITING_SHIPPING);
+                orderRepository.save(ord);
                 if (ctx.getPackageId().equals(o2.getUuid().toString())) {
                     throw new RuntimeException("shipping vendor down");
                 }
+                shippingDispatcher.dispatch(ctx);
                 return null;
-            }).when(shippingDispatcher).dispatch(any(ShippingContext.class));
+            }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
 
             final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
 
             assertThat(status).isEqualTo(RepeatStatus.FINISHED);
             assertThat(o1.getStatus()).isEqualTo(OrderStatus.SHIPPED);
-            // Atomic-claim fix: o2 was claimed (PAID -> AWAITING_SHIPPING + save) before dispatch
-            // failed, so its in-memory status remains AWAITING_SHIPPING after the catch.
+            // o2 was claimed (PAID -> AWAITING_SHIPPING + save) before dispatch failed,
+            // so its in-memory status remains AWAITING_SHIPPING after the catch.
             assertThat(o2.getStatus()).isEqualTo(OrderStatus.AWAITING_SHIPPING);
             assertThat(o3.getStatus()).isEqualTo(OrderStatus.SHIPPED);
             verify(notificationDispatcher, times(2)).dispatch(any(NotificationContext.class));
-            // Each order claimed once + each successful order saved again as SHIPPED:
             // 3 claim saves + 2 SHIPPED saves = 5 total.
             verify(orderRepository, times(5)).save(any(OrderEntity.class));
         }
@@ -198,6 +235,7 @@ class ShipAllPaidOrdersTaskletTest {
         @Test
         @DisplayName("NotificationDispatcher failure is isolated to the failing order")
         void notificationFailure_isolated() throws Exception {
+            wireDelegateToSimulateClaimAndShip();
             final OrderEntity o1 = paidOrderForUser("a@example.com");
             final OrderEntity o2 = paidOrderForUser("b@example.com");
             when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1, o2));
@@ -209,8 +247,8 @@ class ShipAllPaidOrdersTaskletTest {
             // Per-order try/catch ensures FINISHED + ExitStatus.COMPLETED even if every notification fails
             assertThat(status).isEqualTo(RepeatStatus.FINISHED);
             assertThat(stepContribution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
-            // shippingDispatcher was attempted for both; with the atomic-claim fix each order is
-            // saved twice (AWAITING_SHIPPING claim + SHIPPED) before the notification fails = 4.
+            // shippingDispatcher was attempted for both; each order is saved twice
+            // (AWAITING_SHIPPING claim inside the delegate + SHIPPED) before the notification fails = 4.
             verify(shippingDispatcher, times(2)).dispatch(any(ShippingContext.class));
             verify(orderRepository, times(4)).save(any(OrderEntity.class));
         }
@@ -220,16 +258,54 @@ class ShipAllPaidOrdersTaskletTest {
         void shippingFailure_skipsSaveAndNotify() throws Exception {
             final OrderEntity o1 = paidOrderForUser("a@example.com");
             when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1));
-            doThrow(new RuntimeException("shipping vendor down"))
-                    .when(shippingDispatcher).dispatch(any(ShippingContext.class));
+            doAnswer(invocation -> {
+                final OrderEntity ord = invocation.getArgument(0);
+                ord.setStatus(OrderStatus.AWAITING_SHIPPING);
+                orderRepository.save(ord);
+                throw new RuntimeException("shipping vendor down");
+            }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
 
             tasklet.execute(stepContribution, stepArguments);
 
-            // Atomic-claim fix: the AWAITING_SHIPPING claim save happens BEFORE dispatch, so a
-            // dispatch failure leaves the order claimed (saved once) but never SHIPPED.
+            // Atomic-claim fix: the AWAITING_SHIPPING claim save happens BEFORE dispatch (inside
+            // the REQUIRES_NEW delegate), so a dispatch failure leaves the order claimed
+            // (saved once) but never SHIPPED.
             verify(orderRepository, times(1)).save(any(OrderEntity.class));
             verifyNoInteractions(notificationDispatcher);
             assertThat(o1.getStatus()).isEqualTo(OrderStatus.AWAITING_SHIPPING);
+        }
+
+        @Test
+        @DisplayName("OptimisticLockingFailureException from delegate skips the order without aborting the batch")
+        void optimisticLockFailure_skipsOrderWithoutAbortingBatch() throws Exception {
+            final OrderEntity o1 = paidOrderForUser("a@example.com");
+            final OrderEntity o2 = paidOrderForUser("b@example.com");
+            when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1, o2));
+
+            // o1 loses the race against ShippingListener → delegate raises an
+            // OptimisticLockingFailureException at its REQUIRES_NEW commit boundary.
+            // o2 is processed normally to prove the per-order isolation.
+            doAnswer(invocation -> {
+                final OrderEntity ord = invocation.getArgument(0);
+                final ShippingContext ctx = invocation.getArgument(1);
+                if (ord.getUuid().equals(o1.getUuid())) {
+                    throw new OptimisticLockingFailureException("Race lost on order " + ord.getUuid());
+                }
+                ord.setStatus(OrderStatus.AWAITING_SHIPPING);
+                orderRepository.save(ord);
+                shippingDispatcher.dispatch(ctx);
+                return null;
+            }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
+
+            final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
+
+            assertThat(status).isEqualTo(RepeatStatus.FINISHED);
+            assertThat(stepContribution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
+            // o1 was skipped silently (status untouched in-memory after the delegate threw).
+            assertThat(o1.getStatus()).isEqualTo(OrderStatus.PAID);
+            // o2 was processed end-to-end.
+            assertThat(o2.getStatus()).isEqualTo(OrderStatus.SHIPPED);
+            verify(notificationDispatcher, times(1)).dispatch(any(NotificationContext.class));
         }
     }
 

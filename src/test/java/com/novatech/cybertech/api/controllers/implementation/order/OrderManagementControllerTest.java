@@ -432,21 +432,20 @@ class OrderManagementControllerTest {
     }
 
     @Test
-    void shouldFailGettingOrderByUuidAsAdminCauseForbidden() throws Exception {
-        // GET /get/{uuid} is annotated @PreAuthorize("hasRole('USER')") only. ADMIN should be rejected.
+    void shouldGetOrderByUuidAsAdminBypassingOwnershipCheck() throws Exception {
+        // Wave 3 regression-fix: GET /get/{uuid} now permits hasRole('USER') OR hasRole('ADMIN').
+        // The service layer bypasses the ownership check for ADMIN callers (read from
+        // SecurityContextHolder), so the admin can fetch any order regardless of initiator.
         UUID orderUuid = UUID.randomUUID();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Access denied")
-                .httpStatusCode(403)
-                .errorCodeType(FUNCTIONAL)
-                .build();
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
+        when(orderService.getByUUID(eq(orderUuid), eq("admin-id"))).thenReturn(response);
 
         mockMvc.perform(get(GET_BY_UUID, orderUuid)
                         .with(jwtAdmin("admin-id"))
                         .accept(APPLICATION_JSON))
-                .andExpect(status().isForbidden())
+                .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+                .andExpect(content().json(asJsonString(response), STRICT));
     }
 
     @Test

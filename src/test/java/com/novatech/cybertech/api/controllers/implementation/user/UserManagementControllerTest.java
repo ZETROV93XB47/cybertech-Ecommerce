@@ -255,6 +255,9 @@ class UserManagementControllerTest {
     @Test
     void shouldRegisterAutoSingleAsAdminReturning201() throws Exception {
         // Admin call still works — covers the happy path regardless of BUG-201 wiring.
+        // Wave 3 regression-fix: response body is a Map.of(id, keycloakId, email, username)
+        // (mirrors the /register endpoint) so the synthetic user's keycloakId is exposed —
+        // the @JsonIgnore on UserResponseDto.keycloakId would have suppressed it otherwise.
         final UserResponseDto created = UserDtoFixtures.aSampleUserResponse();
         when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
 
@@ -265,7 +268,10 @@ class UserManagementControllerTest {
                         .contentType(APPLICATION_JSON))
                 .andExpect(status().isCreated())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(created), STRICT));
+                .andExpect(jsonPath("$.id").value(created.getUuid().toString()))
+                .andExpect(jsonPath("$.keycloakId").value(created.getKeycloakId()))
+                .andExpect(jsonPath("$.email").value(created.getEmail()))
+                .andExpect(jsonPath("$.username").value(created.getUsername()));
     }
 
     // ---------- GET /ok (health) ----------

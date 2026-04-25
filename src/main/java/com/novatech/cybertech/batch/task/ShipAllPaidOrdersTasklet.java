@@ -2,7 +2,6 @@ package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
 import com.novatech.cybertech.dispatcher.NotificationDispatcher;
-import com.novatech.cybertech.dispatcher.ShippingDispatcher;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.ShippingContext;
 import com.novatech.cybertech.dto.data.UserContactDto;
@@ -19,7 +18,6 @@ import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -29,15 +27,17 @@ import java.util.List;
 public class ShipAllPaidOrdersTasklet extends BaseTasklet {
 
     private final OrderRepository orderRepository;
-    private final ShippingDispatcher shippingDispatcher;
     private final NotificationDispatcher notificationDispatcher;
+    private final ShipOrderTransactionalDelegate shipOrderDelegate;
 
     @Override
-    @Transactional
     public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) {
         log.info("Starting ShipAllAwaitingShippingOrdersTasklet");
 
-        // Récupérer toutes les commandes en attente d'expédition
+        // Récupérer toutes les commandes en attente d'expédition.
+        // findByStatus runs in its own short transaction (Spring Data default) — we no longer
+        // wrap execute(...) in @Transactional because the per-order optimistic-lock claim must
+        // commit at the delegate boundary so a race-loss can be caught here per-order.
         final List<OrderEntity> awaitingOrders = orderRepository.findByStatus(OrderStatus.PAID);
 
         if (awaitingOrders.isEmpty()) {
@@ -53,11 +53,14 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
                 processShipping(order);
             }
             catch (OptimisticLockingFailureException e) {
+                // Catches both OptimisticLockingFailureException and its subclass
+                // ObjectOptimisticLockingFailureException raised by Hibernate/Spring ORM.
                 // Lost the race against ShippingListener (which also ships PAID orders on
                 // OrderPaidEvent). Optimistic locking via @Version on BaseEntity guarantees
                 // exactly one of the two paths wins the claim — the loser silently skips.
-                // Catches both OptimisticLockingFailureException and its subclass
-                // ObjectOptimisticLockingFailureException raised by Hibernate/Spring ORM.
+                // Wave 3 fix: the claim+save now lives inside ShipOrderTransactionalDelegate
+                // (REQUIRES_NEW), so the optimistic-lock flush happens at delegate-method exit
+                // and this catch can actually observe the race-loss per order.
                 log.debug("Skipping order {} — claimed concurrently by another path: {}", order.getUuid(), e.getMessage());
             }
             catch (Exception e) {
@@ -72,14 +75,6 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
     }
 
     private void processShipping(OrderEntity order) {
-        // Atomically claim the order before dispatching: flip PAID -> AWAITING_SHIPPING and save
-        // FIRST so JPA's @Version optimistic locking can detect the race against ShippingListener
-        // (which also ships PAID orders on OrderPaidEvent). If we lose the race, the
-        // OptimisticLockingFailureException bubbles up to the caller and we skip this order
-        // without dispatching — preventing the double-ship bug.
-        order.setStatus(OrderStatus.AWAITING_SHIPPING);
-        orderRepository.save(order);
-
         final UserEntity user = order.getUserEntity();
 
         final UserContactDto userContactDto = UserContactDto.builder()
@@ -96,7 +91,12 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
                 .shippingProvider(order.getShippingProvider())
                 .build();
 
-        shippingDispatcher.dispatch(shippingContext);
+        // Atomically claim the order before dispatching: flip PAID -> AWAITING_SHIPPING and save
+        // FIRST so JPA's @Version optimistic locking can detect the race against ShippingListener
+        // (which also ships PAID orders on OrderPaidEvent). The claim+dispatch run in their own
+        // REQUIRES_NEW tx so the optimistic-lock flush commits inside this call and can be
+        // observed by the per-order try/catch in execute(...).
+        shipOrderDelegate.claimAndShip(order, shippingContext);
 
         order.setStatus(OrderStatus.SHIPPED);
         orderRepository.save(order);

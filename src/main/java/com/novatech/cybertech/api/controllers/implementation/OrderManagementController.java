@@ -82,9 +82,13 @@ public class OrderManagementController implements OrderManagementControllerApiSp
      * BUG-IDOR-D1: ownership-checked read. Forwards the JWT subject to the service so the
      * service layer can throw {@link com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException}
      * (→ 403) when the caller is not the order's initiator.
+     *
+     * <p>Wave 3 regression-fix: ADMINs are also allowed on this endpoint and the service
+     * layer bypasses the ownership check when the caller carries {@code ROLE_ADMIN}
+     * (resolved from the SecurityContext inside the service to keep this signature stable).</p>
      */
     @Override
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @GetMapping(value = "/get/{uuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponseDto> getOrderByUuid(@PathVariable("uuid") UUID orderUuid,
                                                             @AuthenticationPrincipal final Jwt jwt) {
