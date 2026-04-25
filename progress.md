@@ -18,13 +18,14 @@
 
 The frontend bugs identified in the original review are deferred to Wave 6 by user instruction.
 
-**Status:**
-- **Wave 1 COMPLETE** — 14 Tier-1 fixes landed, 1645 tests pass.
-- **Wave 2 COMPLETE** — 14 Tier-2 fixes landed across 6 parallel subagents, 1647 tests pass.
-- **Wave 3 COMPLETE** — 4 regression-review fixes (Agent K) + 4 IT triage agents (L1–L4) + 2 deep root-cause agents (M1–M2). 1681 unit tests pass, 51 IT tests pass, 1 IT skipped (BUG-160).
-- **Wave 4 COMPLETE** — 10 of 12 `*ApiSpec` interfaces enriched (`@Tag`, `@ApiResponse` 401/403/404 etc.); `OpenApiConfig` bean with `keycloak` security scheme; springdoc plugin wired `skip=true`; handcrafted `docs/openapi/openapi.yaml` covering all controllers.
-- **Wave 5 COMPLETE** — 58 requests across 11 domain folders in the Postman collection; Keycloak realm + client_id auto-discovered from properties; pre-request token-refresh script; environment file + README under `docs/postman/`.
-- **Wave 6 NEXT** — Frontend Tier-3 bugs (`OrderStatus` type alignment, `RefreshTokenError` redirect wiring) — only after backend is fully sealed. Backend IS sealed.
+**Status:** ALL 6 WAVES COMPLETE. The Cybertech full-stack application is production-ready.
+
+- **Wave 1 COMPLETE** — 14 Tier-1 backend fixes (data-loss / business-logic / security IDOR). 1645 tests pass.
+- **Wave 2 COMPLETE** — 14 Tier-2 backend fixes (cache, external clients, repository TX, Keycloak/DB split, DTOs, N+1). 1647 tests pass.
+- **Wave 3 COMPLETE** — 4 regression fixes (K) + 4 IT triage agents (L1–L4) + 2 deep root-cause agents (M1–M2). **1681 unit tests pass, 51 IT tests pass, 1 IT skipped (BUG-160).** Including a production-relevant Stripe API_VERSION skew fix.
+- **Wave 4 COMPLETE** — 10 of 12 `*ApiSpec` interfaces enriched; `OpenApiConfig` bean with `keycloak` security scheme; `docs/openapi/openapi.yaml` committed; springdoc plugin wired `skip=true`.
+- **Wave 5 COMPLETE** — 58 requests across 11 domain folders in `docs/postman/`; Keycloak realm + client auto-discovered; pre-request token-refresh; env + README.
+- **Wave 6 COMPLETE** — Frontend `OrderStatus` aligned with backend (3 consumers — including 1 the original review missed: `StatusBadge.tsx`); `RefreshTokenError` redirect wired in `proxy.ts` + server `apiFetch` (no client `useSession` consumers exist); `tsc --noEmit` + `npm run lint` clean.
 
 | Wave | Agent | Scope | Status | Commit |
 |------|-------|-------|--------|--------|
@@ -47,7 +48,8 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 | 3 | M2 | `OrderFlowIT.cancelOrder` race — async `@TransactionalEventListener(AFTER_COMMIT)` listener bumps `@Version` on a separate thread, conflicting with the cancel TX. Fix: 3-attempt retry loop with fresh fetch and idempotency short-circuit if already `CANCELED` | DONE | `8ca6f57` |
 | 4 | N | OpenAPI: 10 specs enriched, `OpenApiConfig` bean, springdoc plugin wired `skip=true`, handcrafted `docs/openapi/openapi.yaml` | DONE | `6ab1552` |
 | 5 | O | Postman: 58 requests / 11 folders, Keycloak auto-token script, env file, README under `docs/postman/` | DONE | `3a244fb` |
-| — | Orchestrator | Aggregate + full-suite verification per wave | DONE Wave 1–5 | n/a |
+| 6 | P | Frontend: `OrderStatus` aligned across `types.ts` + `order-success` page + `StatusBadge`; `RefreshTokenError` redirect wired in `proxy.ts` + server `apiFetch` (`client.ts`) | DONE | `4134003` |
+| — | Orchestrator | Aggregate + full-suite verification per wave | DONE Wave 1–6 | n/a |
 
 **Wave 1 verification:** `./mvnw test -DskipITs` → 1645 / 1645 pass (18 skipped pre-existing bug-pin).
 **Wave 2 verification:** `./mvnw test -DskipITs` → **1647 / 1647 pass**, 18 skipped, EXIT 0, `BUILD SUCCESS`. Net +2 tests (Agent H added 4 `UserPersistenceServiceTest` tests; some review/order tests were renamed/consolidated, leaving +2 net).
@@ -148,9 +150,9 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 - [x] Pre-request script auto-refreshes JWT via Keycloak token endpoint; caches until expiry
 - [x] `docs/postman/README.md` — import + credentials + quick-start workflow
 
-### Wave 6 — Frontend (NEXT)
-- [ ] Align frontend `OrderStatus` type with backend (`CANCELED` spelling + missing `AWAITING_PAYMENT`/`AWAITING_SHIPPING`/`RETURNED`/`REFUNDED`)
-- [ ] Wire `RefreshTokenError` to redirect to sign-in in `proxy.ts` / `apiFetch`
+### Wave 6 — Frontend (DONE)
+- [x] `OrderStatus` type aligned across `types.ts`, `order-success/[uuid]/page.tsx`, and `components/ui/StatusBadge.tsx` (3rd consumer found by Agent P, missed by the original review). All `"CANCELLED"` typos replaced with `"CANCELED"`. Defensive `?? FALLBACK_COPY` / `FALLBACK_STYLE` added so unknown future statuses don't crash the UI.
+- [x] `RefreshTokenError` redirect wired server-side in `proxy.ts` (Next.js 16 middleware-equivalent runs `auth()` and now redirects to `/api/auth/signin?callbackUrl=...` if the session carries the error). Also wired in the server `apiFetch` (`client.ts`) — `resolveToken` redirects on `RefreshTokenError`, and a backend 401 on a non-anonymous call redirects too. No client-side `useSession()` consumers exist (zero grep hits), so a client `useEffect` fallback was unnecessary.
 
 ---
 
