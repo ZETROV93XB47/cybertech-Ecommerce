@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# .env.production holds only public, non-secret values for the minikube
+# self-hosted prod build (host names + Auth.js URL). Real secrets come
+# from the helm chart at runtime — see comment at the top of that file.
+!.env.production
+!.env.local.example
 
 # vercel
 .vercel

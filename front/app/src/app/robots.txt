@@ -1,0 +1,9 @@
+User-Agent: *
+Disallow: /api/
+Disallow: /account/
+Disallow: /admin/
+Disallow: /checkout
+Disallow: /cart
+Allow: /
+
+Sitemap: https://cybertech.local/sitemap.xml
