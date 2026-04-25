@@ -63,12 +63,13 @@ cybertech-dev-develop_cybertech/
 - [x] `tsc --noEmit` clean, `eslint` clean, `next build` green (4 routes)
 - [x] Commit and report
 
-### M2 — Customer happy path (next session)
-- [ ] `/products` (server-side search + client filters)
-- [ ] `/products/[uuid]` (gallery, attributes, reviews, write-review CTA gated by `/review/reviewable`)
-- [ ] `/cart` (CRUD client-side with optimistic updates)
-- [ ] `/checkout` (shipping form + payment type + discount selector wired to `/discounts/active`)
-- [ ] `/order-success/[uuid]` (poll `/order/status/{uuid}` for ~10s)
+### M2 — Customer happy path
+- [x] `/products` (server-side search via POST `/product/search`, GET-form filters with single-select brand/category to match backend contract, sort, pagination)
+- [x] `/products/[uuid]` (Next 16 async params, hero + bento gallery placeholder, specs from `attributes`, qty stepper + add-to-cart server action, write-review CTA gated by `/review/reviewable`)
+- [x] `/cart` (server component + `CartItemRow` client comp using server actions: add, decreaseQuantity, removeProduct, clear; revalidatePath after each)
+- [x] `/checkout` (3-step layout — shipping address pre-filled from user profile, shipping method, payment type, discount selector wired to `/discounts/active`, server action calls `/order/place` and redirects to `/order-success/[uuid]`)
+- [x] `/order-success/[uuid]` (status-aware copy, status badge, retry-payment button on failure, polls `/order/status/{uuid}` every 2s for ~10s when status is CREATED via server action + `router.refresh()`)
+- [x] `tsc` clean, `eslint` clean (one ESLint react-hooks/purity catch fixed), `next build` green (7 routes)
 
 ### M3 — Account
 - [ ] `/account/orders` + detail + cancel/retry
