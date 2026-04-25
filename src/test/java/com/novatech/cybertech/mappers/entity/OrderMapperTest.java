@@ -72,11 +72,11 @@ class OrderMapperTest {
         }
 
         @Test
-        void shouldDropUserUuidAndPaymentType_documentingTechDebt() {
-            // Both userUuid and paymentType have no @Mapping target — they are silently dropped.
-            // Service layer is expected to wire UserEntity itself; PaymentType has no field on OrderEntity.
+        void shouldDropPaymentType_documentingTechDebt() {
+            // userUuid has been removed from the placing DTO entirely (identity is JWT-derived).
+            // paymentType has no @Mapping target — it is silently dropped. The service layer
+            // is expected to wire UserEntity itself; PaymentType has no field on OrderEntity.
             OrderPlacingRequestDto dto = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
-                    .userUuid(UUID.randomUUID())
                     .paymentType(PaymentType.MASTERCARD)
                     .build();
 

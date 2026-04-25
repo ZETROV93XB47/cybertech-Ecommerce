@@ -182,7 +182,7 @@ class OrderFlowIT {
     @Test
     void placeOrderWithoutAuthenticationReturnsClientError() throws Exception {
         final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
-                .userUuid(userUuid)
+                // userUuid removed: identity is JWT-derived
                 .build();
 
         mockMvc.perform(post("/api/v1/services/management/order/place")
@@ -216,7 +216,7 @@ class OrderFlowIT {
     @Test
     void placeOrderWithEmptyCartReturnsErrorPerBug152() throws Exception {
         final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
-                .userUuid(userUuid)
+                // userUuid removed: identity is JWT-derived
                 .build();
 
         mockMvc.perform(post("/api/v1/services/management/order/place")
@@ -241,7 +241,7 @@ class OrderFlowIT {
 
         // 2) Place order
         final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
-                .userUuid(userUuid)
+                // userUuid removed: identity is JWT-derived
                 .build();
 
         final MvcResult result = mockMvc.perform(post("/api/v1/services/management/order/place")
@@ -270,7 +270,7 @@ class OrderFlowIT {
         addItemToCart(productUuid, 1);
 
         final OrderPlacingRequestDto placeBody = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
-                .userUuid(userUuid)
+                // userUuid removed: identity is JWT-derived
                 .build();
         final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
                         .with(jwtUser(keycloakId))
@@ -337,7 +337,7 @@ class OrderFlowIT {
         addItemToCart(productUuid, 1);
 
         final OrderPlacingRequestDto placeBody = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
-                .userUuid(userUuid)
+                // userUuid removed: identity is JWT-derived
                 .build();
         final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
                         .with(jwtUser(keycloakId))

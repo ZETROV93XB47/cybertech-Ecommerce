@@ -23,6 +23,7 @@ public class BankCardCreationRequestDto {
 
     @NotBlank(message = "Card number cannot be blank")
     @Size(min = 13, max = 19, message = "Card number must be between 13 and 19 digits")
+    @Pattern(regexp = "\\d{13,19}", message = "Card number must contain only digits, 13–19 in length")
     private String cardNumber;
 
     @NotBlank(message = "Expiry date cannot be blank")

@@ -77,7 +77,7 @@ class ReviewCrudControllerTest {
         UUID orderUuid = UUID.randomUUID();
 
         ReviewCreateRequestDto reviewCreateRequestDto = ReviewCreateRequestDto.builder()
-                .userUuid(reviewUUID)
+                // userUuid removed: identity is now derived from the JWT in the controller/service.
                 .orderUuid(orderUuid)
                 .productUuid(productUUID)
                 .rating(5)

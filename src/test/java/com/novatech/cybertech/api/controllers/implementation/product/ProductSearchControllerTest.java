@@ -169,24 +169,26 @@ class ProductSearchControllerTest {
     }
 
     @Test
-    void shouldFailSearchProductsCauseDtoBadRequest() throws Exception {
-        // category is @NotNull → triggers MethodArgumentNotValidException → 400.
-        ProductSearchRequestDto invalidDto = ProductSearchRequestDto.builder()
+    void shouldAcceptSearchWithoutCategoryAsCrossCategorySearch() throws Exception {
+        // Category is now optional: null category means "no category filter" (keyword-only,
+        // cross-category search). The DTO @NotNull was dropped (request was previously rejected).
+        ProductSearchRequestDto noCategoryDto = ProductSearchRequestDto.builder()
                 .keyword("laptop")
                 .priceMin(200.0)
+                .page(0)
+                .size(10)
                 .build();
+
+        Page<ProductResponseDto> page = new PageImpl<>(List.of(), Pageable.ofSize(10), 0);
+        when(productService.searchProducts(any(ProductSearchRequestDto.class))).thenReturn(page);
 
         mockMvc.perform(post(SEARCH_PRODUCTS_ENDPOINT)
                         .with(jwtAnonymous())
                         .with(csrf())
                         .accept(APPLICATION_JSON)
                         .contentType(APPLICATION_JSON)
-                        .content(asJsonString(invalidDto)))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
-                .andExpect(jsonPath("$.httpStatusCode").value(400))
-                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+                        .content(asJsonString(noCategoryDto)))
+                .andExpect(status().isOk());
     }
 
     @Test

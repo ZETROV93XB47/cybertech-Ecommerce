@@ -4,7 +4,6 @@ import com.novatech.cybertech.entities.enums.Brand;
 import com.novatech.cybertech.entities.enums.Category;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,7 +26,8 @@ public class ProductSearchRequestDto {
     @Max(value = 1000000, message = "Le prix maximum doit être supérieur ou égal à 1000000")
     private Double priceMax;
 
-    @NotNull(message = "La catégorie ne peut pas être nulle")
+    // Category is now optional: a null value means "no category filter"
+    // (keyword-only or cross-category search). The search service guards on null.
     private Category category; // Ton Enum
 
     private List<Brand> brands;     // Ton Enum

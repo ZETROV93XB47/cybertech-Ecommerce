@@ -342,34 +342,30 @@ class DataGeneratorTest {
             assertThat(dto.getShippingCity()).isNotBlank();
             assertThat(dto.getShippingZipCode()).isNotBlank();
             assertThat(dto.getShippingCountry()).isNotBlank();
-            assertThat(dto.getUserUuid()).isNotNull();
+            // userUuid removed from DTO: identity is now derived from the JWT in the controller/service.
 
             Set<ConstraintViolation<OrderPlacingRequestDto>> violations = validator.validate(dto);
             assertThat(violations).as("orderGenerator() must satisfy bean validation").isEmpty();
         }
 
         @Test
-        @DisplayName("FIX BUG-135: orderGenerator() no longer returns the hardcoded UUID")
-        void orderGeneratorNoLongerReturnsHardcodedUuid_pinsFix() {
-            // Given – BUG-135 fix: userUuid is now a fresh UUID.randomUUID() per invocation.
-            final UUID previouslyHardcoded = UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000");
-
-            // When
+        @DisplayName("BUG-135 historical: orderGenerator() returns a non-null DTO; userUuid no longer on DTO")
+        void orderGeneratorIsNonNull_pinsHistoricalFix() {
+            // BUG-135 originally pinned a fresh per-call userUuid on the DTO. The DTO no longer
+            // exposes userUuid (identity is JWT-derived) so the assertion is reduced to non-null.
             final OrderPlacingRequestDto a = DataGenerator.orderGenerator();
-
-            // Then – the previously-pinned hardcoded value is gone.
-            assertThat(a.getUserUuid()).isNotEqualTo(previouslyHardcoded);
+            assertThat(a).isNotNull();
         }
 
         @Test
-        @DisplayName("FIX BUG-135: two consecutive orderGenerator() calls produce DIFFERENT userUuid")
-        void orderGeneratorProducesDifferentUuids() {
+        @DisplayName("orderGenerator() returns independent DTO instances on consecutive calls")
+        void orderGeneratorProducesIndependentInstances() {
             // When
             final OrderPlacingRequestDto a = DataGenerator.orderGenerator();
             final OrderPlacingRequestDto b = DataGenerator.orderGenerator();
 
             // Then
-            assertThat(a.getUserUuid()).isNotEqualTo(b.getUserUuid());
+            assertThat(a).isNotSameAs(b);
         }
     }
 

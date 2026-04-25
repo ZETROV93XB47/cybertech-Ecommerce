@@ -19,8 +19,8 @@ public final class ReviewDtoFixtures {
     }
 
     public static ReviewCreateRequestDto.ReviewCreateRequestDtoBuilder aValidCreateRequestBuilder() {
+        // userUuid removed: identity is derived from JWT in the controller/service
         return ReviewCreateRequestDto.builder()
-                .userUuid(UUID.randomUUID())
                 .orderUuid(UUID.randomUUID())
                 .productUuid(UUID.randomUUID())
                 .rating(5)

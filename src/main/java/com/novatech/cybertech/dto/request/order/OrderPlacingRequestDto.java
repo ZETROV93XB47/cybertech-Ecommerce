@@ -11,16 +11,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.UUID;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class OrderPlacingRequestDto {
 
-    @NotNull
-    private UUID userUuid;
+    // Identity (userUuid) removed: identity is authoritatively derived from the JWT subject in the
+    // controller/service layer. Allowing the client to declare a userUuid in the body created an
+    // order-spoofing footgun if any future refactor accidentally read the DTO field instead of the JWT.
 
     @NotNull
     private PaymentType paymentType;

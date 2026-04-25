@@ -30,8 +30,8 @@ public final class OrderDtoFixtures {
     }
 
     public static OrderPlacingRequestDto.OrderPlacingRequestDtoBuilder aValidPlaceOrderRequestBuilder() {
+        // userUuid removed: identity is derived from JWT in the controller/service
         return OrderPlacingRequestDto.builder()
-                .userUuid(UUID.randomUUID())
                 .paymentType(PaymentType.VISA)
                 .shippingType(ShippingType.STANDARD)
                 .shippingProvider(ShippingProvider.DHL)

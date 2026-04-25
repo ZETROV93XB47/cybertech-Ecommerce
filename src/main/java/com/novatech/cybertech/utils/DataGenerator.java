@@ -245,8 +245,8 @@ public class DataGenerator {
      *         serialisation unexpectedly fails (preserved legacy contract).
      */
     public static OrderPlacingRequestDto orderGenerator() {
+        // userUuid removed from DTO: identity is derived from JWT in the controller/service
         OrderPlacingRequestDto build = OrderPlacingRequestDto.builder()
-                .userUuid(UUID.randomUUID())
                 .shippingStreet(FAKER.address().streetAddress())
                 .shippingCity(FAKER.address().city())
                 .shippingZipCode(FAKER.address().zipCode())

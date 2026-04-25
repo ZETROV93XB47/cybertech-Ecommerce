@@ -15,8 +15,9 @@ import java.util.UUID;
 @AllArgsConstructor
 public class ReviewCreateRequestDto {
 
-    @NotNull(message = "User UUID cannot be null")
-    private UUID userUuid;
+    // Identity (userUuid) removed: identity is authoritatively derived from the JWT subject in the
+    // controller/service layer. Allowing the client to declare a userUuid in the body created a
+    // spoofing footgun if any future refactor accidentally read the DTO field instead of the JWT.
 
     @NotNull(message = "Order UUID cannot be null")
     private UUID orderUuid;
