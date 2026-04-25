@@ -21,9 +21,19 @@ const SUCCESS_COPY: Record<
     sub: "Hang tight — Stripe is finalizing the charge. This usually takes a few seconds.",
     tone: "warn",
   },
+  AWAITING_PAYMENT: {
+    headline: "Awaiting payment",
+    sub: "Your order is awaiting payment confirmation.",
+    tone: "warn",
+  },
   PAID: {
     headline: "Order Confirmed",
     sub: "Thank you for your purchase. Our engineering team is preparing your hardware for shipment.",
+    tone: "ok",
+  },
+  AWAITING_SHIPPING: {
+    headline: "Preparing your shipment",
+    sub: "Your order has been paid and is being prepared for shipping.",
     tone: "ok",
   },
   SHIPPED: {
@@ -36,9 +46,19 @@ const SUCCESS_COPY: Record<
     sub: "Enjoy your new gear. Reviews are open if you want to share notes.",
     tone: "ok",
   },
-  CANCELLED: {
+  RETURNED: {
+    headline: "Order returned",
+    sub: "Your order has been returned.",
+    tone: "warn",
+  },
+  CANCELED: {
     headline: "Order cancelled",
     sub: "This order is cancelled and no charge will be captured.",
+    tone: "warn",
+  },
+  REFUNDED: {
+    headline: "Order refunded",
+    sub: "Your order has been refunded.",
     tone: "warn",
   },
   PAYMENT_FAILED: {
@@ -46,6 +66,12 @@ const SUCCESS_COPY: Record<
     sub: "Stripe declined the charge. You can retry below — your cart and shipping details are preserved.",
     tone: "fail",
   },
+};
+
+const FALLBACK_COPY = {
+  headline: "Order received",
+  sub: "Your order is being processed.",
+  tone: "warn" as const,
 };
 
 export default async function OrderSuccessPage({
@@ -66,7 +92,7 @@ export default async function OrderSuccessPage({
     throw err;
   }
 
-  const copy = SUCCESS_COPY[order.status];
+  const copy = SUCCESS_COPY[order.status] ?? FALLBACK_COPY;
   const iconBg =
     copy.tone === "ok"
       ? "bg-secondary-container shadow-secondary/20"

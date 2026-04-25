@@ -19,6 +19,22 @@ export default auth((req) => {
   const isAccount = pathname.startsWith("/account");
   const isAdmin = pathname.startsWith("/admin");
 
+  // If Keycloak refresh failed, the session cookie still validates locally
+  // but every backend call will 401. Force the user back through sign-in
+  // before they hit a silently-broken page. Skip for the auth routes
+  // themselves to avoid a redirect loop.
+  if (
+    session?.error === "RefreshTokenError" &&
+    !pathname.startsWith("/api/auth")
+  ) {
+    const signin = new URL("/api/auth/signin", req.nextUrl);
+    signin.searchParams.set(
+      "callbackUrl",
+      req.nextUrl.pathname + req.nextUrl.search,
+    );
+    return NextResponse.redirect(signin);
+  }
+
   if (!isAccount && !isAdmin) return undefined;
 
   if (!session) {

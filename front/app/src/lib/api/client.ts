@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import type { ErrorResponseDto } from "./types";
 
@@ -74,6 +75,12 @@ async function resolveToken(options: RequestOptions): Promise<string | null> {
   if (options.token !== undefined) return options.token;
   // auth() is async in v5; safe to call from server components / route handlers.
   const session = await auth();
+  // If the Keycloak refresh-token call failed earlier, the session cookie is
+  // still valid client-side but the backend will 401. Bounce through sign-in
+  // before we waste a network round-trip.
+  if (session?.error === "RefreshTokenError") {
+    redirect("/api/auth/signin");
+  }
   return session?.accessToken ?? null;
 }
 
@@ -121,6 +128,12 @@ export async function apiFetch<T>(
       } catch {
         errorBody = null;
       }
+    }
+    // 401 from the backend on an authenticated request means our access token
+    // is no longer valid (refresh likely failed). Send the user through
+    // sign-in instead of letting a vague error bubble up to the page.
+    if (res.status === 401 && !options.anonymous) {
+      redirect("/api/auth/signin");
     }
     throw new ApiError(res.status, errorBody);
   }

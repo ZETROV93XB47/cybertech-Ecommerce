@@ -52,11 +52,15 @@ export type DiscountCalculationType =
 
 export type OrderStatus =
   | "CREATED"
+  | "AWAITING_PAYMENT"
+  | "PAYMENT_FAILED"
   | "PAID"
+  | "AWAITING_SHIPPING"
   | "SHIPPED"
   | "DELIVERED"
-  | "CANCELLED"
-  | "PAYMENT_FAILED";
+  | "RETURNED"
+  | "CANCELED"
+  | "REFUNDED";
 
 export type PaymentType = "STRIPE" | "BANK_CARD";
 export type ShippingType = "STANDARD" | "EXPRESS";
