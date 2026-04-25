@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Task 5b — Logback configuration for Cybertech.
+
+    Spring Boot's profile-aware logback bootstrap (`logback-spring.xml`) wins over the
+    default `logback.xml`. We define two profile-scoped pipelines:
+
+      * default (dev / test / unspecified):
+          Plain text pattern, console-only, mirrors Spring Boot's own default so local
+          builds and `mvn test` output stay readable. MDC keys (traceId, spanId,
+          userKeycloakId, orderUuid) are appended at the end of each line when present.
+
+      * prod:
+          LogstashEncoder JSON output to STDOUT, designed to be ingested by Loki via the
+          standard Promtail / Alloy DaemonSet that scrapes container logs in the
+          monitoring namespace. Each event carries the canonical fields plus the same
+          MDC keys promoted to top-level JSON properties (Loki indexes them as labels).
+
+    Both pipelines are wrapped in an AsyncAppender so a slow STDOUT (e.g. kubelet log
+    rotation) cannot back-pressure request threads.
+
+    NOTE: do NOT include the Spring Boot default base config (`base.xml` / `defaults.xml`)
+    — its CONSOLE appender competes with ours and produces duplicate lines.
+-->
+<configuration scan="false">
+
+    <!-- Make spring.application.name available to the encoders below. -->
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="cybertech"/>
+
+    <!-- ================================================================================
+         dev / test / default — plain text console
+         ================================================================================ -->
+    <springProfile name="!prod">
+
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg %X%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="CONSOLE"/>
+            <queueSize>512</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <neverBlock>true</neverBlock>
+            <includeCallerData>false</includeCallerData>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+        </root>
+
+    </springProfile>
+
+    <!-- ================================================================================
+         prod — Logstash JSON encoder, async to STDOUT (Loki via Promtail/Alloy)
+         ================================================================================ -->
+    <springProfile name="prod">
+
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <!-- Canonical fields. timestamp/level/message/logger/thread are emitted
+                     by default; we promote MDC keys we care about to top-level JSON
+                     properties so Loki can index them as labels via pipeline_stages. -->
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>spanId</includeMdcKeyName>
+                <includeMdcKeyName>userKeycloakId</includeMdcKeyName>
+                <includeMdcKeyName>orderUuid</includeMdcKeyName>
+                <customFields>{"application":"${appName}"}</customFields>
+                <fieldNames>
+                    <timestamp>@timestamp</timestamp>
+                    <message>message</message>
+                    <thread>thread</thread>
+                    <logger>logger</logger>
+                    <level>level</level>
+                    <levelValue>[ignore]</levelValue>
+                    <version>[ignore]</version>
+                </fieldNames>
+            </encoder>
+        </appender>
+
+        <appender name="ASYNC_JSON" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="JSON_CONSOLE"/>
+            <queueSize>1024</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <neverBlock>true</neverBlock>
+            <includeCallerData>false</includeCallerData>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="ASYNC_JSON"/>
+        </root>
+
+        <!-- Cybertech business loggers stay at INFO; Spring noise lowered to WARN. -->
+        <logger name="com.novatech.cybertech" level="INFO"/>
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.apache.kafka" level="WARN"/>
+
+    </springProfile>
+
+</configuration>

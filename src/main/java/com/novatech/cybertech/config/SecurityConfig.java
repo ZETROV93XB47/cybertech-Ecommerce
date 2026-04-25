@@ -71,7 +71,17 @@ public class SecurityConfig {
             // BUG-PRE-3: kubelet probes + Spring Boot health groups (liveness/readiness).
             "/actuator/health",
             "/actuator/health/**",
-            "/actuator/info"
+            "/actuator/info",
+            // Task 5b: /actuator/prometheus is permitAll for IN-CLUSTER scraping by the
+            // Prometheus chart. The endpoint is NOT exposed by the api.cybertech.local
+            // ingress (the ingress only routes /api/** and /swagger-ui/**), so this is
+            // reachable only via the ClusterIP Service from Pods on the same network.
+            // For defence-in-depth, a NetworkPolicy can restrict ingress to the
+            // monitoring namespace — see runbooks/observability.md. Alternatives if you
+            // want auth: (a) leave it ROLE_ADMIN-locked and configure Prometheus with
+            // BasicAuth using an admin service-account JWT, or (b) front it with a
+            // sidecar proxy. Whitelisting was chosen for portfolio scope.
+            "/actuator/prometheus"
     };
 
     /**

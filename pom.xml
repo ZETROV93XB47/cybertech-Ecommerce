@@ -362,6 +362,37 @@
             <version>6.1.1</version>
             <scope>compile</scope>
         </dependency>
+        <!--
+             Observability stack (Task 5b):
+               - micrometer-registry-prometheus exposes Spring Boot Actuator metrics in
+                 Prometheus text format at /actuator/prometheus (scraped by the in-cluster
+                 Prometheus chart).
+               - micrometer-tracing-bridge-otel + opentelemetry-exporter-otlp wire the
+                 Micrometer Observation API to OpenTelemetry SDK and ship spans to the
+                 Tempo OTLP/HTTP endpoint configured via management.otlp.tracing.endpoint.
+               - logstash-logback-encoder produces JSON-structured logs (consumed by Loki)
+                 when the `prod` profile is active — see logback-spring.xml.
+             Versions for the micrometer / OTel artifacts are managed by the Spring Boot
+             4.0.4 BOM; logstash-logback-encoder is pinned to 8.0 (latest 8.x at time of
+             writing) which is compatible with Logback 1.5.x shipped by Spring Boot 4.
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>8.0</version>
+        </dependency>
     </dependencies>
     <dependencyManagement>
         <dependencies>
