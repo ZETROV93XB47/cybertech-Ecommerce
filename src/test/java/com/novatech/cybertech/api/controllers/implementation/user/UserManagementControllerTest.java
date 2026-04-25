@@ -75,9 +75,14 @@ class UserManagementControllerTest {
     // ---------- GET /get/{uuid} ----------
 
     @Test
-    void shouldGetUserByUuidSuccessfully() throws Exception {
+    void shouldGetUserByUuidSuccessfullyWhenCallerIsOwner() throws Exception {
+        // BUG-IDOR-D2: a USER may only read their own profile. The fixture's keycloakId is
+        // pinned to the JWT subject so the ownership check passes.
         final UUID userUuid = UUID.randomUUID();
-        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder().uuid(userUuid).build();
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
+                .uuid(userUuid)
+                .keycloakId(KEYCLOAK_ID)
+                .build();
 
         when(userManagementServiceImp.getByUUID(userUuid)).thenReturn(response);
 
@@ -87,6 +92,42 @@ class UserManagementControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldGetUserByUuidSuccessfullyWhenCallerIsAdmin() throws Exception {
+        // BUG-IDOR-D2: ADMINs bypass the ownership check.
+        final UUID userUuid = UUID.randomUUID();
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
+                .uuid(userUuid)
+                .keycloakId("some-other-user-keycloak-id")
+                .build();
+
+        when(userManagementServiceImp.getByUUID(userUuid)).thenReturn(response);
+
+        mockMvc.perform(get(GET_USER_BY_UUID_ENDPOINT, userUuid)
+                        .with(jwtAdmin("admin-id"))
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailGetUserByUuidWhenCallerNotOwnerReturning403() throws Exception {
+        // BUG-IDOR-D2: a USER asking for someone else's profile gets 403.
+        final UUID userUuid = UUID.randomUUID();
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
+                .uuid(userUuid)
+                .keycloakId("a-different-keycloak-id")
+                .build();
+
+        when(userManagementServiceImp.getByUUID(userUuid)).thenReturn(response);
+
+        mockMvc.perform(get(GET_USER_BY_UUID_ENDPOINT, userUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
     }
 
     @Test

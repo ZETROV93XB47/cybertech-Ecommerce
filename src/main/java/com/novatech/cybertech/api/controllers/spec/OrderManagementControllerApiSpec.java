@@ -134,7 +134,7 @@ public interface OrderManagementControllerApiSpec {
                     @ApiResponse(responseCode = "404", description = "Order not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<OrderResponseDto> getOrderByUuid(final UUID orderUuid);
+    ResponseEntity<OrderResponseDto> getOrderByUuid(final UUID orderUuid, @Parameter(hidden = true) final Jwt jwt);
 
 
     @Operation(summary = "Delete a Order by UUID",

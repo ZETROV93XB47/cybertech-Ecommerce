@@ -14,7 +14,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -61,15 +66,42 @@ public class UserManagementController implements UserControllerApiSpec {
     /**
      * Returns a user by UUID. Authenticated users only — not in the public whitelist.
      *
+     * <p><b>BUG-IDOR-D2:</b> regular USERs may only fetch their own profile; ADMINs bypass the
+     * ownership check. Ownership is asserted by comparing the loaded entity's
+     * {@code keycloakId} against the JWT {@code sub} claim. Differing identities for non-admins
+     * trigger {@link AccessDeniedException} (→ 403 via the existing handler).</p>
+     *
      * @param userUuid the unique identifier of the user to fetch.
+     * @param jwt      caller identity.
      * @return the {@link UserResponseDto} when found; throws
      *         {@link com.novatech.cybertech.exceptions.UserNotFoundException} (mapped to
      *         HTTP 404 by the controller advice) otherwise.
      */
     @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @GetMapping(value = "/get/{userUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<UserResponseDto> getUserByUuid(@PathVariable("userUuid") final UUID userUuid) {
-        return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.getByUUID(userUuid));
+    public ResponseEntity<UserResponseDto> getUserByUuid(@PathVariable("userUuid") final UUID userUuid,
+                                                          @AuthenticationPrincipal final Jwt jwt,
+                                                          final Authentication authentication) {
+        final UserResponseDto loadedUser = userManagementServiceImp.getByUUID(userUuid);
+
+        if (!isAdmin(authentication) && !loadedUser.getKeycloakId().equals(jwt.getSubject())) {
+            throw new AccessDeniedException("Access denied: user can only fetch their own profile");
+        }
+
+        return ResponseEntity.status(HttpStatus.OK).body(loadedUser);
+    }
+
+    /**
+     * Returns {@code true} when the {@link Authentication} carries the {@code ROLE_ADMIN}
+     * authority. Mirrors {@link com.novatech.cybertech.converter.KeycloakRoleConverter}'s
+     * naming convention ({@code ROLE_ + uppercase} prefix).
+     */
+    private static boolean isAdmin(final Authentication authentication) {
+        if (authentication == null) return false;
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch("ROLE_ADMIN"::equals);
     }
 
     /**

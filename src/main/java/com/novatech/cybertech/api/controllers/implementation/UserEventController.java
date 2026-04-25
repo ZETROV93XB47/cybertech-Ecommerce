@@ -48,6 +48,10 @@ public class UserEventController implements UserEventControllerApiSpec {
 
         log.info("Received event for user {} : ", jwt.getSubject());
 
+        // BUG-SPOOF-D5: never trust the client-supplied userId — overwrite with the JWT subject
+        // so events are always attributed to the calling user (and stop attribution spoofing).
+        eventDto.setUserId(jwt.getSubject());
+
         return ResponseEntity.status(HttpStatus.CREATED).body(userEventService.processEvent(eventDto));
     }
 }

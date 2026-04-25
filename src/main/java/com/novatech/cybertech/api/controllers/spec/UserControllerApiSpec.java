@@ -8,6 +8,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.UUID;
 
@@ -25,5 +27,7 @@ public interface UserControllerApiSpec {
                     @ApiResponse(responseCode = "400", description = "Bad request (e.g., invalid UUID format)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Operation forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "User not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))})
-    ResponseEntity<UserResponseDto> getUserByUuid(final UUID userUuid);
+    ResponseEntity<UserResponseDto> getUserByUuid(final UUID userUuid,
+                                                  @Parameter(hidden = true) final Jwt jwt,
+                                                  @Parameter(hidden = true) final Authentication authentication);
 }

@@ -79,6 +79,35 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     /**
+     * BUG-IDOR-D1 — ownership-checked variant of {@link #getByUUID(UUID)}.
+     *
+     * <p>Resolves the order and verifies its initiator's {@code keycloakId} matches the
+     * caller's JWT subject. Mirrors the CartServiceImp / {@link #getStatusByUUID(UUID, String)}
+     * pattern: differing identities throw {@link OrderDoesntBelongsToUserException} (mapped
+     * to HTTP 403 by {@code ErrorManagementController}). Used by the user-facing
+     * {@code GET /order/get/{uuid}} endpoint to prevent IDOR.
+     *
+     * @param uuid       order UUID to fetch.
+     * @param keycloakId caller's Keycloak subject; must equal the order's owner.
+     * @return the order DTO when ownership matches.
+     * @throws OrderNotFoundException             when no order matches {@code uuid}.
+     * @throws OrderDoesntBelongsToUserException  when the caller is not the order's initiator.
+     */
+    @Transactional(readOnly = true)
+    public OrderResponseDto getByUUID(final UUID uuid, final String keycloakId) {
+        final OrderEntity order = orderRepository.findByUuid(uuid)
+                .orElseThrow(() -> new OrderNotFoundException("No product with the UUID : " + uuid + " found"));
+
+        if (order.getUserEntity() == null
+                || order.getUserEntity().getKeycloakId() == null
+                || !order.getUserEntity().getKeycloakId().equals(keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order " + uuid + " does not belong to the current user");
+        }
+
+        return orderMapper.mapFromEntityToResponseDto(order);
+    }
+
+    /**
      * Lightweight status read with ownership check — used by the frontend's order-confirmation
      * polling loop after a Stripe payment so we don't refetch the full {@code OrderResponseDto}.
      */

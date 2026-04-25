@@ -68,18 +68,27 @@ public class OrderManagementController implements OrderManagementControllerApiSp
     }
 
 
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    // BUG-IDOR-D4: data-generator helper restricted to ADMIN. The endpoint forges an order
+    // from synthetic cart data and is solely a debug / load-test utility — exposing it to USER
+    // would let any authenticated caller spam orders against another's cart state.
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping(value = "/place/auto", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponseDto> placeOrder2(@AuthenticationPrincipal final Jwt jwt) {
         return ResponseEntity.status(HttpStatus.CREATED).body(orderManagementService.placeOrder(orderGenerator(), jwt));
     }
 
 
+    /**
+     * BUG-IDOR-D1: ownership-checked read. Forwards the JWT subject to the service so the
+     * service layer can throw {@link com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException}
+     * (→ 403) when the caller is not the order's initiator.
+     */
     @Override
     @PreAuthorize("hasRole('USER')")
     @GetMapping(value = "/get/{uuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<OrderResponseDto> getOrderByUuid(@PathVariable("uuid") UUID orderUuid) {
-        return ResponseEntity.status(HttpStatus.OK).body(orderManagementService.getByUUID(orderUuid));
+    public ResponseEntity<OrderResponseDto> getOrderByUuid(@PathVariable("uuid") UUID orderUuid,
+                                                            @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.OK).body(orderManagementService.getByUUID(orderUuid, jwt.getSubject()));
     }
 
     /**

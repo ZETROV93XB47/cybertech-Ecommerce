@@ -100,10 +100,13 @@ class UserEventControllerTest {
     }
 
     @Test
-    void shouldForwardEventDtoUnchangedToService() throws Exception {
-        // Confirm the @RequestBody DTO is forwarded as-is (subject is captured separately).
+    void shouldOverwriteUserIdFromJwtBeforeForwardingToService() throws Exception {
+        // BUG-SPOOF-D5: the controller derives userId from the JWT subject (regardless of
+        // whatever the body contained) before delegating to the service. Verify both that the
+        // overwrite happens and that the rest of the payload is forwarded as-is.
         final UserEventDto request = UserEventDtoFixtures.aValidUserEventBuilder()
                 .eventType(UserEventType.CLICK)
+                .userId("some-spoofed-other-user-id")
                 .build();
 
         when(userEventService.processEvent(any(UserEventDto.class)))
@@ -121,7 +124,8 @@ class UserEventControllerTest {
         verify(userEventService).processEvent(captor.capture());
 
         final UserEventDto forwarded = captor.getValue();
-        assertEquals(request.getUserId(), forwarded.getUserId());
+        // BUG-SPOOF-D5: userId must come from the JWT subject, not from the body.
+        assertEquals(USER_KEYCLOAK_ID, forwarded.getUserId());
         assertEquals(request.getSessionId(), forwarded.getSessionId());
         assertEquals(request.getProductId(), forwarded.getProductId());
         assertEquals(UserEventType.CLICK, forwarded.getEventType());

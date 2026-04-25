@@ -155,15 +155,13 @@ class OrderManagementControllerTest {
     // ---------- POST /place/auto ----------
 
     @Test
-    void shouldPlaceOrderViaAutoEndpoint() throws Exception {
-        // The /place/auto debug helper uses DataGenerator.orderGenerator() server-side; we only
-        // assert the wiring works and the JWT reaches the service. Tracked as tech-debt: this
-        // endpoint should not be exposed in production.
+    void shouldPlaceOrderViaAutoEndpointAsAdmin() throws Exception {
+        // BUG-IDOR-D4: /place/auto is now ADMIN-only. Use an admin JWT for the happy path.
         OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponse();
         when(orderService.placeOrder(any(OrderPlacingRequestDto.class), any(Jwt.class))).thenReturn(response);
 
         mockMvc.perform(post(PLACE_AUTO)
-                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(jwtAdmin("admin-id"))
                         .with(csrf())
                         .contentType(APPLICATION_JSON)
                         .accept(APPLICATION_JSON)
@@ -174,7 +172,19 @@ class OrderManagementControllerTest {
 
         ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
         verify(orderService).placeOrder(any(OrderPlacingRequestDto.class), jwtCaptor.capture());
-        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo(KEYCLOAK_ID);
+        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo("admin-id");
+    }
+
+    @Test
+    void shouldRejectPlaceAutoEndpointAsRoleUserReturning403() throws Exception {
+        // BUG-IDOR-D4: the data-generator endpoint must not be reachable by ROLE_USER.
+        mockMvc.perform(post(PLACE_AUTO)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
     }
 
     // ---------- POST /cancel ----------
@@ -373,9 +383,11 @@ class OrderManagementControllerTest {
 
     @Test
     void shouldGetOrderByUuidSuccessfully() throws Exception {
+        // BUG-IDOR-D1: GET /get/{uuid} now delegates to the ownership-checked overload
+        // getByUUID(UUID, keycloakId). Verify the JWT subject is forwarded.
         UUID orderUuid = UUID.randomUUID();
         OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
-        when(orderService.getByUUID(orderUuid)).thenReturn(response);
+        when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID))).thenReturn(response);
 
         mockMvc.perform(get(GET_BY_UUID, orderUuid)
                         .with(jwtUser(KEYCLOAK_ID))
@@ -394,7 +406,7 @@ class OrderManagementControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(orderService.getByUUID(orderUuid))
+        when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID)))
                 .thenThrow(new OrderNotFoundException("No product with the UUID : " + orderUuid + " found"));
 
         mockMvc.perform(get(GET_BY_UUID, orderUuid)
@@ -403,6 +415,20 @@ class OrderManagementControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldFailGettingOrderByUuidWhenOrderDoesntBelongToCallerReturning403() throws Exception {
+        // BUG-IDOR-D1: ensure the IDOR check at the service layer surfaces as 403.
+        UUID orderUuid = UUID.randomUUID();
+        when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID)))
+                .thenThrow(new com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException(
+                        "Order " + orderUuid + " does not belong to the current user"));
+
+        mockMvc.perform(get(GET_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
     }
 
     @Test

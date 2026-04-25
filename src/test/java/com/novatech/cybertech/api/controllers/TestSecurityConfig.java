@@ -30,7 +30,7 @@ public class TestSecurityConfig {
             // BUG-201: narrowed to the exact human-signup path; mirrors the production
             // SecurityConfig#PUBLIC_URLS change so slice tests exercise the same surface.
             "/api/v1/services/user/register",
-            "/api/v1/services/user/get/all",
+            // BUG-IDOR-D3: mirrors prod removal of /api/v1/services/user/get/all from PUBLIC_URLS.
             "/test/upload-image/**",
             "/api/v1/services/product/**",
             "/api/v1/services/review/get/**",

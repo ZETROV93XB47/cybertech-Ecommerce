@@ -43,7 +43,8 @@ public class SecurityConfig {
             // The /auto endpoints are ADMIN-only via @PreAuthorize on the controllers.
             "/api/v1/services/user/register",
             //"/api/v1/services/cart/**",
-            "/api/v1/services/user/get/all",
+            // BUG-IDOR-D3: removed "/api/v1/services/user/get/all" — user listing must be
+            // ADMIN-only via @PreAuthorize on the management controller, never anonymous.
             "/test/upload-image/**",
             "/api/v1/services/product/**",
             "/api/v1/services/discounts/**",
