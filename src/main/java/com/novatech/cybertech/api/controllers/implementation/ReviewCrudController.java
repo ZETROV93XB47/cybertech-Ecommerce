@@ -4,6 +4,7 @@ import com.novatech.cybertech.api.controllers.spec.ReviewCrudControllerApiSpec;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
+import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
 import com.novatech.cybertech.services.core.ReviewManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -16,6 +17,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
@@ -59,6 +61,17 @@ public class ReviewCrudController implements ReviewCrudControllerApiSpec {
     public ResponseEntity<Void> deleteReviewByUuid(final @PathVariable("reviewUuid") UUID reviewUuid, @AuthenticationPrincipal final Jwt jwt) {
         reviewService.deleteByUUID(reviewUuid, jwt.getSubject());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Lists products the authenticated user has bought (orders in PAID / SHIPPED / DELIVERED)
+     * but has not yet reviewed. Each entry carries the {@code orderUuid} the frontend needs
+     * to forward in {@code POST /create}.
+     */
+    @PreAuthorize("hasRole('USER')")
+    @GetMapping(value = "/reviewable", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<ReviewableProductDto>> getReviewableProducts(@AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.ok(reviewService.getReviewableProducts(jwt.getSubject()));
     }
 
 }

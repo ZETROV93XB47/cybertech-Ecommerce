@@ -201,6 +201,7 @@ All paths below are absolute. Default base is `http://localhost:8081`.
 | GET | `/api/v1/services/management/order/get/{uuid}` | USER | — | `OrderResponseDto` |
 | DELETE | `/api/v1/services/management/order/delete/{uuid}` | ADMIN | — | 204 |
 | POST | `/api/v1/services/management/order/place/auto` | USER | — | `OrderResponseDto` (synthetic, dev-only) |
+| GET | `/api/v1/services/management/order/status/{uuid}` | USER | — | `OrderStatusDto` `{uuid, status}` — lightweight, ownership-checked, for the order-confirmation polling loop |
 
 ### 6.4 Bank cards
 
@@ -232,6 +233,7 @@ PCI: `BankCardResponseDto` exposes only `maskedNumber` (e.g. "•••• 4242"
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | GET | `/api/v1/services/review/get/{reviewUuid}` | public | `ReviewResponseDto` |
+| GET | `/api/v1/services/review/reviewable` | USER | `List<ReviewableProductDto>` — `(productUuid, orderUuid, productName, orderDate)` for orders in PAID/SHIPPED/DELIVERED minus already-reviewed products. Used to gate the "Write a review" CTA. |
 | POST | `/api/v1/services/review/create` | USER | `ReviewCreateRequestDto` (rating 1–5, must own the order) |
 | PATCH | `/api/v1/services/review/update/{reviewUuid}` | USER | |
 | DELETE | `/api/v1/services/review/delete/{reviewUuid}` | USER | 204 |
@@ -449,7 +451,7 @@ Frontend mapping suggestion: show `errorResponseDto.message` in toasts, branch o
 2. Read `OrderResponseDto.status` directly:
    - `PAID` → success page
    - `PAYMENT_FAILED` → show failure with retry CTA
-   - `CREATED` / other → show "processing", optionally poll `GET /order/get/{uuid}` until terminal
+   - `CREATED` / other → show "processing", poll `GET /api/v1/services/management/order/status/{uuid}` (lightweight `{uuid, status}` DTO, ownership-checked) every 2s for ~10s, then either render success or fall back to "We're confirming your payment, you'll get an email shortly."
 3. Retry path: `POST /api/v1/services/management/order/retry-payment/{uuid}`.
 
 No publishable key, no `clientSecret`, no Stripe.js needed in the browser. The "test card" the user sees in the UI is purely cosmetic; the backend uses the configured PM regardless.
@@ -493,7 +495,7 @@ Worth flagging because they may bite the frontend dev:
 
 - ~~**`UserCreateRequestDto.bankCardCreationRequestDto`** is nested in registration.~~ **CLOSED** (2026-04-25): the field is now optional. Sign up with `bankCardCreationRequestDto: null` to skip the card; users add a card later via `POST /api/v1/services/bank-card/add`. When provided, registration delegates to `BankCardManagementService.addBankCard` so the same PCI rules apply (encryption + last4 masking, expiry guard).
 - ~~**Discount selection at checkout**~~ **CLOSED** (2026-04-25): public endpoint added at `GET /api/v1/services/discounts/active`. Returns `List<DiscountContext>` filtered to `enabled=true` AND inside `[startsAt, endsAt]` window. Anonymous-accessible (whitelisted). Frontend wires this to populate the discount selector on `/checkout` and the home-page promo banner.
-- **Reviews need `orderUuid`** — user can only review a product they bought, so the "write a review" CTA on the product page needs to look up which of the user's orders contained this product first.
+- ~~**Reviews need `orderUuid`**~~ **CLOSED** (2026-04-25): `GET /api/v1/services/review/reviewable` returns `List<ReviewableProductDto>` (`productUuid`, `orderUuid`, `productName`, `orderDate`) for the authenticated user. Filters to orders in PAID/SHIPPED/DELIVERED and excludes products already reviewed. Frontend caches this once per session; on a product page, look up by `productUuid` to enable the "Write a review" CTA and forward the matching `orderUuid` in `POST /create`.
 
 ---
 

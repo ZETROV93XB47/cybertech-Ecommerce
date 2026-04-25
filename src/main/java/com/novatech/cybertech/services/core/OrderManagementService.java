@@ -3,6 +3,7 @@ package com.novatech.cybertech.services.core;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.UUID;
@@ -60,4 +61,11 @@ public interface OrderManagementService {
      * {@code totalAmount} verbatim — see the BUG-052 contract on the type-level Javadoc.
      */
     OrderResponseDto retryPayment(final UUID orderUuid, final Jwt jwt);
+
+    /**
+     * Lightweight status read for the order-confirmation polling loop. Verifies the caller
+     * owns the order before returning. Use {@link #getByUUID(UUID)} (admin path) or the
+     * full {@code OrderResponseDto} read for richer payloads.
+     */
+    OrderStatusDto getStatusByUUID(final UUID orderUuid, final String keycloakId);
 }

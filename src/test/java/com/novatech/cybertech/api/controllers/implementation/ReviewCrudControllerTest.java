@@ -44,6 +44,7 @@ class ReviewCrudControllerTest {
     private static final String UPDATE_REVIEW_ENDPOINT = "/api/v1/services/review/update/{reviewUuid}";
     private static final String GET_REVIEW_BY_UUID_ENDPOINT = "/api/v1/services/review/get/{reviewUuid}";
     private static final String DELETE_REVIEW_BY_UUID_ENDPOINT = "/api/v1/services/review/delete/{reviewUuid}";
+    private static final String REVIEWABLE_PRODUCTS_ENDPOINT = "/api/v1/services/review/reviewable";
 
 
     @Autowired
@@ -317,5 +318,33 @@ class ReviewCrudControllerTest {
                         .contentType(APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    // -------- /reviewable (#4 Option B) --------
+
+    @Test
+    void reviewable_authenticatedUser_returnsList() throws Exception {
+        UUID p1 = UUID.randomUUID();
+        UUID o1 = UUID.randomUUID();
+        com.novatech.cybertech.dto.response.review.ReviewableProductDto entry =
+                com.novatech.cybertech.dto.response.review.ReviewableProductDto.builder()
+                        .productUuid(p1).orderUuid(o1).productName("X1").build();
+        when(reviewService.getReviewableProducts(any(String.class))).thenReturn(java.util.List.of(entry));
+
+        mockMvc.perform(get(REVIEWABLE_PRODUCTS_ENDPOINT)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+                                .jwt(j -> j.subject("kc-1")))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$[0].productUuid").value(p1.toString()))
+                .andExpect(jsonPath("$[0].orderUuid").value(o1.toString()))
+                .andExpect(jsonPath("$[0].productName").value("X1"));
+    }
+
+    @Test
+    void reviewable_anonymous_returns401() throws Exception {
+        mockMvc.perform(get(REVIEWABLE_PRODUCTS_ENDPOINT).accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
     }
 }

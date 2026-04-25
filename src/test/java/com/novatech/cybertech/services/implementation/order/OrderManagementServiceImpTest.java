@@ -1157,4 +1157,49 @@ class OrderManagementServiceImpTest {
             verify(idempotencyKeyService).generateKey(eq(order.getUuid().toString()), eq("retry"));
         }
     }
+
+    // =================================================================
+    @Nested
+    @DisplayName("getStatusByUUID — lightweight ownership-checked status read")
+    class GetStatusByUUID {
+
+        @Test
+        @DisplayName("happy: caller owns the order -> returns OrderStatusDto with current status")
+        void ownerCanReadStatus() {
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.PAID).userEntity(owner).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            final com.novatech.cybertech.dto.response.order.OrderStatusDto dto =
+                    service.getStatusByUUID(uuid, keycloakId);
+
+            assertThat(dto.uuid()).isEqualTo(uuid);
+            assertThat(dto.status()).isEqualTo(OrderStatus.PAID);
+        }
+
+        @Test
+        @DisplayName("missing order -> OrderNotFoundException")
+        void missingOrderThrows() {
+            final UUID uuid = UUID.randomUUID();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getStatusByUUID(uuid, keycloakId))
+                    .isInstanceOf(OrderNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("non-owner caller -> OrderDoesntBelongsToUserException (IDOR guard)")
+        void nonOwnerRejected() {
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity stranger = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-stranger").build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.PAID).userEntity(stranger).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.getStatusByUUID(uuid, keycloakId))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+        }
+    }
 }

@@ -5,10 +5,13 @@ import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.moderation.ModerationResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
+import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
 import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.OrderItemEntity;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.ReviewEntity;
 import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.ReviewMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
@@ -22,6 +25,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.novatech.cybertech.utils.DataGenerator.generateReviewEntity;
@@ -97,6 +103,40 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(reviewMapper.mapFromUpdateRequestToEntity(reviewCreateRequestDto)));
     }
 
+
+    /**
+     * Orders are considered "reviewable" once the customer has actually paid for them. We
+     * accept PAID / SHIPPED / DELIVERED so users can leave a review as soon as the payment
+     * settles, without waiting for delivery.
+     */
+    private static final Set<OrderStatus> REVIEWABLE_ORDER_STATUSES =
+            EnumSet.of(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReviewableProductDto> getReviewableProducts(final String keycloakId) {
+        if (!userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)) {
+            throw new UserNotFoundException("User does not exist or is not active: " + keycloakId);
+        }
+
+        final Set<UUID> alreadyReviewed = reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId);
+
+        return orderRepository.findByUserEntity_KeycloakIdAndStatusIn(keycloakId, REVIEWABLE_ORDER_STATUSES).stream()
+                .flatMap(order -> order.getOrderItemEntities().stream()
+                        .map(item -> toReviewable(order, item)))
+                .filter(dto -> !alreadyReviewed.contains(dto.productUuid()))
+                .toList();
+    }
+
+    private ReviewableProductDto toReviewable(final OrderEntity order, final OrderItemEntity item) {
+        final ProductEntity product = item.getProductEntity();
+        return ReviewableProductDto.builder()
+                .productUuid(product.getUuid())
+                .orderUuid(order.getUuid())
+                .productName(product.getName())
+                .orderDate(order.getOrderDate() == null ? null : order.getOrderDate().toLocalDate())
+                .build();
+    }
 
     @Override
     @Transactional

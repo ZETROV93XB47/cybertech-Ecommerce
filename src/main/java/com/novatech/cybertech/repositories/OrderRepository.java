@@ -5,6 +5,7 @@ import com.novatech.cybertech.entities.enums.OrderStatus;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,4 +19,5 @@ public interface OrderRepository extends CrudBaseRepository<OrderEntity, Long> {
 
     List<OrderEntity> findByStatus(OrderStatus status);
 
+    List<OrderEntity> findByUserEntity_KeycloakIdAndStatusIn(String keycloakId, Collection<OrderStatus> statuses);
 }

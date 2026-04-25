@@ -11,6 +11,7 @@ import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.*;
@@ -75,6 +76,28 @@ public class OrderManagementServiceImp implements OrderManagementService {
     @Transactional(readOnly = true)
     public OrderResponseDto getByUUID(UUID uuid) {
         return orderMapper.mapFromEntityToResponseDto(orderRepository.findByUuid(uuid).orElseThrow(() -> new OrderNotFoundException("No product with the UUID : " + uuid + " found")));
+    }
+
+    /**
+     * Lightweight status read with ownership check — used by the frontend's order-confirmation
+     * polling loop after a Stripe payment so we don't refetch the full {@code OrderResponseDto}.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public OrderStatusDto getStatusByUUID(final UUID orderUuid, final String keycloakId) {
+        final OrderEntity order = orderRepository.findByUuid(orderUuid)
+                .orElseThrow(() -> new OrderNotFoundException("No order with the UUID : " + orderUuid + " found"));
+
+        if (order.getUserEntity() == null
+                || order.getUserEntity().getKeycloakId() == null
+                || !order.getUserEntity().getKeycloakId().equals(keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order " + orderUuid + " does not belong to the current user");
+        }
+
+        return OrderStatusDto.builder()
+                .uuid(order.getUuid())
+                .status(order.getStatus())
+                .build();
     }
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance

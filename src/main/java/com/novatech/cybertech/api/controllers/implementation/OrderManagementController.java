@@ -5,6 +5,7 @@ import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -79,6 +80,17 @@ public class OrderManagementController implements OrderManagementControllerApiSp
     @GetMapping(value = "/get/{uuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponseDto> getOrderByUuid(@PathVariable("uuid") UUID orderUuid) {
         return ResponseEntity.status(HttpStatus.OK).body(orderManagementService.getByUUID(orderUuid));
+    }
+
+    /**
+     * Lightweight status read for the order-confirmation polling loop. Ownership-checked at
+     * the service layer (OrderDoesntBelongsToUserException → 403).
+     */
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @GetMapping(value = "/status/{uuid}", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<OrderStatusDto> getOrderStatusByUuid(@PathVariable("uuid") final UUID orderUuid,
+                                                               @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.ok(orderManagementService.getStatusByUUID(orderUuid, jwt.getSubject()));
     }
 
 

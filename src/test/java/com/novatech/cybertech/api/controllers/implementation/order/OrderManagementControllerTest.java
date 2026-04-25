@@ -64,6 +64,7 @@ class OrderManagementControllerTest {
     private static final String UPDATE = BASE + "/update";
     private static final String RETRY_PAYMENT = BASE + "/retry-payment/{uuid}";
     private static final String GET_BY_UUID = BASE + "/get/{uuid}";
+    private static final String STATUS_BY_UUID = BASE + "/status/{uuid}";
     private static final String DELETE_BY_UUID = BASE + "/delete/{uuid}";
 
     private static final String KEYCLOAK_ID = "keycloak-subject-id";
@@ -498,5 +499,45 @@ class OrderManagementControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    // ---------- GET /status/{uuid} (#5 Option B) ----------
+
+    @Test
+    void shouldGetOrderStatusSuccessfully() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        com.novatech.cybertech.dto.response.order.OrderStatusDto dto =
+                com.novatech.cybertech.dto.response.order.OrderStatusDto.builder()
+                        .uuid(orderUuid)
+                        .status(com.novatech.cybertech.entities.enums.OrderStatus.PAID)
+                        .build();
+
+        when(orderService.getStatusByUUID(eq(orderUuid), eq(KEYCLOAK_ID))).thenReturn(dto);
+
+        mockMvc.perform(get(STATUS_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.uuid").value(orderUuid.toString()))
+                .andExpect(jsonPath("$.status").value("PAID"));
+    }
+
+    @Test
+    void shouldFailGetOrderStatusWhenAnonymous() throws Exception {
+        mockMvc.perform(get(STATUS_BY_UUID, UUID.randomUUID()).accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldReturn404WhenOrderStatusNotFound() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        when(orderService.getStatusByUUID(eq(orderUuid), eq(KEYCLOAK_ID)))
+                .thenThrow(new OrderNotFoundException("No order with the UUID : " + orderUuid + " found"));
+
+        mockMvc.perform(get(STATUS_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound());
     }
 }

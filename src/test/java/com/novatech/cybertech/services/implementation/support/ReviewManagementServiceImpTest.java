@@ -4,6 +4,8 @@ import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.moderation.ModerationResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
+import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.OrderItemEntity;
 import com.novatech.cybertech.entities.ProductEntity;
@@ -38,13 +40,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -499,6 +504,96 @@ class ReviewManagementServiceImpTest {
                     .isInstanceOf(UserNotAuthorOfReviewException.class);
 
             verify(reviewRepository, never()).deleteByUuid(any());
+        }
+    }
+
+    // ============================ getReviewableProducts ============================
+
+    @Nested
+    class Reviewable {
+
+        @Test
+        @DisplayName("happy: returns one entry per (order, product) for orders in PAID/SHIPPED/DELIVERED")
+        void returnsPairsForReviewableOrders() {
+            final UUID p1 = UUID.randomUUID();
+            final UUID p2 = UUID.randomUUID();
+            final UserEntity caller = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order1 = orderContainingProduct(p1, caller);
+            final OrderEntity order2 = orderContainingProduct(p2, caller);
+
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId)).thenReturn(Set.of());
+            when(orderRepository.findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
+                    .thenReturn(List.of(order1, order2));
+
+            final List<ReviewableProductDto> result = service.getReviewableProducts(keycloakId);
+
+            assertThat(result).hasSize(2);
+            assertThat(result).extracting(ReviewableProductDto::productUuid).containsExactlyInAnyOrder(p1, p2);
+        }
+
+        @Test
+        @DisplayName("excludes products already reviewed by the user")
+        void filtersAlreadyReviewed() {
+            final UUID alreadyReviewed = UUID.randomUUID();
+            final UUID notYetReviewed = UUID.randomUUID();
+            final UserEntity caller = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            // Single order with two items
+            final ProductEntity prodReviewed = productWith(alreadyReviewed);
+            final ProductEntity prodFresh = productWith(notYetReviewed);
+            final OrderItemEntity oi1 = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(prodReviewed).build();
+            final OrderItemEntity oi2 = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(prodFresh).build();
+            final List<OrderItemEntity> items = new ArrayList<>(List.of(oi1, oi2));
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(orderUuid).orderItemEntities(items).userEntity(caller).build();
+
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId))
+                    .thenReturn(Set.of(alreadyReviewed));
+            when(orderRepository.findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
+                    .thenReturn(List.of(order));
+
+            final List<ReviewableProductDto> result = service.getReviewableProducts(keycloakId);
+
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).productUuid()).isEqualTo(notYetReviewed);
+        }
+
+        @Test
+        @DisplayName("inactive/unknown user -> UserNotFoundException")
+        void inactiveUserRejects() {
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(false);
+
+            assertThatThrownBy(() -> service.getReviewableProducts(keycloakId))
+                    .isInstanceOf(UserNotFoundException.class);
+
+            verify(orderRepository, never()).findByUserEntity_KeycloakIdAndStatusIn(any(), any());
+        }
+
+        @Test
+        @DisplayName("no orders -> empty list")
+        void noOrdersReturnsEmpty() {
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId)).thenReturn(Set.of());
+            when(orderRepository.findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
+                    .thenReturn(List.of());
+
+            assertThat(service.getReviewableProducts(keycloakId)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("queries orderRepository with the {PAID, SHIPPED, DELIVERED} status set")
+        void queriesWithReviewableStatuses() {
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId)).thenReturn(Set.of());
+            when(orderRepository.findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
+                    .thenReturn(List.of());
+
+            service.getReviewableProducts(keycloakId);
+
+            org.mockito.ArgumentCaptor<Collection<OrderStatus>> cap = org.mockito.ArgumentCaptor.forClass(Collection.class);
+            verify(orderRepository).findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), cap.capture());
+            assertThat(cap.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
         }
     }
 }
