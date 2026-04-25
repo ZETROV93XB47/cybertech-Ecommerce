@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-tint": "#565e74",
+                        "surface-variant": "#d3e4fe",
+                        "surface-container-highest": "#d3e4fe",
+                        "primary-fixed": "#dae2fd",
+                        "on-error": "#ffffff",
+                        "on-surface": "#0b1c30",
+                        "on-tertiary-fixed": "#191c1e",
+                        "inverse-on-surface": "#eaf1ff",
+                        "inverse-surface": "#213145",
+                        "secondary-fixed": "#d8e2ff",
+                        "tertiary-fixed": "#e0e3e5",
+                        "primary-fixed-dim": "#bec6e0",
+                        "surface-bright": "#f8f9ff",
+                        "on-secondary-container": "#fefcff",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "on-secondary-fixed-variant": "#004395",
+                        "on-primary": "#ffffff",
+                        "secondary": "#0058be",
+                        "outline": "#76777d",
+                        "on-surface-variant": "#45464d",
+                        "tertiary-container": "#191c1e",
+                        "surface-container": "#e5eeff",
+                        "on-background": "#0b1c30",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "outline-variant": "#c6c6cd",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "surface-dim": "#cbdbf5",
+                        "on-tertiary-container": "#818486",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "on-secondary-fixed": "#001a42",
+                        "secondary-container": "#2170e4",
+                        "surface": "#f8f9ff",
+                        "on-primary-container": "#7c839b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#131b2e",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "surface-container-low": "#eff4ff",
+                        "tertiary": "#000000",
+                        "primary-container": "#131b2e",
+                        "primary": "#000000",
+                        "surface-container-high": "#dce9ff",
+                        "inverse-primary": "#bec6e0",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "stack-lg": "32px",
+                        "gutter": "24px",
+                        "section-gap": "80px",
+                        "margin-desktop": "48px",
+                        "stack-sm": "8px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px",
+                        "container-max": "1280px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Space Grotesk"],
+                        "headline-md": ["Space Grotesk"],
+                        "headline-sm": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .hero-gradient {
+            background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased">
+<!-- TopNavBar Shell -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-8 h-20 max-w-[1440px] left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] font-['Space_Grotesk'] tracking-tight">
+<div class="flex items-center gap-12">
+<a class="text-2xl font-bold text-slate-900 tracking-tighter" href="#">Cybertech</a>
+<div class="hidden md:flex gap-8 items-center">
+<a class="text-blue-600 border-b-2 border-blue-600 pb-1" href="#">Shop</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors" href="#">Builds</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors" href="#">Pre-buys</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors" href="#">Support</a>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative hidden lg:block">
+<input class="pl-10 pr-4 py-2 rounded-full border-none bg-slate-100 focus:ring-2 focus:ring-secondary/20 w-64 text-sm font-body-md" placeholder="Search tech..." type="text"/>
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 hover:bg-slate-50 rounded-full transition-all duration-200">
+<span class="material-symbols-outlined text-on-surface">shopping_cart</span>
+</button>
+<button class="p-2 hover:bg-slate-50 rounded-full transition-all duration-200">
+<span class="material-symbols-outlined text-on-surface">person</span>
+</button>
+</div>
+</div>
+</nav>
+<main class="pt-20">
+<!-- Hero Section -->
+<section class="relative min-h-[819px] flex items-center overflow-hidden hero-gradient">
+<div class="container mx-auto px-8 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+<div class="space-y-6 z-10">
+<span class="font-label-caps text-secondary tracking-[0.2em] uppercase">The New Standard</span>
+<h1 class="font-display-lg text-primary text-[56px] leading-[1.1] mb-4">MacBook Pro.<br/>Mind-blowing.<br/>Head-turning.</h1>
+<p class="font-body-lg text-on-surface-variant max-w-lg">Engineered for the most demanding workflows with M3 Max chips, now in a stunning Space Black finish.</p>
+<div class="flex items-center gap-4 pt-4">
+<button class="bg-primary text-on-primary px-10 py-4 font-headline-sm text-sm rounded-none hover:bg-slate-800 transition-all">Buy Now</button>
+<button class="border border-outline px-10 py-4 font-headline-sm text-sm rounded-none hover:bg-slate-50 transition-all">Learn More</button>
+</div>
+</div>
+<div class="relative h-[500px] lg:h-[600px] flex justify-center items-center">
+<div class="absolute w-[120%] h-[120%] bg-blue-50/50 rounded-full blur-3xl -z-10"></div>
+<img alt="MacBook Pro" class="w-full h-auto object-contain drop-shadow-2xl" data-alt="Modern sleek laptop open on a clean desk with soft studio lighting and deep shadows showcasing metallic texture" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQWSgj9eo1NWYIzGZYcGzE1A6KO94CqhIt5bfR6HsPnnliFklDl6bUEOC_8aoC75RHXpo6D7yA3jMxkofZWfXMoFvLfTAfraAHF5xS-9dIoUUcujlWyU-nRqYhO5alQtB7MT4bDAROm2Rqt_ViyCE1aDRYxLqYz7oSkM8Vx8EKUjaQ4NExrSWdzL7qcwq45ZDf5mkm8AjFjOx6XjemRbUgQFCDDtLqdllqQH_gfBHpLwUZo4hUS9dsYUj15bgHvReYebq9mj1Icfmm"/>
+</div>
+</div>
+</section>
+<!-- Category Bento Grid -->
+<section class="py-24 bg-white">
+<div class="container mx-auto px-8">
+<div class="flex justify-between items-end mb-12">
+<div>
+<h2 class="font-headline-md text-primary mb-2">Featured Categories</h2>
+<p class="text-on-surface-variant font-body-md">Explore high-performance hardware selected for professionals.</p>
+</div>
+<a class="text-secondary font-label-caps flex items-center gap-2 hover:underline" href="#">View All <span class="material-symbols-outlined text-[16px]">arrow_forward</span></a>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[600px]">
+<!-- Large Feature: Computers -->
+<div class="md:col-span-8 group relative overflow-hidden bg-slate-100">
+<div class="absolute inset-0 z-0 opacity-80 group-hover:scale-105 transition-transform duration-700">
+<img alt="Computers" class="w-full h-full object-cover" data-alt="High-performance custom gaming PC with glowing neon internal lighting inside a sleek tempered glass case" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCmGt2DTuZYtQDwPGTbg_18BjJGe_IBQlgbh2BcQlchL2saFppmAmElSqRArGuPWlCRJRA1bkCIE62bp-lweP532UFemr11_ck1MI0ZiyTg160-_kyEsMbggnf-zOP0QiDHjzaiaKamBy4_0lyjzRASXhUrJBx2KvdDS3XG0WeoupolxC2bbUcU8v91iAD0N5MEqVKGGKK5zEHGk308Z4y1jz3TFbj6Tf_DUFFaw78878Pa9RBBd5oYuSAW-ouSIvBC5c4K1hzDhOog"/>
+</div>
+<div class="relative z-10 p-8 flex flex-col justify-end h-full bg-gradient-to-t from-slate-900/60 to-transparent">
+<h3 class="text-white font-headline-md">High-End Builds</h3>
+<p class="text-slate-200 max-w-xs mb-4">Ultimate performance for creators and gamers alike.</p>
+<button class="bg-white text-primary w-fit px-6 py-2 text-sm font-label-caps">Shop Builds</button>
+</div>
+</div>
+<!-- Small Feature: Monitors -->
+<div class="md:col-span-4 group relative overflow-hidden bg-slate-100">
+<div class="absolute inset-0 z-0 opacity-80 group-hover:scale-105 transition-transform duration-700">
+<img alt="Monitors" class="w-full h-full object-cover" data-alt="Ultra-wide professional curved monitor on a minimalist workspace showing vibrant color gradients" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYbJ9_PzqGF31f1xyhZdaI5qOTe9A9KKU5_MOum7lYpkB8wKIhWgq3jgFOyIJ2fLDAd0QW4WY2CaKPBI7bgxLvujkpC7M0duQ6NhdfXfgcRpT6ckkIco28--EpNnzYMl9ydYQpyawQ3QvDB5DzaQLDCd2cr6Hhh-aGs9ZPZe4IVHCMrzVuRp-eE27TeynGxqgAriVhu0WGXa9j41NlM2Ql8zoTRYn0mW1-r51cz0b-pjy5loZqny-LXdcElPW0h_naxNbd-OmCgnR4"/>
+</div>
+<div class="relative z-10 p-8 flex flex-col justify-end h-full bg-gradient-to-t from-slate-900/40 to-transparent">
+<h3 class="text-white font-headline-sm">Monitors</h3>
+<button class="text-white flex items-center gap-2 text-sm font-label-caps mt-2">Explore <span class="material-symbols-outlined text-[14px]">arrow_forward</span></button>
+</div>
+</div>
+<!-- Small Feature: Keyboards -->
+<div class="md:col-span-4 group relative overflow-hidden bg-slate-100">
+<div class="absolute inset-0 z-0 opacity-80 group-hover:scale-105 transition-transform duration-700">
+<img alt="Keyboards" class="w-full h-full object-cover" data-alt="Mechanical keyboard close-up with custom keycaps and soft RGB backlighting in a dark setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRTB592bmycFSvzi4ipbJfTFiPcLFBwP6XyIq1N6u3XvH__UKjCmLzxtChP-4v-My06DfZ3_NbP97kBT-V2YyxOBQ4_DgpwTGr1VQo7YCuTcyZzBUOI_EkoCIbZeZlpBV7BcZYkpkrcmb_85Joj8I3xM2eluD46UDAopZk7NYSoKcCW9oIfiHzGhOA_ivnoLiYiAkGOfcbU782amkdtBu6f8A8xeUUXUi6yx2jP8WsT6iqUnQem7Vmzkh5J6bNW1HmhFGsyB1wsizA"/>
+</div>
+<div class="relative z-10 p-8 flex flex-col justify-end h-full bg-gradient-to-t from-slate-900/40 to-transparent">
+<h3 class="text-white font-headline-sm">Peripherals</h3>
+<button class="text-white flex items-center gap-2 text-sm font-label-caps mt-2">Browse <span class="material-symbols-outlined text-[14px]">arrow_forward</span></button>
+</div>
+</div>
+<!-- Medium Feature: Smartphones -->
+<div class="md:col-span-8 group relative overflow-hidden bg-slate-100">
+<div class="absolute inset-0 z-0 opacity-80 group-hover:scale-105 transition-transform duration-700">
+<img alt="Smartphones" class="w-full h-full object-cover" data-alt="Modern smartphone lying on a reflective surface showing a minimal home screen interface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMpPFrGYNktIQ3wkWhWnl0uRqZU6KeB8cPVW_o7iptwEp9l2dW0uXKk0MSkqZcQW0s1o5_JY4LKJrXE83p8sjMdZKXbQfYerznpyAojDnBnPl0fcyOmbZuZcOHyFI7aWl7VtNv7P1DMec5XRxrnr4ZbO6VZcpCyZ0OEmXqN3AS441HDOgtoBPfhnkpuwpf5ost_wKGzlCYIyt6gtVc2v1LnWupFcTWn5NfHqPdBA-RhnnBq_9loQPJW1RDj6njW4M2IBZBZMUechD2"/>
+</div>
+<div class="relative z-10 p-8 flex flex-col justify-end h-full bg-gradient-to-t from-slate-900/40 to-transparent">
+<h3 class="text-white font-headline-md">Smartphones</h3>
+<button class="bg-white text-primary w-fit px-6 py-2 text-sm font-label-caps mt-2">Latest Models</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Best Sellers Section -->
+<section class="py-24 bg-surface-container-low">
+<div class="container mx-auto px-8">
+<div class="text-center mb-16">
+<h2 class="font-headline-md text-primary mb-4">The Precision Collection</h2>
+<p class="text-on-surface-variant font-body-md max-w-2xl mx-auto">Our most popular hardware, curated for those who settle for nothing but the best.</p>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+<!-- Product Card 1 -->
+<div class="group bg-white border border-slate-100 hover:shadow-xl transition-all duration-300">
+<div class="aspect-square bg-slate-50 overflow-hidden p-8 flex items-center justify-center">
+<img alt="MacBook Pro 14" class="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500" data-alt="MacBook Pro on a white surface, angled view, clean minimalist studio shot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBd4YxLErs_oTFTide063TQMvhdN3rhAhJgAGZEs7iBsOP1ifMJtDoA_frfb8ageKt4iuSfbx-K74QEZwUTPikcGiWfX2FaA9pIih2Ekwmk2dYtlGWnL-_8XQEKOniXD0890aaAshMGlSlGvtxFN3wERauxk5yipyeh3_yisdGH5ScnmO-815-5rI3leKbW2gI6BXgp2qfZdQRHsYbXUq1L34UM2g4WhZcvZLSbBRkJ5jVByjW1LwNQFeLtup3r_RjLkPQwgRpV-yeK"/>
+</div>
+<div class="p-6">
+<span class="font-label-caps text-secondary mb-2 block">Apple</span>
+<h3 class="font-headline-sm text-base mb-4">MacBook Pro 14" M3</h3>
+<div class="flex justify-between items-center">
+<span class="font-headline-sm text-primary">$1,599</span>
+<button class="p-2 bg-slate-900 text-white rounded-full hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined text-[20px]">add_shopping_cart</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Product Card 2 -->
+<div class="group bg-white border border-slate-100 hover:shadow-xl transition-all duration-300">
+<div class="aspect-square bg-slate-50 overflow-hidden p-8 flex items-center justify-center">
+<img alt="ASUS ROG" class="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500" data-alt="Asus ROG Zephyrus gaming laptop with open screen showing vibrant gaming wallpaper" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBoFMvW9WuWw_cDHaXuUUkamciZnX9LoW_wjT6MQsIUIxmz3KBlhaIFQHOSHTOMzLWvmT228n-yAL_upUxU1PBPxz5HUjFvgsSbAYxW0_2itF8CP-uYt1G-Ny08Rj7FjYq7u-sZBixFPbsrNfvgbkgL1UEMhsMS5CcNl1GkWD-T0DW8GNUvpXL73eD541vPkENSgJTHBqzKmywr3Zp8gTSlxRolVkWbp_zpwADSRVlaqfvwqflA2zedN4UK_9GBel_-5IZrylzksMI3"/>
+</div>
+<div class="p-6">
+<span class="font-label-caps text-secondary mb-2 block">ASUS</span>
+<h3 class="font-headline-sm text-base mb-4">ROG Zephyrus G14</h3>
+<div class="flex justify-between items-center">
+<span class="font-headline-sm text-primary">$1,899</span>
+<button class="p-2 bg-slate-900 text-white rounded-full hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined text-[20px]">add_shopping_cart</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Product Card 3 -->
+<div class="group bg-white border border-slate-100 hover:shadow-xl transition-all duration-300">
+<div class="aspect-square bg-slate-50 overflow-hidden p-8 flex items-center justify-center">
+<img alt="LG Monitor" class="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500" data-alt="LG UltraGear monitor with slim bezels on a professional stand" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAKliNOEeZh2lQPEV38EofutDS9k8aHPFapzM6MUjxacu8Go0TgGVTS0tnpQC90Ga14LmMSDjLk0k4CnlT7FYPoVsn1IOnE3WG8BaL4U_FBwpd-FDTy2kOV-ZaLXgMPWwwX4lQssI46y-NETZ39C-2cTyWvDdW9NN-MKyrDt5EoG2LdOXZfvOUxCJG_4e_Otr8XhKV0fkHrS7nkPvxtw60gSRXcJXT9x7vXaws7MbO6oWwzb0YmCrESlsD7qGPYOlPsszfIAI9Ub5Au"/>
+</div>
+<div class="p-6">
+<span class="font-label-caps text-secondary mb-2 block">LG</span>
+<h3 class="font-headline-sm text-base mb-4">UltraGear 27" QHD</h3>
+<div class="flex justify-between items-center">
+<span class="font-headline-sm text-primary">$449</span>
+<button class="p-2 bg-slate-900 text-white rounded-full hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined text-[20px]">add_shopping_cart</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Product Card 4 -->
+<div class="group bg-white border border-slate-100 hover:shadow-xl transition-all duration-300">
+<div class="aspect-square bg-slate-50 overflow-hidden p-8 flex items-center justify-center">
+<img alt="Sony Headphones" class="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500" data-alt="Premium Sony noise-canceling headphones in black finish on a neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBtZCAgSpu70C2tZbmtnYIWozBrMq7xQsglvjhb_fM5ADCrS9lJBEoJAz4wZHhM5kIPIt_cJaQRlzeiBZimPJbX8b-y8ZUNdqgSjUgI8FjOJKb7nxxYBUZbHz4U3nDt6rLN99Ds0Ft_Ew-vPMUOi62Pw5l91Qa1VDkAIayI9Lki1S-0zd2Y3M2Ttzz1pozGDXDqQK05iCASQ3f8jpMDvgJmBsRJI4Ies4B_05o1anEkDTZLE5FGAKFiGcSgdtuaEG67rygGtFiyoLzz"/>
+</div>
+<div class="p-6">
+<span class="font-label-caps text-secondary mb-2 block">Sony</span>
+<h3 class="font-headline-sm text-base mb-4">WH-1000XM5</h3>
+<div class="flex justify-between items-center">
+<span class="font-headline-sm text-primary">$349</span>
+<button class="p-2 bg-slate-900 text-white rounded-full hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined text-[20px]">add_shopping_cart</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Promotional Banner -->
+<section class="py-12">
+<div class="container mx-auto px-8">
+<div class="relative bg-primary text-on-primary p-12 overflow-hidden flex flex-col md:flex-row justify-between items-center gap-8">
+<div class="absolute top-0 right-0 w-64 h-64 bg-secondary/20 rounded-full blur-[100px]"></div>
+<div class="z-10 text-center md:text-left">
+<h2 class="font-display-lg text-3xl mb-4">Winter Tech Solstice</h2>
+<p class="font-body-lg text-slate-300">Up to 30% off across all high-performance hardware and accessories.</p>
+</div>
+<button class="z-10 bg-white text-primary px-12 py-4 font-label-caps hover:bg-slate-100 transition-all whitespace-nowrap">Explore Deals</button>
+</div>
+</div>
+</section>
+<!-- Brand Highlights -->
+<section class="py-24 border-t border-slate-100">
+<div class="container mx-auto px-8">
+<div class="flex flex-wrap justify-between items-center gap-12 opacity-40 grayscale hover:grayscale-0 transition-all duration-500">
+<span class="text-3xl font-bold font-display-lg">APPLE</span>
+<span class="text-3xl font-bold font-display-lg">SAMSUNG</span>
+<span class="text-3xl font-bold font-display-lg">ASUS</span>
+<span class="text-3xl font-bold font-display-lg">LOGITECH</span>
+<span class="text-3xl font-bold font-display-lg">RAZER</span>
+<span class="text-3xl font-bold font-display-lg">SONY</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer Shell -->
+<footer class="w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-8 bg-slate-50 border-t border-slate-200 font-['Space_Grotesk'] text-sm">
+<div class="flex flex-col gap-4 text-center md:text-left">
+<span class="font-bold text-lg text-slate-950">Cybertech</span>
+<p class="text-slate-500 max-w-xs">Premium hardware for elite performance. Elevating your digital experience since 2024.</p>
+<span class="text-slate-500">© 2024 Cybertech Industrial. All rights reserved.</span>
+</div>
+<div class="flex gap-8 flex-wrap justify-center">
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all" href="#">Privacy Policy</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all" href="#">Terms of Service</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all" href="#">Hardware Warranty</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all" href="#">Global Shipping</a>
+</div>
+<div class="flex gap-4">
+<button class="p-2 bg-slate-200 rounded-full hover:bg-slate-300 transition-colors">
+<span class="material-symbols-outlined text-[20px]">language</span>
+</button>
+<button class="p-2 bg-slate-200 rounded-full hover:bg-slate-300 transition-colors">
+<span class="material-symbols-outlined text-[20px]">mail</span>
+</button>
+</div>
+</footer>
+</body></html>

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AdminPanel - IndustrialElegance Management Suite</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9ff;
+        }
+        .font-space { font-family: 'Space Grotesk', sans-serif; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error-container": "#ffdad6",
+                        "primary-fixed": "#dae2fd",
+                        "on-background": "#0b1c30",
+                        "error": "#ba1a1a",
+                        "inverse-surface": "#213145",
+                        "on-secondary-fixed": "#001a42",
+                        "inverse-primary": "#bec6e0",
+                        "primary-container": "#131b2e",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "on-tertiary": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-fixed": "#d8e2ff",
+                        "surface-container-high": "#dce9ff",
+                        "surface": "#f8f9ff",
+                        "on-error-container": "#93000a",
+                        "surface-container-low": "#eff4ff",
+                        "surface-dim": "#cbdbf5",
+                        "surface-bright": "#f8f9ff",
+                        "on-secondary-container": "#fefcff",
+                        "on-error": "#ffffff",
+                        "tertiary": "#000000",
+                        "primary-fixed-dim": "#bec6e0",
+                        "on-primary-container": "#7c839b",
+                        "tertiary-fixed": "#e0e3e5",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "on-primary-fixed": "#131b2e",
+                        "outline": "#76777d",
+                        "on-tertiary-fixed": "#191c1e",
+                        "on-surface": "#0b1c30",
+                        "surface-container": "#e5eeff",
+                        "on-surface-variant": "#45464d",
+                        "tertiary-container": "#191c1e",
+                        "surface-tint": "#565e74",
+                        "outline-variant": "#c6c6cd",
+                        "on-secondary-fixed-variant": "#004395",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "secondary-container": "#2170e4",
+                        "inverse-on-surface": "#eaf1ff",
+                        "surface-container-highest": "#d3e4fe",
+                        "surface-variant": "#d3e4fe",
+                        "on-tertiary-container": "#818486",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "secondary": "#0058be",
+                        "on-secondary": "#ffffff",
+                        "primary": "#000000"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-desktop": "48px",
+                        "stack-md": "16px",
+                        "container-max": "1280px",
+                        "stack-lg": "32px",
+                        "unit": "8px",
+                        "margin-mobile": "16px",
+                        "stack-sm": "8px",
+                        "section-gap": "80px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Inter"],
+                        "display-lg": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-sm": ["Space Grotesk"],
+                        "headline-md": ["Space Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface">
+<!-- SideNavBar -->
+<aside class="docked fixed left-0 top-0 h-full w-64 border-r border-slate-200 bg-white flex flex-col py-6 px-4 z-50">
+<div class="mb-10 px-2">
+<h1 class="text-lg font-black tracking-tight text-slate-900 font-['Space_Grotesk']">IndustrialElegance</h1>
+<p class="text-[10px] text-slate-500 font-medium uppercase tracking-[0.2em] mt-1">Management Suite</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center px-3 py-3 text-slate-500 hover:bg-slate-50 transition-all duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3 text-slate-400 group-hover:text-slate-900" data-icon="dashboard">dashboard</span>
+<span class="font-['Space_Grotesk'] text-sm font-medium">Dashboard</span>
+</a>
+<a class="flex items-center px-3 py-3 bg-slate-100 text-blue-600 border-r-4 border-blue-600 transition-all duration-200 rounded-l-lg group" href="#">
+<span class="material-symbols-outlined mr-3 text-blue-600" data-icon="inventory_2">inventory_2</span>
+<span class="font-['Space_Grotesk'] text-sm font-bold">Products</span>
+</a>
+<a class="flex items-center px-3 py-3 text-slate-500 hover:bg-slate-50 transition-all duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3 text-slate-400 group-hover:text-slate-900" data-icon="group">group</span>
+<span class="font-['Space_Grotesk'] text-sm font-medium">Users</span>
+</a>
+<a class="flex items-center px-3 py-3 text-slate-500 hover:bg-slate-50 transition-all duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3 text-slate-400 group-hover:text-slate-900" data-icon="layers">layers</span>
+<span class="font-['Space_Grotesk'] text-sm font-medium">Inventory</span>
+</a>
+<a class="flex items-center px-3 py-3 text-slate-500 hover:bg-slate-50 transition-all duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3 text-slate-400 group-hover:text-slate-900" data-icon="leaderboard">leaderboard</span>
+<span class="font-['Space_Grotesk'] text-sm font-medium">Analytics</span>
+</a>
+</nav>
+<div class="mt-auto border-t border-slate-100 pt-6 space-y-1">
+<button class="w-full mb-4 py-3 bg-primary text-white font-['Space_Grotesk'] text-sm font-bold rounded-lg hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 active:scale-98">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                Create New
+            </button>
+<a class="flex items-center px-3 py-2 text-slate-500 hover:bg-slate-50 transition-all duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3 text-slate-400 group-hover:text-slate-900" data-icon="settings">settings</span>
+<span class="font-['Space_Grotesk'] text-sm font-medium">Settings</span>
+</a>
+<a class="flex items-center px-3 py-2 text-slate-500 hover:bg-slate-50 transition-all duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3 text-slate-400 group-hover:text-slate-900" data-icon="logout">logout</span>
+<span class="font-['Space_Grotesk'] text-sm font-medium">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 min-h-screen">
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 left-64 h-16 bg-white border-b border-slate-200 flex justify-between items-center px-8 z-40 shadow-sm font-['Space_Grotesk']">
+<div class="flex items-center gap-4 flex-1">
+<div class="relative w-full max-w-md group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" data-icon="search">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-lg text-sm focus:ring-2 focus:ring-blue-600/10 focus:bg-white transition-all outline-none" placeholder="Search catalog..." type="text"/>
+</div>
+<div class="flex items-center gap-2 ml-4">
+<span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold tracking-wider">X-API-VERSION: 1.0</span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full border-2 border-white"></span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+</div>
+<div class="h-8 w-px bg-slate-200 mx-2"></div>
+<div class="flex items-center gap-3">
+<div class="text-right">
+<p class="text-sm font-bold text-slate-900 leading-none">Admin User</p>
+<p class="text-[11px] text-slate-500 mt-1 uppercase tracking-tighter">System Architect</p>
+</div>
+<img alt="Administrator Profile" class="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100" data-alt="portrait of professional man with short hair and modern glasses in soft office lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDSzfHxSaoTvQ13HMQn5NG3srtEijb1c86bGSUJ5DyFiNgg_JdLM56_LbxUTQ7WyqBm8TS3VgvW7RBSZ371ZSjcHpsLNRGh3nBl7el5QDXf0FKCRCg9R17TDXXQ3OBtoW7A7Iwr73_FJ3NL1Wr0bE8kfmt7S2iutMP-GvFdfYouFsOLB5Y1BlO3k9ZTeBLiGgl8jDx8uz1veoWMIO9uwA5cQGWqlKiO83ypheJvjP7xW6niuqbN_f8se6FZMBPJbksSY8IRdS4P5C43"/>
+</div>
+</div>
+</header>
+<!-- Content Canvas -->
+<div class="pt-24 px-8 pb-12">
+<!-- Page Header -->
+<div class="flex justify-between items-end mb-8">
+<div>
+<h2 class="text-headline-md font-display-lg text-slate-900">Product Management</h2>
+<p class="text-body-md text-slate-500 mt-1">Manage and track high-fidelity inventory items across the global network.</p>
+</div>
+<button class="px-6 py-3 bg-secondary text-white rounded-lg font-space font-bold text-sm shadow-lg shadow-blue-600/20 flex items-center gap-2 active:scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="add_circle">add_circle</span>
+                    Add Product
+                </button>
+</div>
+<!-- Filters & Stats Bento -->
+<div class="grid grid-cols-12 gap-6 mb-8">
+<!-- Main Filters -->
+<div class="col-span-8 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-6">
+<div class="flex-1">
+<label class="block text-label-caps text-slate-400 mb-2">Category Filter</label>
+<div class="flex gap-2">
+<button class="px-4 py-1.5 bg-slate-900 text-white rounded-full text-xs font-bold">All Products</button>
+<button class="px-4 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-full text-xs font-bold transition-colors">Computing</button>
+<button class="px-4 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-full text-xs font-bold transition-colors">Peripherals</button>
+<button class="px-4 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-full text-xs font-bold transition-colors">Components</button>
+</div>
+</div>
+<div class="w-px h-10 bg-slate-100"></div>
+<div class="flex items-center gap-4">
+<div>
+<label class="block text-label-caps text-slate-400 mb-1">Brand</label>
+<select class="bg-transparent border-none text-sm font-bold text-slate-900 focus:ring-0 p-0 pr-8">
+<option>All Brands</option>
+<option>Apple</option>
+<option>NVIDIA</option>
+<option>ASUS</option>
+</select>
+</div>
+<button class="p-2 text-slate-400 hover:text-slate-900">
+<span class="material-symbols-outlined" data-icon="filter_list">filter_list</span>
+</button>
+</div>
+</div>
+<!-- Quick Stats -->
+<div class="col-span-4 bg-slate-900 text-white p-6 rounded-xl shadow-lg relative overflow-hidden">
+<div class="relative z-10">
+<div class="flex justify-between items-start">
+<div>
+<p class="text-slate-400 text-xs font-bold uppercase tracking-widest">Total Inventory Value</p>
+<h3 class="text-3xl font-display-lg mt-1">$2,842,900.00</h3>
+</div>
+<span class="material-symbols-outlined text-blue-400" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<div class="mt-4 flex items-center gap-2 text-emerald-400 text-xs font-bold">
+<span class="material-symbols-outlined text-sm" data-icon="trending_up">trending_up</span>
+                            +12.4% from last month
+                        </div>
+</div>
+<div class="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+</div>
+</div>
+<!-- Data Table Container -->
+<div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-slate-50/50 border-b border-slate-100">
+<th class="px-6 py-4 text-label-caps text-slate-500 uppercase tracking-widest">Product Detail</th>
+<th class="px-6 py-4 text-label-caps text-slate-500 uppercase tracking-widest">Brand / Category</th>
+<th class="px-6 py-4 text-label-caps text-slate-500 uppercase tracking-widest text-right">Price</th>
+<th class="px-6 py-4 text-label-caps text-slate-500 uppercase tracking-widest">Status</th>
+<th class="px-6 py-4 text-label-caps text-slate-500 uppercase tracking-widest text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-100">
+<!-- Row 1 -->
+<tr class="hover:bg-slate-50/80 transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-4">
+<div class="w-14 h-14 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Modern sleek laptop on dark surface with blue lighting accents" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA2HodUbGnr82ONXrhJa2cuz0BhMBz1bR-2c3cirCgUmFGGFcQJRo6uDbAKITOXBk3X0GEzMnCZLK4-eOSvVctuz9DAJU5-4KuGhj-EdLmIxgkLITTKLrimqbEqOAfGIDk83fSac3go7fzN5-o7zVoLIZx3rcqWu1DPgO8WJW4LA17wG1kmG9cViitZ8CFftkev9T0IFRUbcHv-nXbDtZXFp7nGgT_agfffdqZNPGa6r0szQRk40vOHEB5Njli9VSHeV__FFMnelufT"/>
+</div>
+<div>
+<p class="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">MacBook Pro M3 Max</p>
+<p class="text-xs text-slate-400 mt-0.5">UUID: 8f4e-3921-b42c</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col">
+<span class="text-sm font-semibold text-slate-700">Apple</span>
+<span class="text-xs text-slate-500">Computing / Workstations</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-space font-bold text-slate-900">$3,499.00</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-2"></span>
+                                    In Stock
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="View">
+<span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all" title="Edit">
+<span class="material-symbols-outlined text-sm" data-icon="edit">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-error hover:bg-error-container/20 rounded-lg transition-all" title="Delete">
+<span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-slate-50/80 transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-4">
+<div class="w-14 h-14 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="High-end graphics card with visible fans and RGB lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD9ijmZN1eC9SLIBlYIF2vjg-_HUBqTfs74euzJGHRR27BBpxUmZiwnHsFNcwgytsF_kjhBbpUtNOzdiBweW0GQV1bV99AcDkiOxxIF8ss2nEgLfRMaWzxjomJTy0doOnemx2ea-4tT70MuyghlamJ3qLmXb-CVah-Lzb9Lg7sBJPEs1yUc4HFhpc_fBfz_knCennJ-W-OZO6iGV4qDKr3hJmV7SKJRFhLs1rcRLtIESUnSjbVpUlXp6oVjsctUErfPmOcdeK4VcGxJ"/>
+</div>
+<div>
+<p class="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">NVIDIA RTX 4090 FE</p>
+<p class="text-xs text-slate-400 mt-0.5">UUID: a29c-9901-f8e2</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col">
+<span class="text-sm font-semibold text-slate-700">NVIDIA</span>
+<span class="text-xs text-slate-500">Components / GPU</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-space font-bold text-slate-900">$1,599.00</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-600">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-600 mr-2"></span>
+                                    Low Stock (5)
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="View">
+<span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all" title="Edit">
+<span class="material-symbols-outlined text-sm" data-icon="edit">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-error hover:bg-error-container/20 rounded-lg transition-all" title="Delete">
+<span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-slate-50/80 transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-4">
+<div class="w-14 h-14 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Wide curved gaming monitor showing colorful wallpaper" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBztl_pVA1Oa31MfcNgfwyVg1ABV6FZOUFeqrKbQuL21LdduynkyohQUiTMmdFifAWbpNv67Kw4TrBwdDJX06bORaKNvZWkIBFq8U-eaCehIczFeLqAlna--TSQSe4qGdzIDumqoR5ZSNQt6j8EEnW8OInS7df5mQ7imRjh9KoGLmGcVvMTHO8XulFfQcs8kO8wosyM5GAMR8FEDr7PHgu_AfPh6I4DKHiUFpSzlP9J5LmZtAsaKZ1y74UzVMbRQ1PAtE54zxUGT1RZ"/>
+</div>
+<div>
+<p class="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">UltraWide 49" Gaming Monitor</p>
+<p class="text-xs text-slate-400 mt-0.5">UUID: e73b-4412-c2d1</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col">
+<span class="text-sm font-semibold text-slate-700">Samsung</span>
+<span class="text-xs text-slate-500">Peripherals / Displays</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-space font-bold text-slate-900">$1,199.99</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-error-container/50 text-error">
+<span class="w-1.5 h-1.5 rounded-full bg-error mr-2"></span>
+                                    Out of Stock
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="View">
+<span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all" title="Edit">
+<span class="material-symbols-outlined text-sm" data-icon="edit">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-error hover:bg-error-container/20 rounded-lg transition-all" title="Delete">
+<span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-slate-50/80 transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-4">
+<div class="w-14 h-14 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Premium mechanical keyboard with custom keycaps and backlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCdK_7qENykNTGz5G9kVy5LSWBG3TOU0WQZ3KF30OwjtjNBjTGWq-blL-H8kqzzOpWoiu6M4FJ6lljTQ22P0dklCVOg6v_qYjFNK9O13G2yCHun1UPBlBNsq0zOagS_0FRG2BsWCK0AHKH26G5Q_thAKWb1tTH4EwsHwKOLfuRZ72Oa0al4jFhVhvz5bikxFlUmYiFBdHXhjFQLB7kihFOzTHufhyiRcTP_dtcF8849Cmf7ZMhQZ61pOHb2degtqf56M0WnLuOMmBWv"/>
+</div>
+<div>
+<p class="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">Keychron Q1 Pro</p>
+<p class="text-xs text-slate-400 mt-0.5">UUID: d55a-1290-x902</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col">
+<span class="text-sm font-semibold text-slate-700">Keychron</span>
+<span class="text-xs text-slate-500">Peripherals / Input</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-space font-bold text-slate-900">$189.00</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-2"></span>
+                                    In Stock
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="View">
+<span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all" title="Edit">
+<span class="material-symbols-outlined text-sm" data-icon="edit">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-error hover:bg-error-container/20 rounded-lg transition-all" title="Delete">
+<span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+<!-- Pagination -->
+<div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+<p class="text-xs font-medium text-slate-500">Showing 4 of 128 products</p>
+<div class="flex items-center gap-1">
+<button class="p-2 text-slate-400 hover:text-slate-900 bg-white border border-slate-200 rounded-md transition-colors shadow-sm">
+<span class="material-symbols-outlined text-sm" data-icon="chevron_left">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center text-xs font-bold bg-blue-600 text-white rounded-md shadow-sm">1</button>
+<button class="w-8 h-8 flex items-center justify-center text-xs font-bold text-slate-600 hover:bg-white transition-colors">2</button>
+<button class="w-8 h-8 flex items-center justify-center text-xs font-bold text-slate-600 hover:bg-white transition-colors">3</button>
+<button class="p-2 text-slate-400 hover:text-slate-900 bg-white border border-slate-200 rounded-md transition-colors shadow-sm">
+<span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Footer Meta -->
+<div class="mt-8 flex justify-between items-center border-t border-slate-100 pt-6">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+<span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">System Status: Online</span>
+</div>
+<div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last Synced: 2 Minutes Ago</div>
+</div>
+<div class="text-[10px] font-bold text-slate-300 uppercase tracking-[0.3em]">IndustrialElegance © 2024</div>
+</div>
+</div>
+</main>
+</body></html>

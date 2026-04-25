@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>My Orders | Cybertech</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-tint": "#565e74",
+                      "surface-variant": "#d3e4fe",
+                      "surface-container-highest": "#d3e4fe",
+                      "primary-fixed": "#dae2fd",
+                      "on-error": "#ffffff",
+                      "on-surface": "#0b1c30",
+                      "on-tertiary-fixed": "#191c1e",
+                      "inverse-on-surface": "#eaf1ff",
+                      "inverse-surface": "#213145",
+                      "secondary-fixed": "#d8e2ff",
+                      "tertiary-fixed": "#e0e3e5",
+                      "primary-fixed-dim": "#bec6e0",
+                      "surface-bright": "#f8f9ff",
+                      "on-secondary-container": "#fefcff",
+                      "tertiary-fixed-dim": "#c4c7c9",
+                      "on-secondary-fixed-variant": "#004395",
+                      "on-primary": "#ffffff",
+                      "secondary": "#0058be",
+                      "outline": "#76777d",
+                      "on-surface-variant": "#45464d",
+                      "tertiary-container": "#191c1e",
+                      "surface-container": "#e5eeff",
+                      "on-background": "#0b1c30",
+                      "on-secondary": "#ffffff",
+                      "on-tertiary": "#ffffff",
+                      "background": "#f8f9ff",
+                      "outline-variant": "#c6c6cd",
+                      "on-error-container": "#93000a",
+                      "on-primary-fixed-variant": "#3f465c",
+                      "surface-dim": "#cbdbf5",
+                      "on-tertiary-container": "#818486",
+                      "on-tertiary-fixed-variant": "#444749",
+                      "on-secondary-fixed": "#001a42",
+                      "secondary-container": "#2170e4",
+                      "surface": "#f8f9ff",
+                      "on-primary-container": "#7c839b",
+                      "surface-container-lowest": "#ffffff",
+                      "on-primary-fixed": "#131b2e",
+                      "error-container": "#ffdad6",
+                      "secondary-fixed-dim": "#adc6ff",
+                      "surface-container-low": "#eff4ff",
+                      "tertiary": "#000000",
+                      "primary-container": "#131b2e",
+                      "primary": "#000000",
+                      "surface-container-high": "#dce9ff",
+                      "inverse-primary": "#bec6e0",
+                      "error": "#ba1a1a"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "unit": "8px",
+                      "stack-lg": "32px",
+                      "gutter": "24px",
+                      "section-gap": "80px",
+                      "margin-desktop": "48px",
+                      "stack-sm": "8px",
+                      "margin-mobile": "16px",
+                      "stack-md": "16px",
+                      "container-max": "1280px"
+              },
+              "fontFamily": {
+                      "body-lg": ["Inter"],
+                      "display-lg": ["Space Grotesk"],
+                      "headline-md": ["Space Grotesk"],
+                      "headline-sm": ["Space Grotesk"],
+                      "body-md": ["Inter"],
+                      "label-caps": ["Inter"]
+              },
+              "fontSize": {
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                      "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- TopNavBar (JSON Source) -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-8 h-20 max-w-[1440px] mx-auto bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] left-0 right-0">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-bold text-slate-900 dark:text-white tracking-tighter font-['Space_Grotesk']">Cybertech</span>
+<div class="hidden md:flex gap-6">
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Shop</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Builds</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Pre-buys</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Support</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all duration-200 rounded-full">
+<span class="material-symbols-outlined text-slate-600 dark:text-slate-400">shopping_cart</span>
+</button>
+<button class="p-2 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all duration-200 rounded-full">
+<span class="material-symbols-outlined text-slate-600 dark:text-slate-400">person</span>
+</button>
+</div>
+</nav>
+<div class="flex pt-20">
+<!-- SideNavBar (JSON Source) -->
+<aside class="flex flex-col fixed left-0 top-0 h-full py-6 bg-slate-900 dark:bg-black h-screen w-64 border-r border-slate-800 shadow-2xl z-40 hidden md:flex">
+<div class="px-6 mb-10 pt-16">
+<h1 class="text-xl font-black text-white font-['Space_Grotesk']">Cybertech Admin</h1>
+<p class="text-slate-400 text-xs font-['Space_Grotesk']">Systems Controller</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all font-['Space_Grotesk'] font-medium hover:translate-x-1 duration-300" href="#">
+<span class="material-symbols-outlined">dashboard</span> Dashboard
+                </a>
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all font-['Space_Grotesk'] font-medium hover:translate-x-1 duration-300" href="#">
+<span class="material-symbols-outlined">inventory_2</span> Inventory
+                </a>
+<a class="bg-blue-600 text-white rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">shopping_bag</span> Orders
+                </a>
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all font-['Space_Grotesk'] font-medium hover:translate-x-1 duration-300" href="#">
+<span class="material-symbols-outlined">group</span> Customers
+                </a>
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all font-['Space_Grotesk'] font-medium hover:translate-x-1 duration-300" href="#">
+<span class="material-symbols-outlined">settings</span> Settings
+                </a>
+</nav>
+<div class="px-4 mb-4">
+<button class="w-full bg-blue-500 text-white py-3 rounded-lg font-bold font-['Space_Grotesk'] hover:bg-blue-400 transition-colors">
+                    Launch Storefront
+                </button>
+</div>
+<div class="border-t border-slate-800 pt-4">
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">help_outline</span> Support
+                </a>
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">logout</span> Logout
+                </a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-64 p-8 min-h-screen">
+<div class="max-w-5xl mx-auto py-8">
+<!-- Header -->
+<header class="mb-12">
+<div class="flex justify-between items-end">
+<div>
+<h2 class="font-display-lg text-display-lg text-primary mb-2">My Orders</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Review and track your hardware acquisitions.</p>
+</div>
+<div class="flex gap-4">
+<div class="relative">
+<input class="bg-surface-container-low border-none rounded-lg px-4 py-2 pl-10 focus:ring-2 focus:ring-secondary/20 transition-all font-body-md text-body-md w-64" placeholder="Search orders..." type="text"/>
+<span class="material-symbols-outlined absolute left-3 top-2.5 text-outline text-sm">search</span>
+</div>
+</div>
+</div>
+</header>
+<!-- Order List -->
+<div class="space-y-6">
+<!-- Order Card 1: Delivered -->
+<div class="bg-surface-container-lowest border border-slate-200/60 rounded-xl overflow-hidden hover:shadow-[0_4px_20px_-5px_rgba(0,0,0,0.05)] transition-all duration-300">
+<div class="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+<div class="flex items-center gap-6">
+<div class="h-20 w-20 bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden">
+<img class="object-cover w-full h-full" data-alt="Close-up of a high-end graphics card with copper heat pipes and matte black finish" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCB0nkmR2VOqa83R5t4iq0T7u5MB1JKQeI16ZQWMOuYcSaKbQeeefXN-2CQpeyKmfTkpMabu4jsRmUu0aAkjVnpD9IAtIeVo7jr-QbzLt7HeqKgyJoj-1-1S73MQcc9JTRmWWOUTsl4094YnqqW-ra3ryC31q3AmL3VKud8nrnAjIl4MpZsWL_FQvx4ZoQEN4UZJkSFdi6p74Ds4s3d91QgGO06DokJpCSfkJelft2W1EcQe0vRwCg71iFgAbxaaT_iE8csiLkAqEAj"/>
+</div>
+<div class="space-y-1">
+<p class="font-label-caps text-label-caps text-on-primary-container">ORDER #CY-98421</p>
+<h3 class="font-headline-sm text-headline-sm">RTX 4090 - Founders Edition</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Placed on Oct 24, 2024</p>
+</div>
+</div>
+<div class="flex flex-col md:items-end gap-2">
+<span class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold tracking-wider uppercase border border-emerald-100">DELIVERED</span>
+<p class="font-headline-sm text-headline-sm text-primary">$1,599.00</p>
+</div>
+<div>
+<button class="w-full md:w-auto px-6 py-3 bg-primary text-white font-label-caps text-label-caps tracking-widest hover:bg-slate-800 transition-all rounded-lg">VIEW DETAILS</button>
+</div>
+</div>
+</div>
+<!-- Order Card 2: Shipped -->
+<div class="bg-surface-container-lowest border border-slate-200/60 rounded-xl overflow-hidden hover:shadow-[0_4px_20px_-5px_rgba(0,0,0,0.05)] transition-all duration-300">
+<div class="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+<div class="flex items-center gap-6">
+<div class="h-20 w-20 bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden">
+<img class="object-cover w-full h-full" data-alt="Mechanical keyboard with custom translucent keycaps and subtle cyan LED glow" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAzAmUXrK3BwzHbt2X22HFanJ5_fHUD5jGZVWEikd6rEysDZQObiQ_3ID5tLnq5cZ95gP5SAhiRrvTDUKDDiGTSenKZgQyxuRDcC_yIqjzSD2zMV-xeKEftHWIelaPoipIVXzyEGmjy98s0e27YTrpWgU_y76b57OFkdLTAJYSEDHiS4RdvKLMAp93Xxq3lLLjyBPoAWEZxiCZ9RTgfUn2nO1txI0UQJPwwuiZZqd3p3l9RFKRoczjMBJnG12ajqN487dEmXPD3Xh7h"/>
+</div>
+<div class="space-y-1">
+<p class="font-label-caps text-label-caps text-on-primary-container">ORDER #CY-98305</p>
+<h3 class="font-headline-sm text-headline-sm">Vortex Mechanical Keyboard</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Placed on Oct 28, 2024</p>
+</div>
+</div>
+<div class="flex flex-col md:items-end gap-2">
+<span class="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold tracking-wider uppercase border border-blue-100">SHIPPED</span>
+<p class="font-headline-sm text-headline-sm text-primary">$249.00</p>
+</div>
+<div>
+<button class="w-full md:w-auto px-6 py-3 bg-primary text-white font-label-caps text-label-caps tracking-widest hover:bg-slate-800 transition-all rounded-lg">VIEW DETAILS</button>
+</div>
+</div>
+</div>
+<!-- Order Card 3: Pending -->
+<div class="bg-surface-container-lowest border border-slate-200/60 rounded-xl overflow-hidden hover:shadow-[0_4px_20px_-5px_rgba(0,0,0,0.05)] transition-all duration-300">
+<div class="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+<div class="flex items-center gap-6">
+<div class="h-20 w-20 bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden">
+<img class="object-cover w-full h-full" data-alt="High-resolution tablet screen displaying architectural diagrams in a dark-themed UI" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABUCxg6YBliYMXoVXD1i4dxdcJBTK-2JyJwHoSw4BGcykZ6A0Cg9DbtDm-wbEtyJf61Lkp6J9NitbQc-a6JRf0nddH2rHSjwPcK3QfQjeRxID1VOUIcD9HOZ6BkT64ymJVvi4LiiYs_RabCIAb-RyL9qjTBjd42HMk2stGNw71iTkpa_Ter1XIuC0H-XduVVymHrr2zA4bFpmd81LmBHBxAsfWnD_ef80JzmUim1OodV-nHQqZ1MErxVxDUKt0KWOJMd3_T90iINyr"/>
+</div>
+<div class="space-y-1">
+<p class="font-label-caps text-label-caps text-on-primary-container">ORDER #CY-98299</p>
+<h3 class="font-headline-sm text-headline-sm">Titan Tablet Pro 13"</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Placed on Nov 02, 2024</p>
+</div>
+</div>
+<div class="flex flex-col md:items-end gap-2">
+<span class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold tracking-wider uppercase border border-slate-200">AWAITING_PAYMENT</span>
+<p class="font-headline-sm text-headline-sm text-primary">$1,199.00</p>
+</div>
+<div>
+<button class="w-full md:w-auto px-6 py-3 bg-primary text-white font-label-caps text-label-caps tracking-widest hover:bg-slate-800 transition-all rounded-lg">VIEW DETAILS</button>
+</div>
+</div>
+</div>
+<!-- Order Card 4: Delivered -->
+<div class="bg-surface-container-lowest border border-slate-200/60 rounded-xl overflow-hidden hover:shadow-[0_4px_20px_-5px_rgba(0,0,0,0.05)] transition-all duration-300">
+<div class="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+<div class="flex items-center gap-6">
+<div class="h-20 w-20 bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden">
+<img class="object-cover w-full h-full" data-alt="Sleek ultra-wide curved computer monitor on a minimalist desk with soft bias lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB1NYq-1CWNMf2YMAxTqmNQXhElacUIed3NZq1hp-172TNGrDfVw9080tQ0ZB7mDpe4xKxf4mCf75NyXnS_5mjA3tQ5ljLAIFQUSpzkC8Wxg19zl7cN8g1ysovahbnUEJj1y-0P5Tq5JrHKGFSgSlVrx0gSBAhXoA-S-s8uMnQRzfUV1QWUKSvtVrliDmJy9zuErijHu-otIOorbQTvOwrVl7UmfpjhkejTpNvbYLB6fo84eKjRZP8N3v5EMAwSpdZ5ndHL4d08e25N"/>
+</div>
+<div class="space-y-1">
+<p class="font-label-caps text-label-caps text-on-primary-container">ORDER #CY-98150</p>
+<h3 class="font-headline-sm text-headline-sm">Panoramic Ultra-Wide 49"</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Placed on Sept 15, 2024</p>
+</div>
+</div>
+<div class="flex flex-col md:items-end gap-2">
+<span class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold tracking-wider uppercase border border-emerald-100">DELIVERED</span>
+<p class="font-headline-sm text-headline-sm text-primary">$1,299.00</p>
+</div>
+<div>
+<button class="w-full md:w-auto px-6 py-3 bg-primary text-white font-label-caps text-label-caps tracking-widest hover:bg-slate-800 transition-all rounded-lg">VIEW DETAILS</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Load More / Pagination Placeholder -->
+<div class="mt-12 flex justify-center">
+<button class="flex items-center gap-2 font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-colors py-4">
+                        SHOW PREVIOUS ORDERS <span class="material-symbols-outlined">expand_more</span>
+</button>
+</div>
+</div>
+</main>
+</div>
+<!-- Footer (JSON Source) -->
+<footer class="w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-8 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800">
+<div class="flex flex-col gap-4">
+<span class="font-bold text-lg text-slate-950 dark:text-white font-['Space_Grotesk']">Cybertech</span>
+<p class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400">© 2024 Cybertech Industrial. All rights reserved.</p>
+</div>
+<div class="flex gap-8">
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-200" href="#">Privacy Policy</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-200" href="#">Terms of Service</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-200" href="#">Hardware Warranty</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-200" href="#">Global Shipping</a>
+</div>
+</footer>
+</body></html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Checkout | Cybertech</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-tint": "#565e74",
+                        "surface-variant": "#d3e4fe",
+                        "surface-container-highest": "#d3e4fe",
+                        "primary-fixed": "#dae2fd",
+                        "on-error": "#ffffff",
+                        "on-surface": "#0b1c30",
+                        "on-tertiary-fixed": "#191c1e",
+                        "inverse-on-surface": "#eaf1ff",
+                        "inverse-surface": "#213145",
+                        "secondary-fixed": "#d8e2ff",
+                        "tertiary-fixed": "#e0e3e5",
+                        "primary-fixed-dim": "#bec6e0",
+                        "surface-bright": "#f8f9ff",
+                        "on-secondary-container": "#fefcff",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "on-secondary-fixed-variant": "#004395",
+                        "on-primary": "#ffffff",
+                        "secondary": "#0058be",
+                        "outline": "#76777d",
+                        "on-surface-variant": "#45464d",
+                        "tertiary-container": "#191c1e",
+                        "surface-container": "#e5eeff",
+                        "on-background": "#0b1c30",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "outline-variant": "#c6c6cd",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "surface-dim": "#cbdbf5",
+                        "on-tertiary-container": "#818486",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "on-secondary-fixed": "#001a42",
+                        "secondary-container": "#2170e4",
+                        "surface": "#f8f9ff",
+                        "on-primary-container": "#7c839b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#131b2e",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "surface-container-low": "#eff4ff",
+                        "tertiary": "#000000",
+                        "primary-container": "#131b2e",
+                        "primary": "#000000",
+                        "surface-container-high": "#dce9ff",
+                        "inverse-primary": "#bec6e0",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "stack-lg": "32px",
+                        "gutter": "24px",
+                        "section-gap": "80px",
+                        "margin-desktop": "48px",
+                        "stack-sm": "8px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px",
+                        "container-max": "1280px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Space Grotesk"],
+                        "headline-md": ["Space Grotesk"],
+                        "headline-sm": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9ff; color: #0b1c30; }
+        .checkout-container { max-width: 1280px; margin: 0 auto; padding: 0 48px; }
+        input:focus { outline: none; border-color: #2170e4 !important; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+    </style>
+</head>
+<body class="bg-background text-on-background antialiased">
+<!-- TopNavBar (Shared Component) -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-8 h-20 max-w-[1440px] left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
+<div class="flex items-center gap-12">
+<a class="text-2xl font-bold text-slate-900 tracking-tighter font-['Space_Grotesk']" href="#">Cybertech</a>
+<nav class="hidden md:flex items-center gap-8 font-['Space_Grotesk'] tracking-tight">
+<a class="text-slate-600 hover:text-slate-900 transition-colors" href="#">Shop</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors" href="#">Builds</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors" href="#">Pre-buys</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors" href="#">Support</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<button class="p-2 hover:bg-slate-50 rounded-full transition-all duration-200">
+<span class="material-symbols-outlined text-slate-600">search</span>
+</button>
+<button class="p-2 hover:bg-slate-50 rounded-full transition-all duration-200 relative">
+<span class="material-symbols-outlined text-slate-600">shopping_cart</span>
+<span class="absolute top-1 right-1 w-2 h-2 bg-secondary rounded-full"></span>
+</button>
+<button class="p-2 hover:bg-slate-50 rounded-full transition-all duration-200">
+<span class="material-symbols-outlined text-slate-600">person</span>
+</button>
+</div>
+</header>
+<main class="mt-28 mb-20 checkout-container">
+<!-- Breadcrumbs -->
+<nav class="flex items-center gap-2 mb-12 text-slate-400 font-label-caps uppercase tracking-widest">
+<a class="hover:text-primary transition-colors" href="#">Cart</a>
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+<span class="text-primary font-bold">Checkout</span>
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+<span>Payment</span>
+</nav>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+<!-- Left Column: Forms -->
+<div class="lg:col-span-7 space-y-12">
+<!-- Section: Shipping Address -->
+<section>
+<div class="flex items-center gap-3 mb-8">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white font-headline-sm text-sm">1</div>
+<h2 class="font-headline-sm text-on-surface">Shipping Address</h2>
+</div>
+<form class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="md:col-span-2">
+<label class="block font-label-caps text-on-surface-variant mb-2 uppercase">Street Address</label>
+<input class="w-full bg-white border border-outline-variant rounded-lg px-4 py-3 text-body-md focus:ring-0 transition-all" placeholder="123 Performance Way" type="text"/>
+</div>
+<div>
+<label class="block font-label-caps text-on-surface-variant mb-2 uppercase">City</label>
+<input class="w-full bg-white border border-outline-variant rounded-lg px-4 py-3 text-body-md focus:ring-0 transition-all" placeholder="New York" type="text"/>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block font-label-caps text-on-surface-variant mb-2 uppercase">Zip Code</label>
+<input class="w-full bg-white border border-outline-variant rounded-lg px-4 py-3 text-body-md focus:ring-0 transition-all" placeholder="10001" type="text"/>
+</div>
+<div>
+<label class="block font-label-caps text-on-surface-variant mb-2 uppercase">Country</label>
+<select class="w-full bg-white border border-outline-variant rounded-lg px-4 py-3 text-body-md focus:ring-0 transition-all">
+<option>United States</option>
+<option>Canada</option>
+<option>Germany</option>
+</select>
+</div>
+</div>
+</form>
+</section>
+<hr class="border-outline-variant"/>
+<!-- Section: Shipping Method -->
+<section>
+<div class="flex items-center gap-3 mb-8">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white font-headline-sm text-sm">2</div>
+<h2 class="font-headline-sm text-on-surface">Shipping Method</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<label class="relative flex items-center p-6 border border-secondary bg-surface-container-low rounded-xl cursor-pointer">
+<input checked="" class="hidden peer" name="shipping" type="radio"/>
+<div class="flex flex-col">
+<span class="font-headline-sm text-lg text-on-surface">Standard Delivery</span>
+<span class="text-body-md text-on-surface-variant">3-5 Business Days</span>
+</div>
+<span class="ml-auto font-headline-sm text-secondary">Free</span>
+</label>
+<label class="relative flex items-center p-6 border border-outline-variant bg-white rounded-xl cursor-pointer hover:border-secondary transition-all">
+<input class="hidden peer" name="shipping" type="radio"/>
+<div class="flex flex-col">
+<span class="font-headline-sm text-lg text-on-surface">Express Shipping</span>
+<span class="text-body-md text-on-surface-variant">Next Day Delivery</span>
+</div>
+<span class="ml-auto font-headline-sm text-on-surface">$24.00</span>
+</label>
+</div>
+</section>
+<hr class="border-outline-variant"/>
+<!-- Section: Payment Method -->
+<section>
+<div class="flex items-center gap-3 mb-8">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white font-headline-sm text-sm">3</div>
+<h2 class="font-headline-sm text-on-surface">Payment Method</h2>
+</div>
+<div class="space-y-4">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+<button class="flex items-center justify-center p-4 border border-secondary bg-surface-container-low rounded-lg">
+<img alt="Mastercard" class="h-6" data-alt="Official Mastercard red and orange overlapping circles logo on a transparent background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA24PQirocqUgVsmhLx3oo_j0i3DHOid1CDg0nDSDdAQ8Th_bONxsligmZ1ErefQxD1sw6TJ2hb0RmjoVyGkpxerhT045OAfzcmhkYiyGHKv2nbPS31p3MvNXwqRQrKt0aKuwlHHvtjeAhdu8zraiUYaoRN-wktJlcOJpiUMeyXolXPnTtyqavKV1YM6A4jThOKv3LxDS6JAaPanZZW7HGjpUwa1DXE0L22wQ2RLj_L2q2u-W1w9MMvKM1T0qXZUwN8E6ltL4QuevyK"/>
+</button>
+<button class="flex items-center justify-center p-4 border border-outline-variant bg-white rounded-lg hover:border-secondary transition-all">
+<img alt="Visa" class="h-4" data-alt="Official Visa corporate logo in deep blue with a gold flick on the V" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC9UJ6fv_LitNu1xtF3tnraRMozE5w-2n-EzB56XQPTa1-T0b46VWSaXcdTx3BsK0zBJmSEVWL_tOtkR2P4RA5fM0_ct64X-BCe62XcxDcCxmVYi_xUkCDjyu6695G8NceD_b-xRo0xqch_cA3imU2SfiRRckKxFsjcMb34vYCSFeRruTbVBzjdHM1RpQ_Lf3YyKTcXCk3eno_F1QcSwPv4Gx3UtX1vcnuH1Ryu27z5QLW-4Z2IWLxhGmoBwzXdn7SNOO4W6vrIIDT8"/>
+</button>
+<button class="flex items-center justify-center p-4 border border-outline-variant bg-white rounded-lg hover:border-secondary transition-all">
+<img alt="Apple Pay" class="h-6" data-alt="Sleek black Apple Pay logo with the iconic apple symbol and text" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCzMjJ0ZAkb0V6M6LWHXUL8E18CYHVSQJIfn-pBCuCW8qKXNiZrhVRqduL2CfBqfa6zqyudUa_BFosvazoMjFrGT9dHneSrGL75INordkxCLqUZ8xdUAxDhMFr4SJb8NeG9ttvzba2UNJOBxUADmryEIXI7JatXEoooeESaYxUV0kMQkHK86YgG5q-uVwgw9c5N4vrcVC8UrXq2V8PsqaS5YZRIB8oBmNHswaaU_aSqK4ta_Vo58Ju86Wzkx9usp-pSM95_zv13FiCu"/>
+</button>
+<button class="flex items-center justify-center p-4 border border-outline-variant bg-white rounded-lg hover:border-secondary transition-all">
+<img alt="Google Pay" class="h-6" data-alt="Google Pay multi-colored logo representing digital wallet and payment services" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBBIFUOUwS05bWbHZC1En1N3YMCG0aFfoP4NAzQcnOlZy3B3bmzCeJgxBU-xhfUxzmCxGepOMgaj9FkFMrNZSDtsYqiuD1S5HJdE_bDcYmiQ1rfRrf4rsYXuTkr_c8G-bofBpxwMoOPVsO0vteGofqQhiusn48I1tXFZEBwGylp5hsgOsXqHFuNMR0U4QVyIv3lA_90g41G7oqQLmAyGAUcGzwqOB-fdLqor7Qbm6_-pIROZx0XzwLtgAcDShc6kXfj0FGgslbRc8jB"/>
+</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-white border border-outline-variant rounded-xl shadow-sm">
+<div class="md:col-span-2">
+<label class="block font-label-caps text-on-surface-variant mb-2 uppercase">Card Number</label>
+<div class="relative">
+<input class="w-full bg-white border border-outline-variant rounded-lg px-4 py-3 text-body-md focus:ring-0" placeholder="0000 0000 0000 0000" type="text"/>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">credit_card</span>
+</div>
+</div>
+<div>
+<label class="block font-label-caps text-on-surface-variant mb-2 uppercase">Expiry Date</label>
+<input class="w-full bg-white border border-outline-variant rounded-lg px-4 py-3 text-body-md focus:ring-0" placeholder="MM/YY" type="text"/>
+</div>
+<div>
+<label class="block font-label-caps text-on-surface-variant mb-2 uppercase">CVC</label>
+<input class="w-full bg-white border border-outline-variant rounded-lg px-4 py-3 text-body-md focus:ring-0" placeholder="123" type="text"/>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column: Order Summary -->
+<div class="lg:col-span-5">
+<div class="sticky top-28 bg-white border border-outline-variant rounded-2xl p-8 shadow-sm">
+<h2 class="font-headline-sm text-on-surface mb-8">Order Summary</h2>
+<div class="space-y-6 mb-8">
+<!-- Product Item 1 -->
+<div class="flex gap-4">
+<div class="w-20 h-20 bg-slate-50 rounded-lg overflow-hidden border border-slate-100 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="High-performance custom gaming PC with internal RGB lighting and sleek black tempered glass case" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkXvsOBAbF7uHVlMp0UjE85HBA8C8rBF_oRd2KWEflVSKv2Jg7g2W8ZyzWlWBJrYPGidHn_89wqfB52HoMq1ZFEy9cPJDo7tSr2bVp06-bvz2i5LzH97SRxmHK4NCg4CQL6XBPYwTaI1R4WZWDtK7Fv6wKTdp5KBrtqwd7z_juyOnnzwSYqEsEwRff7iudzcZvhjBVxaFaCW-QPks6DapyLUhYluChtbEmXGDNIdCH5bKenB8ggjybpPQjLeow3nzDo3R-a4ACvQQI"/>
+</div>
+<div class="flex flex-col justify-center flex-grow">
+<h4 class="font-headline-sm text-base text-on-surface leading-tight">Vortex Pro Build v2</h4>
+<p class="text-body-md text-on-surface-variant text-sm">RTX 4080 • 32GB RAM</p>
+<p class="font-headline-sm text-sm text-secondary mt-1">$2,499.00</p>
+</div>
+</div>
+<!-- Product Item 2 -->
+<div class="flex gap-4">
+<div class="w-20 h-20 bg-slate-50 rounded-lg overflow-hidden border border-slate-100 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Mechanical gaming keyboard with translucent keycaps and vivid blue backlight on a dark desk" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCs5boqY_WihikSN5qOFgkTci6Qf8d1kWBBdIBin7UkjsLov0K9Uzms8XRHsX6V0sCCtHPAVNNIGWwgLbVoeOi6ZDNUhJkOPL1HdrOBdbw48prAT5PaV1SPF0bWiKKvDq5OzPpEUeSLTrM8CsW2uJ0dbQyC3v9L1hztkqb7NBfzdY-9Lcb3wDFw1A308UrSfNA5BIqvKwRx0hpBlEBhI7hvLDjKZaBUYQ7Xuxa2dKimBz_tOwWcD2-7nTCbVsM1zJ-z6vBQAdjvGoDv"/>
+</div>
+<div class="flex flex-col justify-center flex-grow">
+<h4 class="font-headline-sm text-base text-on-surface leading-tight">Cyber-Key TKL</h4>
+<p class="text-body-md text-on-surface-variant text-sm">Mechanical • Blue Switches</p>
+<p class="font-headline-sm text-sm text-secondary mt-1">$149.00</p>
+</div>
+</div>
+</div>
+<div class="pt-8 border-t border-outline-variant space-y-4">
+<div class="flex justify-between items-center text-body-md text-on-surface-variant">
+<span>Subtotal</span>
+<span>$2,648.00</span>
+</div>
+<div class="flex justify-between items-center text-body-md text-on-surface-variant">
+<span>Shipping</span>
+<span class="text-secondary">Calculated at step 2</span>
+</div>
+<div class="flex justify-between items-center text-body-md text-on-surface-variant">
+<span>Tax</span>
+<span>$211.84</span>
+</div>
+<div class="flex justify-between items-center pt-4 text-headline-sm text-on-surface">
+<span>Total</span>
+<span class="text-2xl">$2,859.84</span>
+</div>
+</div>
+<button class="w-full mt-8 bg-primary text-white font-headline-sm py-4 rounded-xl hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-primary/10">
+                        Place Order
+                    </button>
+<div class="mt-6 flex items-center justify-center gap-2 text-slate-400">
+<span class="material-symbols-outlined text-sm">lock</span>
+<span class="font-label-caps text-[10px] uppercase tracking-widest">Encrypted Secure Transaction</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer (Shared Component) -->
+<footer class="w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-8 bg-slate-50 border-t border-slate-200">
+<div class="flex flex-col gap-2">
+<span class="font-bold text-lg text-slate-950 font-['Space_Grotesk']">Cybertech Industrial.</span>
+<p class="text-slate-500 font-['Space_Grotesk'] text-sm">© 2024 Cybertech Industrial. All rights reserved.</p>
+</div>
+<div class="flex flex-wrap justify-center gap-8 font-['Space_Grotesk'] text-sm">
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200" href="#">Privacy Policy</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200" href="#">Terms of Service</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200" href="#">Hardware Warranty</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200" href="#">Global Shipping</a>
+</div>
+</footer>
+</body></html>

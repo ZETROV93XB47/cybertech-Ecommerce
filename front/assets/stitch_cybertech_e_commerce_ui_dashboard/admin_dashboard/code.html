@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9ff;
+        }
+        .sidebar-active {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-container": "#2170e4",
+                        "on-primary-container": "#7c839b",
+                        "primary": "#000000",
+                        "outline-variant": "#c6c6cd",
+                        "on-surface-variant": "#45464d",
+                        "inverse-surface": "#213145",
+                        "surface-dim": "#cbdbf5",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "surface-container-highest": "#d3e4fe",
+                        "surface-container": "#e5eeff",
+                        "on-secondary": "#ffffff",
+                        "secondary": "#0058be",
+                        "secondary-fixed": "#d8e2ff",
+                        "outline": "#76777d",
+                        "primary-container": "#131b2e",
+                        "inverse-primary": "#bec6e0",
+                        "on-error": "#ffffff",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "tertiary-container": "#191c1e",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "surface-tint": "#565e74",
+                        "on-tertiary-container": "#818486",
+                        "on-secondary-fixed-variant": "#004395",
+                        "surface-variant": "#d3e4fe",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-fixed": "#dae2fd",
+                        "inverse-on-surface": "#eaf1ff",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "tertiary-fixed": "#e0e3e5",
+                        "surface-container-high": "#dce9ff",
+                        "primary-fixed-dim": "#bec6e0",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#191c1e",
+                        "surface-container-low": "#eff4ff",
+                        "on-primary-fixed": "#131b2e",
+                        "error": "#ba1a1a",
+                        "on-surface": "#0b1c30",
+                        "on-secondary-fixed": "#001a42",
+                        "on-background": "#0b1c30",
+                        "surface": "#f8f9ff",
+                        "on-secondary-container": "#fefcff",
+                        "on-error-container": "#93000a",
+                        "tertiary": "#000000",
+                        "surface-bright": "#f8f9ff",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "on-primary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "stack-lg": "32px",
+                        "stack-md": "16px",
+                        "container-max": "1280px",
+                        "section-gap": "80px",
+                        "margin-desktop": "48px",
+                        "unit": "8px",
+                        "gutter": "24px",
+                        "stack-sm": "8px",
+                        "margin-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "headline-sm": ["Space Grotesk"],
+                        "display-lg": ["Space Grotesk"],
+                        "body-lg": ["Inter"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background">
+<!-- SideNavBar Component -->
+<aside class="fixed left-0 top-0 h-full flex flex-col z-40 bg-slate-900 dark:bg-slate-950 h-screen w-64 border-r border-slate-800 shadow-2xl font-['Space_Grotesk'] tracking-tight">
+<div class="p-6">
+<div class="text-xl font-bold text-white tracking-widest uppercase mb-1">TechCommerce</div>
+<div class="text-on-primary-container text-xs opacity-60">Admin Terminal</div>
+</div>
+<nav class="flex-1 px-4 mt-6 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 text-blue-400 bg-slate-800/50 border-r-2 border-blue-500 transition-all active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span class="font-medium">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white transition-colors hover:bg-slate-800/30 hover:text-blue-400 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-medium">Products</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white transition-colors hover:bg-slate-800/30 hover:text-blue-400 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-medium">Users</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white transition-colors hover:bg-slate-800/30 hover:text-blue-400 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span>
+<span class="font-medium">Orders</span>
+</a>
+</nav>
+<div class="px-6 py-6 border-t border-slate-800">
+<button class="w-full bg-secondary-container text-white py-3 px-4 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-secondary transition-colors active:scale-95">
+<span>View Store</span>
+<span class="material-symbols-outlined text-sm" data-icon="open_in_new">open_in_new</span>
+</button>
+</div>
+<div class="px-4 pb-8 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white transition-colors hover:bg-slate-800/30 hover:text-blue-400" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-medium">Settings</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white transition-colors hover:bg-slate-800/30 hover:text-blue-400" href="#">
+<span class="material-symbols-outlined" data-icon="help_center">help_center</span>
+<span class="font-medium">Support</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 min-h-screen">
+<!-- TopAppBar Component -->
+<header class="flex justify-between items-center w-full px-6 h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 font-['Space_Grotesk'] font-medium">
+<div class="flex items-center gap-4">
+<h1 class="text-lg font-black text-slate-900">Admin Terminal</h1>
+<div class="h-4 w-[1px] bg-slate-200"></div>
+<span class="text-on-primary-container text-sm">Overview</span>
+</div>
+<div class="flex items-center gap-6">
+<!-- Search Bar Placeholder -->
+<div class="relative hidden lg:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg" data-icon="search">search</span>
+<input class="pl-10 pr-4 py-1.5 bg-slate-100 border-none rounded-full text-sm w-64 focus:ring-2 focus:ring-secondary-container transition-all" placeholder="Search data..." type="text"/>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-500 hover:text-blue-500 transition-colors cursor-pointer active:opacity-70">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-slate-500 hover:text-blue-500 transition-colors cursor-pointer active:opacity-70">
+<span class="material-symbols-outlined" data-icon="dark_mode">dark_mode</span>
+</button>
+<div class="flex items-center gap-2 pl-4 border-l border-slate-200 cursor-pointer active:opacity-70">
+<div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="professional headshot of a male administrator in a suit with a neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDog5-SRHDe6_McDHX2me9eboQXJKoTXVEeCmxc44kSSp1lgKrGJWPc94QNs6CmDBgdGfyH9fYLy84MiFar_JBietZCr2auINOPzQbxbAv7YPrkJ67gjOzI4aNpJCUxdAkKQsb0X9qmSek4WopDWnRbUOhzco0-lE0oMQEs0z8GumugIWn-08WFvUBH3svpbc1tzBnbdxUxoqQDa7b8z_Tl-KWPBJ3BJJ57v18HNplvi285JP7X0IG80Z95TZuOYWrvl8iVqva_YDpn"/>
+</div>
+<span class="material-symbols-outlined text-slate-400" data-icon="expand_more">expand_more</span>
+</div>
+</div>
+</div>
+</header>
+<!-- Page Content -->
+<div class="p-stack-lg max-w-container-max mx-auto">
+<!-- KPI Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter mb-stack-lg">
+<!-- KPI Card: Total Sales -->
+<div class="bg-white p-6 rounded-xl border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-blue-50 rounded-lg">
+<span class="material-symbols-outlined text-blue-600" data-icon="payments">payments</span>
+</div>
+<span class="text-emerald-500 text-xs font-bold bg-emerald-50 px-2 py-1 rounded flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="trending_up">trending_up</span> 12.5%
+                        </span>
+</div>
+<div class="text-on-primary-container font-label-caps text-label-caps uppercase tracking-widest mb-1">Total Sales</div>
+<div class="text-headline-md font-headline-md text-slate-900">$128,430.00</div>
+</div>
+<!-- KPI Card: Orders -->
+<div class="bg-white p-6 rounded-xl border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-purple-50 rounded-lg">
+<span class="material-symbols-outlined text-purple-600" data-icon="shopping_bag">shopping_bag</span>
+</div>
+<span class="text-emerald-500 text-xs font-bold bg-emerald-50 px-2 py-1 rounded flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="trending_up">trending_up</span> 8.2%
+                        </span>
+</div>
+<div class="text-on-primary-container font-label-caps text-label-caps uppercase tracking-widest mb-1">Orders</div>
+<div class="text-headline-md font-headline-md text-slate-900">1,429</div>
+</div>
+<!-- KPI Card: New Customers -->
+<div class="bg-white p-6 rounded-xl border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-orange-50 rounded-lg">
+<span class="material-symbols-outlined text-orange-600" data-icon="person_add">person_add</span>
+</div>
+<span class="text-slate-500 text-xs font-bold bg-slate-50 px-2 py-1 rounded flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="trending_flat">trending_flat</span> 0.4%
+                        </span>
+</div>
+<div class="text-on-primary-container font-label-caps text-label-caps uppercase tracking-widest mb-1">New Customers</div>
+<div class="text-headline-md font-headline-md text-slate-900">384</div>
+</div>
+<!-- KPI Card: Growth -->
+<div class="bg-white p-6 rounded-xl border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-emerald-50 rounded-lg">
+<span class="material-symbols-outlined text-emerald-600" data-icon="insights">insights</span>
+</div>
+<span class="text-emerald-500 text-xs font-bold bg-emerald-50 px-2 py-1 rounded flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="trending_up">trending_up</span> 24%
+                        </span>
+</div>
+<div class="text-on-primary-container font-label-caps text-label-caps uppercase tracking-widest mb-1">Avg. Growth</div>
+<div class="text-headline-md font-headline-md text-slate-900">32.8%</div>
+</div>
+</div>
+<!-- Main Layout Grid: Bento Style -->
+<div class="grid grid-cols-12 gap-gutter">
+<!-- Sales Analytics Chart Placeholder -->
+<div class="col-span-12 lg:col-span-8 bg-white p-8 rounded-xl border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.03)]">
+<div class="flex justify-between items-center mb-8">
+<div>
+<h2 class="text-headline-sm font-headline-sm text-slate-900">Sales Analytics</h2>
+<p class="text-body-md text-on-primary-container">Revenue performance over the last 30 days</p>
+</div>
+<div class="flex gap-2">
+<button class="px-3 py-1.5 text-xs font-bold bg-slate-100 rounded text-slate-700">Weekly</button>
+<button class="px-3 py-1.5 text-xs font-bold bg-secondary-container rounded text-white">Monthly</button>
+</div>
+</div>
+<!-- Chart Graphic Placeholder -->
+<div class="h-64 w-full relative overflow-hidden rounded-lg bg-slate-50 flex items-end justify-between px-4 pb-2">
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 40%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 65%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 45%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 80%"></div>
+<div class="w-8 bg-secondary-container rounded-t-sm" style="height: 95%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 70%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 55%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 85%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 40%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 60%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 75%"></div>
+<div class="w-8 bg-slate-200 rounded-t-sm" style="height: 50%"></div>
+<!-- Overlay line chart effect -->
+<div class="absolute inset-0 flex items-center justify-center opacity-10">
+<span class="material-symbols-outlined text-[200px]" data-icon="show_chart">show_chart</span>
+</div>
+</div>
+<div class="flex justify-between mt-4 px-2 text-[10px] font-bold text-on-primary-container uppercase tracking-widest">
+<span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+</div>
+</div>
+<!-- Top Products / Side Panel -->
+<div class="col-span-12 lg:col-span-4 bg-slate-900 text-white p-8 rounded-xl shadow-2xl flex flex-col">
+<h2 class="text-headline-sm font-headline-sm mb-6">Top Performers</h2>
+<div class="space-y-6 flex-1">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-lg bg-slate-800 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="minimalist sleek designer watch on white background with soft shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB6JJCe1BRjUGH-WxHox4ap5GXkpqmyakiSxA5fSl9Frtah8nHCGPlEw4l5CBx0WjL_0LB9dlhzT2u5roZy9MLG27lQCDiiw6V42g8PC_OFqLbkawOap-Pes1N8nccdGZzs69JxTLkg3Z4wHizClTgRIYR-HoZpolrkhBpGtgFESWYANfRSiZYHlkwBJw70vuRjmBn2Nj6pX8rPHKOFyh_JsJ3E5dQeu7BxHgP-8F0FX_pVlBANEO4P3aQIjiJEG5g9Gm_945-mYbrR"/>
+</div>
+<div class="flex-1">
+<div class="text-sm font-bold">Titanium Series 7</div>
+<div class="text-xs text-slate-400">1,204 sales</div>
+</div>
+<div class="text-sm font-bold text-blue-400">+$12k</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-lg bg-slate-800 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="professional studio headphones in matte black finish on a clean grey background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCVCjgr2FNn09WXPvk3kObMF1VmuaiB4qLjK0kgy4UWPQ3aCVbMSjh6KVuNURTQ5cOBlSU0iMI0EKVYv4-hAjL6YS3qKPCkQAAovka4q3Nl2zKuIdwQ5Xx8N4WmgQ8ZdmAfdX63Yr3-WiOsBSduf-xj2dz74Rbh9SzQ5SwOTWkGLZMbkzaiqDtqsC7mtXA4pOG9YPQI1Dsmne1x4PwZwiFawwEpE6b8CAppC4BxUmRDorX98W0Ze9wJhb68g8m2mQaRtFcux2UB6I5_"/>
+</div>
+<div class="flex-1">
+<div class="text-sm font-bold">Audio Pro Wireless</div>
+<div class="text-xs text-slate-400">943 sales</div>
+</div>
+<div class="text-sm font-bold text-blue-400">+$8.4k</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-lg bg-slate-800 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="vintage style film camera with modern metallic details on a neutral studio background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBlXkJAxrjIOAa76dnCxGoCumGToAyjSYuG5DbR4m28h7bjkMbdPyWSXhGirmrIxG4yPTB9RUGSNpvp-8_0GmafqELdpoHITcx-PXYkPRP4R_oCkZdzsccMfxD3V-qayBUyGlNeJN4Pddh9l501W2GyI3cdmpeqfvbNl6SqS2FI-VXhps-fAJb1uhIyd4uc3Xy5Y5BFdn_D84SSqE8eMJyN3CcyFAA4WMk8m1nIlDf5L10Oo7oJ6Wng3xpBXTvaPkVBO-q8-Prfn09f"/>
+</div>
+<div class="flex-1">
+<div class="text-sm font-bold">NeoRetro Camera</div>
+<div class="text-xs text-slate-400">812 sales</div>
+</div>
+<div class="text-sm font-bold text-blue-400">+$15.2k</div>
+</div>
+</div>
+<button class="mt-8 w-full border border-slate-700 py-3 rounded-lg text-sm font-bold hover:bg-slate-800 transition-colors">
+                        View Inventory Report
+                    </button>
+</div>
+<!-- Recent Orders Data Table -->
+<div class="col-span-12 bg-white rounded-xl border border-slate-100 shadow-[0px_4px_20px_rgba(0,0,0,0.03)] overflow-hidden">
+<div class="px-8 py-6 border-b border-slate-50 flex justify-between items-center">
+<h2 class="text-headline-sm font-headline-sm text-slate-900">Recent Orders</h2>
+<button class="text-secondary-container font-bold text-sm flex items-center gap-1 hover:underline">
+                            View All <span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead>
+<tr class="bg-slate-50/50">
+<th class="px-8 py-4 text-label-caps font-label-caps text-on-primary-container uppercase tracking-wider">Order ID</th>
+<th class="px-8 py-4 text-label-caps font-label-caps text-on-primary-container uppercase tracking-wider">Customer</th>
+<th class="px-8 py-4 text-label-caps font-label-caps text-on-primary-container uppercase tracking-wider">Product</th>
+<th class="px-8 py-4 text-label-caps font-label-caps text-on-primary-container uppercase tracking-wider">Date</th>
+<th class="px-8 py-4 text-label-caps font-label-caps text-on-primary-container uppercase tracking-wider">Amount</th>
+<th class="px-8 py-4 text-label-caps font-label-caps text-on-primary-container uppercase tracking-wider">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-50">
+<tr class="hover:bg-slate-50/30 transition-colors">
+<td class="px-8 py-4 font-mono text-sm text-slate-500">#ORD-7742</td>
+<td class="px-8 py-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold">JD</div>
+<span class="text-sm font-medium text-slate-900">Johnathan Doe</span>
+</div>
+</td>
+<td class="px-8 py-4 text-sm text-slate-600">Titanium Series 7</td>
+<td class="px-8 py-4 text-sm text-slate-500">Oct 24, 2023</td>
+<td class="px-8 py-4 text-sm font-bold text-slate-900">$599.00</td>
+<td class="px-8 py-4">
+<span class="px-3 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 uppercase tracking-tighter">Shipped</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/30 transition-colors">
+<td class="px-8 py-4 font-mono text-sm text-slate-500">#ORD-7741</td>
+<td class="px-8 py-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="vibrant portrait of a woman with a friendly smile on a clean white background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCeVE3G-xNSV2K-43yRRYPnklVJmM-bbe_mthPzuU527NQcjS81g5GMR4uv5MzKHGwNyzKe5tM7S5oUvGmPb8doEI3aWoztZFUmFSeYTo8fMsIm4tBW9DMlJT4MW461pYLINnVp_A-bTrm4nPQ9oRQZo6Vhe6CfIVa3o1Do8NbbNok4dk0AGuvLN195CEVw4oWW83HxBQ5sfXQ3nwmeN6tydVVUomFj6k0R3FwgiWM8fTkXRtDWmoJW1uVOmdbIIE55ADRn6o6LD7P"/>
+</div>
+<span class="text-sm font-medium text-slate-900">Sarah Jenkins</span>
+</div>
+</td>
+<td class="px-8 py-4 text-sm text-slate-600">Audio Pro Wireless</td>
+<td class="px-8 py-4 text-sm text-slate-500">Oct 24, 2023</td>
+<td class="px-8 py-4 text-sm font-bold text-slate-900">$249.50</td>
+<td class="px-8 py-4">
+<span class="px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 uppercase tracking-tighter">Delivered</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/30 transition-colors">
+<td class="px-8 py-4 font-mono text-sm text-slate-500">#ORD-7740</td>
+<td class="px-8 py-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 text-xs font-bold">MK</div>
+<span class="text-sm font-medium text-slate-900">Marcus Knight</span>
+</div>
+</td>
+<td class="px-8 py-4 text-sm text-slate-600">NeoRetro Camera</td>
+<td class="px-8 py-4 text-sm text-slate-500">Oct 23, 2023</td>
+<td class="px-8 py-4 text-sm font-bold text-slate-900">$1,200.00</td>
+<td class="px-8 py-4">
+<span class="px-3 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 uppercase tracking-tighter">Pending</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/30 transition-colors">
+<td class="px-8 py-4 font-mono text-sm text-slate-500">#ORD-7739</td>
+<td class="px-8 py-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold">LW</div>
+<span class="text-sm font-medium text-slate-900">Laura White</span>
+</div>
+</td>
+<td class="px-8 py-4 text-sm text-slate-600">Minimalist Desk Lamp</td>
+<td class="px-8 py-4 text-sm text-slate-500">Oct 23, 2023</td>
+<td class="px-8 py-4 text-sm font-bold text-slate-900">$89.00</td>
+<td class="px-8 py-4">
+<span class="px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 uppercase tracking-tighter">Delivered</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="px-8 py-4 bg-slate-50/50 border-t border-slate-100 text-center">
+<p class="text-xs text-on-primary-container">Showing last 4 orders. Update frequency: real-time.</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

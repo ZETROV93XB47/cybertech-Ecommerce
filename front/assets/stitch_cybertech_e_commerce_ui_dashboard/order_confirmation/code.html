@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Order Confirmed | Cybertech</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-tint": "#565e74",
+                        "surface-variant": "#d3e4fe",
+                        "surface-container-highest": "#d3e4fe",
+                        "primary-fixed": "#dae2fd",
+                        "on-error": "#ffffff",
+                        "on-surface": "#0b1c30",
+                        "on-tertiary-fixed": "#191c1e",
+                        "inverse-on-surface": "#eaf1ff",
+                        "inverse-surface": "#213145",
+                        "secondary-fixed": "#d8e2ff",
+                        "tertiary-fixed": "#e0e3e5",
+                        "primary-fixed-dim": "#bec6e0",
+                        "surface-bright": "#f8f9ff",
+                        "on-secondary-container": "#fefcff",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "on-secondary-fixed-variant": "#004395",
+                        "on-primary": "#ffffff",
+                        "secondary": "#0058be",
+                        "outline": "#76777d",
+                        "on-surface-variant": "#45464d",
+                        "tertiary-container": "#191c1e",
+                        "surface-container": "#e5eeff",
+                        "on-background": "#0b1c30",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "outline-variant": "#c6c6cd",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "surface-dim": "#cbdbf5",
+                        "on-tertiary-container": "#818486",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "on-secondary-fixed": "#001a42",
+                        "secondary-container": "#2170e4",
+                        "surface": "#f8f9ff",
+                        "on-primary-container": "#7c839b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#131b2e",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "surface-container-low": "#eff4ff",
+                        "tertiary": "#000000",
+                        "primary-container": "#131b2e",
+                        "primary": "#000000",
+                        "surface-container-high": "#dce9ff",
+                        "inverse-primary": "#bec6e0",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "stack-lg": "32px",
+                        "gutter": "24px",
+                        "section-gap": "80px",
+                        "margin-desktop": "48px",
+                        "stack-sm": "8px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px",
+                        "container-max": "1280px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Space Grotesk"],
+                        "headline-md": ["Space Grotesk"],
+                        "headline-sm": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #f8f9ff;
+            color: #0b1c30;
+        }
+    </style>
+</head>
+<body class="font-body-md text-body-md antialiased overflow-x-hidden">
+<!-- Top Navigation Bar (Suppressed for Success Screen as per UX guidelines, but showing minimal brand anchor) -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-8 h-20 max-w-[1440px] mx-auto bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
+<div class="text-2xl font-bold text-slate-900 tracking-tighter font-display-lg">Cybertech</div>
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-slate-600">help_outline</span>
+<span class="material-symbols-outlined text-slate-600">person</span>
+</div>
+</header>
+<main class="pt-32 pb-section-gap px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto">
+<!-- Success Hero Section -->
+<div class="flex flex-col items-center text-center mb-stack-lg max-w-2xl mx-auto">
+<div class="w-20 h-20 bg-secondary-container rounded-full flex items-center justify-center mb-stack-md shadow-lg shadow-secondary/20">
+<span class="material-symbols-outlined text-white text-5xl" style="font-variation-settings: 'wght' 600;">check_circle</span>
+</div>
+<h1 class="font-display-lg text-display-lg text-primary mb-stack-sm">Order Confirmed</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-lg mb-stack-md">
+                Thank you for your purchase. We've received your order and our engineering team is preparing your hardware for shipment.
+            </p>
+<div class="bg-surface-container-low px-6 py-3 rounded-lg border border-outline-variant inline-flex items-center gap-3">
+<span class="font-label-caps text-label-caps text-on-primary-container uppercase tracking-widest">Order ID:</span>
+<code class="font-mono text-primary font-bold">CT-9921-XF-2024-B90</code>
+<button class="hover:text-secondary transition-colors"><span class="material-symbols-outlined text-sm">content_copy</span></button>
+</div>
+</div>
+<!-- Bento Grid Layout for Order Content -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter items-start">
+<!-- Left Column: Summary and Items -->
+<div class="lg:col-span-8 space-y-gutter">
+<!-- Order Summary Card -->
+<section class="bg-surface-container-lowest p-8 rounded-xl shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] border border-slate-100">
+<h2 class="font-headline-sm text-headline-sm text-primary mb-stack-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">inventory_2</span>
+                        Hardware Configuration
+                    </h2>
+<div class="space-y-6">
+<!-- Product Item 1 -->
+<div class="flex items-center gap-6 py-4 border-b border-outline-variant/30">
+<div class="w-24 h-24 bg-slate-50 rounded-lg overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="high-end modular pc workstation with internal RGB lighting and sleek black aluminum finish on clean white background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBqrE0yJiroJQHiZf2_0fj_iQnKZWZa32iEMFjR5roz3BTwtIbD3OU13ZO9xo-pu9Z-W_wWQORlvg0eI8WCIEOErfljCTN-BiaQrv-xo7fMbgImSpljdW4RxnctCfIBh4vJ6bWUoTXV7ljgVij5lL7BmsmMDR8nflyr2CQQG06Dff-bUbQWN7sz0eDtzuj6kzNE2D499XhHez1kiMzmyk7XyCfRa_Q-0yTIICJi3dwjdSR2qv5qfRDup9PM2qPHtN6MiIsrCVd2lI3U"/>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-start">
+<h3 class="font-headline-sm text-lg text-primary">Cybertech Nexus X1</h3>
+<span class="font-body-md text-primary font-bold">$3,499.00</span>
+</div>
+<p class="text-on-surface-variant text-sm mt-1">RTX 4090 • 64GB DDR5 • 2TB NVMe Gen5</p>
+<div class="mt-2 inline-flex items-center px-2 py-1 bg-surface-container text-secondary text-xs font-semibold rounded">QTY: 1</div>
+</div>
+</div>
+<!-- Product Item 2 -->
+<div class="flex items-center gap-6 py-4">
+<div class="w-24 h-24 bg-slate-50 rounded-lg overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="professional high-performance mechanical keyboard with brushed metal plate and custom keycaps isolated on light background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuArSr4l1Ed0Bobd17U4q3T558BPShXANTviOUZSagjhzjd2BN_0_m_rbxEgswZ0IAMz2dPaJ7bXNLfMgYAdkQXawQufQHlG4TqzN0XiYvLUgTgTs9cXzS8V4q0T8A4wmXWEFaiE5X6-1UH7i8-WTeaQU6La3RloI7mD8csdXx38cy7v00XOdOUXyJZXE0HGmF4a8UvKBrkyag-U3QP9PnLNqHhfD36EF2E88WWFSxQEilbR__wRl5kOAvW3ekKB1seZFzh5KknveN4m"/>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-start">
+<h3 class="font-headline-sm text-lg text-primary">Tactile Pro MK.II</h3>
+<span class="font-body-md text-primary font-bold">$249.00</span>
+</div>
+<p class="text-on-surface-variant text-sm mt-1">Linear Black Switches • Polished Cobalt Case</p>
+<div class="mt-2 inline-flex items-center px-2 py-1 bg-surface-container text-secondary text-xs font-semibold rounded">QTY: 1</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Logistics Asymmetric Detail -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-gutter">
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] border border-slate-100">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-2 block">Shipping To</span>
+<div class="text-primary font-medium">
+                            Jonathan Wick<br/>
+                            1200 Tech Valley Blvd, Suite 404<br/>
+                            Austin, TX 78701<br/>
+                            United States
+                        </div>
+</div>
+<div class="bg-secondary p-6 rounded-xl shadow-xl shadow-secondary/10 flex flex-col justify-between text-white">
+<div>
+<span class="font-label-caps text-label-caps text-blue-100 uppercase mb-2 block">Estimated Delivery</span>
+<div class="text-2xl font-headline-md">October 24, 2024</div>
+</div>
+<div class="mt-4 flex items-center gap-2 text-blue-50 text-sm">
+<span class="material-symbols-outlined text-sm">local_shipping</span>
+                            Standard White-Glove Delivery
+                        </div>
+</div>
+</div>
+</div>
+<!-- Right Column: Order Totals & CTA -->
+<aside class="lg:col-span-4 sticky top-28 space-y-gutter">
+<div class="bg-primary text-white p-8 rounded-xl shadow-2xl">
+<h2 class="font-headline-sm text-headline-sm mb-stack-lg">Order Total</h2>
+<div class="space-y-4 mb-stack-lg">
+<div class="flex justify-between text-on-primary-container font-body-md">
+<span>Subtotal</span>
+<span>$3,748.00</span>
+</div>
+<div class="flex justify-between text-on-primary-container font-body-md">
+<span>Shipping</span>
+<span class="text-emerald-400">FREE</span>
+</div>
+<div class="flex justify-between text-on-primary-container font-body-md pb-4 border-b border-white/10">
+<span>Tax (8%)</span>
+<span>$299.84</span>
+</div>
+<div class="flex justify-between text-2xl font-bold pt-2">
+<span>Total</span>
+<span>$4,047.84</span>
+</div>
+</div>
+<button class="w-full bg-secondary hover:bg-secondary-container text-white py-5 rounded-lg font-bold text-lg transition-all duration-300 active:scale-95 shadow-lg shadow-secondary/20 flex items-center justify-center gap-3">
+                        Continue Shopping
+                        <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+<p class="text-center text-xs text-blue-200/60 mt-6 px-4">
+                        A confirmation email has been sent to j.wick@continental.com
+                    </p>
+</div>
+<!-- Support Card -->
+<div class="bg-white p-6 rounded-xl border border-slate-100 flex items-center gap-4 group cursor-pointer hover:shadow-lg transition-all">
+<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-secondary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">support_agent</span>
+</div>
+<div>
+<div class="font-bold text-primary">Need assistance?</div>
+<div class="text-sm text-on-surface-variant">Our support desk is open 24/7</div>
+</div>
+</div>
+</aside></div>
+</main>
+<!-- Footer Component -->
+<footer class="w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-8 bg-slate-50 border-t border-slate-200">
+<div class="flex flex-col gap-2">
+<span class="font-bold text-lg text-slate-950 font-display-lg tracking-tighter">Cybertech Industrial.</span>
+<p class="font-['Space_Grotesk'] text-sm text-slate-500">© 2024 Cybertech Industrial. All rights reserved.</p>
+</div>
+<div class="flex flex-wrap justify-center gap-8">
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all" href="#">Privacy Policy</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all" href="#">Terms of Service</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all" href="#">Hardware Warranty</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all" href="#">Global Shipping</a>
+</div>
+</footer>
+</body></html>

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-tint": "#565e74",
+                        "surface-variant": "#d3e4fe",
+                        "surface-container-highest": "#d3e4fe",
+                        "primary-fixed": "#dae2fd",
+                        "on-error": "#ffffff",
+                        "on-surface": "#0b1c30",
+                        "on-tertiary-fixed": "#191c1e",
+                        "inverse-on-surface": "#eaf1ff",
+                        "inverse-surface": "#213145",
+                        "secondary-fixed": "#d8e2ff",
+                        "tertiary-fixed": "#e0e3e5",
+                        "primary-fixed-dim": "#bec6e0",
+                        "surface-bright": "#f8f9ff",
+                        "on-secondary-container": "#fefcff",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "on-secondary-fixed-variant": "#004395",
+                        "on-primary": "#ffffff",
+                        "secondary": "#0058be",
+                        "outline": "#76777d",
+                        "on-surface-variant": "#45464d",
+                        "tertiary-container": "#191c1e",
+                        "surface-container": "#e5eeff",
+                        "on-background": "#0b1c30",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "outline-variant": "#c6c6cd",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "surface-dim": "#cbdbf5",
+                        "on-tertiary-container": "#818486",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "on-secondary-fixed": "#001a42",
+                        "secondary-container": "#2170e4",
+                        "surface": "#f8f9ff",
+                        "on-primary-container": "#7c839b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#131b2e",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "surface-container-low": "#eff4ff",
+                        "tertiary": "#000000",
+                        "primary-container": "#131b2e",
+                        "primary": "#000000",
+                        "surface-container-high": "#dce9ff",
+                        "inverse-primary": "#bec6e0",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "stack-lg": "32px",
+                        "gutter": "24px",
+                        "section-gap": "80px",
+                        "margin-desktop": "48px",
+                        "stack-sm": "8px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px",
+                        "container-max": "1280px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Space Grotesk"],
+                        "headline-md": ["Space Grotesk"],
+                        "headline-sm": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #f8f9ff;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen">
+<!-- TopNavBar Shell -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-8 h-20 max-w-[1440px] mx-auto bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
+<div class="flex items-center gap-12">
+<span class="text-2xl font-bold text-slate-900 tracking-tighter font-['Space_Grotesk']">Cybertech</span>
+<nav class="hidden md:flex gap-8">
+<a class="text-slate-600 hover:text-slate-900 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Shop</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Builds</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Pre-buys</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Support</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<button class="material-symbols-outlined text-slate-900">shopping_cart</button>
+<button class="material-symbols-outlined text-slate-900">person</button>
+</div>
+</header>
+<div class="flex min-h-screen pt-20">
+<!-- SideNavBar Shell -->
+<aside class="flex flex-col fixed left-0 top-20 h-[calc(100vh-80px)] py-6 w-64 bg-slate-900 border-r border-slate-800 shadow-2xl z-40">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="professional portrait of a tech executive with glasses in a modern office setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCncFuTdbUqiNBT5YVdQ_iXgu1DyVpxOmfOKbi0F56aQRLl12W1WI0XMIY30JL54sdrdWQtzXkB-OSEqjyNtHJD8thZQg3Zw9buUQCCwodJm_2VeMAdRy-M5iKO7Ad3_d_RZ1EQU2BAcDeQChVMvbTk-kl2HTr5AvF3eyYKz1q64twj6a2omUm1RhwQtVxIP85YloI3s8xjC2MnJMz6Po8zaHAchZ58tz28Tlz8U4vxS46IXpDIbLk6n1fwzMapqB1YrUe5Q7S3Affx"/>
+</div>
+<div>
+<p class="text-white font-black text-sm font-['Space_Grotesk']">Alex Rivera</p>
+<p class="text-slate-400 text-xs">Systems Controller</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 px-2 space-y-1">
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all duration-300 hover:translate-x-1 font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all duration-300 hover:translate-x-1 font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<span>Inventory</span>
+</a>
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all duration-300 hover:translate-x-1 font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">shopping_bag</span>
+<span>Orders</span>
+</a>
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all duration-300 hover:translate-x-1 font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">group</span>
+<span>Customers</span>
+</a>
+<a class="bg-blue-600 text-white rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="px-2 mt-auto border-t border-slate-800 pt-4">
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all duration-300 font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">help_outline</span>
+<span>Support</span>
+</a>
+<a class="text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg mx-2 my-1 px-4 py-3 flex items-center gap-3 transition-all duration-300 font-['Space_Grotesk'] font-medium" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 ml-64 p-12 max-w-[1200px] mx-auto">
+<div class="mb-section-gap">
+<h1 class="font-headline-md text-headline-md text-on-background mb-unit">Account Settings</h1>
+<p class="font-body-md text-on-surface-variant">Manage your hardware profile, security preferences, and industrial-grade configuration.</p>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-12 gap-gutter">
+<!-- Personal Info Card -->
+<div class="col-span-12 lg:col-span-8 bg-surface-container-lowest p-stack-lg rounded-xl shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] border border-slate-200">
+<div class="flex justify-between items-center mb-stack-lg">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Personal Information</h2>
+<button class="text-secondary font-['Space_Grotesk'] font-semibold text-sm hover:underline">Edit Info</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-lg">
+<div class="space-y-1">
+<span class="font-label-caps text-label-caps text-outline uppercase">Full Name</span>
+<p class="font-body-lg text-body-lg text-on-background">Alexandre Rivera</p>
+</div>
+<div class="space-y-1">
+<span class="font-label-caps text-label-caps text-outline uppercase">Email Address</span>
+<p class="font-body-lg text-body-lg text-on-background">a.rivera@cybertech.ind</p>
+</div>
+<div class="space-y-1">
+<span class="font-label-caps text-label-caps text-outline uppercase">Phone Number</span>
+<p class="font-body-lg text-body-lg text-on-background">+1 (555) 892-4410</p>
+</div>
+<div class="space-y-1">
+<span class="font-label-caps text-label-caps text-outline uppercase">Organization</span>
+<p class="font-body-lg text-body-lg text-on-background">Cybertech Industrial Labs</p>
+</div>
+</div>
+</div>
+<!-- Navigation Shortcuts -->
+<div class="col-span-12 lg:col-span-4 flex flex-col gap-gutter">
+<a class="group flex items-center justify-between p-stack-md bg-white border border-slate-200 rounded-xl hover:shadow-lg transition-all duration-300" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 bg-surface-container flex items-center justify-center rounded-lg text-secondary">
+<span class="material-symbols-outlined">shopping_cart_checkout</span>
+</div>
+<span class="font-headline-sm text-lg font-['Space_Grotesk']">My Orders</span>
+</div>
+<span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">chevron_right</span>
+</a>
+<a class="group flex items-center justify-between p-stack-md bg-white border border-slate-200 rounded-xl hover:shadow-lg transition-all duration-300" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 bg-surface-container flex items-center justify-center rounded-lg text-secondary">
+<span class="material-symbols-outlined">favorite</span>
+</div>
+<span class="font-headline-sm text-lg font-['Space_Grotesk']">Wishlist</span>
+</div>
+<span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">chevron_right</span>
+</a>
+<a class="group flex items-center justify-between p-stack-md bg-white border border-slate-200 rounded-xl hover:shadow-lg transition-all duration-300" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 bg-surface-container flex items-center justify-center rounded-lg text-secondary">
+<span class="material-symbols-outlined">reviews</span>
+</div>
+<span class="font-headline-sm text-lg font-['Space_Grotesk']">My Reviews</span>
+</div>
+<span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">chevron_right</span>
+</a>
+</div>
+<!-- Address Management -->
+<div class="col-span-12 lg:col-span-6 bg-surface-container-lowest p-stack-lg rounded-xl border border-slate-200">
+<div class="flex justify-between items-center mb-stack-lg">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Shipping Address</h2>
+<button class="material-symbols-outlined text-outline hover:text-on-surface transition-colors">add_location</button>
+</div>
+<div class="p-stack-md border border-slate-100 rounded-lg bg-surface-bright">
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-secondary mt-1">home</span>
+<div>
+<p class="font-['Space_Grotesk'] font-bold text-on-background">Main HQ Distribution</p>
+<p class="text-on-surface-variant text-sm mt-1">
+                                    742 Industrial Way, Tech Park A<br/>
+                                    Neo City, NC 90210<br/>
+                                    United States
+                                </p>
+<div class="flex gap-4 mt-stack-md">
+<button class="text-xs font-label-caps text-secondary uppercase hover:underline">Set as Default</button>
+<button class="text-xs font-label-caps text-outline uppercase hover:underline">Remove</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Payment Methods -->
+<div class="col-span-12 lg:col-span-6 bg-surface-container-lowest p-stack-lg rounded-xl border border-slate-200">
+<div class="flex justify-between items-center mb-stack-lg">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Payment Methods</h2>
+<button class="material-symbols-outlined text-outline hover:text-on-surface transition-colors">add_card</button>
+</div>
+<div class="space-y-4">
+<!-- Masked Card 1 -->
+<div class="relative group p-stack-md bg-slate-900 text-white rounded-xl overflow-hidden shadow-xl">
+<div class="absolute -right-8 -top-8 w-32 h-32 bg-blue-600/20 rounded-full blur-3xl"></div>
+<div class="relative z-10 flex justify-between items-start mb-8">
+<span class="font-['Space_Grotesk'] font-black italic text-lg">TITANIUM</span>
+<span class="material-symbols-outlined">contactless</span>
+</div>
+<div class="relative z-10">
+<p class="text-slate-400 text-[10px] uppercase tracking-widest mb-1">Card Number</p>
+<p class="font-['Space_Grotesk'] text-xl tracking-widest">•••• •••• •••• 9921</p>
+</div>
+<div class="relative z-10 flex justify-between items-end mt-4">
+<div>
+<p class="text-slate-400 text-[10px] uppercase tracking-widest">Expiry</p>
+<p class="text-sm font-['Space_Grotesk']">12/28</p>
+</div>
+<div class="w-10 h-6 bg-white/20 rounded-md backdrop-blur-sm"></div>
+</div>
+</div>
+<div class="flex items-center justify-between p-stack-md border border-slate-100 rounded-lg bg-surface-bright">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-outline">credit_card</span>
+<div>
+<p class="font-['Space_Grotesk'] font-bold text-on-background">Visa Corporate</p>
+<p class="text-on-surface-variant text-sm">•••• 4420 • Exp 05/26</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline">more_vert</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Footer Shell -->
+<footer class="w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-8 bg-slate-50 border-t border-slate-200">
+<div>
+<span class="font-bold text-lg text-slate-950 font-['Space_Grotesk']">Cybertech</span>
+<p class="text-slate-500 font-['Space_Grotesk'] text-sm mt-2">© 2024 Cybertech Industrial. All rights reserved.</p>
+</div>
+<nav class="flex flex-wrap justify-center gap-8">
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200 font-['Space_Grotesk'] text-sm" href="#">Privacy Policy</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200 font-['Space_Grotesk'] text-sm" href="#">Terms of Service</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200 font-['Space_Grotesk'] text-sm" href="#">Hardware Warranty</a>
+<a class="text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200 font-['Space_Grotesk'] text-sm" href="#">Global Shipping</a>
+</nav>
+</footer>
+</body></html>

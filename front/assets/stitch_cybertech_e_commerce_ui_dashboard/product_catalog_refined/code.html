@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-tint": "#565e74",
+                        "surface-variant": "#d3e4fe",
+                        "surface-container-highest": "#d3e4fe",
+                        "primary-fixed": "#dae2fd",
+                        "on-error": "#ffffff",
+                        "on-surface": "#0b1c30",
+                        "on-tertiary-fixed": "#191c1e",
+                        "inverse-on-surface": "#eaf1ff",
+                        "inverse-surface": "#213145",
+                        "secondary-fixed": "#d8e2ff",
+                        "tertiary-fixed": "#e0e3e5",
+                        "primary-fixed-dim": "#bec6e0",
+                        "surface-bright": "#f8f9ff",
+                        "on-secondary-container": "#fefcff",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "on-secondary-fixed-variant": "#004395",
+                        "on-primary": "#ffffff",
+                        "secondary": "#0058be",
+                        "outline": "#76777d",
+                        "on-surface-variant": "#45464d",
+                        "tertiary-container": "#191c1e",
+                        "surface-container": "#e5eeff",
+                        "on-background": "#0b1c30",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "outline-variant": "#c6c6cd",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "surface-dim": "#cbdbf5",
+                        "on-tertiary-container": "#818486",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "on-secondary-fixed": "#001a42",
+                        "secondary-container": "#2170e4",
+                        "surface": "#f8f9ff",
+                        "on-primary-container": "#7c839b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#131b2e",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "surface-container-low": "#eff4ff",
+                        "tertiary": "#000000",
+                        "primary-container": "#131b2e",
+                        "primary": "#000000",
+                        "surface-container-high": "#dce9ff",
+                        "inverse-primary": "#bec6e0",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "stack-lg": "32px",
+                        "gutter": "24px",
+                        "section-gap": "80px",
+                        "margin-desktop": "48px",
+                        "stack-sm": "8px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px",
+                        "container-max": "1280px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Space Grotesk"],
+                        "headline-md": ["Space Grotesk"],
+                        "headline-sm": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-8 h-20 max-w-[1440px] mx-auto bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] left-1/2 -translate-x-1/2">
+<div class="flex items-center gap-12">
+<span class="text-2xl font-bold text-slate-900 tracking-tighter font-['Space_Grotesk']">Cybertech</span>
+<div class="hidden md:flex gap-8">
+<a class="text-blue-600 border-b-2 border-blue-600 pb-1 font-['Space_Grotesk'] tracking-tight" href="#">Shop</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Builds</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Pre-buys</a>
+<a class="text-slate-600 hover:text-slate-900 transition-colors font-['Space_Grotesk'] tracking-tight" href="#">Support</a>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative hidden lg:block">
+<input class="bg-surface-container-low border-none rounded-full py-2 pl-10 pr-4 w-64 focus:ring-2 focus:ring-secondary transition-all font-body-md" placeholder="Search products..." type="text" value="Gaming"/>
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 hover:bg-slate-50 rounded-full transition-all duration-200">
+<span class="material-symbols-outlined text-slate-700">shopping_cart</span>
+</button>
+<button class="p-2 hover:bg-slate-50 rounded-full transition-all duration-200">
+<span class="material-symbols-outlined text-slate-700">person</span>
+</button>
+</div>
+</div>
+</nav>
+<main class="pt-20 max-w-[1440px] mx-auto flex">
+<!-- Sidebar Filters -->
+<aside class="w-72 flex-shrink-0 p-8 border-r border-slate-100 h-[calc(100vh-80px)] sticky top-20 overflow-y-auto">
+<div class="space-y-8">
+<!-- Active Filters Section -->
+<div>
+<h3 class="font-headline-sm text-headline-sm mb-4">Filters</h3>
+<div class="flex flex-wrap gap-2">
+<span class="inline-flex items-center gap-1 bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-label-caps">
+                            Gaming <span class="material-symbols-outlined text-[14px] cursor-pointer">close</span>
+</span>
+</div>
+</div>
+<!-- Categories -->
+<div>
+<h4 class="font-label-caps text-label-caps text-on-surface-variant mb-3">CATEGORY</h4>
+<div class="space-y-2">
+<label class="flex items-center gap-3 cursor-pointer group">
+<input checked="" class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">COMPUTER</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">MONITOR</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">PERIPHERALS</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">COMPONENTS</span>
+</label>
+</div>
+</div>
+<!-- Brands -->
+<div>
+<h4 class="font-label-caps text-label-caps text-on-surface-variant mb-3">BRANDS</h4>
+<div class="space-y-2">
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">ASUS</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">HP</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">RAZER</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">MSI</span>
+</label>
+</div>
+</div>
+<!-- Price Range -->
+<div>
+<h4 class="font-label-caps text-label-caps text-on-surface-variant mb-3">PRICE RANGE</h4>
+<div class="space-y-4">
+<input class="w-full h-1 bg-surface-container-high rounded-lg appearance-none cursor-pointer accent-secondary" max="5000" min="0" step="100" type="range"/>
+<div class="flex justify-between items-center gap-2">
+<input class="w-full bg-surface-container-low border border-outline-variant rounded-lg px-2 py-1 text-label-caps focus:ring-1 focus:ring-secondary outline-none text-center" type="text" value="$500"/>
+<span class="text-outline">to</span>
+<input class="w-full bg-surface-container-low border border-outline-variant rounded-lg px-2 py-1 text-label-caps focus:ring-1 focus:ring-secondary outline-none text-center" type="text" value="$3500"/>
+</div>
+</div>
+</div>
+<!-- Attributes -->
+<div>
+<h4 class="font-label-caps text-label-caps text-on-surface-variant mb-3">AVAILABILITY</h4>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input checked="" class="rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-md text-on-surface group-hover:text-secondary transition-colors">In Stock</span>
+</label>
+</div>
+</div>
+</aside>
+<!-- Product Content Area -->
+<section class="flex-grow p-8">
+<!-- Grid Header -->
+<div class="flex justify-between items-end mb-8">
+<div>
+<h1 class="font-display-lg text-display-lg">Gaming Hardware</h1>
+<p class="font-body-md text-on-surface-variant">Showing 1-12 of 156 results for "Gaming"</p>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-label-caps text-on-surface-variant">SORT BY</span>
+<select class="bg-surface border-none text-on-surface font-body-md font-semibold focus:ring-0 cursor-pointer">
+<option>Newest Arrivals</option>
+<option>Price: Low to High</option>
+<option>Price: High to Low</option>
+<option>Top Rated</option>
+</select>
+</div>
+</div>
+<!-- Product Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-gutter">
+<!-- Product Card 1 -->
+<div class="group relative bg-white border border-slate-100 rounded-xl overflow-hidden shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_4px_12px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.12),0_12px_24px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.02] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+<div class="aspect-square bg-slate-50 overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" data-alt="sleek modern gaming desktop tower with glowing internal hardware and glass side panel on a minimalist desk" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOrVVFZvNCyQKuxkuQwuPJvCEaLTIxcqcKnWVIRGmX9nyzvWe48tSxOT1OOrQNn9PWRbZWW_CJopJ0vtnNtW8mOgXmbwq0zaf1gzcjIu2Or1ODu6ROmXJYXdRR7eieGOA9onjSRsZ0hRI7X3ygZAyePboUaMBW2pip4eyAES_6yApwyELPIhol-xoGLnLsjW9yIM1XSRQoZRe-Aw86K4DSb7Zgf_11EcVQRsMp4z949nk69Pq1F1rrpsuuEtxSZlfQ0HDkzeoVUKgh"/>
+<div class="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all duration-300">
+<button class="bg-white p-2 rounded-full shadow-md hover:text-secondary"><span class="material-symbols-outlined">favorite</span></button>
+<button class="bg-white p-2 rounded-full shadow-md hover:text-secondary"><span class="material-symbols-outlined">compare_arrows</span></button>
+</div>
+</div>
+<div class="p-5">
+<p class="font-label-caps text-secondary mb-1">ASUS</p>
+<h3 class="font-headline-sm text-[18px] mb-2 leading-tight group-hover:text-secondary transition-colors">ROG Strix G16 Gaming PC</h3>
+<div class="flex items-center gap-2 mb-3">
+<div class="flex text-amber-400">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]">star</span>
+</div>
+<span class="text-label-caps text-on-surface-variant">(48)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-primary">$1,899.00</span>
+<button class="bg-primary text-white p-2 rounded-lg hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined">shopping_bag</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Product Card 2 -->
+<div class="group relative bg-white border border-slate-100 rounded-xl overflow-hidden shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_4px_12px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.12),0_12px_24px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.02] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+<div class="aspect-square bg-slate-50 overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" data-alt="professional ultrawide curved gaming monitor displaying vibrant colors in a clean home office studio" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDUPNyRRLdFS3htD0NjPhG7Xcm4nPrf-FTYLKj1-IFWp9mWe3UOaLEJTI1Uwi4zz4ECv_MQ6YnhfApDucnE7t5HiG43NqAVy9XX7eRLafRTlDstQh-hx5sdwa5RPefhbkC0rp5nYy5-hfolHkTRj9zjRmFmJR7Y-ER7OuD6yHf_WEpH6QIe2kBnzN8qotz9YhS-VJmutjBdK2eOwd0EtLvOmCmkrhx-kxHugIFCMai8eXEzGUvZS_AQ5MRk6QRu8k52xR4d1PIEj06c"/>
+<div class="absolute top-3 left-3">
+<span class="bg-secondary text-white px-2 py-1 rounded text-label-caps">NEW</span>
+</div>
+<div class="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all duration-300">
+<button class="bg-white p-2 rounded-full shadow-md hover:text-secondary"><span class="material-symbols-outlined">favorite</span></button>
+<button class="bg-white p-2 rounded-full shadow-md hover:text-secondary"><span class="material-symbols-outlined">compare_arrows</span></button>
+</div>
+</div>
+<div class="p-5">
+<p class="font-label-caps text-secondary mb-1">MSI</p>
+<h3 class="font-headline-sm text-[18px] mb-2 leading-tight group-hover:text-secondary transition-colors">Optix 34" Curved Display</h3>
+<div class="flex items-center gap-2 mb-3">
+<div class="flex text-amber-400">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star_half</span>
+</div>
+<span class="text-label-caps text-on-surface-variant">(122)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-primary">$749.00</span>
+<button class="bg-primary text-white p-2 rounded-lg hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined">shopping_bag</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Product Card 3 -->
+<div class="group relative bg-white border border-slate-100 rounded-xl overflow-hidden shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_4px_12px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.12),0_12px_24px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.02] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+<div class="aspect-square bg-slate-50 overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" data-alt="close-up of a high-performance gaming mechanical keyboard with vibrant RGB lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIAXIyX7bhUw85LiFwCMaF3XiQuRv2dEHSL4K5I4R1FpCoPZer2oYlDS1szwqsGtVRU3Z8UDT5aEXjDG0r7_D8j7hFkeu4St7VNWdVM5peLsoj0wQHTUH_iBfgnPORUyrpdensMgo9RyOgRONcoWOcFDbqe3phIo4yNZZo2Le30jAYWAa22OUdI3v8eyzMSzLXvdy8UfEZjrayWCHG5B-OsgwNe-bQck98rW7tvRDYtsCBxKSj6uhr9zthMlymFiY_03cZbrOXHATB"/>
+<div class="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all duration-300">
+<button class="bg-white p-2 rounded-full shadow-md hover:text-secondary"><span class="material-symbols-outlined">favorite</span></button>
+<button class="bg-white p-2 rounded-full shadow-md hover:text-secondary"><span class="material-symbols-outlined">compare_arrows</span></button>
+</div>
+</div>
+<div class="p-5">
+<p class="font-label-caps text-secondary mb-1">RAZER</p>
+<h3 class="font-headline-sm text-[18px] mb-2 leading-tight group-hover:text-secondary transition-colors">Huntsman V3 Pro TKL</h3>
+<div class="flex items-center gap-2 mb-3">
+<div class="flex text-amber-400">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<span class="text-label-caps text-on-surface-variant">(310)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-primary">$179.99</span>
+<button class="bg-primary text-white p-2 rounded-lg hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined">shopping_bag</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Product Card 4 -->
+<div class="group relative bg-white border border-slate-100 rounded-xl overflow-hidden shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_4px_12px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.12),0_12px_24px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.02] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+<div class="aspect-square bg-slate-50 overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" data-alt="professional gaming headphones with oversized cups and integrated microphone on a dark stand" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDgJNx2D8zcdriCxfaOceRtWWEfBzTiGmnYMD0lZQbDd5faopcUl8cwo_aP55z-5tVsWbYolRDO6nwdHOHVjVRe3grhzSJX0x3_ldwX3H39UnJZJRiEHBHY8tLO-yyRkUpTm5CM78Tomx6tfM2dKHpnj-BrvCcg6A3e3TxE5tR4N7MCoeWXQGDhBfkUXpP38mXSypxGbELYpQ_r2LZkWgwPlii-K8oFq8MloflhFHb8LVZUKfZjf8h7xD5FRGgZCy2MxObXOsXcXuoy"/>
+<div class="absolute top-3 left-3">
+<span class="bg-red-500 text-white px-2 py-1 rounded text-label-caps">-15%</span>
+</div>
+<div class="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all duration-300">
+<button class="bg-white p-2 rounded-full shadow-md hover:text-secondary"><span class="material-symbols-outlined">favorite</span></button>
+<button class="bg-white p-2 rounded-full shadow-md hover:text-secondary"><span class="material-symbols-outlined">compare_arrows</span></button>
+</div>
+</div>
+<div class="p-5">
+<p class="font-label-caps text-secondary mb-1">HP</p>
+<h3 class="font-headline-sm text-[18px] mb-2 leading-tight group-hover:text-secondary transition-colors">Omen Blast Wireless</h3>
+<div class="flex items-center gap-2 mb-3">
+<div class="flex text-amber-400">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]">star</span>
+</div>
+<span class="text-label-caps text-on-surface-variant">(95)</span>
+</div>
+<div class="flex items-center justify-between">
+<div>
+<span class="block text-label-caps text-outline line-through">$149.00</span>
+<span class="font-headline-sm text-primary">$126.65</span>
+</div>
+<button class="bg-primary text-white p-2 rounded-lg hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined">shopping_bag</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Replicate Cards for Grid Filling -->
+<div class="group relative bg-white border border-slate-100 rounded-xl overflow-hidden shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_4px_12px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.12),0_12px_24px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.02] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+<div class="aspect-square bg-slate-50 overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" data-alt="high performance gaming mouse with ergonomic design and glowing RGB accents on a grey background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABattQFx30colBxTo-e-Q_xZ1Nu6Alqox8ci73aRAybiOJ2wNkZpwHhud7xo07NtewOD-KAFIN17s8iehGL2qk42_S75ProyP7vfkUDdRha7TomKVfI-GQhDLTWX-OnQBScEovsF-P2w0GbsY6tj5xOx7O-AutqdxYtSl-GwY2-wTBN4eGw4WvGwBp96uxIR4b6U2GoAECiVmJ08RgtOi0mCljrZ5zzNeiv8gHeSpfpXVRYLoGtDR8-xmZiUE08GHrLGJq8q-ll2hf"/>
+</div>
+<div class="p-5">
+<p class="font-label-caps text-secondary mb-1">LOGITECH</p>
+<h3 class="font-headline-sm text-[18px] mb-2 leading-tight group-hover:text-secondary transition-colors">G502 X Plus Wireless</h3>
+<div class="flex items-center justify-between mt-4">
+<span class="font-headline-sm text-primary">$159.00</span>
+<button class="bg-primary text-white p-2 rounded-lg hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined">shopping_bag</span>
+</button>
+</div>
+</div>
+</div>
+<div class="group relative bg-white border border-slate-100 rounded-xl overflow-hidden shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_4px_12px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.12),0_12px_24px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.02] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+<div class="aspect-square bg-slate-50 overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" data-alt="NVIDIA GeForce RTX graphics card with dual fans and metallic finish on dark reflective surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvGwHgKutVeLhm5-t3ApKfdL74yRcP1SmJIJL22Ct5OGKErCqUZBPV0MP4nPoWYKoWBYo3gepXisjtDrONnTG09mF8osXX5Y1tPVp_Erv_CXpZp-ZnbcoAaxUedKpILObH6WBQt79NebLkC2XCxXgaG1d8_f4GPNE2ZDVypKHzXakwbvXVLnH0de3cAGHA4Ir0ZaZf3CblaU3blqmAthGqZcQwhCJrMzpYAaPbVSmBJKomHEc0oP3q52jr1kalQ9hcddcS7BlzAXG_"/>
+</div>
+<div class="p-5">
+<p class="font-label-caps text-secondary mb-1">NVIDIA</p>
+<h3 class="font-headline-sm text-[18px] mb-2 leading-tight group-hover:text-secondary transition-colors">GeForce RTX 4070 Ti</h3>
+<div class="flex items-center justify-between mt-4">
+<span class="font-headline-sm text-primary">$799.00</span>
+<button class="bg-primary text-white p-2 rounded-lg hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined">shopping_bag</span>
+</button>
+</div>
+</div>
+</div>
+<div class="group relative bg-white border border-slate-100 rounded-xl overflow-hidden shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_4px_12px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.12),0_12px_24px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.02] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+<div class="aspect-square bg-slate-50 overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" data-alt="modern minimalist gaming desk setup with single monitor and ambient lighting in a clean workspace" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHXJ1VmcoRJByBDHf-7a5e6kaK4bpM1s9PEAt8DRRbVlvLTVSBK_jpZTAXWG8C7ic9B0gjzpyfI9_r-mgsaF9TuyMpWG_SWI97XJeFKcisOYDgDFDAZKHFLcDHn_-9YbAP6LzVCE6Q-FAUVkP6hjZyv2C_oAX9mjHVk4dOcvWdrWYjkzEqKBvqgYYpwAP3c3B04erE7J5GZkLaH8cbJ7s-tOzClFcf77QsAlr5MzN6-d8Sl2pzUb9gnOsCx6j9W-d39vquDjR2mmkB"/>
+</div>
+<div class="p-5">
+<p class="font-label-caps text-secondary mb-1">SECRET LAB</p>
+<h3 class="font-headline-sm text-[18px] mb-2 leading-tight group-hover:text-secondary transition-colors">MAGNUS Metal Desk</h3>
+<div class="flex items-center justify-between mt-4">
+<span class="font-headline-sm text-primary">$499.00</span>
+<button class="bg-primary text-white p-2 rounded-lg hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined">shopping_bag</span>
+</button>
+</div>
+</div>
+</div>
+<div class="group relative bg-white border border-slate-100 rounded-xl overflow-hidden shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_4px_12px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_-12px_rgba(0,0,0,0.12),0_12px_24px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.02] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+<div class="aspect-square bg-slate-50 overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" data-alt="white minimalist gaming mouse pad with clean desk aesthetic and soft indirect natural lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD77ZL7DudlSJmcM6MjJ9T7tXnHD9cZ0IoKZP1pr-Qug-fLZQtikRFbm4mN9oTIA_FwX-r9ngP9MXf5TL__6pkV46G1TsVPXIo7DXjkpq13Lylsj5IGqJv_7eLsrkVk8nTgTI_gYpzZkEIkzQteNzbYI3tqkd28kz6ptnIPTntOaaWsWRhcHO49MuFx9ghtEvKrv1iGs5zvc1XZTUfHcVxKNSpatBQOcPfZn82ofZCV0dj0fmXXudTsIO-CM5YHk-ndB8PtP6vPDJC7"/>
+</div>
+<div class="p-5">
+<p class="font-label-caps text-secondary mb-1">CYBERTECH</p>
+<h3 class="font-headline-sm text-[18px] mb-2 leading-tight group-hover:text-secondary transition-colors">Precision XL Glass Pad</h3>
+<div class="flex items-center justify-between mt-4">
+<span class="font-headline-sm text-primary">$89.00</span>
+<button class="bg-primary text-white p-2 rounded-lg hover:bg-secondary transition-colors">
+<span class="material-symbols-outlined">shopping_bag</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Pagination -->
+<div class="mt-section-gap flex justify-center">
+<nav class="flex items-center gap-2">
+<button class="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+<span class="material-symbols-outlined text-[20px]">chevron_left</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg bg-primary text-white font-semibold">1</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors font-semibold">2</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors font-semibold">3</button>
+<span class="px-2 text-outline">...</span>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors font-semibold">12</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
+</nav>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-8 bg-slate-50 border-t border-slate-200 mt-20">
+<div class="flex flex-col gap-4">
+<span class="font-bold text-lg text-slate-950 font-['Space_Grotesk']">Cybertech Industrial</span>
+<p class="font-['Space_Grotesk'] text-sm text-slate-500">© 2024 Cybertech Industrial. All rights reserved.</p>
+</div>
+<div class="flex flex-wrap justify-center gap-8">
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200" href="#">Privacy Policy</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200" href="#">Terms of Service</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200" href="#">Hardware Warranty</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 hover:text-blue-500 underline-offset-4 hover:underline transition-all duration-200" href="#">Global Shipping</a>
+</div>
+</footer>
+</body></html>

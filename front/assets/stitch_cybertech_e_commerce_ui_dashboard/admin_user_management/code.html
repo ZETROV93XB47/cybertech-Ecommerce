@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AdminPanel - User Management</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "error-container": "#ffdad6",
+                      "primary-fixed": "#dae2fd",
+                      "on-background": "#0b1c30",
+                      "error": "#ba1a1a",
+                      "inverse-surface": "#213145",
+                      "on-secondary-fixed": "#001a42",
+                      "inverse-primary": "#bec6e0",
+                      "primary-container": "#131b2e",
+                      "tertiary-fixed-dim": "#c4c7c9",
+                      "on-tertiary": "#ffffff",
+                      "on-primary": "#ffffff",
+                      "background": "#f8f9ff",
+                      "surface-container-lowest": "#ffffff",
+                      "secondary-fixed": "#d8e2ff",
+                      "surface-container-high": "#dce9ff",
+                      "surface": "#f8f9ff",
+                      "on-error-container": "#93000a",
+                      "surface-container-low": "#eff4ff",
+                      "surface-dim": "#cbdbf5",
+                      "surface-bright": "#f8f9ff",
+                      "on-secondary-container": "#fefcff",
+                      "on-error": "#ffffff",
+                      "tertiary": "#000000",
+                      "primary-fixed-dim": "#bec6e0",
+                      "on-primary-container": "#7c839b",
+                      "tertiary-fixed": "#e0e3e5",
+                      "on-primary-fixed-variant": "#3f465c",
+                      "on-primary-fixed": "#131b2e",
+                      "outline": "#76777d",
+                      "on-tertiary-fixed": "#191c1e",
+                      "on-surface": "#0b1c30",
+                      "surface-container": "#e5eeff",
+                      "on-surface-variant": "#45464d",
+                      "tertiary-container": "#191c1e",
+                      "surface-tint": "#565e74",
+                      "outline-variant": "#c6c6cd",
+                      "on-secondary-fixed-variant": "#004395",
+                      "secondary-fixed-dim": "#adc6ff",
+                      "secondary-container": "#2170e4",
+                      "inverse-on-surface": "#eaf1ff",
+                      "surface-container-highest": "#d3e4fe",
+                      "surface-variant": "#d3e4fe",
+                      "on-tertiary-container": "#818486",
+                      "on-tertiary-fixed-variant": "#444749",
+                      "secondary": "#0058be",
+                      "on-secondary": "#ffffff",
+                      "primary": "#000000"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "margin-desktop": "48px",
+                      "stack-md": "16px",
+                      "container-max": "1280px",
+                      "stack-lg": "32px",
+                      "unit": "8px",
+                      "margin-mobile": "16px",
+                      "stack-sm": "8px",
+                      "section-gap": "80px",
+                      "gutter": "24px"
+              },
+              "fontFamily": {
+                      "label-caps": ["Inter"],
+                      "display-lg": ["Space Grotesk"],
+                      "body-md": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "headline-sm": ["Space Grotesk"],
+                      "headline-md": ["Space Grotesk"]
+              },
+              "fontSize": {
+                      "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                      "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                      "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .active-nav-border {
+            box-shadow: inset -4px 0 0 0 #2563eb;
+        }
+    </style>
+</head>
+<body class="bg-surface font-body-md text-on-surface">
+<!-- SideNavBar (Authority: JSON) -->
+<aside class="fixed left-0 top-0 h-full w-64 border-r border-slate-200 bg-white flex flex-col h-screen py-6 px-4 z-50 font-['Space_Grotesk'] text-sm font-medium">
+<div class="mb-10 px-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-primary flex items-center justify-center rounded">
+<span class="material-symbols-outlined text-white text-xl" data-icon="terminal">terminal</span>
+</div>
+<div>
+<h1 class="text-lg font-black tracking-tight text-slate-900">IndustrialElegance</h1>
+<p class="text-[10px] text-slate-500 uppercase tracking-widest">Management Suite</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 transition-colors duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 transition-colors duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span>Products</span>
+</a>
+<!-- Active State: Users (Authority: JSON style_active_navigation) -->
+<a class="flex items-center gap-3 px-4 py-3 bg-slate-100 text-blue-600 border-r-4 border-blue-600 font-bold transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span>Users</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 transition-colors duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="layers">layers</span>
+<span>Inventory</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 transition-colors duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="leaderboard">leaderboard</span>
+<span>Analytics</span>
+</a>
+</nav>
+<div class="mt-auto space-y-1 pt-6 border-t border-slate-100">
+<button class="w-full flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-lg font-bold mb-6 hover:opacity-90 transition-opacity active:scale-98">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+<span>Create New</span>
+</button>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 transition-colors duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-50 transition-colors duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen">
+<!-- TopAppBar (Authority: JSON) -->
+<header class="fixed top-0 right-0 left-64 h-16 bg-white border-b border-slate-200 flex justify-between items-center px-8 z-40 shadow-sm font-['Space_Grotesk'] antialiased">
+<div class="flex items-center flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl" data-icon="search">search</span>
+<input class="w-full bg-slate-50 border-none rounded-full py-2 pl-10 pr-4 focus:ring-2 focus:ring-blue-600/20 text-sm transition-all" placeholder="Search systems or users..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden lg:flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded text-[10px] font-bold tracking-widest border border-blue-100">
+                    X-API-VERSION: 1.0
+                </div>
+<div class="flex items-center gap-4">
+<button class="text-slate-500 hover:bg-slate-50 p-2 rounded-full transition-colors duration-200">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-slate-500 hover:bg-slate-50 p-2 rounded-full transition-colors duration-200">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+<div class="h-8 w-[1px] bg-slate-200 mx-2"></div>
+<div class="flex items-center gap-3">
+<div class="text-right hidden sm:block">
+<p class="text-xs font-bold text-slate-900">Admin User</p>
+<p class="text-[10px] text-slate-500">Super Admin</p>
+</div>
+<img alt="Administrator Profile" class="w-10 h-10 rounded-full border border-slate-200 object-cover" data-alt="Professional studio headshot of a mature man with short graying hair wearing a clean white shirt against a neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuARssWUD_j2tsgSUyerO3DEOKW8aUUKaUSzn_YYIrkU5xyNLvdTJ3z1p6DV8vtbu61VWWQOFjWwVNrYBnw1gcyU5Fbi0yNvXK1s-H-yBHJaJbOLKk9D_LVzgMw_lqlJaMCQVuXKVPwLWfw1WIC75Rifdw5ksDgU_nY_kRsWYyXns1tSYWTBdg9_vikuHLdl2DR4eBNfXar6bFvdzEV8H4GwjmwPSmJcZCOxf8n3Ku9nYsR1-HM4Myanpa_mas_EbMbf5lYzlla45Z7m"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Content Body -->
+<div class="pt-24 px-8 pb-12 max-w-7xl mx-auto">
+<!-- Page Header Area -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+<div>
+<h2 class="font-headline-md text-on-surface mb-2">User Management</h2>
+<p class="text-on-surface-variant max-w-xl">Configure system access levels and monitor active sessions across the Cybertech network infrastructure.</p>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex bg-white rounded-lg border border-slate-200 p-1 shadow-sm">
+<button class="px-4 py-1.5 text-xs font-bold bg-slate-900 text-white rounded">All Users</button>
+<button class="px-4 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">Admins</button>
+<button class="px-4 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">Customers</button>
+</div>
+<button class="bg-blue-600 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-lg" data-icon="person_add">person_add</span>
+<span class="font-bold text-sm">Add User</span>
+</button>
+</div>
+</div>
+<!-- Table Bento Container -->
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-slate-50/50 border-b border-slate-200">
+<th class="px-6 py-4 font-label-caps text-slate-500">Name &amp; Identity</th>
+<th class="px-6 py-4 font-label-caps text-slate-500">Email Address</th>
+<th class="px-6 py-4 font-label-caps text-slate-500">Access Role</th>
+<th class="px-6 py-4 font-label-caps text-slate-500">Registered</th>
+<th class="px-6 py-4 font-label-caps text-slate-500">Status</th>
+<th class="px-6 py-4 font-label-caps text-slate-500 text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-100">
+<!-- User Row 1 -->
+<tr class="hover:bg-slate-50/50 transition-colors group">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<img alt="User Avatar" class="w-10 h-10 rounded-full object-cover" data-alt="Young man with dark curly hair smiling warmly, wearing a blue denim shirt, studio lighting, professional portrait style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDe85VQ8e7npFjjWD5B6zHzkN4HBC7As8XoDYjf00uYr9-pkXkEU0o1m8PJAGS4SLIFIbdomDizfy_Gm5LYsRargc7O5J6saZbUB0QIJ5-xOIwkRNq26BifYvX_vpA_Ng38dED_2tfQ9uw-1_Cx4X-s54yIzc70DWUTMjctmBaJwiODsid1EwuQl9R1mPLja4eQng_HlrjEyverVw5Rf6ICfGwnwMhiCJsgKsPUyv4x39jLVCtn9cocJ3xlSIVuATKKOe7U49KA_AWG"/>
+<div>
+<p class="font-bold text-slate-900">Marcus Sterling</p>
+<p class="text-xs text-slate-400">ID: CT-8842</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5 text-sm text-slate-600">m.sterling@cybertech.io</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-800">
+                                        Admin
+                                    </span>
+</td>
+<td class="px-6 py-5 text-sm text-slate-500">Oct 12, 2023</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                        Active
+                                    </span>
+</td>
+<td class="px-6 py-5 text-right">
+<button class="text-slate-400 hover:text-slate-900 transition-colors">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- User Row 2 -->
+<tr class="hover:bg-slate-50/50 transition-colors group">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<img alt="User Avatar" class="w-10 h-10 rounded-full object-cover" data-alt="Close-up portrait of a woman with long red hair, vibrant blue eyes, looking at camera with a slight smile, natural lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAUoNEwQJZMdK3IQXYj4RM9A4xWMfXHsKARpO2zTahxr9OAA1xytcJBlytDeWDm8mYWvsVa1njUx-eUpjDU8WMrwAEOEbFMz_vHdP-bvqqELaSd64OIRo0ztjVGwtBpwYFy7eTj6iF_OnGmvW3K7Dqpvm2kHvyZuZxgFYN9DE_mLfhpahjhMj1eo4xvUn-bqpz9hYLaxcDc9PS863LjeYxwW4H2vOEzVI66tkllRhqwbeoFt5_GGyYy3sGsBmjm5i_283Auo3qWsuai"/>
+<div>
+<p class="font-bold text-slate-900">Elena Vance</p>
+<p class="text-xs text-slate-400">ID: CT-7721</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5 text-sm text-slate-600">e.vance@client.com</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">
+                                        Customer
+                                    </span>
+</td>
+<td class="px-6 py-5 text-sm text-slate-500">Nov 05, 2023</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                        Active
+                                    </span>
+</td>
+<td class="px-6 py-5 text-right">
+<button class="text-slate-400 hover:text-slate-900 transition-colors">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- User Row 3 -->
+<tr class="hover:bg-slate-50/50 transition-colors group">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<img alt="User Avatar" class="w-10 h-10 rounded-full object-cover" data-alt="Modern professional man with glasses and short beard, wearing a gray blazer, urban architectural background in soft focus" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGyhDGiPB7HOdBnnF_uOd8Rhi6oYZtBd_OsdCfyN7raNAEImKjOi6elVkovikNAS6eCaUtF5_ugMidRuSA5Q1VEo_C1f5UyJS6k6KdFu7tfMZSs9V6wsswAriKc3iq533FjTq9wFwNB1-LzULUHAtELmj05tkS0Y3Z7evRmp4Cb45FQJOM8OF7s2i1PpIER4pmxJ8GnOVwPJKa3X0ksDSXm2xXbOIa-EjoD7fiRJGB2NoQ4wSKbDnq81578RJXK04MiRisBYgOLbVU"/>
+<div>
+<p class="font-bold text-slate-900">Julian Kross</p>
+<p class="text-xs text-slate-400">ID: CT-9904</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5 text-sm text-slate-600">j.kross@networks.org</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">
+                                        Customer
+                                    </span>
+</td>
+<td class="px-6 py-5 text-sm text-slate-500">Jan 18, 2024</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                        Suspended
+                                    </span>
+</td>
+<td class="px-6 py-5 text-right">
+<button class="text-slate-400 hover:text-slate-900 transition-colors">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- User Row 4 -->
+<tr class="hover:bg-slate-50/50 transition-colors group">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<img alt="User Avatar" class="w-10 h-10 rounded-full object-cover" data-alt="Young professional woman with blonde hair, neutral expression, soft office lighting, high-quality digital photography style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBLRjf8cMnbEgfTuDYkNv7tpTyiKKwUPpRJ1_gFXmZX5r2eBxjC-Gi9XtLZbRPHdLw9XBp9khn-I6ZKVL0Z4BHVX8KSGT7MCFCUxpwnZvPSIu9jbpE24aXghY8X5P5a0PYbEoLQTkVrq6VUHgShCqKQum5N6YVyoaYobGWzvyhpFYufp2goP2_p0MzvenFfesQlHaIDEA4qBzkl4NH6QYRyGHfm1Lcnuv0oYlKe1o0kNbKd5e11DXS63Lw4yCbekN_gAFeY0vfvnKmz"/>
+<div>
+<p class="font-bold text-slate-900">Sarah Chen</p>
+<p class="text-xs text-slate-400">ID: CT-1029</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5 text-sm text-slate-600">s.chen@cybertech.io</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-800">
+                                        Admin
+                                    </span>
+</td>
+<td class="px-6 py-5 text-sm text-slate-500">Feb 22, 2024</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                        Active
+                                    </span>
+</td>
+<td class="px-6 py-5 text-right">
+<button class="text-slate-400 hover:text-slate-900 transition-colors">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination Footer -->
+<div class="bg-slate-50/50 px-6 py-4 flex items-center justify-between border-t border-slate-200">
+<p class="text-xs text-slate-500 font-medium">Showing <span class="text-slate-900">1-4</span> of <span class="text-slate-900">128</span> users</p>
+<div class="flex items-center gap-2">
+<button class="p-1 text-slate-400 hover:text-slate-900 transition-colors disabled:opacity-30" disabled="">
+<span class="material-symbols-outlined" data-icon="chevron_left">chevron_left</span>
+</button>
+<div class="flex items-center gap-1">
+<button class="w-8 h-8 rounded flex items-center justify-center text-xs font-bold bg-white border border-slate-200 text-slate-900">1</button>
+<button class="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-slate-500 hover:bg-slate-100">2</button>
+<button class="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-slate-500 hover:bg-slate-100">3</button>
+</div>
+<button class="p-1 text-slate-400 hover:text-slate-900 transition-colors">
+<span class="material-symbols-outlined" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Dashboard Stats Summary Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
+<div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+<div class="flex items-center justify-between mb-4">
+<div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="verified_user">verified_user</span>
+</div>
+<span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">+12%</span>
+</div>
+<p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Active Admins</p>
+<h3 class="text-2xl font-black text-slate-900">24</h3>
+</div>
+<div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+<div class="flex items-center justify-between mb-4">
+<div class="w-10 h-10 bg-slate-50 text-slate-600 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="public">public</span>
+</div>
+<span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Steady</span>
+</div>
+<p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total Customers</p>
+<h3 class="text-2xl font-black text-slate-900">1,402</h3>
+</div>
+<div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+<div class="flex items-center justify-between mb-4">
+<div class="w-10 h-10 bg-error-container text-error rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="gpp_maybe">gpp_maybe</span>
+</div>
+<span class="text-[10px] font-bold text-error bg-error-container px-2 py-0.5 rounded">+2</span>
+</div>
+<p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Security Flags</p>
+<h3 class="text-2xl font-black text-slate-900">5</h3>
+</div>
+</div>
+</div>
+</main>
+</body></html>

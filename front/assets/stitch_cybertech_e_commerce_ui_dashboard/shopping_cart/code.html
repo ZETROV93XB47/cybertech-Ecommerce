@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-tint": "#565e74",
+                        "surface-variant": "#d3e4fe",
+                        "surface-container-highest": "#d3e4fe",
+                        "primary-fixed": "#dae2fd",
+                        "on-error": "#ffffff",
+                        "on-surface": "#0b1c30",
+                        "on-tertiary-fixed": "#191c1e",
+                        "inverse-on-surface": "#eaf1ff",
+                        "inverse-surface": "#213145",
+                        "secondary-fixed": "#d8e2ff",
+                        "tertiary-fixed": "#e0e3e5",
+                        "primary-fixed-dim": "#bec6e0",
+                        "surface-bright": "#f8f9ff",
+                        "on-secondary-container": "#fefcff",
+                        "tertiary-fixed-dim": "#c4c7c9",
+                        "on-secondary-fixed-variant": "#004395",
+                        "on-primary": "#ffffff",
+                        "secondary": "#0058be",
+                        "outline": "#76777d",
+                        "on-surface-variant": "#45464d",
+                        "tertiary-container": "#191c1e",
+                        "surface-container": "#e5eeff",
+                        "on-background": "#0b1c30",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "outline-variant": "#c6c6cd",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "surface-dim": "#cbdbf5",
+                        "on-tertiary-container": "#818486",
+                        "on-tertiary-fixed-variant": "#444749",
+                        "on-secondary-fixed": "#001a42",
+                        "secondary-container": "#2170e4",
+                        "surface": "#f8f9ff",
+                        "on-primary-container": "#7c839b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#131b2e",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "surface-container-low": "#eff4ff",
+                        "tertiary": "#000000",
+                        "primary-container": "#131b2e",
+                        "primary": "#000000",
+                        "surface-container-high": "#dce9ff",
+                        "inverse-primary": "#bec6e0",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "stack-lg": "32px",
+                        "gutter": "24px",
+                        "section-gap": "80px",
+                        "margin-desktop": "48px",
+                        "stack-sm": "8px",
+                        "margin-mobile": "16px",
+                        "stack-md": "16px",
+                        "container-max": "1280px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Space Grotesk"],
+                        "headline-md": ["Space Grotesk"],
+                        "headline-sm": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .product-image-container {
+            background-color: #F1F5F9;
+        }
+    </style>
+</head>
+<body class="bg-background font-body-md text-on-background min-h-screen">
+<!-- Top Navigation Bar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-8 h-20 max-w-[1440px] mx-auto bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
+<div class="flex items-center gap-12">
+<span class="text-2xl font-bold text-slate-900 dark:text-white tracking-tighter font-['Space_Grotesk']">Cybertech</span>
+<nav class="hidden md:flex gap-8">
+<a class="font-['Space_Grotesk'] tracking-tight text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors" href="#">Shop</a>
+<a class="font-['Space_Grotesk'] tracking-tight text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors" href="#">Builds</a>
+<a class="font-['Space_Grotesk'] tracking-tight text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors" href="#">Pre-buys</a>
+<a class="font-['Space_Grotesk'] tracking-tight text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors" href="#">Support</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<button class="p-2 rounded-full hover:bg-slate-50 dark:hover:bg-slate-900 transition-all duration-200">
+<span class="material-symbols-outlined text-slate-900 dark:text-white">person</span>
+</button>
+<button class="p-2 rounded-full hover:bg-slate-50 dark:hover:bg-slate-900 transition-all duration-200 relative">
+<span class="material-symbols-outlined text-blue-600 dark:text-blue-400">shopping_cart</span>
+<span class="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">3</span>
+</button>
+</div>
+</header>
+<main class="pt-32 pb-section-gap px-8 max-w-[1280px] mx-auto">
+<!-- Page Title -->
+<div class="mb-stack-lg">
+<h1 class="font-display-lg text-display-lg text-primary mb-2">Your Cart</h1>
+<p class="font-body-md text-on-surface-variant">Review your high-performance hardware selections.</p>
+</div>
+<div class="flex flex-col lg:flex-row gap-gutter">
+<!-- Cart Items List -->
+<div class="flex-grow space-y-gutter">
+<!-- Cart Item 1 -->
+<div class="group flex flex-col sm:flex-row items-center gap-stack-md p-gutter bg-surface-container-lowest border border-outline-variant/30 rounded-xl transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+<div class="w-full sm:w-40 h-40 product-image-container rounded-lg overflow-hidden shrink-0">
+<img alt="Titan RTX Graphic Card" class="w-full h-full object-cover" data-alt="Close-up of a high-end black and gold graphics card with sleek metal fins and cooling fans, professional studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBANGXFkkM7JMmeTjOF167RpLuTIJKts90wFFbZDyVd5thWkVEUlu5cE-xp0kte_qjRPvSjTRK3YuN1Q2V4Q1i2UVWDlLUVIdQOjAsRamWiMib2LAlGiH8oo_Gj6h0PRgGaEwUD6XLj_bXSOexbMh58T5YrliQAifLGXK1MaQpohG_0Mjsqxb15qOUob9fE7Ml_guVQxFN967e-Exi5WHCzfSHyFCtidr_zcRTf5dVNz9c6zyVTZxcqTKY4f6Y9NzXpF4pu5WO-nYvb"/>
+</div>
+<div class="flex-grow flex flex-col justify-between w-full">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-1">Titan V3 Pro GPU</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Core-X Series / 24GB VRAM</p>
+</div>
+<p class="font-headline-sm text-headline-sm text-secondary">$1,499.00</p>
+</div>
+<div class="mt-stack-lg flex items-center justify-between">
+<div class="flex items-center border border-outline-variant rounded-full p-1 bg-surface-bright">
+<button class="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">remove</span>
+</button>
+<span class="w-10 text-center font-headline-sm text-sm">1</span>
+<button class="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">add</span>
+</button>
+</div>
+<button class="flex items-center gap-1 text-label-caps text-error hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined text-base">delete</span>
+                                REMOVE
+                            </button>
+</div>
+</div>
+</div>
+<!-- Cart Item 2 -->
+<div class="group flex flex-col sm:flex-row items-center gap-stack-md p-gutter bg-surface-container-lowest border border-outline-variant/30 rounded-xl transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+<div class="w-full sm:w-40 h-40 product-image-container rounded-lg overflow-hidden shrink-0">
+<img alt="Curved OLED Monitor" class="w-full h-full object-cover" data-alt="Ultra-wide curved computer monitor displaying a vibrant blue and purple abstract wallpaper, minimal desk setup, soft ambient glow" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPcngTs-fO4rsI9cTQx2SZh5iHSL6Iz5-DBQdNe4SxfZ2sxOoKRDEfYnWyAGNfM65m29BVSZgSQ6o41A5H7-t_E6V6_-Lt39IPsrpnvJ369MLFyma0olwCwLGuTjVmFAaSEUS4RZ78mcm8f6jI2ojPQQq8AUPUeVBPCmU_8GQ46EZEDSMTkon7btelzI4jEFHoliTd8daiIWOCAaXbi_-WxSP7N9aIAPtwRKvCvsowJF-lJdlrEXyybAyQ8HOhl1hhaI1gXJx_wIRr"/>
+</div>
+<div class="flex-grow flex flex-col justify-between w-full">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-1">Horizon Ultra 34"</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">OLED / 240Hz / 0.03ms</p>
+</div>
+<p class="font-headline-sm text-headline-sm text-secondary">$899.00</p>
+</div>
+<div class="mt-stack-lg flex items-center justify-between">
+<div class="flex items-center border border-outline-variant rounded-full p-1 bg-surface-bright">
+<button class="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">remove</span>
+</button>
+<span class="w-10 text-center font-headline-sm text-sm">1</span>
+<button class="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">add</span>
+</button>
+</div>
+<button class="flex items-center gap-1 text-label-caps text-error hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined text-base">delete</span>
+                                REMOVE
+                            </button>
+</div>
+</div>
+</div>
+<!-- Cart Item 3 -->
+<div class="group flex flex-col sm:flex-row items-center gap-stack-md p-gutter bg-surface-container-lowest border border-outline-variant/30 rounded-xl transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+<div class="w-full sm:w-40 h-40 product-image-container rounded-lg overflow-hidden shrink-0">
+<img alt="Mechanical Keyboard" class="w-full h-full object-cover" data-alt="Premium mechanical keyboard with transparent keycaps and blue RGB lighting on a dark desk, high-end tech aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3qealwR5KF7-d-EEPCe97i1fZjYP3r5otufIxiyRWIRZ1GH8i9sPr0CVrEHETRSM0-W2Ug5yrygk9oQcg2tI7g_ImrH7SIIji7o3yk3U7wgPT62lLUxF0Mb4o6afOu4cZFM_Ha3zaDhH7hSp9XrHgBs44Lh3lzAiL_hOvomo4jBgq3Su4d5WWg4irZSCAE1NJn95PrLm6xpZMV_g5Dki3jGsPs3IOX0bc3Zg2OqynsmJSE1eA_CPuNNwx_TN_XZaKXKNR0KnYkzxt"/>
+</div>
+<div class="flex-grow flex flex-col justify-between w-full">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-1">Apex Tactile T1</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Wireless / Hotswap / CNC Aluminum</p>
+</div>
+<p class="font-headline-sm text-headline-sm text-secondary">$249.00</p>
+</div>
+<div class="mt-stack-lg flex items-center justify-between">
+<div class="flex items-center border border-outline-variant rounded-full p-1 bg-surface-bright">
+<button class="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">remove</span>
+</button>
+<span class="w-10 text-center font-headline-sm text-sm">1</span>
+<button class="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">add</span>
+</button>
+</div>
+<button class="flex items-center gap-1 text-label-caps text-error hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined text-base">delete</span>
+                                REMOVE
+                            </button>
+</div>
+</div>
+</div>
+<div class="pt-stack-md">
+<a class="inline-flex items-center gap-2 font-body-md text-secondary hover:underline underline-offset-4 transition-all" href="#">
+<span class="material-symbols-outlined">arrow_back</span>
+                        Continue Shopping
+                    </a>
+</div>
+</div>
+<!-- Order Summary Sidebar -->
+<aside class="w-full lg:w-[400px] shrink-0">
+<div class="sticky top-24 p-8 bg-surface-container-high rounded-2xl shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] border border-outline-variant/20">
+<h2 class="font-headline-sm text-headline-sm text-primary mb-gutter">Order Summary</h2>
+<div class="space-y-4 mb-gutter">
+<div class="flex justify-between items-center">
+<span class="font-body-md text-on-surface-variant">Subtotal</span>
+<span class="font-body-md font-medium text-primary">$2,647.00</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-body-md text-on-surface-variant">Estimated Shipping</span>
+<span class="font-body-md font-medium text-primary">$45.00</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-body-md text-on-surface-variant">Tax (Calculated)</span>
+<span class="font-body-md font-medium text-primary">$211.76</span>
+</div>
+</div>
+<div class="h-px bg-outline-variant/30 mb-gutter"></div>
+<div class="flex justify-between items-center mb-section-gap">
+<span class="font-headline-sm text-headline-sm text-primary">Total</span>
+<span class="font-headline-sm text-headline-sm text-secondary">$2,903.76</span>
+</div>
+<button class="w-full h-14 bg-secondary text-white font-headline-sm rounded-lg hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2">
+                        Proceed to Checkout
+                        <span class="material-symbols-outlined">payments</span>
+</button>
+<div class="mt-gutter flex flex-col gap-4">
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-bright/50">
+<span class="material-symbols-outlined text-secondary">verified_user</span>
+<span class="text-label-caps text-[10px] text-on-surface-variant leading-tight">ENCRYPTED SECURE CHECKOUT</span>
+</div>
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-bright/50">
+<span class="material-symbols-outlined text-secondary">local_shipping</span>
+<span class="text-label-caps text-[10px] text-on-surface-variant leading-tight">EXPEDITED WORLDWIDE DELIVERY</span>
+</div>
+</div>
+</div>
+</aside>
+</div>
+<!-- Optional Empty State (Commented out in logic, visible here as a reference block) -->
+<!-- 
+        <div class="py-section-gap flex flex-col items-center text-center">
+            <div class="w-24 h-24 bg-surface-container-low rounded-full flex items-center justify-center mb-gutter">
+                <span class="material-symbols-outlined text-5xl text-outline-variant">shopping_cart_off</span>
+            </div>
+            <h2 class="font-headline-md text-headline-md text-primary mb-stack-sm">Your cart is currently empty</h2>
+            <p class="font-body-md text-on-surface-variant max-w-md mx-auto mb-gutter">Looks like you haven't added any high-performance gear yet. Explore our builds and upgrade your station.</p>
+            <button class="px-8 h-12 bg-primary text-white font-headline-sm rounded-lg hover:bg-slate-800 transition-all">
+                Shop Hardware
+            </button>
+        </div>
+        -->
+</main>
+<!-- Footer -->
+<footer class="w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-8 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800">
+<div class="flex flex-col gap-2">
+<span class="font-bold text-lg text-slate-950 dark:text-white font-['Space_Grotesk']">Cybertech Industrial</span>
+<p class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400">© 2024 Cybertech Industrial. All rights reserved.</p>
+</div>
+<div class="flex flex-wrap justify-center gap-8">
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-200 underline-offset-4 hover:underline" href="#">Privacy Policy</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-200 underline-offset-4 hover:underline" href="#">Terms of Service</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-200 underline-offset-4 hover:underline" href="#">Hardware Warranty</a>
+<a class="font-['Space_Grotesk'] text-sm text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-200 underline-offset-4 hover:underline" href="#">Global Shipping</a>
+</div>
+</footer>
+</body></html>
