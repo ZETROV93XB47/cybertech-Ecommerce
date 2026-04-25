@@ -31,6 +31,14 @@
         <spring-restdocs.version>4.0.0</spring-restdocs.version>
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!--
+            JaCoCo BUNDLE coverage gate is only meaningful when integration tests have run, since
+            several services (Stripe webhook, payment processors, AES card crypto) are exercised
+            primarily via failsafe ITs. This property defaults to skipping the gate; the
+            `integration-test` profile flips it to false so `mvn verify -Pintegration-test` (or
+            `install -Pintegration-test`) enforces 80% line + branch coverage.
+        -->
+        <jacoco.gate.skip>true</jacoco.gate.skip>
     </properties>
     <dependencies>
         <dependency>
@@ -550,6 +558,7 @@
                             <goal>check</goal>
                         </goals>
                         <configuration>
+                            <skip>${jacoco.gate.skip}</skip>
                             <haltOnFailure>true</haltOnFailure>
                             <rules>
                                 <rule>
@@ -696,6 +705,10 @@
         </profile>
         <profile>
             <id>integration-test</id>
+            <properties>
+                <!-- Enforce JaCoCo BUNDLE 80% gate only when ITs are running. -->
+                <jacoco.gate.skip>false</jacoco.gate.skip>
+            </properties>
             <build>
                 <plugins>
                     <plugin>
