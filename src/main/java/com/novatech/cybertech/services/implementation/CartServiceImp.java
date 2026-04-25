@@ -19,9 +19,6 @@ import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.core.CartService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -75,7 +72,6 @@ public class CartServiceImp implements CartService {
      */
     @Override
     @Transactional
-    @CachePut(cacheNames = "cart", key = "#keycloakId")
     public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
 
         log.info("cart request dto : {}", cartCreateRequestDto);
@@ -197,7 +193,6 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(cacheNames = "cart", key = "#keycloakId", unless = "#result == null || #result.cartUuid == null")
     public CartResponseDto getCart(final String keycloakId) {
 
         // 1) Try cache first — sliding TTL refresh on hit
@@ -239,7 +234,6 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CachePut(cacheNames = "cart", key = "#keycloakId") // Supprime le cache pour forcer le rechargement
     public CartResponseDto removeItemFromCart(final UUID productUuid, final String keycloakId) {
 
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -262,7 +256,6 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CachePut(cacheNames = "cart", key = "#keycloakId")
     public CartResponseDto decreaseQuantity(final CartItemRemoveRequestDto cartItemRemoveRequestDto, final String keycloakId) {
 
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -294,7 +287,6 @@ public class CartServiceImp implements CartService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = "cart", key = "#keycloakId") // Supprime le cache
     public void clearCart(final String keycloakId) {
 
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -302,7 +294,10 @@ public class CartServiceImp implements CartService {
 
         if (cart != null && cart.getCartItems() != null) {
             cart.getCartItems().clear(); // Vide la liste
-            cartRepository.save(cart);   // Sauvegarde l'état vide
+            final CartEntity savedCart = cartRepository.save(cart);   // Sauvegarde l'état vide
+            // Replace the helper-keyed cache entry with the cleared cart so the
+            // next read sees the new empty state without hitting the DB.
+            cartCacheHelper.putWithJitter(keycloakId, cartMapper.mapFromEntityToResponseDto(savedCart));
         }
     }
 

@@ -1,5 +1,6 @@
 package com.novatech.cybertech.config;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,9 +15,12 @@ import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializ
 import org.springframework.data.redis.serializer.JacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import tools.jackson.databind.DefaultTyping;
 import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -49,8 +53,17 @@ public class RedisConfig {
 
     @Bean("redisObjectMapper")
     public ObjectMapper redisObjectMapper() {
+        // GenericJacksonJsonRedisSerializer relies on @class type hints to
+        // reconstruct domain objects on read. Without DefaultTyping every cached
+        // object would silently come back as a LinkedHashMap. We control every
+        // writer of this cache so allowing any base type (Object) is safe.
+        final PolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
+                .allowIfBaseType(Object.class)
+                .build();
+
         return JsonMapper.builder()
                 .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
+                .activateDefaultTyping(ptv, DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY)
                 .build();
     }
 
