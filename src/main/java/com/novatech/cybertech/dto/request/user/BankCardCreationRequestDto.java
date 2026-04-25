@@ -9,6 +9,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.UUID;
 
@@ -35,4 +36,15 @@ public class BankCardCreationRequestDto {
 
     // Optionnel : Utilisé uniquement pour le CRUD Admin si on veut lier directement à un user
     private UUID userUuid;
+
+    /**
+     * PRE-4: aligned with the entity column {@code isDefault NOT NULL}. Defaults to
+     * {@code false} via {@link Builder.Default} so callers that omit the field still
+     * produce a well-formed request. {@link JsonProperty} pins the wire name to
+     * {@code isDefault} (Jackson 3 would otherwise strip the {@code is} prefix and
+     * emit {@code default}, breaking JSON round-trip for the primitive boolean).
+     */
+    @Builder.Default
+    @JsonProperty("isDefault")
+    private boolean isDefault = false;
 }

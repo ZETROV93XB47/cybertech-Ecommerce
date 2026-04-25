@@ -528,25 +528,19 @@
                     </excludes>
                 </configuration>
             </plugin>
+            <!--
+                PRE-5: spring-boot-starter-parent binds failsafe to `integration-test`/`verify`
+                in its own <build><plugins>, so a bare `mvn verify` would still try to run
+                ITs. We force-skip them here by default; the `integration-test` profile
+                (declared at the bottom of this POM) flips skipITs back to false and
+                attaches the project's IT include patterns + jacoco argLine.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
-                    <argLine>@{jacocoArgLine} --enable-preview</argLine>
-                    <includes>
-                        <include>**/*IT.java</include>
-                        <include>**/*IntegrationTest.java</include>
-                    </includes>
+                    <skipITs>true</skipITs>
                 </configuration>
-                <executions>
-                    <execution>
-                        <id>integration-tests</id>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
             <!--
                 springdoc-openapi-maven-plugin — opt-in static OpenAPI contract export.
@@ -580,5 +574,48 @@
             </plugin>
         </plugins>
     </build>
+
+    <!--
+        PRE-5: Failsafe is now bound to the `integration-test` profile only.
+
+        Default `mvn verify` runs unit tests + JaCoCo gate but SKIPS integration tests.
+        To execute the IT suite, opt-in explicitly:
+
+            ./mvnw verify -Pintegration-test
+
+        Rationale: previously `mvn verify -Pintegration-test` was a silent no-op (no
+        such profile existed) and failsafe ran on every `verify`, slowing the default
+        loop and surprising callers who expected the flag to gate ITs.
+    -->
+    <profiles>
+        <profile>
+            <id>integration-test</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <skipITs>false</skipITs>
+                            <argLine>@{jacocoArgLine} --enable-preview</argLine>
+                            <includes>
+                                <include>**/*IT.java</include>
+                                <include>**/*IntegrationTest.java</include>
+                            </includes>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>integration-tests</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
