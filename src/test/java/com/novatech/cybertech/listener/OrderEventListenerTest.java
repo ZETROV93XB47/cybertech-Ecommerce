@@ -1,12 +1,9 @@
 package com.novatech.cybertech.listener;
 
-import com.novatech.cybertech.dispatcher.NotificationDispatcher;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.UserContactDto;
-import com.novatech.cybertech.entities.NotificationEntity;
 import com.novatech.cybertech.entities.enums.CommunicationChanel;
-import com.novatech.cybertech.entities.enums.NotificationStatus;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
@@ -14,8 +11,7 @@ import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.events.OrderUpdatedEvent;
-import com.novatech.cybertech.services.implementation.NotificationOutcomeRecorder;
-import org.assertj.core.api.Assertions;
+import com.novatech.cybertech.services.core.NotificationRetryableDelivery;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -30,28 +26,24 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 /**
  * Unit tests for {@link OrderEventListener}.
  *
- * <p>Phase 1 expands coverage: the order-created / order-updated paths now
- * persist a {@link NotificationEntity} via the
- * {@link NotificationOutcomeRecorder} on success AND failure (previously they
- * fired fire-and-forget with no audit trail).
+ * <p>Phase 2: dispatch + retry + audit-row persistence are all delegated to
+ * {@link NotificationRetryableDelivery}. The listener's job is to build the
+ * context and hand it off. These tests assert that one delegate call happens
+ * with a correctly populated context for each event type. Retry semantics live
+ * in {@code NotificationRetryableDeliveryImpTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class OrderEventListenerTest {
 
     @Mock
-    private NotificationDispatcher notificationDispatcher;
-    @Mock
-    private NotificationOutcomeRecorder outcomeRecorder;
+    private NotificationRetryableDelivery retryableDelivery;
 
     @InjectMocks
     private OrderEventListener listener;
@@ -87,72 +79,34 @@ class OrderEventListenerTest {
     }
 
     @Test
-    void onOrderCreatedShouldDispatchAndRecordSent() {
+    void onOrderCreatedShouldDelegateExactlyOnceWithOrderConfirmationContext() {
         OrderEventDto dto = sample();
-        when(outcomeRecorder.recordOutcome(any(), any(), any(Integer.class), any()))
-                .thenReturn(NotificationEntity.builder().build());
 
         listener.onOrderCreated(new OrderCreatedEvent(this, dto));
 
         ArgumentCaptor<NotificationContext> cap = ArgumentCaptor.forClass(NotificationContext.class);
-        verify(notificationDispatcher).dispatch(cap.capture());
+        verify(retryableDelivery, times(1)).deliver(cap.capture());
+        verifyNoMoreInteractions(retryableDelivery);
+
         NotificationContext ctx = cap.getValue();
         assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.ORDER_CONFIRMATION);
         assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
         assertThat(ctx.getData()).containsEntry("orderEventDto", dto);
-
-        // Phase 1: success path persists SENT with retryCount=0.
-        verify(outcomeRecorder).recordOutcome(eq(ctx), eq(NotificationStatus.SENT), eq(0), isNull());
     }
 
     @Test
-    void onOrderUpdatedShouldDispatchAndRecordSent() {
+    void onOrderUpdatedShouldDelegateExactlyOnceWithOrderUpdateContext() {
         OrderEventDto dto = sample();
-        when(outcomeRecorder.recordOutcome(any(), any(), any(Integer.class), any()))
-                .thenReturn(NotificationEntity.builder().build());
 
         listener.onOrderUpdated(new OrderUpdatedEvent(this, dto));
 
         ArgumentCaptor<NotificationContext> cap = ArgumentCaptor.forClass(NotificationContext.class);
-        verify(notificationDispatcher).dispatch(cap.capture());
+        verify(retryableDelivery, times(1)).deliver(cap.capture());
+        verifyNoMoreInteractions(retryableDelivery);
+
         NotificationContext ctx = cap.getValue();
         assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.ORDER_UPDATE);
         assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
         assertThat(ctx.getData()).containsEntry("orderEventDto", dto);
-
-        verify(outcomeRecorder).recordOutcome(eq(ctx), eq(NotificationStatus.SENT), eq(0), isNull());
-    }
-
-    @Test
-    void onOrderCreatedShouldRecordFailedAndSwallowExceptionWhenDispatchThrows() {
-        OrderEventDto dto = sample();
-        RuntimeException boom = new RuntimeException("smtp down");
-        doThrow(boom).when(notificationDispatcher).dispatch(any());
-
-        // Async-listener contract: no propagation, even on failure.
-        Assertions.assertThatCode(() -> listener.onOrderCreated(new OrderCreatedEvent(this, dto)))
-                .doesNotThrowAnyException();
-
-        verify(outcomeRecorder).recordOutcome(
-                any(NotificationContext.class),
-                eq(NotificationStatus.FAILED),
-                eq(1),
-                eq(boom));
-    }
-
-    @Test
-    void onOrderUpdatedShouldRecordFailedAndSwallowExceptionWhenDispatchThrows() {
-        OrderEventDto dto = sample();
-        RuntimeException boom = new RuntimeException("smtp down");
-        doThrow(boom).when(notificationDispatcher).dispatch(any());
-
-        Assertions.assertThatCode(() -> listener.onOrderUpdated(new OrderUpdatedEvent(this, dto)))
-                .doesNotThrowAnyException();
-
-        verify(outcomeRecorder).recordOutcome(
-                any(NotificationContext.class),
-                eq(NotificationStatus.FAILED),
-                eq(1),
-                eq(boom));
     }
 }
