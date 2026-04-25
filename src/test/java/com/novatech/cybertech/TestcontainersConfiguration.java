@@ -35,7 +35,14 @@ public class TestcontainersConfiguration {
     @Bean
     @ServiceConnection
     ElasticsearchContainer elasticsearchContainer() {
-        return new ElasticsearchContainer(DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:7.17.10"));//Build failing with a newer version of elastic search
+        // Aligned with the Helm chart appVersion (elasticsearch-chart/Chart.yaml).
+        // ES 8.x requires xpack.security.enabled=false for the single-node portfolio
+        // setup so HTTP works without TLS/auth (matches the Helm env block).
+        return new ElasticsearchContainer(
+                DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:8.15.3"))
+                .withEnv("xpack.security.enabled", "false")
+                .withEnv("xpack.security.http.ssl.enabled", "false")
+                .withEnv("discovery.type", "single-node");
     }
 
     @Bean
