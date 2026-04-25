@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
+@Tag(name = "User Admin", description = "Admin-only endpoints for user CRUD and synthetic user generation")
 public interface UserManagementAdminApiSpec {
 
     @Operation(summary = "Get all Users (Admin)",
@@ -29,7 +31,9 @@ public interface UserManagementAdminApiSpec {
             responses = {
                     @ApiResponse(responseCode = "200", description = "Users found successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = UserResponseDto.class)))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
@@ -47,7 +51,11 @@ public interface UserManagementAdminApiSpec {
             responses = {
                     @ApiResponse(responseCode = "201", description = "User created successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserResponseDto.class))),
-                    @ApiResponse(responseCode = "400", description = "Invalid input data",
+                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "409", description = "Conflict - User already exists",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
@@ -63,9 +71,11 @@ public interface UserManagementAdminApiSpec {
             responses = {
                     @ApiResponse(responseCode = "200", description = "User updated successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserResponseDto.class))),
-                    @ApiResponse(responseCode = "400", description = "Invalid input data",
+                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "User not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
@@ -82,9 +92,11 @@ public interface UserManagementAdminApiSpec {
             },
             responses = {
                     @ApiResponse(responseCode = "204", description = "User deleted successfully"),
-                    @ApiResponse(responseCode = "400", description = "Bad request",
+                    @ApiResponse(responseCode = "400", description = "Bad request (e.g., invalid UUID format)",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "User not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
@@ -97,7 +109,13 @@ public interface UserManagementAdminApiSpec {
             description = "Generates a batch of users for testing.",
             security = @SecurityRequirement(name = "bearerAuth"),
             responses = {
-                    @ApiResponse(responseCode = "201", description = "Users generated successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = UserResponseDto.class))))
+                    @ApiResponse(responseCode = "201", description = "Users generated successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = UserResponseDto.class)))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "500", description = "Internal server error",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<Collection<UserResponseDto>> createUserAutomatically();
 }

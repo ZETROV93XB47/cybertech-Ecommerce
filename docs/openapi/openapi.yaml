@@ -1,0 +1,1605 @@
+openapi: 3.0.3
+info:
+  title: Cybertech E-Commerce API
+  description: |
+    Backend REST API for the Cybertech e-commerce platform.
+
+    Covers the full e-commerce lifecycle: product catalog, search, cart,
+    wishlist, orders, payments (Stripe), reviews and moderation, bank cards
+    (PCI-aware), discount campaigns, user management (Keycloak-backed) and
+    behavioural event ingestion.
+
+    Authentication is performed via Keycloak-issued JWT bearer tokens. Public
+    endpoints (catalog browsing, registration, Stripe webhook) are explicitly
+    whitelisted in `SecurityConfig.PUBLIC_URLS`; every other endpoint
+    requires a valid Bearer token and may further restrict to USER or ADMIN
+    roles.
+
+    This static `openapi.yaml` is the canonical, hand-curated contract derived
+    from the `*ApiSpec` interfaces under
+    `com.novatech.cybertech.api.controllers.spec`. Regenerate the live
+    contract by booting the app with `./mvnw spring-boot:run -Dspring-boot.run.profiles=test`
+    and curl-ing `http://localhost:8081/v3/api-docs.yaml`, or by running
+    `./mvnw -Dskip=false springdoc-openapi:generate` in a second shell.
+  version: "1.0"
+  contact:
+    name: Cybertech Team
+    email: dev@cybertech.local
+  license:
+    name: Proprietary
+    url: https://cybertech.local/license
+
+servers:
+  - url: http://localhost:8081
+    description: Local dev
+  - url: https://api.cybertech.local
+    description: Production
+
+tags:
+  - name: User
+    description: User self-service - signup and read profile by UUID
+  - name: User Admin
+    description: Admin-only endpoints for user CRUD and synthetic user generation
+  - name: Cart
+    description: Endpoints to manage the authenticated user's shopping cart
+  - name: Order
+    description: Endpoints for placing, retrying, retrieving, updating, cancelling and deleting orders
+  - name: Product
+    description: Public catalog endpoints - read products, search and best-sellers
+  - name: Product Admin
+    description: Admin-only endpoints for product CRUD and image upload
+  - name: Review
+    description: Endpoints for product review CRUD operations
+  - name: Wishlist
+    description: Endpoints to manage the authenticated user's wishlist
+  - name: Bank Card
+    description: Endpoints to manage the authenticated user's bank card and admin CRUD
+  - name: Discount Admin
+    description: Admin-only endpoints to list and update discount campaigns
+  - name: Discount Public
+    description: Public read-only view of currently-active discount campaigns
+  - name: User Events
+    description: Behavioural event ingestion for the recommendation engine
+  - name: Stripe Webhook
+    description: Stripe webhook ingestion endpoint (HMAC-SHA256 signature verified)
+
+components:
+  securitySchemes:
+    keycloak:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak-issued JWT access token. Pass as `Authorization: Bearer <token>`.
+
+  schemas:
+    ErrorResponseDto:
+      type: object
+      properties:
+        message:
+          type: string
+        httpStatusCode:
+          type: integer
+        errorCodeType:
+          type: string
+          enum: [TECHNICAL, FUNCTIONAL]
+      required: [message, httpStatusCode, errorCodeType]
+
+    UUID:
+      type: string
+      format: uuid
+
+    Pageable:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 0
+        size:
+          type: integer
+          minimum: 1
+          maximum: 100
+        sort:
+          type: array
+          items:
+            type: string
+
+    UserCreateRequestDto:
+      type: object
+      required: [email, username, password, firstName, lastName]
+      properties:
+        email: { type: string, format: email }
+        username: { type: string }
+        password: { type: string, format: password }
+        firstName: { type: string }
+        lastName: { type: string }
+        phoneNumber: { type: string }
+
+    UserUpdateRequestDto:
+      type: object
+      properties:
+        userUuid: { $ref: '#/components/schemas/UUID' }
+        email: { type: string, format: email }
+        username: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+
+    UserResponseDto:
+      type: object
+      properties:
+        uuid: { $ref: '#/components/schemas/UUID' }
+        email: { type: string }
+        username: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        keycloakId: { type: string }
+
+    ProductCreateRequestDto:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        category: { type: string }
+        brand: { type: string }
+        stock: { type: integer }
+        attributes:
+          type: object
+          additionalProperties: true
+
+    ProductUpdateRequestDto:
+      type: object
+      properties:
+        productUuid: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        stock: { type: integer }
+
+    ProductResponseDto:
+      type: object
+      properties:
+        uuid: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        category: { type: string }
+        brand: { type: string }
+        photoUrl: { type: string }
+        stock: { type: integer }
+
+    ProductSearchRequestDto:
+      type: object
+      properties:
+        name: { type: string }
+        category: { type: string }
+        brand: { type: string }
+        minPrice: { type: number }
+        maxPrice: { type: number }
+        attributes:
+          type: object
+          additionalProperties: true
+
+    PageOfProductResponseDto:
+      type: object
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/ProductResponseDto' }
+        totalElements: { type: integer }
+        totalPages: { type: integer }
+        number: { type: integer }
+        size: { type: integer }
+
+    CartCreateRequestDto:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productUuid: { $ref: '#/components/schemas/UUID' }
+              quantity: { type: integer, minimum: 1 }
+
+    CartUpdateRequestDto:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productUuid: { $ref: '#/components/schemas/UUID' }
+              quantity: { type: integer }
+
+    CartItemRemoveRequestDto:
+      type: object
+      properties:
+        productUuid: { $ref: '#/components/schemas/UUID' }
+        quantity: { type: integer, minimum: 1 }
+
+    CartResponseDto:
+      type: object
+      properties:
+        uuid: { $ref: '#/components/schemas/UUID' }
+        userUuid: { $ref: '#/components/schemas/UUID' }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productUuid: { $ref: '#/components/schemas/UUID' }
+              productName: { type: string }
+              quantity: { type: integer }
+              unitPrice: { type: number }
+
+    OrderPlacingRequestDto:
+      type: object
+      required: [shippingAddress, paymentType]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productUuid: { $ref: '#/components/schemas/UUID' }
+              quantity: { type: integer }
+        shippingAddress:
+          type: object
+          properties:
+            street: { type: string }
+            city: { type: string }
+            postalCode: { type: string }
+            country: { type: string }
+        paymentType:
+          type: string
+          enum: [STRIPE, PAYPAL]
+        discountType: { type: string }
+
+    OrderUpdateRequestDto:
+      type: object
+      properties:
+        orderUuid: { $ref: '#/components/schemas/UUID' }
+        status: { type: string }
+
+    OrderCancellationRequestDto:
+      type: object
+      required: [orderUuid]
+      properties:
+        orderUuid: { $ref: '#/components/schemas/UUID' }
+
+    OrderResponseDto:
+      type: object
+      properties:
+        uuid: { $ref: '#/components/schemas/UUID' }
+        status:
+          type: string
+          enum: [PENDING, PAID, PAYMENT_FAILED, CANCELLED, SHIPPED, DELIVERED]
+        totalAmount: { type: number }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productUuid: { $ref: '#/components/schemas/UUID' }
+              productName: { type: string }
+              quantity: { type: integer }
+              unitPrice: { type: number }
+        clientSecret: { type: string, description: Stripe PaymentIntent client secret }
+
+    ReviewCreateRequestDto:
+      type: object
+      required: [productUuid, orderUuid, rating, comment]
+      properties:
+        productUuid: { $ref: '#/components/schemas/UUID' }
+        orderUuid: { $ref: '#/components/schemas/UUID' }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string }
+
+    ReviewUpdateRequestDto:
+      type: object
+      properties:
+        reviewUuid: { $ref: '#/components/schemas/UUID' }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string }
+
+    ReviewResponseDto:
+      type: object
+      properties:
+        uuid: { $ref: '#/components/schemas/UUID' }
+        productUuid: { $ref: '#/components/schemas/UUID' }
+        userUuid: { $ref: '#/components/schemas/UUID' }
+        rating: { type: integer }
+        comment: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    BankCardCreationRequestDto:
+      type: object
+      required: [cardNumber, cardHolderName, expirationMonth, expirationYear, cvv]
+      properties:
+        cardNumber:
+          type: string
+          pattern: '^\d{13,19}$'
+        cardHolderName: { type: string }
+        expirationMonth: { type: integer, minimum: 1, maximum: 12 }
+        expirationYear: { type: integer }
+        cvv: { type: string, pattern: '^\d{3,4}$' }
+        userUuid: { $ref: '#/components/schemas/UUID' }
+
+    BankCardUpdateRequestDto:
+      type: object
+      properties:
+        cardUuid: { $ref: '#/components/schemas/UUID' }
+        cardHolderName: { type: string }
+        expirationMonth: { type: integer }
+        expirationYear: { type: integer }
+
+    BankCardResponseDto:
+      type: object
+      properties:
+        uuid: { $ref: '#/components/schemas/UUID' }
+        maskedCardNumber: { type: string }
+        cardHolderName: { type: string }
+        expirationMonth: { type: integer }
+        expirationYear: { type: integer }
+        isDefault: { type: boolean }
+
+    WishlistResponseDto:
+      type: object
+      properties:
+        uuid: { $ref: '#/components/schemas/UUID' }
+        productUuid: { $ref: '#/components/schemas/UUID' }
+        productName: { type: string }
+        addedAt: { type: string, format: date-time }
+
+    UserEventDto:
+      type: object
+      required: [eventType]
+      properties:
+        userId: { type: string, description: "Server-overwritten with JWT subject (BUG-SPOOF-D5)" }
+        eventType:
+          type: string
+          enum: [CLICK, VIEW, PURCHASE]
+        productUuid: { $ref: '#/components/schemas/UUID' }
+        timestamp: { type: string, format: date-time }
+
+    UserEvent:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        eventType: { type: string }
+        productUuid: { $ref: '#/components/schemas/UUID' }
+        timestamp: { type: string, format: date-time }
+
+    DiscountCampaignResponseDto:
+      type: object
+      properties:
+        discountType: { type: string }
+        enabled: { type: boolean }
+        percentage: { type: number }
+        fixedAmount: { type: number }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+
+    DiscountCampaignUpdateRequestDto:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        percentage: { type: number }
+        fixedAmount: { type: number }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+
+    DiscountContext:
+      type: object
+      properties:
+        discountType: { type: string }
+        percentage: { type: number }
+        fixedAmount: { type: number }
+        label: { type: string }
+
+  responses:
+    BadRequest:
+      description: Validation failure or malformed request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+    Unauthorized:
+      description: JWT token missing or invalid
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+    Forbidden:
+      description: Operation forbidden (insufficient role or ownership check failed)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+    Conflict:
+      description: Resource already exists or in conflicting state
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+    InternalError:
+      description: Unhandled server error (sanitized message)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+
+security:
+  - keycloak: []
+
+paths:
+  # =================== USER (self-service) ===================
+  /api/v1/services/user/register:
+    post:
+      tags: [User]
+      summary: Register a new user (public)
+      description: Anonymous human signup. Whitelisted in `SecurityConfig.PUBLIC_URLS`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreateRequestDto' }
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  keycloakId: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/user/register/auto/single:
+    post:
+      tags: [User Admin]
+      summary: Generate a synthetic user (Admin only - dev/load-test utility)
+      description: ADMIN-only (BUG-201). Mints a synthetic user via DataGenerator.
+      responses:
+        '201':
+          description: Synthetic user created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  keycloakId: { type: string }
+                  email: { type: string }
+                  username: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/user/get/{userUuid}:
+    get:
+      tags: [User]
+      summary: Get a user by UUID (BUG-IDOR-D2 ownership-checked for non-admins)
+      parameters:
+        - name: userUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/services/user/ok:
+    get:
+      tags: [User]
+      summary: Health-check ping (authenticated)
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema: { type: string, example: "Hello Guys !!!" }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # =================== USER ADMIN ===================
+  /api/v1/services/admin/user/get/all:
+    get:
+      tags: [User Admin]
+      summary: List all users (Admin)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: Page of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/user/create:
+    post:
+      tags: [User Admin]
+      summary: Create a user (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreateRequestDto' }
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/user/update:
+    patch:
+      tags: [User Admin]
+      summary: Update a user (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdateRequestDto' }
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/user/delete/{userUuid}:
+    delete:
+      tags: [User Admin]
+      summary: Delete a user by UUID (Admin)
+      parameters:
+        - name: userUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '204': { description: User deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/user/register/auto:
+    post:
+      tags: [User Admin]
+      summary: Generate 100 synthetic users (Admin - dev/load-test utility)
+      responses:
+        '201':
+          description: Synthetic users created
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # =================== PRODUCT (public) ===================
+  /api/v1/services/product/get/{productUuid}:
+    get:
+      tags: [Product]
+      summary: Get a product by UUID
+      security: []
+      parameters:
+        - name: productUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Product found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/services/product/search:
+    post:
+      tags: [Product]
+      summary: Search products
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductSearchRequestDto' }
+      responses:
+        '200':
+          description: Page of products matching the criteria
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageOfProductResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/v1/services/product/best-sellers:
+    get:
+      tags: [Product]
+      summary: Best-selling products (paginated)
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: Page of best-selling products
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageOfProductResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # =================== PRODUCT ADMIN ===================
+  /api/v1/services/admin/management/product/get/all:
+    get:
+      tags: [Product Admin]
+      summary: List all products (Admin)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: size
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Page of products
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageOfProductResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/management/product/create:
+    post:
+      tags: [Product Admin]
+      summary: Create a product (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCreateRequestDto' }
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/management/product/update/{productUuid}:
+    patch:
+      tags: [Product Admin]
+      summary: Update a product (Admin)
+      parameters:
+        - name: productUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductUpdateRequestDto' }
+      responses:
+        '200':
+          description: Product updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/management/product/delete/{productUuid}:
+    delete:
+      tags: [Product Admin]
+      summary: Delete a product (Admin)
+      parameters:
+        - name: productUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '204': { description: Product deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/management/product/create-with-image:
+    post:
+      tags: [Product Admin]
+      summary: Create a product with image (Admin, multipart)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                product:
+                  $ref: '#/components/schemas/ProductCreateRequestDto'
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # =================== CART ===================
+  /api/v1/services/cart/get/{cartUuid}:
+    get:
+      tags: [Cart]
+      summary: Get cart by UUID (ownership-checked - BUG-161)
+      parameters:
+        - name: cartUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Cart found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/cart/create:
+    post:
+      tags: [Cart]
+      summary: Create a new cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartCreateRequestDto' }
+      responses:
+        '201':
+          description: Cart created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/cart/update/{cartUuid}:
+    patch:
+      tags: [Cart]
+      summary: Update cart by UUID (ownership-checked)
+      parameters:
+        - name: cartUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartUpdateRequestDto' }
+      responses:
+        '200':
+          description: Cart updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/cart/delete/{cartUuid}:
+    delete:
+      tags: [Cart]
+      summary: Delete cart by UUID (ownership-checked)
+      parameters:
+        - name: cartUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '204': { description: Cart deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/cart/get:
+    get:
+      tags: [Cart]
+      summary: Get current user's cart
+      responses:
+        '200':
+          description: Cart retrieved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/cart/clear:
+    delete:
+      tags: [Cart]
+      summary: Clear current user's cart
+      responses:
+        '204': { description: Cart cleared }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/cart/add:
+    post:
+      tags: [Cart]
+      summary: Add items to current user's cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartCreateRequestDto' }
+      responses:
+        '201':
+          description: Items added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/cart/remove/{productUuid}:
+    patch:
+      tags: [Cart]
+      summary: Remove product from current user's cart
+      parameters:
+        - name: productUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Item removed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/cart/decreaseQuantity:
+    delete:
+      tags: [Cart]
+      summary: Decrease item quantity in current user's cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartItemRemoveRequestDto' }
+      responses:
+        '200':
+          description: Quantity decreased
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # =================== ORDER ===================
+  /api/v1/services/management/order/place:
+    post:
+      tags: [Order]
+      summary: Place a new order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderPlacingRequestDto' }
+      responses:
+        '201':
+          description: Order placed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Not enough stock / payment already completed for this order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/management/order/cancel:
+    post:
+      tags: [Order]
+      summary: Cancel an existing order (ownership-checked)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderCancellationRequestDto' }
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/management/order/update:
+    post:
+      tags: [Order]
+      summary: Update an existing order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderUpdateRequestDto' }
+      responses:
+        '200':
+          description: Order updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/management/order/retry-payment/{uuid}:
+    post:
+      tags: [Order]
+      summary: Retry payment for a failed order
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Payment retried
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Payment already completed / not enough stock
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/management/order/get/{uuid}:
+    get:
+      tags: [Order]
+      summary: Get order by UUID (ownership-checked, ADMIN bypass)
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Order found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/management/order/status/{uuid}:
+    get:
+      tags: [Order]
+      summary: Get order status by UUID (lightweight polling)
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Order status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uuid: { $ref: '#/components/schemas/UUID' }
+                  status: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/services/management/order/delete/{uuid}:
+    delete:
+      tags: [Order]
+      summary: Delete order by UUID (Admin)
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '204': { description: Order deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/management/order/place/auto:
+    post:
+      tags: [Order]
+      summary: Place a synthetic order (Admin - dev/load-test utility)
+      responses:
+        '201':
+          description: Synthetic order placed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # =================== REVIEW ===================
+  /api/v1/services/review/get/{reviewUuid}:
+    get:
+      tags: [Review]
+      summary: Get review by UUID
+      parameters:
+        - name: reviewUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Review found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/services/review/create:
+    post:
+      tags: [Review]
+      summary: Create a review (USER role required)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewCreateRequestDto' }
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/review/update/{reviewUuid}:
+    patch:
+      tags: [Review]
+      summary: Update a review (author only)
+      parameters:
+        - name: reviewUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewUpdateRequestDto' }
+      responses:
+        '200':
+          description: Review updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/review/delete/{reviewUuid}:
+    delete:
+      tags: [Review]
+      summary: Delete a review (author only)
+      parameters:
+        - name: reviewUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '204': { description: Review deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/review/reviewable:
+    get:
+      tags: [Review]
+      summary: List products the authenticated user can still review
+      responses:
+        '200':
+          description: List of reviewable products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    productUuid: { $ref: '#/components/schemas/UUID' }
+                    productName: { type: string }
+                    orderUuid: { $ref: '#/components/schemas/UUID' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # =================== WISHLIST ===================
+  /api/v1/services/wishlist/add/{productUuid}:
+    post:
+      tags: [Wishlist]
+      summary: Add product to current user's wishlist
+      parameters:
+        - name: productUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '201':
+          description: Product added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WishlistResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Product already in wishlist
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/wishlist/remove/{productUuid}:
+    delete:
+      tags: [Wishlist]
+      summary: Remove product from current user's wishlist
+      parameters:
+        - name: productUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '204': { description: Product removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/wishlist/my-wishlist:
+    get:
+      tags: [Wishlist]
+      summary: Get current user's wishlist
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: size
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Wishlist
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WishlistResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # =================== BANK CARD ===================
+  /api/v1/services/bank-card/add:
+    post:
+      tags: [Bank Card]
+      summary: Add a bank card to current user (PCI-aware encryption applied)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankCardCreationRequestDto' }
+      responses:
+        '201':
+          description: Bank card added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankCardResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/services/bank-card/delete:
+    delete:
+      tags: [Bank Card]
+      summary: Delete current user's bank card
+      responses:
+        '204': { description: Bank card deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/services/bank-card/update:
+    put:
+      tags: [Bank Card]
+      summary: Update current user's bank card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankCardUpdateRequestDto' }
+      responses:
+        '200':
+          description: Bank card updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankCardResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/services/bank-card/set-default/{cardUuid}:
+    patch:
+      tags: [Bank Card]
+      summary: Set a card as the caller's default
+      parameters:
+        - name: cardUuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '204': { description: Default card updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/services/bank-card/default:
+    get:
+      tags: [Bank Card]
+      summary: Get the caller's default bank card
+      responses:
+        '200':
+          description: Default card (masked PAN)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankCardResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: No default card set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+
+  /api/v1/services/bank-card:
+    get:
+      tags: [Bank Card]
+      summary: List all bank cards (Admin)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: size
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Page of bank cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BankCardResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Bank Card]
+      summary: Create a bank card directly (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankCardCreationRequestDto' }
+      responses:
+        '201':
+          description: Bank card created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankCardResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Bank Card]
+      summary: Update a bank card (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankCardUpdateRequestDto' }
+      responses:
+        '200':
+          description: Bank card updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankCardResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/services/bank-card/{uuid}:
+    get:
+      tags: [Bank Card]
+      summary: Get a bank card by UUID (Admin)
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          description: Bank card found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankCardResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Bank Card]
+      summary: Delete a bank card by UUID (Admin)
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '204': { description: Bank card deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # =================== DISCOUNTS ===================
+  /api/v1/services/discounts/active:
+    get:
+      tags: [Discount Public]
+      summary: List currently-active discount campaigns (public)
+      security: []
+      responses:
+        '200':
+          description: List of active campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DiscountContext' }
+
+  /api/v1/services/admin/discounts:
+    get:
+      tags: [Discount Admin]
+      summary: List every discount campaign (Admin)
+      responses:
+        '200':
+          description: All campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DiscountCampaignResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/services/admin/discounts/{discountType}:
+    get:
+      tags: [Discount Admin]
+      summary: Get a discount campaign by type (Admin)
+      parameters:
+        - name: discountType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [BLACK_FRIDAY, NEW_CUSTOMER, FLASH_SALE, LOYALTY]
+      responses:
+        '200':
+          description: Discount campaign
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscountCampaignResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Discount Admin]
+      summary: Update a discount campaign (Admin)
+      parameters:
+        - name: discountType
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DiscountCampaignUpdateRequestDto' }
+      responses:
+        '200':
+          description: Campaign updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscountCampaignResponseDto' }
+        '400':
+          description: Discount type not active or invalid update payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # =================== USER EVENTS ===================
+  /api/v1/events/consume-event:
+    post:
+      tags: [User Events]
+      summary: Ingest a behavioural user event (USER role required)
+      description: |
+        Accepts click / view / purchase events for the recommendation engine.
+        The server overwrites the supplied `userId` with the JWT subject
+        (BUG-SPOOF-D5) so events are always attributed to the calling user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserEventDto' }
+      responses:
+        '201':
+          description: Event accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserEvent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # =================== STRIPE WEBHOOK ===================
+  /api/v1/webhooks/stripe:
+    post:
+      tags: [Stripe Webhook]
+      summary: Stripe webhook ingestion endpoint
+      description: |
+        Public endpoint (no JWT) — authentication is performed via the
+        `Stripe-Signature` HMAC-SHA256 header verified against the configured
+        `stripe.webhook.secret`.
+
+        Response codes are calibrated to Stripe's retry semantics:
+        - 200: event accepted OR non-retriable downstream failure (BUG-2501).
+        - 400: invalid signature (BUG-2501 carve-out) OR malformed JSON
+          (BUG-2502).
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema: { type: string }
+          description: Stripe-issued HMAC-SHA256 signature header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw Stripe event payload
+      responses:
+        '200':
+          description: Webhook accepted (or non-retriable downstream failure ACKed)
+        '400':
+          description: Invalid Stripe signature or malformed event payload

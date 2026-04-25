@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,6 +23,7 @@ import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
+@Tag(name = "Product Admin", description = "Admin-only endpoints for product CRUD and image upload")
 public interface ProductManagementAdminApiSpec {
 
     @Operation(summary = "Get all Products (Admin)",
@@ -30,7 +32,9 @@ public interface ProductManagementAdminApiSpec {
             responses = {
                     @ApiResponse(responseCode = "200", description = "Products found successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = ProductResponseDto.class)))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
@@ -48,9 +52,11 @@ public interface ProductManagementAdminApiSpec {
             responses = {
                     @ApiResponse(responseCode = "201", description = "Product created successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductResponseDto.class))),
-                    @ApiResponse(responseCode = "400", description = "Invalid input data",
+                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error / product attributes not matching category constraints",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "409", description = "Conflict - Product already exists",
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error during Product creation",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
@@ -64,9 +70,11 @@ public interface ProductManagementAdminApiSpec {
             responses = {
                     @ApiResponse(responseCode = "200", description = "Product updated successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductResponseDto.class))),
-                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error",
+                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error / path-body UUID mismatch",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Product not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
@@ -85,7 +93,9 @@ public interface ProductManagementAdminApiSpec {
                     @ApiResponse(responseCode = "204", description = "Product deleted successfully (No Content)"),
                     @ApiResponse(responseCode = "400", description = "Bad request (e.g., invalid UUID format)",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Product not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
@@ -101,9 +111,13 @@ public interface ProductManagementAdminApiSpec {
             responses = {
                     @ApiResponse(responseCode = "201", description = "Product created successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductResponseDto.class))),
-                    @ApiResponse(responseCode = "400", description = "Bad request",
+                    @ApiResponse(responseCode = "400", description = "Bad request / invalid product data / unsupported image MIME / image too large",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "500", description = "Internal server error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<ProductResponseDto> createProductWithImage(

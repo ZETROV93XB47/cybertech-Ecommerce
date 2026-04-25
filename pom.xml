@@ -548,6 +548,36 @@
                     </execution>
                 </executions>
             </plugin>
+            <!--
+                springdoc-openapi-maven-plugin — opt-in static OpenAPI contract export.
+
+                With <skip>true</skip> the plugin does NOT auto-run on `mvn verify`. To regenerate
+                the canonical docs/openapi/openapi.yaml from a running app:
+
+                  1. Boot the app:  ./mvnw spring-boot:run -Dspring-boot.run.profiles=test
+                  2. In another shell: ./mvnw -Dskip=false springdoc-openapi:generate
+
+                The committed docs/openapi/openapi.yaml is the contract Postman / front-end /
+                third parties consume between regenerations.
+            -->
+            <plugin>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-maven-plugin</artifactId>
+                <version>1.4</version>
+                <executions>
+                    <execution>
+                        <id>integration-test</id>
+                        <goals><goal>generate</goal></goals>
+                        <phase>integration-test</phase>
+                    </execution>
+                </executions>
+                <configuration>
+                    <apiDocsUrl>http://localhost:8081/v3/api-docs.yaml</apiDocsUrl>
+                    <outputFileName>openapi.yaml</outputFileName>
+                    <outputDir>${project.basedir}/docs/openapi</outputDir>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

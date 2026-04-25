@@ -3,6 +3,7 @@ package com.novatech.cybertech.api.controllers.spec;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 
 /**
@@ -14,6 +15,7 @@ import org.springframework.http.ResponseEntity;
  *   <li><b>400</b> — signature verification failed or payload malformed.</li>
  * </ul>
  */
+@Tag(name = "Stripe Webhook", description = "Stripe webhook ingestion endpoint (publicly reachable, secured via HMAC-SHA256 Stripe-Signature header)")
 public interface StripeWebhookApiSpec {
 
     /**
