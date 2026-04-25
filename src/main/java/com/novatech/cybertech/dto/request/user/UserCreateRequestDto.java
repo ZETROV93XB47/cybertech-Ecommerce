@@ -59,7 +59,12 @@ public class UserCreateRequestDto {
     // Tu peux ajouter une @Pattern pour la complexité du mot de passe si nécessaire
     private String password;
 
-    @NotNull(message = "Bank card cannot be null")
+    /**
+     * Optional. Users may sign up without a card and add one later via
+     * {@code POST /api/v1/services/bank-card/add}. When present, registration
+     * delegates to {@code BankCardManagementService.addBankCard} so the same
+     * PCI-DSS rules (encryption + last4 masking, expiry guard) apply.
+     */
     private BankCardCreationRequestDto bankCardCreationRequestDto;
 
 }

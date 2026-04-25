@@ -3,14 +3,13 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
-import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Role;
 import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.UserMapper;
-import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.BankCardManagementService;
 import com.novatech.cybertech.services.core.UserManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +30,7 @@ public class UserManagementServiceImp implements UserManagementService {
 
     private final UserMapper userMapper;
     private final UserRepository userRepository;
-    private final BankCardRepository bankCardRepository;
+    private final BankCardManagementService bankCardManagementService;
     private final KeycloakUserManagementService keycloakUserManagementService;
 
     @Override
@@ -65,16 +64,12 @@ public class UserManagementServiceImp implements UserManagementService {
             final UserEntity savedUser = userRepository.save(user);
             log.info("Saved user : {}", savedUser);
 
-            BankCardEntity bankCard = BankCardEntity.builder()
-                    .cardHolderName(req.getBankCardCreationRequestDto().getCardHolderName())
-                    .cardNumber(req.getBankCardCreationRequestDto().getCardNumber())
-                    .expiryDate(req.getBankCardCreationRequestDto().getExpiryDate())
-                    .cardType(req.getBankCardCreationRequestDto().getCardType())
-                    .build();
-
-            bankCard.setUserEntity(savedUser);
-
-            bankCardRepository.save(bankCard);
+            // Bank card is optional. When provided, delegate to BankCardManagementService.addBankCard
+            // so PCI-DSS rules (PAN encryption + last4 masking, expiry guard) are applied — fixes
+            // the registration-path leg of BUG-036 (previously stored PAN as plaintext inline).
+            if (req.getBankCardCreationRequestDto() != null) {
+                bankCardManagementService.addBankCard(keycloakId, req.getBankCardCreationRequestDto());
+            }
 
             return userMapper.mapFromEntityToResponseDto(savedUser);
 

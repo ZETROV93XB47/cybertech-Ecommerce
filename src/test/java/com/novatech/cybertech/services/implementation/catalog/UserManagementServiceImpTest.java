@@ -1,17 +1,18 @@
 package com.novatech.cybertech.services.implementation.catalog;
 
+import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
+import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
-import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Role;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import com.novatech.cybertech.mappers.entity.UserMapper;
-import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.BankCardManagementService;
 import com.novatech.cybertech.services.implementation.KeycloakUserManagementService;
 import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +32,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -55,7 +57,7 @@ class UserManagementServiceImpTest {
 
     @Mock UserMapper userMapper;
     @Mock UserRepository userRepository;
-    @Mock BankCardRepository bankCardRepository;
+    @Mock BankCardManagementService bankCardManagementService;
     @Mock KeycloakUserManagementService keycloakUserManagementService;
 
     @InjectMocks UserManagementServiceImp service;
@@ -66,7 +68,7 @@ class UserManagementServiceImpTest {
     class Create {
 
         @Test
-        @DisplayName("happy path — Keycloak create, then SQL user, then bank card, returns mapped DTO")
+        @DisplayName("happy path — Keycloak create, then SQL user, then delegates card add via BankCardManagementService, returns mapped DTO")
         void create_happyPath() {
             UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
             String kcId = "kc-123";
@@ -80,11 +82,11 @@ class UserManagementServiceImpTest {
             UserResponseDto result = service.create(req);
 
             assertThat(result).isSameAs(expected);
-            InOrder order = inOrder(keycloakUserManagementService, userRepository, bankCardRepository);
+            InOrder order = inOrder(keycloakUserManagementService, userRepository, bankCardManagementService);
             order.verify(keycloakUserManagementService).createUser(req.getEmail(), req.getFirstName(),
                     req.getLastName(), req.getPassword(), Role.USER);
             order.verify(userRepository).save(any(UserEntity.class));
-            order.verify(bankCardRepository).save(any(BankCardEntity.class));
+            order.verify(bankCardManagementService).addBankCard(eq(kcId), any(BankCardCreationRequestDto.class));
         }
 
         @Test
@@ -119,7 +121,7 @@ class UserManagementServiceImpTest {
                     .hasMessage("db down");
 
             verify(keycloakUserManagementService).deleteUser(kcId);
-            verify(bankCardRepository, never()).save(any());
+            verify(bankCardManagementService, never()).addBankCard(any(), any());
         }
 
         @Test
@@ -135,19 +137,19 @@ class UserManagementServiceImpTest {
 
             verify(keycloakUserManagementService, never()).deleteUser(any());
             verifyNoInteractions(userRepository);
-            verifyNoInteractions(bankCardRepository);
+            verifyNoInteractions(bankCardManagementService);
         }
 
         @Test
-        @DisplayName("BankCard save fails — relies on @Transactional rollback for SQL; Keycloak compensated")
+        @DisplayName("BankCard add fails — Keycloak compensated, exception propagates")
         void create_bankCardFails_keycloakDeletedAndPropagates() {
             UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
             String kcId = "kc-bank-fail";
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
             UserEntity savedUser = UserEntityBuilder.aValidUser();
             when(userRepository.save(any(UserEntity.class))).thenReturn(savedUser);
-            when(bankCardRepository.save(any(BankCardEntity.class)))
-                    .thenThrow(new RuntimeException("constraint violation"));
+            doThrow(new RuntimeException("constraint violation"))
+                    .when(bankCardManagementService).addBankCard(eq(kcId), any(BankCardCreationRequestDto.class));
 
             assertThatThrownBy(() -> service.create(req)).isInstanceOf(RuntimeException.class);
 
@@ -155,21 +157,39 @@ class UserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BankCardEntity is associated to the saved user before being persisted")
-        void create_bankCardLinkedToSavedUser() {
+        @DisplayName("BankCard add receives the request DTO and the new keycloakId — PCI rules applied by addBankCard")
+        void create_bankCardDelegatedWithKeycloakId() {
             UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
-            when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn("k");
+            String kcId = "kc-link-test";
+            when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
             UserEntity savedUser = UserEntityBuilder.aValidUser();
             when(userRepository.save(any(UserEntity.class))).thenReturn(savedUser);
             when(userMapper.mapFromEntityToResponseDto(savedUser)).thenReturn(UserDtoFixtures.aSampleUserResponse());
 
             service.create(req);
 
-            ArgumentCaptor<BankCardEntity> cardCaptor = ArgumentCaptor.forClass(BankCardEntity.class);
-            verify(bankCardRepository).save(cardCaptor.capture());
-            BankCardEntity persisted = cardCaptor.getValue();
-            assertThat(persisted.getUserEntity()).isSameAs(savedUser);
-            assertThat(persisted.getCardNumber()).isEqualTo(req.getBankCardCreationRequestDto().getCardNumber());
+            ArgumentCaptor<String> kcCaptor = ArgumentCaptor.forClass(String.class);
+            ArgumentCaptor<BankCardCreationRequestDto> dtoCaptor = ArgumentCaptor.forClass(BankCardCreationRequestDto.class);
+            verify(bankCardManagementService).addBankCard(kcCaptor.capture(), dtoCaptor.capture());
+            assertThat(kcCaptor.getValue()).isEqualTo(kcId);
+            assertThat(dtoCaptor.getValue()).isSameAs(req.getBankCardCreationRequestDto());
+        }
+
+        @Test
+        @DisplayName("Bank card is optional — null bankCardCreationRequestDto skips the addBankCard call entirely")
+        void create_bankCardOptional_skipsCardWhenNull() {
+            UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
+            req.setBankCardCreationRequestDto(null);
+            String kcId = "kc-no-card";
+            when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
+            UserEntity savedUser = UserEntityBuilder.aValidUser();
+            when(userRepository.save(any(UserEntity.class))).thenReturn(savedUser);
+            when(userMapper.mapFromEntityToResponseDto(savedUser)).thenReturn(UserDtoFixtures.aSampleUserResponse());
+
+            service.create(req);
+
+            verify(bankCardManagementService, never()).addBankCard(any(), any());
+            verify(keycloakUserManagementService, never()).deleteUser(any());
         }
     }
 
