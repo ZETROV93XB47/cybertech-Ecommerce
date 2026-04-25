@@ -393,6 +393,19 @@
             <artifactId>logstash-logback-encoder</artifactId>
             <version>8.0</version>
         </dependency>
+        <!--
+            Task 8 — Gatling Java DSL.
+            Test-scoped: Surefire ignores *Simulation.java by default include pattern, and
+            the explicit `**/com/novatech/cybertech/gatling/**` exclude in maven-surefire-plugin
+            below guarantees they never run on `mvn test`. The plugin lives under the
+            -Ploadtest profile and only activates on `mvn gatling:test -Ploadtest`.
+        -->
+        <dependency>
+            <groupId>io.gatling.highcharts</groupId>
+            <artifactId>gatling-charts-highcharts</artifactId>
+            <version>3.13.5</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <dependencyManagement>
         <dependencies>
@@ -568,6 +581,14 @@
                         <exclude>**/*IT.java</exclude>
                         <exclude>**/*IntegrationTest.java</exclude>
                         <exclude>**/CybertechApplicationTests.java</exclude>
+                        <!--
+                            Task 8: Gatling simulations live under src/test/java but
+                            must NEVER run during the standard `test` phase — they
+                            execute via the gatling:test mojo (-Ploadtest) instead.
+                            Surefire's default include patterns already skip *Simulation.java
+                            files, but we exclude the package explicitly for clarity.
+                        -->
+                        <exclude>**/com/novatech/cybertech/gatling/**</exclude>
                     </excludes>
                 </configuration>
             </plugin>
@@ -631,6 +652,48 @@
         loop and surprising callers who expected the flag to gate ITs.
     -->
     <profiles>
+        <!--
+            Task 8: Gatling load-test profile.
+
+            The gatling-maven-plugin is intentionally bound ONLY inside this profile so
+            simulations never run on `mvn test` or `mvn verify`. To execute load tests:
+
+                ./mvnw gatling:test -Ploadtest \
+                    -Dgatling.simulationClass=com.novatech.cybertech.gatling.BrowseToOrderSimulation \
+                    -Dgatling.baseUrl=https://staging.api.cybertech.local \
+                    -Dauth.token=$(./scripts/get-keycloak-token.sh)
+
+            Without -Dgatling.simulationClass, the plugin runs every Simulation under
+            src/test/java. See src/test/java/com/novatech/cybertech/gatling/README.md
+            for the full operator playbook (JWT acquisition, SLOs, what-to-do-on-breach).
+
+            Plugin version 4.10.2 ships Gatling 3.13.x and Java 17+ bytecode; runs cleanly
+            on JDK 26 without the enable-preview flag (Gatling does not use preview features).
+        -->
+        <profile>
+            <id>loadtest</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>io.gatling</groupId>
+                        <artifactId>gatling-maven-plugin</artifactId>
+                        <version>4.10.2</version>
+                        <configuration>
+                            <!--
+                                Simulation classes live under src/test/java in the
+                                com.novatech.cybertech.gatling package. The plugin defaults
+                                already resolve src/test/java + src/test/resources, so no
+                                explicit override is required.
+                            -->
+                            <runMultipleSimulations>true</runMultipleSimulations>
+                            <includes>
+                                <include>com.novatech.cybertech.gatling.*Simulation</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <profile>
             <id>integration-test</id>
             <build>
