@@ -4,6 +4,7 @@ import com.novatech.cybertech.entities.DiscountCampaignEntity;
 import com.novatech.cybertech.entities.enums.DiscountType;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -14,4 +15,6 @@ public interface DiscountCampaignRepository extends CrudBaseRepository<DiscountC
     boolean existsByDiscountType(DiscountType discountType);
 
     void deleteByDiscountType(DiscountType discountType);
+
+    List<DiscountCampaignEntity> findByEnabledTrue();
 }

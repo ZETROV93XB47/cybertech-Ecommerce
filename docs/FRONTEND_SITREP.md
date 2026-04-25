@@ -247,10 +247,11 @@ PCI: `BankCardResponseDto` exposes only `maskedNumber` (e.g. "•••• 4242"
 | PATCH | `/api/v1/services/admin/user/update` | ADMIN | |
 | DELETE | `/api/v1/services/admin/user/delete/{userUuid}` | ADMIN | 204 |
 
-### 6.8 Discount admin (campaigns)
+### 6.8 Discount (public read + admin manage)
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
+| GET | `/api/v1/services/discounts/active` | public | — | `List<DiscountContext>` — only enabled + in-window campaigns |
 | GET | `/api/v1/services/admin/discounts` | ADMIN | — | `List<DiscountCampaignResponseDto>` |
 | GET | `/api/v1/services/admin/discounts/{discountType}` | ADMIN | — | `DiscountCampaignResponseDto` |
 | PATCH | `/api/v1/services/admin/discounts/{discountType}` | ADMIN | `DiscountCampaignUpdateRequestDto` | `DiscountCampaignResponseDto` |
@@ -491,7 +492,7 @@ In order:
 Worth flagging because they may bite the frontend dev:
 
 - ~~**`UserCreateRequestDto.bankCardCreationRequestDto`** is nested in registration.~~ **CLOSED** (2026-04-25): the field is now optional. Sign up with `bankCardCreationRequestDto: null` to skip the card; users add a card later via `POST /api/v1/services/bank-card/add`. When provided, registration delegates to `BankCardManagementService.addBankCard` so the same PCI rules apply (encryption + last4 masking, expiry guard).
-- **Discount selection at checkout**: the backend takes a `discountType` enum. The frontend should call `GET /api/v1/services/admin/discounts` (admin-only) or expose enabled discounts via a new public read endpoint — currently no public "list active discounts" route. **Tell the user; this is a backend gap to close before Checkout works fully.**
+- ~~**Discount selection at checkout**~~ **CLOSED** (2026-04-25): public endpoint added at `GET /api/v1/services/discounts/active`. Returns `List<DiscountContext>` filtered to `enabled=true` AND inside `[startsAt, endsAt]` window. Anonymous-accessible (whitelisted). Frontend wires this to populate the discount selector on `/checkout` and the home-page promo banner.
 - **Reviews need `orderUuid`** — user can only review a product they bought, so the "write a review" CTA on the product page needs to look up which of the user's orders contained this product first.
 
 ---

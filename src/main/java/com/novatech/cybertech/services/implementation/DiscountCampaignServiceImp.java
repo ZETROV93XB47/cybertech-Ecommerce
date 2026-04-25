@@ -13,6 +13,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -47,6 +48,29 @@ public class DiscountCampaignServiceImp implements DiscountCampaignService {
 
         log.debug("Resolved active discount context for {}", discountType);
 
+        return DiscountContext.builder()
+                .discountType(campaign.getDiscountType())
+                .calculationType(campaign.getCalculationType())
+                .percentage(campaign.getPercentage())
+                .fixedAmount(campaign.getFixedAmount())
+                .minOrderAmount(campaign.getMinOrderAmount())
+                .maxDiscountAmount(campaign.getMaxDiscountAmount())
+                .startsAt(campaign.getStartsAt())
+                .endsAt(campaign.getEndsAt())
+                .build();
+    }
+
+    @Override
+    public List<DiscountContext> getAllActiveCampaigns() {
+        final LocalDateTime now = LocalDateTime.now();
+        return discountCampaignRepository.findByEnabledTrue().stream()
+                .filter(c -> c.getStartsAt() == null || !now.isBefore(c.getStartsAt()))
+                .filter(c -> c.getEndsAt() == null || !now.isAfter(c.getEndsAt()))
+                .map(this::toContext)
+                .toList();
+    }
+
+    private DiscountContext toContext(final DiscountCampaignEntity campaign) {
         return DiscountContext.builder()
                 .discountType(campaign.getDiscountType())
                 .calculationType(campaign.getCalculationType())

@@ -46,6 +46,7 @@ public class SecurityConfig {
             "/api/v1/services/user/get/all",
             "/test/upload-image/**",
             "/api/v1/services/product/**",
+            "/api/v1/services/discounts/**",
             "/api/v1/webhooks/**"
     };
 

@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -119,5 +120,53 @@ class DiscountCampaignServiceImpTest {
 
         assertThat(service.getActiveDiscountContext(DiscountType.NO_DISCOUNT).calculationType())
                 .isEqualTo(DiscountCalculationType.NONE);
+    }
+
+    // ----- getAllActiveCampaigns (public/customer surface) -----
+
+    @Test
+    void getAllActiveCampaigns_returnsOnlyEnabledAndInWindow() {
+        final DiscountCampaignEntity active = enabledPercentageCampaign(DiscountType.BLACK_FRIDAY);
+        final DiscountCampaignEntity windowedOk = enabledPercentageCampaign(DiscountType.WINTER_SALES);
+        windowedOk.setStartsAt(LocalDateTime.now().minusDays(1));
+        windowedOk.setEndsAt(LocalDateTime.now().plusDays(1));
+        // Repository.findByEnabledTrue already filters out enabled=false; we still test the
+        // window filter which lives in service code.
+        final DiscountCampaignEntity notStartedYet = enabledPercentageCampaign(DiscountType.SPRING_SALES);
+        notStartedYet.setStartsAt(LocalDateTime.now().plusDays(2));
+        final DiscountCampaignEntity expired = enabledPercentageCampaign(DiscountType.BUY_ONE_GET_ONE_FREE);
+        expired.setEndsAt(LocalDateTime.now().minusDays(2));
+
+        when(discountCampaignRepository.findByEnabledTrue())
+                .thenReturn(List.of(active, windowedOk, notStartedYet, expired));
+
+        final List<DiscountContext> result = service.getAllActiveCampaigns();
+
+        assertThat(result).extracting(DiscountContext::discountType)
+                .containsExactlyInAnyOrder(DiscountType.BLACK_FRIDAY, DiscountType.WINTER_SALES);
+    }
+
+    @Test
+    void getAllActiveCampaigns_emptyRepo_returnsEmptyList() {
+        when(discountCampaignRepository.findByEnabledTrue()).thenReturn(List.of());
+
+        assertThat(service.getAllActiveCampaigns()).isEmpty();
+    }
+
+    @Test
+    void getAllActiveCampaigns_mapsAllRelevantFields() {
+        final DiscountCampaignEntity campaign = enabledPercentageCampaign(DiscountType.BLACK_FRIDAY);
+        campaign.setMinOrderAmount(new BigDecimal("50.00"));
+        campaign.setMaxDiscountAmount(new BigDecimal("200.00"));
+        campaign.setFixedAmount(null);
+        when(discountCampaignRepository.findByEnabledTrue()).thenReturn(List.of(campaign));
+
+        final DiscountContext ctx = service.getAllActiveCampaigns().get(0);
+
+        assertThat(ctx.discountType()).isEqualTo(DiscountType.BLACK_FRIDAY);
+        assertThat(ctx.calculationType()).isEqualTo(DiscountCalculationType.PERCENTAGE);
+        assertThat(ctx.percentage()).isEqualByComparingTo("20");
+        assertThat(ctx.minOrderAmount()).isEqualByComparingTo("50.00");
+        assertThat(ctx.maxDiscountAmount()).isEqualByComparingTo("200.00");
     }
 }

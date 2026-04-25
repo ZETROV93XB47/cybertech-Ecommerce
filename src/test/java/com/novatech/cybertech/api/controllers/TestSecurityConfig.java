@@ -34,6 +34,7 @@ public class TestSecurityConfig {
             "/test/upload-image/**",
             "/api/v1/services/product/**",
             "/api/v1/services/review/get/**",
+            "/api/v1/services/discounts/**",
             "/api/v1/webhooks/**",
             "/actuator/health/**"
     };
