@@ -12,9 +12,12 @@ import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import com.novatech.cybertech.repositories.ProcessedWebhookEventRepository;
 import com.novatech.cybertech.services.core.PaymentWebhookService;
+import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.model.Charge;
 import com.stripe.model.Event;
+import com.stripe.model.EventDataObjectDeserializer;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.StripeObject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -169,9 +172,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
      */
     private void handlePaymentSucceeded(final Event event, final StripeWebhookEventDto dto) {
 
-        final PaymentIntent intent = (PaymentIntent) event.getDataObjectDeserializer()
-                .getObject()
-                .orElseThrow();
+        final PaymentIntent intent = (PaymentIntent) deserializeDataObject(event);
 
         final String stripePaymentID = intent.getId();
         final PaymentEntity payment = updatePaymentStatusGuarded(stripePaymentID, PaymentAttemptStatus.SUCCESS, event.getId());
@@ -196,9 +197,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
      */
     private void handlePaymentFailed(final Event event, final StripeWebhookEventDto dto) {
 
-        final PaymentIntent intent = (PaymentIntent) event.getDataObjectDeserializer()
-                .getObject()
-                .orElseThrow();
+        final PaymentIntent intent = (PaymentIntent) deserializeDataObject(event);
 
         final String stripePaymentID = intent.getId();
 
@@ -228,13 +227,42 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
      */
     private void handleRefund(final Event event, final StripeWebhookEventDto dto) {
 
-        final Charge charge = (Charge) event.getDataObjectDeserializer()
-                .getObject()
-                .orElseThrow();
+        final Charge charge = (Charge) deserializeDataObject(event);
 
         updatePaymentStatusGuarded(charge.getPaymentIntent(), PaymentAttemptStatus.REFUNDED, event.getId());
 
         eventPublisher.publishEvent(new PaymentRefundedEvent(dto));
+    }
+
+    /**
+     * Deserializes the {@code event.data.object} into a {@link StripeObject}, tolerating the
+     * API-version skew that occurs in practice between a Stripe account's pinned {@code api_version}
+     * (set in the dashboard) and the Stripe SDK's bundled API version.
+     *
+     * <p>{@link EventDataObjectDeserializer#getObject()} returns {@code Optional.empty()} when the
+     * event's {@code api_version} differs from the SDK-bundled one — a hard match check that
+     * regularly trips the test fixtures and any prod account that hasn't upgraded its api_version
+     * to match the latest SDK release. We fall back to {@link EventDataObjectDeserializer#deserializeUnsafe()}
+     * which bypasses the api-version match guard. Stripe schemas are forward-compatible by design;
+     * an unmatched field would surface as a {@link EventDataObjectDeserializationException} rather
+     * than corrupt data.
+     *
+     * @param event the parsed Stripe {@link Event}
+     * @return the deserialized {@link StripeObject} (caller casts to {@link PaymentIntent} or {@link Charge})
+     */
+    private StripeObject deserializeDataObject(final Event event) {
+        final EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        return deserializer.getObject().orElseGet(() -> {
+            try {
+                return deserializer.deserializeUnsafe();
+            } catch (final EventDataObjectDeserializationException ex) {
+                throw new IllegalStateException(
+                        "Failed to deserialize Stripe event data object (eventId=" + event.getId()
+                                + ", type=" + event.getType()
+                                + ", eventApiVersion=" + event.getApiVersion() + ")",
+                        ex);
+            }
+        });
     }
 
     /**
