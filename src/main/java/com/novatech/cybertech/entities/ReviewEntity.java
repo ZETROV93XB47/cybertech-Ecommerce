@@ -30,7 +30,7 @@ public class ReviewEntity extends BaseEntity<Long> {
     @Column(name = "isHateful", nullable = false)
     private Boolean isHateful;
 
-    @ManyToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @ManyToOne(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinColumn(name = "reviewId", nullable = false)
     private ProductEntity productEntity;
 
