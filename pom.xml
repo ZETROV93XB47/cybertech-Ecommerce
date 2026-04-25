@@ -285,6 +285,18 @@
             <version>31.4.0</version>
             <scope>compile</scope>
         </dependency>
+        <!--
+             Bucket4j core: in-memory token-bucket rate limiting used by RateLimitFilter
+             on register / order-place / cart endpoints. 8.10.x is the latest 8.x line
+             (compiled for JDK 17, runs on JDK 26). When we move to a multi-replica
+             deployment, swap for bucket4j-redis and a ProxyManager-backed bucket store.
+        -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>8.10.1</version>
+            <scope>compile</scope>
+        </dependency>
         <dependency>
             <groupId>net.datafaker</groupId>
             <artifactId>datafaker</artifactId>
