@@ -24,6 +24,7 @@ import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.ReviewEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.mappers.entity.ReviewMapper;
+import com.novatech.cybertech.repositories.OrderItemRepository;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ReviewRepository;
@@ -67,6 +68,7 @@ class ReviewManagementServiceImpTest {
     @Mock private ReviewMapper reviewMapper;
     @Mock private UserRepository userRepository;
     @Mock private OrderRepository orderRepository;
+    @Mock private OrderItemRepository orderItemRepository;
     @Mock private ReviewRepository reviewRepository;
     @Mock private ModerationService moderationService;
     @Mock private ProductRepository productRepository;
@@ -105,8 +107,8 @@ class ReviewManagementServiceImpTest {
     }
 
     private ReviewCreateRequestDto createDto() {
+        // userUuid removed from the DTO — identity is now derived from the JWT in the controller.
         return ReviewCreateRequestDto.builder()
-                .userUuid(UUID.randomUUID())
                 .orderUuid(orderUuid)
                 .productUuid(productUuid)
                 .rating(5)
@@ -223,6 +225,9 @@ class ReviewManagementServiceImpTest {
 
             when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
             when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+            // After the in-order check fails, the service delegates the global check to a single
+            // boolean repository query (replaces the in-memory walk over user.getOrderEntities()).
+            when(orderItemRepository.userHasBoughtProduct(keycloakId, productUuid)).thenReturn(false);
 
             assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(ProductNotFoundException.class);
@@ -247,20 +252,14 @@ class ReviewManagementServiceImpTest {
             items.add(otherItem);
             OrderEntity requestOrder = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).build();
 
-            // a HISTORICAL order DOES contain the product
-            ProductEntity historicalProduct = productWith(productUuid);
-            OrderItemEntity historicalItem = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(historicalProduct).build();
-            List<OrderItemEntity> hItems = new ArrayList<>();
-            hItems.add(historicalItem);
-            OrderEntity historicalOrder = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(hItems).build();
-
-            user.getOrderEntities().add(historicalOrder);
-
             ReviewEntity reviewEntity = ReviewEntity.builder().comment("Excellent").build();
             ProductEntity product = productWith(productUuid);
 
             when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
             when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(requestOrder));
+            // Service no longer walks user.getOrderEntities() — it delegates to a single
+            // boolean query that asserts the product appears in some historical order of the user.
+            when(orderItemRepository.userHasBoughtProduct(keycloakId, productUuid)).thenReturn(true);
             when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
             when(moderationService.checkIfIsHateful("Excellent"))
@@ -526,7 +525,7 @@ class ReviewManagementServiceImpTest {
 
             when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
             when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId)).thenReturn(Set.of());
-            when(orderRepository.findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
+            when(orderRepository.findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
                     .thenReturn(List.of(order1, order2));
 
             final List<ReviewableProductDto> result = service.getReviewableProducts(keycloakId);
@@ -553,7 +552,7 @@ class ReviewManagementServiceImpTest {
             when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
             when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId))
                     .thenReturn(Set.of(alreadyReviewed));
-            when(orderRepository.findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
+            when(orderRepository.findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
                     .thenReturn(List.of(order));
 
             final List<ReviewableProductDto> result = service.getReviewableProducts(keycloakId);
@@ -570,7 +569,7 @@ class ReviewManagementServiceImpTest {
             assertThatThrownBy(() -> service.getReviewableProducts(keycloakId))
                     .isInstanceOf(UserNotFoundException.class);
 
-            verify(orderRepository, never()).findByUserEntity_KeycloakIdAndStatusIn(any(), any());
+            verify(orderRepository, never()).findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(any(), any());
         }
 
         @Test
@@ -578,7 +577,7 @@ class ReviewManagementServiceImpTest {
         void noOrdersReturnsEmpty() {
             when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
             when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId)).thenReturn(Set.of());
-            when(orderRepository.findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
+            when(orderRepository.findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
                     .thenReturn(List.of());
 
             assertThat(service.getReviewableProducts(keycloakId)).isEmpty();
@@ -589,13 +588,13 @@ class ReviewManagementServiceImpTest {
         void queriesWithReviewableStatuses() {
             when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
             when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId)).thenReturn(Set.of());
-            when(orderRepository.findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
+            when(orderRepository.findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(eq(keycloakId), any(Collection.class)))
                     .thenReturn(List.of());
 
             service.getReviewableProducts(keycloakId);
 
             org.mockito.ArgumentCaptor<Collection<OrderStatus>> cap = org.mockito.ArgumentCaptor.forClass(Collection.class);
-            verify(orderRepository).findByUserEntity_KeycloakIdAndStatusIn(eq(keycloakId), cap.capture());
+            verify(orderRepository).findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(eq(keycloakId), cap.capture());
             assertThat(cap.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
         }
     }

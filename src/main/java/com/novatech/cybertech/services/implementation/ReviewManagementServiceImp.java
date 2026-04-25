@@ -14,6 +14,7 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.ReviewMapper;
+import com.novatech.cybertech.repositories.OrderItemRepository;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ReviewRepository;
@@ -42,6 +43,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
     private final ReviewMapper reviewMapper;
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final ReviewRepository reviewRepository;
     private final ModerationService moderationService;
     private final ProductRepository productRepository;
@@ -131,7 +133,9 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         final Set<UUID> alreadyReviewed = reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId);
 
-        return orderRepository.findByUserEntity_KeycloakIdAndStatusIn(keycloakId, REVIEWABLE_ORDER_STATUSES).stream()
+        // Single SQL round-trip: orders + items + products fetched together via JOIN FETCH,
+        // so the downstream stream walk never triggers a lazy load.
+        return orderRepository.findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(keycloakId, REVIEWABLE_ORDER_STATUSES).stream()
                 .flatMap(order -> order.getOrderItemEntities().stream()
                         .map(item -> toReviewable(order, item)))
                 .filter(dto -> !alreadyReviewed.contains(dto.productUuid()))
@@ -182,7 +186,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
     }
 
 
-    private static void checkIfUserAlreadyBoughtThisProduct(ReviewCreateRequestDto reviewCreateRequestDto, String keycloakId, OrderEntity order, UserEntity user) {
+    private void checkIfUserAlreadyBoughtThisProduct(ReviewCreateRequestDto reviewCreateRequestDto, String keycloakId, OrderEntity order, UserEntity user) {
         final boolean orderContainsProduct = order.getOrderItemEntities().stream()
                 .map(orderItemEntity -> orderItemEntity.getProductEntity().getUuid())
                 .anyMatch(uuid -> reviewCreateRequestDto.getProductUuid().equals(uuid));
@@ -192,10 +196,10 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
             log.warn("Product is not part of current Order (the order sent in the request DTO), a search will be done in all user's orders");
 
-            final boolean isProductPartOfUserOrders = user.getOrderEntities().stream()
-                    .flatMap(orderEntity -> orderEntity.getOrderItemEntities().stream())
-                    .map(orderItemEntity -> orderItemEntity.getProductEntity().getUuid())
-                    .anyMatch(uuid -> reviewCreateRequestDto.getProductUuid().equals(uuid));
+            // Single boolean SQL query — replaces the in-memory walk over the lazy order graph
+            // (user -> orders -> items -> product), which used to trigger a 4-level lazy load.
+            final boolean isProductPartOfUserOrders =
+                    orderItemRepository.userHasBoughtProduct(keycloakId, reviewCreateRequestDto.getProductUuid());
 
             if (!isProductPartOfUserOrders) {
                 log.error("The product on which the user {} is trying to post a comment on is not a part of his order, maybe the product has already been bought in another order", keycloakId);
