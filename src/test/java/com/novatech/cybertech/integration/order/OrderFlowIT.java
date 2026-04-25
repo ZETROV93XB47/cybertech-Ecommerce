@@ -15,6 +15,7 @@ import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
@@ -44,10 +45,14 @@ import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
@@ -102,6 +107,9 @@ class OrderFlowIT {
 
     @Autowired
     private ApplicationEvents applicationEvents;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     private UUID userUuid;
     private UUID productUuid;
@@ -169,12 +177,15 @@ class OrderFlowIT {
                     assertThat(status).isIn(200, 201);
                 });
 
-        final UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
-        final CartEntity cart = reloaded.getCartEntity();
-        assertThat(cart).isNotNull();
-        assertThat(cart.getCartItems()).hasSize(1);
-        assertThat(cart.getCartItems().getFirst().getQuantity()).isEqualTo(2);
-        assertThat(cart.getCartItems().getFirst().getProductEntity().getUuid()).isEqualTo(productUuid);
+        // Wrap DB assertions in a TX so the lazy CartEntity.cartItems collection can be initialized.
+        transactionTemplate.executeWithoutResult(tx -> {
+            final UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
+            final CartEntity cart = reloaded.getCartEntity();
+            assertThat(cart).isNotNull();
+            assertThat(cart.getCartItems()).hasSize(1);
+            assertThat(cart.getCartItems().getFirst().getQuantity()).isEqualTo(2);
+            assertThat(cart.getCartItems().getFirst().getProductEntity().getUuid()).isEqualTo(productUuid);
+        });
     }
 
     // 3) POST /order/place with no JWT → 401 (W0 wired CustomAuthenticationEntryPoint)
@@ -352,10 +363,15 @@ class OrderFlowIT {
                 .findFirst()
                 .orElseThrow();
 
-        // The first attempt should be FAILED.
-        final List<PaymentEntity> attempts = placedOrder.getPaymentAttempts();
-        assertThat(attempts).isNotEmpty();
-        assertThat(attempts.getFirst().getStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
+        // The first attempt should be FAILED. Read inside a TX to initialise the lazy
+        // OrderEntity.paymentAttempts collection (LazyInitializationException when
+        // accessed outside a Hibernate session).
+        transactionTemplate.executeWithoutResult(tx -> {
+            final OrderEntity refreshed = orderRepository.findByUuid(placedOrder.getUuid()).orElseThrow();
+            final List<PaymentEntity> attempts = refreshed.getPaymentAttempts();
+            assertThat(attempts).isNotEmpty();
+            assertThat(attempts.getFirst().getStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
+        });
 
         // 3) Retry — the second processor call returns SUCCESS.
         //    Note: retryPayment requires order status to be PAYMENT_FAILED / AWAITING_PAYMENT / CREATED.
@@ -369,10 +385,13 @@ class OrderFlowIT {
                     assertThat(status).isEqualTo(200);
                 });
 
-        final OrderEntity reloaded = orderRepository.findByUuid(placedOrder.getUuid()).orElseThrow();
-        final List<PaymentEntity> reloadedAttempts = reloaded.getPaymentAttempts();
-        assertThat(reloadedAttempts).hasSizeGreaterThanOrEqualTo(2);
-        assertThat(reloadedAttempts.getLast().getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
+        // Read inside a TX so the lazy OrderEntity.paymentAttempts collection is initialised.
+        transactionTemplate.executeWithoutResult(tx -> {
+            final OrderEntity reloaded = orderRepository.findByUuid(placedOrder.getUuid()).orElseThrow();
+            final List<PaymentEntity> reloadedAttempts = reloaded.getPaymentAttempts();
+            assertThat(reloadedAttempts).hasSizeGreaterThanOrEqualTo(2);
+            assertThat(reloadedAttempts.getLast().getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
+        });
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -395,9 +414,12 @@ class OrderFlowIT {
      * the live Stripe API. Tests that need fail-then-success (e.g. retry) re-stub via
      * {@link Mockito#when(Object)}.
      *
-     * <p>BUG-150 was reported fixed by SA-F1.3 with a {@code TestPaymentProcessorConfig} class but
-     * that file is not present in the working tree as of 2026-04-23. This local override provides
-     * the same effect without touching {@code src/main/}.
+     * <p>The {@code testPaymentServiceMap} {@code @Primary} bean is required because the production
+     * {@code AppConfig.paymentServiceMap} builds the map by scanning beans annotated with
+     * {@code @PaymentTypeHandler} — a bare {@code @Primary} mock would never enter the map and the
+     * {@link com.novatech.cybertech.factory.PaymentStrategyFactory} would still resolve the real
+     * {@code StripePaymentAttemptProcessor}. Re-binding VISA/MASTERCARD to the mock here guarantees
+     * that {@code PaymentServiceImp.attemptPayment} routes through the mock.
      */
     @TestConfiguration
     static class TestPaymentConfig {
@@ -406,6 +428,16 @@ class OrderFlowIT {
         @Primary
         PaymentAttemptProcessor stripePaymentProcessorMock() {
             return Mockito.mock(PaymentAttemptProcessor.class);
+        }
+
+        @Bean
+        @Primary
+        Map<Set<PaymentType>, PaymentAttemptProcessor> testPaymentServiceMap(
+                final PaymentAttemptProcessor stripePaymentProcessorMock
+        ) {
+            final Map<Set<PaymentType>, PaymentAttemptProcessor> map = new HashMap<>();
+            map.put(Set.of(PaymentType.VISA, PaymentType.MASTERCARD), stripePaymentProcessorMock);
+            return map;
         }
     }
 }
