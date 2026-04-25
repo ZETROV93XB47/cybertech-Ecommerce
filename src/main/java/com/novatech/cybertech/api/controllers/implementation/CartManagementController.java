@@ -27,7 +27,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = CART_CRUD_CONTROLLER_BASE_PATH)
-@Tag(name = " CartController", description = "API for Cart management")
+@Tag(name = "CartController", description = "API for Cart management")
 public class CartManagementController implements CartManagementControllerApiSpec {
 
     private final CartService cartService;

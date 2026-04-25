@@ -5,6 +5,7 @@ import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -137,6 +138,33 @@ public interface OrderManagementControllerApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<OrderResponseDto> getOrderByUuid(final UUID orderUuid, @Parameter(hidden = true) final Jwt jwt);
+
+
+    @Operation(summary = "Get the current status of an order by UUID",
+            description = "Lightweight status read for the order-confirmation polling loop after a Stripe payment. Ownership-checked at the service layer.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            parameters = {
+                    @Parameter(name = "uuid", description = "UUID of the order to read status for", required = true, schema = @Schema(implementation = UUID.class))
+            },
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Order status retrieved successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderStatusDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - order does not belong to the authenticated user", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "Order not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<OrderStatusDto> getOrderStatusByUuid(final UUID orderUuid, @Parameter(hidden = true) final Jwt jwt);
+
+
+    @Operation(summary = "Place an auto-generated order (admin debug helper)",
+            description = "Admin-only debug / load-test utility that forges an order from synthetic cart data via the data generator. Restricted to ADMIN to avoid letting any authenticated user spam orders against another's cart state (BUG-IDOR-D4).",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            responses = {
+                    @ApiResponse(responseCode = "201", description = "Auto-generated order placed successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "Underlying resource (e.g., generated user/product) not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<OrderResponseDto> placeOrder2(@Parameter(hidden = true) final Jwt jwt);
 
 
     @Operation(summary = "Delete a Order by UUID",

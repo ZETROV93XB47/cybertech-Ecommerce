@@ -32,7 +32,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = BANK_CARD_CRUD_CONTROLLER_BASE_PATH)
-@Tag(name = " BankCardManagementController", description = "API for managing Bank Cards")
+@Tag(name = "BankCardManagementController", description = "API for managing Bank Cards")
 public class BankCardManagementController implements BankCardControllerApiSpec {
 
     private final BankCardManagementService bankCardService;

@@ -30,7 +30,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = ORDER_MANAGEMENT_CONTROLLER_BASE_PATH)
-@Tag(name = " OrderManagementController", description = "API for managing Orders")
+@Tag(name = "OrderManagementController", description = "API for managing Orders")
 public class OrderManagementController implements OrderManagementControllerApiSpec {
 
     private final OrderManagementServiceImp orderManagementService;
@@ -71,6 +71,7 @@ public class OrderManagementController implements OrderManagementControllerApiSp
     // BUG-IDOR-D4: data-generator helper restricted to ADMIN. The endpoint forges an order
     // from synthetic cart data and is solely a debug / load-test utility — exposing it to USER
     // would let any authenticated caller spam orders against another's cart state.
+    @Override
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping(value = "/place/auto", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponseDto> placeOrder2(@AuthenticationPrincipal final Jwt jwt) {
@@ -99,6 +100,7 @@ public class OrderManagementController implements OrderManagementControllerApiSp
      * Lightweight status read for the order-confirmation polling loop. Ownership-checked at
      * the service layer (OrderDoesntBelongsToUserException → 403).
      */
+    @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @GetMapping(value = "/status/{uuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderStatusDto> getOrderStatusByUuid(@PathVariable("uuid") final UUID orderUuid,

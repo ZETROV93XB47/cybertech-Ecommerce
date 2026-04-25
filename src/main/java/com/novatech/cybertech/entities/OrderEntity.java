@@ -68,7 +68,7 @@ public class OrderEntity extends BaseEntity<Long> {
     @JoinColumn(name = "userId")
     private UserEntity userEntity;
 
-    @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<OrderItemEntity> orderItemEntities;
 
     @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
