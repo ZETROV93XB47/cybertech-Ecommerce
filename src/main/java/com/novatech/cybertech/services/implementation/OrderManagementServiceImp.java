@@ -503,6 +503,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 //paymentService.refund(orderEntity, orderEntity.getPaymentAttempts().getLast().getPaymentType(), orderEntity.getTotalAmount(), generateIdempotencyKey(orderUUID, "cancel"));
                 //TODO: check if it's better to user the calculated amountToRefund or the order totalAmount
 
+                // Release any reserved stock for the cancelled order — mirrors deleteByUUID().
+                // Without this, reservations leaked until the Redis TTL fired.
+                stockService.releaseStock(orderUUID);
 
                 return orderMapper.mapFromEntityToResponseDto(orderRepository.save(orderEntity));
             } else {
