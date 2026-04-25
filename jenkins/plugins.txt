@@ -1,0 +1,39 @@
+# Plugins preinstalled in the Jenkins controller image.
+# Pinned where stability matters; otherwise `latest` so jenkins-plugin-cli pulls
+# the newest version compatible with the bundled Jenkins LTS.
+
+# --- core pipeline + git ---
+git:latest
+workflow-aggregator:latest
+pipeline-stage-view:latest
+pipeline-utility-steps:latest
+
+# --- Docker pipeline support (docker.build / docker.image steps) ---
+docker-workflow:latest
+docker-plugin:latest
+
+# --- Tools / build env ---
+nodejs:latest
+config-file-provider:latest
+
+# --- Configuration as Code ---
+configuration-as-code:latest
+job-dsl:latest
+
+# --- Test reporting ---
+junit:latest
+htmlpublisher:latest
+
+# --- UX niceties ---
+blueocean:latest
+ansicolor:latest
+timestamper:latest
+build-timeout:latest
+
+# --- Credentials / SCM helpers ---
+credentials:latest
+credentials-binding:latest
+plain-credentials:latest
+ssh-credentials:latest
+github:latest
+github-branch-source:latest

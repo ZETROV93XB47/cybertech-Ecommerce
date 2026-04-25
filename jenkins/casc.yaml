@@ -1,0 +1,100 @@
+# Jenkins Configuration-as-Code definition for the Cybertech CI controller.
+#
+# Loaded from $CASC_JENKINS_CONFIG (= /var/jenkins_home/casc_configs) on every
+# boot. Edit and restart Jenkins to re-apply.
+#
+# Reference: https://github.com/jenkinsci/configuration-as-code-plugin/blob/master/docs/features/configurationAsCode.md
+---
+jenkins:
+  systemMessage: |
+    Cybertech CI — Jenkins controller (LTS + JDK 26 tool + kubectl + helm + helmfile).
+    Pipeline source: cybertech-pipeline (configured below).
+  numExecutors: 2
+  scmCheckoutRetryCount: 2
+  mode: NORMAL
+
+  # No global security: this is a local-dev controller. If you expose it,
+  # add a `securityRealm` and `authorizationStrategy` block here.
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          # Default password is "admin"; change it via the UI on first login.
+          password: "admin"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+unclassified:
+  location:
+    url: "http://localhost:8090/"
+    adminAddress: "admin@cybertech.local"
+
+# ---- tool installations ------------------------------------------------------
+tool:
+  jdk:
+    installations:
+      # Jenkins itself runs on the JDK 21 baked into the LTS image.
+      # The pipeline references 'jdk26' to switch builds to /opt/java/jdk-26.
+      - name: "jdk26"
+        home: "/opt/java/jdk-26"
+  maven:
+    installations:
+      - name: "maven"
+        properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.9.9"
+  nodejs:
+    installations:
+      - name: "nodejs"
+        properties:
+          - installSource:
+              installers:
+                - nodeJSInstaller:
+                    id: "22.11.0"
+                    npmPackagesRefreshHours: 72
+
+# ---- credentials -------------------------------------------------------------
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # Placeholder for a Docker Hub / external registry login.
+          # Local registry (registry:2 from compose) needs no auth, so this
+          # entry exists only as a stub the user can fill via the UI.
+          - usernamePassword:
+              scope: GLOBAL
+              id: "dockerHubRegistry"
+              description: "Docker Hub credentials (placeholder — fill via UI if pushing externally)"
+              username: ""
+              password: ""
+
+# ---- pipeline job -----------------------------------------------------------
+jobs:
+  - script: >
+      pipelineJob('cybertech-pipeline') {
+        description('Cybertech backend + frontend CI/CD. Builds with mvnw + npm, ' +
+                    'pushes images to localhost:5000, deploys to minikube via helmfile.')
+        triggers {
+          scm('H/5 * * * *')
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  // EDIT ME: point at your repo. Either a local bind-mounted path
+                  // (file:///workspace), the host-mounted clone, or a GitHub URL once pushed.
+                  url('https://github.com/REPLACE-ME/cybertech.git')
+                }
+                branch('*/dev/develop')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }

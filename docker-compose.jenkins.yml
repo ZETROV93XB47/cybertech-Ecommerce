@@ -1,0 +1,92 @@
+## Jenkins-on-docker CI/CD infrastructure for Cybertech.
+## Brings up: Jenkins controller (with JDK 26 + kubectl + helm + helmfile baked in),
+## a local Docker registry (registry:2), and a lightweight registry UI.
+##
+## Usage:
+##   docker compose -f docker-compose.jenkins.yml up -d
+##   docker compose -f docker-compose.jenkins.yml logs -f jenkins
+##   docker compose -f docker-compose.jenkins.yml down
+##
+## Persisted volumes:
+##   ./jenkins-data    -> /var/jenkins_home   (gitignored)
+##   ./registry-data   -> /var/lib/registry   (gitignored)
+##
+## See jenkins/README.md for the full setup walkthrough.
+
+name: cybertech-ci
+
+services:
+  jenkins:
+    build:
+      context: ./jenkins
+      dockerfile: Dockerfile
+    image: cybertech/jenkins-jdk26:lts
+    container_name: cybertech-jenkins
+    restart: unless-stopped
+    user: root  # required so the Jenkins process can read /var/run/docker.sock on Linux
+    environment:
+      # Skip the setup wizard; we provision via JCasC + groovy init scripts.
+      JAVA_OPTS: >-
+        -Djenkins.install.runSetupWizard=false
+        -Dcasc.jenkins.config=/var/jenkins_home/casc_configs
+      CASC_JENKINS_CONFIG: /var/jenkins_home/casc_configs
+      # Make sure Jenkins itself runs on the JDK 21 baked into the LTS image.
+      # The pipeline's `tools { jdk 'jdk26' }` block switches builds to /opt/java/jdk-26.
+      JENKINS_OPTS: --httpPort=8080
+    ports:
+      - "8090:8080"   # Jenkins UI (host 8090 to avoid conflicting with the backend on 8080)
+      - "50000:50000" # JNLP agent port (kept for future inbound agents)
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      # Docker-out-of-Docker: Jenkins uses the host's docker daemon to build/push images.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - ci-net
+    depends_on:
+      - registry
+
+  registry:
+    image: registry:2
+    container_name: cybertech-registry
+    restart: unless-stopped
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      REGISTRY_HTTP_HEADERS_Access-Control-Allow-Origin: "[http://localhost:8091]"
+      REGISTRY_HTTP_HEADERS_Access-Control-Allow-Methods: "[HEAD,GET,OPTIONS,DELETE]"
+      REGISTRY_HTTP_HEADERS_Access-Control-Allow-Credentials: "[true]"
+      REGISTRY_HTTP_HEADERS_Access-Control-Allow-Headers: "[Authorization,Accept,Cache-Control]"
+      REGISTRY_HTTP_HEADERS_Access-Control-Expose-Headers: "[Docker-Content-Digest]"
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    networks:
+      - ci-net
+
+  registry-ui:
+    image: joxit/docker-registry-ui:latest
+    container_name: cybertech-registry-ui
+    restart: unless-stopped
+    environment:
+      REGISTRY_TITLE: Cybertech Local Registry
+      NGINX_PROXY_PASS_URL: http://registry:5000
+      SINGLE_REGISTRY: "true"
+      DELETE_IMAGES: "true"
+      SHOW_CONTENT_DIGEST: "true"
+    ports:
+      - "8091:80"
+    depends_on:
+      - registry
+    networks:
+      - ci-net
+
+networks:
+  ci-net:
+    name: cybertech-ci-net
+    driver: bridge
+
+volumes:
+  jenkins-data:
+    name: cybertech-jenkins-data
+  registry-data:
+    name: cybertech-registry-data

@@ -34,3 +34,10 @@ build/
 
 ### Secrets ###
 .env
+
+### CI/CD (Jenkins-on-docker) ###
+# docker-compose.jenkins.yml volume bind targets (if you switch from named
+# volumes to host bind-mounts they appear here); the named volumes themselves
+# live under Docker's data root and don't need to be ignored.
+jenkins-data/
+registry-data/
