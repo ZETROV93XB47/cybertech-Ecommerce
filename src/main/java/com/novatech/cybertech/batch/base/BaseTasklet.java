@@ -44,16 +44,28 @@ public abstract class BaseTasklet implements Tasklet, StepExecutionListener {
                 jobExecution.getJobParameters(),
                 context.getStepContext().getStepExecution());
 
-        return ScopedValue.where(STEP_SETTINGS, taskletProps).call(() -> {
+        try {
+            return ScopedValue.where(STEP_SETTINGS, taskletProps).call(() -> {
 
-            try {
-                return execute(stepContribution, taskletProps);
-            }
-            catch (Exception e) {
-                log.error("An Error occurred during step : {} : Exception : {} \n", stepContribution.getStepExecution().getStepName(), e);
-                return RepeatStatus.FINISHED;
-            }
-        });
+                try {
+                    return execute(stepContribution, taskletProps);
+                }
+                catch (Exception e) {
+                    log.error("An Error occurred during step : {} : Exception : {} \n", stepContribution.getStepExecution().getStepName(), e);
+                    // Surface the failure to Spring Batch: marking ExitStatus FAILED and
+                    // rethrowing makes the step (and job) execution history reflect the real
+                    // outcome instead of silently completing.
+                    stepContribution.setExitStatus(ExitStatus.FAILED);
+                    throw e;
+                }
+            });
+        }
+        catch (RuntimeException e) {
+            throw e;
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

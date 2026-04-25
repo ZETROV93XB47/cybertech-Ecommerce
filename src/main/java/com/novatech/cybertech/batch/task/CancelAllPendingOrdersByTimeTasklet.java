@@ -64,6 +64,11 @@ public class CancelAllPendingOrdersByTimeTasklet extends BaseTasklet {
                 }
             }
 
+            // Persist the CANCELED status: relying on JPA dirty-checking alone is unsafe across
+            // tasklet/transaction boundaries — without an explicit save the rows can stay
+            // PAYMENT_FAILED in the DB and the tasklet would re-process the same orders forever.
+            orderRepository.saveAll(successfullyCancelled);
+
             final Map<String, List<UUID>> cancelledOrdersIdsByUserEmail = successfullyCancelled.stream()
                     .collect(Collectors.groupingBy(
                             co -> co.getUserEntity().getEmail(),

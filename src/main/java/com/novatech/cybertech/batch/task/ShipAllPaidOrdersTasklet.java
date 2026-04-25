@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +52,14 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
             try {
                 processShipping(order);
             }
+            catch (OptimisticLockingFailureException e) {
+                // Lost the race against ShippingListener (which also ships PAID orders on
+                // OrderPaidEvent). Optimistic locking via @Version on BaseEntity guarantees
+                // exactly one of the two paths wins the claim — the loser silently skips.
+                // Catches both OptimisticLockingFailureException and its subclass
+                // ObjectOptimisticLockingFailureException raised by Hibernate/Spring ORM.
+                log.debug("Skipping order {} — claimed concurrently by another path: {}", order.getUuid(), e.getMessage());
+            }
             catch (Exception e) {
                 log.error("Error processing shipping for order {}", order.getUuid(), e);
                 // On continue pour les autres commandes même si une échoue
@@ -63,6 +72,14 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
     }
 
     private void processShipping(OrderEntity order) {
+        // Atomically claim the order before dispatching: flip PAID -> AWAITING_SHIPPING and save
+        // FIRST so JPA's @Version optimistic locking can detect the race against ShippingListener
+        // (which also ships PAID orders on OrderPaidEvent). If we lose the race, the
+        // OptimisticLockingFailureException bubbles up to the caller and we skip this order
+        // without dispatching — preventing the double-ship bug.
+        order.setStatus(OrderStatus.AWAITING_SHIPPING);
+        orderRepository.save(order);
+
         final UserEntity user = order.getUserEntity();
 
         final UserContactDto userContactDto = UserContactDto.builder()

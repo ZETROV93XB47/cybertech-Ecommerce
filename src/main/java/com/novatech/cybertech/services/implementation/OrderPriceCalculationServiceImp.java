@@ -46,6 +46,19 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
 
+        // Short-circuit for NO_DISCOUNT: avoid touching the discount_campaign table.
+        // A missing NO_DISCOUNT row used to break every placeOrder call with
+        // DiscountTypeNotActiveException — there is nothing to look up here.
+        if (discountType == DiscountType.NO_DISCOUNT) {
+            return PriceCalculationResultDto.builder()
+                    .baseAmount(baseAmount)
+                    .discountAmount(zero())
+                    .finalAmount(baseAmount)
+                    .currencyCode(request.getCurrencyCode())
+                    .discountType(discountType)
+                    .build();
+        }
+
         // Throws DiscountTypeNotActiveException when the campaign is missing,
         // disabled, or outside its [startsAt, endsAt] window.
         final DiscountContext context = discountCampaignService.getActiveDiscountContext(discountType);

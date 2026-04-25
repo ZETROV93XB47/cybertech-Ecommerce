@@ -100,7 +100,17 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         if (!isCurrentUserAuthorOfTheRequestReview) throw new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user");
 
-        return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(reviewMapper.mapFromUpdateRequestToEntity(reviewCreateRequestDto)));
+        // Patch the loaded entity in-place rather than saving a freshly-mapped one with null FKs
+        // (mapping the update DTO to a brand-new entity dropped userEntity / productEntity, which
+        // are non-null FKs — Hibernate then bricked the row on flush).
+        if (reviewCreateRequestDto.getRating() != null) {
+            review.setRating(reviewCreateRequestDto.getRating());
+        }
+        if (reviewCreateRequestDto.getComment() != null) {
+            review.setComment(reviewCreateRequestDto.getComment());
+        }
+
+        return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(review));
     }
 
 

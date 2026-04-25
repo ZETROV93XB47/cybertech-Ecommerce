@@ -72,11 +72,8 @@ class OrderPriceCalculationServiceImpTest {
     }
 
     @Test
-    @DisplayName("NONE calc type: discount = 0, factory not consulted")
+    @DisplayName("NO_DISCOUNT short-circuits: campaign service NOT consulted, factory NOT consulted")
     void noneSkipsStrategy() {
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.NO_DISCOUNT))
-                .thenReturn(noneContext(DiscountType.NO_DISCOUNT));
-
         final PriceCalculationResultDto result = service.calculate(
                 request(DiscountType.NO_DISCOUNT, item("10.00", 2), item("5.00", 3)));
 
@@ -85,6 +82,7 @@ class OrderPriceCalculationServiceImpTest {
         assertThat(result.getFinalAmount()).isEqualByComparingTo("35.00");
         assertThat(result.getDiscountType()).isEqualTo(DiscountType.NO_DISCOUNT);
         assertThat(result.getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
+        verify(discountCampaignService, never()).getActiveDiscountContext(any());
         verify(discountStrategyFactory, never()).getStrategy(any());
     }
 
@@ -189,9 +187,6 @@ class OrderPriceCalculationServiceImpTest {
     @Test
     @DisplayName("baseAmount rounded HALF_UP to 2 dp")
     void baseAmountScaleIsTwo() {
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.NO_DISCOUNT))
-                .thenReturn(noneContext(DiscountType.NO_DISCOUNT));
-
         final PriceCalculationResultDto result = service.calculate(
                 request(DiscountType.NO_DISCOUNT, item("3.333", 3)));
 
@@ -202,9 +197,6 @@ class OrderPriceCalculationServiceImpTest {
     @Test
     @DisplayName("currency from request is preserved on result and asFinalMoney()")
     void currencyIsPreserved() {
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.NO_DISCOUNT))
-                .thenReturn(noneContext(DiscountType.NO_DISCOUNT));
-
         final PriceCalculationResultDto result = service.calculate(
                 PriceCalculationRequestDto.builder()
                         .items(List.of(item("10.00", 1)))

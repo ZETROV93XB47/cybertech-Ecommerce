@@ -71,6 +71,13 @@ public class ShippingListener {
 
         if (order.getStatus() != OrderStatus.PAID) return;
 
+        // Atomically claim the order: flip PAID -> AWAITING_SHIPPING and save FIRST so JPA's
+        // @Version optimistic locking detects the race against ShipAllPaidOrdersTasklet
+        // (which also ships PAID orders). If we lose the race, the OptimisticLockingFailureException
+        // bubbles up and we skip dispatching — preventing the double-ship bug.
+        order.setStatus(OrderStatus.AWAITING_SHIPPING);
+        orderRepository.save(order);
+
         final UserEntity user = order.getUserEntity();
 
         final UserContactDto userContactDto = UserContactDto.builder()

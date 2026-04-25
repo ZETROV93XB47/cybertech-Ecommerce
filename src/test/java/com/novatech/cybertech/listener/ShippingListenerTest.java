@@ -92,9 +92,12 @@ class ShippingListenerTest {
         assertThat(ctx.getPackageId()).isEqualTo(order.getUuid().toString());
         assertThat(ctx.getShippingProvider()).isEqualTo(ShippingProvider.DHL);
 
-        ArgumentCaptor<OrderEntity> savedCap = ArgumentCaptor.forClass(OrderEntity.class);
-        verify(orderRepository).save(savedCap.capture());
-        assertThat(savedCap.getValue().getStatus()).isEqualTo(OrderStatus.SHIPPED);
+        // Atomic-claim fix: the listener now saves twice — once with AWAITING_SHIPPING (claim
+        // before dispatch, prevents double-ship race against ShipAllPaidOrdersTasklet) and
+        // once with SHIPPED after dispatch succeeds. The captor sees the same mutated entity
+        // reference both times, so we assert call count + final state instead.
+        verify(orderRepository, org.mockito.Mockito.times(2)).save(org.mockito.ArgumentMatchers.same(order));
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.SHIPPED);
 
         ArgumentCaptor<OrderShippedEvent> evCap = ArgumentCaptor.forClass(OrderShippedEvent.class);
         verify(eventPublisher).publishEvent(evCap.capture());

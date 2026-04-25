@@ -392,23 +392,26 @@ class ReviewManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("happy: author can update his own review")
+        @DisplayName("happy: author can update his own review (loaded entity is patched, FKs preserved)")
         void authorCanUpdateOwnReview() {
             ReviewUpdateRequestDto dto = updateDto();
             UserEntity author = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
             ReviewEntity existing = ReviewEntityBuilder.aValidReviewBuilder().uuid(reviewUuid).userEntity(author).build();
-            ReviewEntity mappedFromUpdate = ReviewEntity.builder().rating(4).comment("better").build();
             ReviewResponseDto responseDto = ReviewResponseDto.builder().rating(4).build();
 
             when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
             when(reviewRepository.findByUuid(reviewUuid)).thenReturn(Optional.of(existing));
-            when(reviewMapper.mapFromUpdateRequestToEntity(dto)).thenReturn(mappedFromUpdate);
-            when(reviewRepository.save(mappedFromUpdate)).thenReturn(mappedFromUpdate);
-            when(reviewMapper.mapFromEntityToResponseDto(mappedFromUpdate)).thenReturn(responseDto);
+            when(reviewRepository.save(existing)).thenReturn(existing);
+            when(reviewMapper.mapFromEntityToResponseDto(existing)).thenReturn(responseDto);
 
             ReviewResponseDto result = service.update(dto, keycloakId);
 
             assertThat(result).isSameAs(responseDto);
+            // Verify the loaded entity was mutated with DTO fields and the same instance saved
+            assertThat(existing.getRating()).isEqualTo(4);
+            assertThat(existing.getComment()).isEqualTo("better");
+            assertThat(existing.getUserEntity()).isSameAs(author); // FK preserved
+            verify(reviewRepository).save(existing);
         }
 
         @Test

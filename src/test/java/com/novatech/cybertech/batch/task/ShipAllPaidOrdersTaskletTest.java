@@ -39,7 +39,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -124,8 +123,10 @@ class ShipAllPaidOrdersTaskletTest {
             assertThat(status).isEqualTo(RepeatStatus.FINISHED);
             verify(shippingDispatcher, times(2)).dispatch(any(ShippingContext.class));
             verify(notificationDispatcher, times(2)).dispatch(any(NotificationContext.class));
-            verify(orderRepository).save(o1);
-            verify(orderRepository).save(o2);
+            // Atomic-claim fix: each order is saved twice — once with AWAITING_SHIPPING (claim)
+            // and once with SHIPPED (after successful dispatch).
+            verify(orderRepository, times(2)).save(o1);
+            verify(orderRepository, times(2)).save(o2);
             assertThat(o1.getStatus()).isEqualTo(OrderStatus.SHIPPED);
             assertThat(o2.getStatus()).isEqualTo(OrderStatus.SHIPPED);
             assertThat(stepContribution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
@@ -184,10 +185,14 @@ class ShipAllPaidOrdersTaskletTest {
 
             assertThat(status).isEqualTo(RepeatStatus.FINISHED);
             assertThat(o1.getStatus()).isEqualTo(OrderStatus.SHIPPED);
-            assertThat(o2.getStatus()).isEqualTo(OrderStatus.PAID); // skipped
+            // Atomic-claim fix: o2 was claimed (PAID -> AWAITING_SHIPPING + save) before dispatch
+            // failed, so its in-memory status remains AWAITING_SHIPPING after the catch.
+            assertThat(o2.getStatus()).isEqualTo(OrderStatus.AWAITING_SHIPPING);
             assertThat(o3.getStatus()).isEqualTo(OrderStatus.SHIPPED);
             verify(notificationDispatcher, times(2)).dispatch(any(NotificationContext.class));
-            verify(orderRepository, times(2)).save(any(OrderEntity.class));
+            // Each order claimed once + each successful order saved again as SHIPPED:
+            // 3 claim saves + 2 SHIPPED saves = 5 total.
+            verify(orderRepository, times(5)).save(any(OrderEntity.class));
         }
 
         @Test
@@ -204,13 +209,14 @@ class ShipAllPaidOrdersTaskletTest {
             // Per-order try/catch ensures FINISHED + ExitStatus.COMPLETED even if every notification fails
             assertThat(status).isEqualTo(RepeatStatus.FINISHED);
             assertThat(stepContribution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
-            // shippingDispatcher was attempted for both; orderRepository.save was attempted for both
+            // shippingDispatcher was attempted for both; with the atomic-claim fix each order is
+            // saved twice (AWAITING_SHIPPING claim + SHIPPED) before the notification fails = 4.
             verify(shippingDispatcher, times(2)).dispatch(any(ShippingContext.class));
-            verify(orderRepository, times(2)).save(any(OrderEntity.class));
+            verify(orderRepository, times(4)).save(any(OrderEntity.class));
         }
 
         @Test
-        @DisplayName("when ShippingDispatcher fails the order is not saved and notification is not sent")
+        @DisplayName("when ShippingDispatcher fails the order's claim survives and notification is not sent")
         void shippingFailure_skipsSaveAndNotify() throws Exception {
             final OrderEntity o1 = paidOrderForUser("a@example.com");
             when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1));
@@ -219,9 +225,11 @@ class ShipAllPaidOrdersTaskletTest {
 
             tasklet.execute(stepContribution, stepArguments);
 
-            verify(orderRepository, never()).save(any(OrderEntity.class));
+            // Atomic-claim fix: the AWAITING_SHIPPING claim save happens BEFORE dispatch, so a
+            // dispatch failure leaves the order claimed (saved once) but never SHIPPED.
+            verify(orderRepository, times(1)).save(any(OrderEntity.class));
             verifyNoInteractions(notificationDispatcher);
-            assertThat(o1.getStatus()).isEqualTo(OrderStatus.PAID);
+            assertThat(o1.getStatus()).isEqualTo(OrderStatus.AWAITING_SHIPPING);
         }
     }
 
