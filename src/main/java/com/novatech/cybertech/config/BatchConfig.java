@@ -15,6 +15,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.CLEAN_UP_EXPIRED_STOCK_JOB;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.REDELIVER_FAILED_NOTIFICATIONS_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB;
 
 @Configuration
@@ -26,6 +27,7 @@ public class BatchConfig {
     private static final String GET_ALL_FAILED_PAYMENTS_ORDER_TASKLET = "GetAllFailedPaymentOrderTasklet";
     private static final String SHIP_ALL_PAID_ORDERS_TASKLET = "ShipAllAwaitingShippingOrdersTasklet";
     private static final String CLEAN_UP_EXPIRED_STOCK_RESERVATIONS_TASKLET = "CleanUpExpiredStockReservationsTasklet";
+    private static final String REDELIVER_FAILED_NOTIFICATIONS_TASKLET = "RedeliverFailedNotificationsTasklet";
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager platformTransactionManager;
@@ -35,6 +37,7 @@ public class BatchConfig {
     private final CancelAllPendingOrdersByTimeTasklet cancelAllPendingOrdersByTimeTasklet;
     private final ShipAllPaidOrdersTasklet shipAllPaidOrdersTasklet;
     private final CleanUpExpiredStockReservationsTasklet cleanUpExpiredStockReservationsTasklet;
+    private final RedeliverFailedNotificationsTasklet redeliverFailedNotificationsTasklet;
 
 
     @Primary
@@ -89,6 +92,21 @@ public class BatchConfig {
     public Step cleanUpExpiredStockReservationsStep() {
         return new StepBuilder(CLEAN_UP_EXPIRED_STOCK_RESERVATIONS_TASKLET, jobRepository)
                 .tasklet(cleanUpExpiredStockReservationsTasklet, platformTransactionManager)
+                .allowStartIfComplete(true)
+                .build();
+    }
+
+    @Bean(REDELIVER_FAILED_NOTIFICATIONS_JOB)
+    public Job redeliverFailedNotificationsJob() {
+        return new JobBuilder(REDELIVER_FAILED_NOTIFICATIONS_JOB, jobRepository)
+                .start(redeliverFailedNotificationsStep())
+                .build();
+    }
+
+    @Bean(REDELIVER_FAILED_NOTIFICATIONS_TASKLET)
+    public Step redeliverFailedNotificationsStep() {
+        return new StepBuilder(REDELIVER_FAILED_NOTIFICATIONS_TASKLET, jobRepository)
+                .tasklet(redeliverFailedNotificationsTasklet, platformTransactionManager)
                 .allowStartIfComplete(true)
                 .build();
     }

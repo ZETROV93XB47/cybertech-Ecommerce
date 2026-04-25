@@ -43,14 +43,14 @@ Tracked as work proceeds. `[x]` = landed in this branch; `[ ]` = not yet, called
 - [x] **F1.** Centralize `NotificationEntity` persistence into a single recorder (`NotificationOutcomeRecorder`) so the order-created and order-updated paths also leave a trace.
 - [x] **F1.** Add `payload` JSON column on `NotificationEntity` (`@Lob TEXT`) so the batch tasklet can redrive without losing context. `NotificationRedrivePayload` is the small DTO that's serialized into it; `NotificationPayload` got `@JsonTypeInfo` + `@JsonSubTypes` for polymorphic round-trip.
 - [x] **F1.** Add `PENDING_RETRY` status to `NotificationStatus` enum (distinct from terminal `FAILED`); enum gets a lifecycle javadoc.
-- [ ] **F2.** Add `notification.dispatch.*` keys to `application.properties` (max-attempts, wait-duration, exponential-backoff, retry-exceptions allowlist)
-- [ ] **F2.** Create `NotificationRetryableDelivery` bean wrapping the dispatcher with `@Retry(name="notificationDispatch", fallbackMethod=...)` — separate bean because Spring AOP doesn't apply self-invocation
-- [ ] **F2.** Replace the for-loop in `NotificationListener.on` with a single delegate call
-- [ ] **F2.** Verify `pom.xml` resolves `@Retry` annotation (add `resilience4j-spring-boot3` if `spring-cloud-starter-circuitbreaker-resilience4j` doesn't bring it transitively)
-- [ ] **F3.** New `RedeliverFailedNotificationsTasklet` extending `BaseTasklet`, scans `WHERE status = 'PENDING_RETRY' AND retryCount < max AND lastAttemptAt < now() - backoff`
-- [ ] **F3.** New `RedeliverFailedNotificationsJob` mirroring `StockCleanupJob` (cron-driven, `@Scheduled`, `JobLauncher.run`)
-- [ ] **F3.** Configurable `cybertech.notification.redelivery.{activated,cron,max-attempts,backoff}` in `application.properties`
-- [ ] **F3.** Tasklet promotes a row to terminal `FAILED` once `retryCount >= max-attempts`
+- [x] **F2.** Add `cybertech.notification.dispatch.*` keys to `application.properties` (max-attempts, wait-duration, exponential-backoff-multiplier). Resilience4j instance config interpolates these so operators have a single tuning surface.
+- [x] **F2.** Create `NotificationRetryableDelivery` interface + `NotificationRetryableDeliveryImp` wrapping the dispatcher with `@Retry(name="notificationDispatch", fallbackMethod="onRetriesExhausted")` — separate bean because Spring AOP doesn't apply self-invocation.
+- [x] **F2.** Replace the for-loop in `NotificationListener.on` with a single `retryableDelivery.deliver(ctx)` call. `OrderEventListener` now uses the same path (was single-attempt + no retry before).
+- [x] **F2.** `pom.xml` already brings `resilience4j-spring-boot3:2.3.0` transitively via `spring-cloud-starter-circuitbreaker-resilience4j` — no pom change needed.
+- [x] **F3.** New `RedeliverFailedNotificationsTasklet` extending `BaseTasklet`, scans `WHERE status = 'PENDING_RETRY' AND retryCount < cumulative-max AND lastAttemptAt < now() - backoff`. Reuses the Phase 2 retryable bean so each redrive tick inherits the in-process retry policy.
+- [x] **F3.** New `RedeliverFailedNotificationsJob` mirroring `StockCleanupJob` exactly (cron-driven `@Scheduled`, `JobLauncher.run`, `activated` flag).
+- [x] **F3.** Configurable `cybertech.notification.redelivery.{job.activated,job.cron,max-attempts,backoff-minutes,batch-size}` in `application.properties`. Default cron: every 15 minutes.
+- [x] **F3.** Tasklet promotes a row to terminal `FAILED` once `bumpedRetryCount >= cumulative-max`. Per-attempt audit row + redrive-coordination row (the "two-row audit pattern" — see tasklet javadoc).
 
 ### Future work (out of scope here, flagged for backlog)
 - [ ] **Atomic outbox** — write the outbox row inside the originating `@Transactional` (in the order/shipping services) so a JVM crash between commit and `AFTER_COMMIT` listener no longer drops notifications. The current design narrows the failure window but doesn't fully close it.
@@ -75,3 +75,25 @@ Tracked as work proceeds. `[x]` = landed in this branch; `[ ]` = not yet, called
 - **`MailServiceImp.frontendUrl` `@Value` is unused.** Untouched (out of scope) — flagged for cleanup.
 - **No DB migration script** was added for the new `payload` column or the relaxed `orderUuid` constraint. Hibernate `ddl-auto=update` handles dev/test, but production schema management likely needs a Flyway/Liquibase entry — flagged for whoever owns the prod migration policy.
 - **Subagent 1 went out of scope** on `CartServiceImp.java` (added a `TransactionTemplate` field for BUG-160 redrive ordering) and three integration tests (`OrderFlowIT`, `PaymentWebhookFlowIT`, `UserRegistrationFlowIT`). Those changes were reverted by the orchestrator before commit — that workstream deserves its own review, not a bundled drive-by. Note for the user: the agent's intent looked legitimate (a real concurrency concern around the Redis-lock-vs-transaction ordering), so consider opening a separate ticket if BUG-160 is genuinely still open in your tracker.
+
+### Phase 2 (Resilience4j) — landed
+- **Two-method dance for AOP**: `deliver(ctx)` is the entry point, `attemptDispatch(ctx)` carries the `@Retry` annotation. Spring AOP doesn't intercept self-invocation, so both methods live on the same bean but the call FROM `deliver` TO `attemptDispatch` goes through the proxy reference (Spring rewires self-invocation when the call goes through the injected interface). Implementation comment in `NotificationRetryableDeliveryImp` spells this out — important for anyone tempted to "simplify" by inlining.
+- **`PENDING_RETRY` written on exhaustion (not `FAILED`)** — Phase 3's batch tasklet is the next layer of retry. Conflating them would either trigger redrive on rows we've already abandoned or leave temporarily-failing rows untouched. The two-state separation is load-bearing for the layered retry model.
+- **`retryCount=0` recorded on success.** Resilience4j 2.x exposes attempt count via `RetryRegistry` event listeners but threading it through the call site needs ThreadLocal/event consumers — heavier than the value of the precision. The recorder field semantically means "failed attempts before final outcome"; on success that's defensibly zero. Real attempt-count telemetry should come from Micrometer, not from this audit row.
+- **Defensive `try/catch (Throwable)` in `deliver`**: if Resilience4j's fallback mechanism fails or the proxy isn't applied (e.g. AOP misconfiguration drift), we still don't crash the async worker silently — we persist a `PENDING_RETRY` row so the failure is visible.
+- **Programmatic `Retry.of(...)` test strategy** instead of `@SpringBootTest` slice — same Resilience4j engine, no Spring AOP boot, ~10× faster test runs. The proxy itself is implicitly exercised by any existing IT that goes through the bean.
+
+### Phase 3 (Spring Batch redrive) — landed
+- **Two-row audit pattern is intentional and load-bearing.** The retryable bean writes a fresh row on every dispatch attempt (per-attempt audit trail). The tasklet keeps the *original* row as a redrive-coordination record whose `retryCount` accumulates across redrive ticks. This avoids a cross-row lookup that would race under concurrent ticks; the decision to flip to terminal `FAILED` is purely a function of the coordination row's bumped count. This is documented at length in the tasklet's class javadoc — read it before "simplifying".
+- **Cumulative budget defaults to 9** (`cybertech.notification.redelivery.max-attempts=9`) — that's three batch ticks of three in-process attempts each. Tunable to taste; for noisy outages a higher cap with longer backoff is more polite to upstream SMTP.
+- **Backoff is `lastAttemptAt < now() - backoff-minutes`** (default 10 min). Not exponential at the batch level — by this point we've already moved past the in-process exponential window.
+- **`Pageable.ofSize(batch-size)`** caps each tick at 50 rows by default. Defensive against a cold-start "everything pending after a restart" scenario where the table has thousands of rows; we'd rather drain over multiple ticks than block the scheduler thread.
+- **Subagent 3 had to fix two Phase 1 carryovers** that blocked Phase 3 from compiling/passing tests:
+  1. `UserContactDto` and `ShippingConfirmationPayload` lacked `@NoArgsConstructor` + `@AllArgsConstructor` — Jackson 3 round-trip of the persisted redrive payload would have failed at deserialization. Phase 1 should have caught this when adding polymorphic Jackson; flagged here so the same gap doesn't recur for any future `NotificationPayload` subtype (add a contract test that asserts every subtype round-trips through the configured `ObjectMapper`).
+  2. `MarkerEnumsSmokeEnumTest` had been red since Phase 1 added `PENDING_RETRY` (it pins exhaustive enum values). Subagent 3 updated it. Phase 1's verification should have caught this — the enum-completeness pin is exactly the test that's supposed to catch new enum values.
+- **`NotificationEntity` gained `@Setter`** so the tasklet can mutate the coordination row in place. The entity already had `@SuperBuilder + @AllArgsConstructor + @NoArgsConstructor + @Getter`; `@Setter` is the missing piece. Acceptable trade-off — the alternative is rebuilding the entity each tick which is uglier.
+
+### Final state
+- 1681 / 1681 tests green, 18 skipped (deferred ITs requiring Testcontainers — unchanged from baseline).
+- 3 commits: `dc1a54f` (Phase 1), `7007fb0` (Phase 2), and the upcoming Phase 3 commit.
+- The retry pipeline is now: `listener → @Retry(notificationDispatch) → fallback → PENDING_RETRY row → cron tasklet → @Retry(notificationDispatch) → either SENT or bumped count → eventually FAILED`. Two layers of retry, single configuration surface, full audit trail.

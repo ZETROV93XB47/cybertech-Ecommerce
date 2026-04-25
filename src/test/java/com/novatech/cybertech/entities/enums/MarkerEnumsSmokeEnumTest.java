@@ -31,10 +31,13 @@ class MarkerEnumsSmokeEnumTest {
     }
 
     @Test
-    void notificationStatusHasThreeConstants() {
+    void notificationStatusHasFourConstants() {
+        // Phase 1 added PENDING_RETRY between SENT and the terminal FAILED state.
+        // See NotificationStatus javadoc for the lifecycle diagram.
         assertThat(NotificationStatus.values()).containsExactly(
                 NotificationStatus.PENDING,
                 NotificationStatus.SENT,
+                NotificationStatus.PENDING_RETRY,
                 NotificationStatus.FAILED);
     }
 

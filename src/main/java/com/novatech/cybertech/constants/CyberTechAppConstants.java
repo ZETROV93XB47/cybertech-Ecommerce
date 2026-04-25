@@ -34,6 +34,7 @@ public class CyberTechAppConstants {
 
     public static final String REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB =  "REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB";
     public static final String CLEAN_UP_EXPIRED_STOCK_JOB = "CLEAN_UP_EXPIRED_STOCK_JOB";
+    public static final String REDELIVER_FAILED_NOTIFICATIONS_JOB = "REDELIVER_FAILED_NOTIFICATIONS_JOB";
 
 
     public static final String APP_API_VERSION = "1.0";
