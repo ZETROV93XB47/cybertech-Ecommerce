@@ -13,7 +13,7 @@ import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.events.OrderShippedEvent;
-import com.novatech.cybertech.repositories.NotificationRepository;
+import com.novatech.cybertech.services.implementation.NotificationOutcomeRecorder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -30,15 +30,28 @@ import java.util.UUID;
 import static com.novatech.cybertech.listener.NotificationListener.MAX_DISPATCH_RETRIES;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.notNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+/**
+ * Unit tests for {@link NotificationListener}.
+ *
+ * <p>Phase 1: persistence is delegated to
+ * {@link NotificationOutcomeRecorder}, so these tests assert the recorder
+ * interaction rather than the {@code NotificationRepository.save(...)} that
+ * used to live inline. The hand-rolled retry loop is intentionally still in
+ * place (to be removed in Phase 2).
+ */
 @ExtendWith(MockitoExtension.class)
 class NotificationListenerTest {
 
     @Mock
-    private NotificationRepository notificationRepository;
+    private NotificationOutcomeRecorder outcomeRecorder;
     @Mock
     private NotificationDispatcher notificationDispatcher;
 
@@ -68,9 +81,12 @@ class NotificationListenerTest {
     }
 
     @Test
-    void onShouldDispatchAndPersistNotificationOnHappyPath() {
+    void onShouldDispatchAndRecordSentOutcomeOnHappyPath() {
         OrderEventDto dto = sampleEventDto();
         OrderShippedEvent event = new OrderShippedEvent(dto);
+        // Recorder returns a non-null entity to mirror the real signature.
+        when(outcomeRecorder.recordOutcome(any(), any(), any(Integer.class), any()))
+                .thenReturn(NotificationEntity.builder().build());
 
         listener.on(event);
 
@@ -82,21 +98,12 @@ class NotificationListenerTest {
         assertThat(ctx.getCommunicationChanel()).isEqualTo(CommunicationChanel.EMAIL);
         assertThat(ctx.getPayload()).isNotNull();
 
-        ArgumentCaptor<NotificationEntity> entityCap = ArgumentCaptor.forClass(NotificationEntity.class);
-        verify(notificationRepository).save(entityCap.capture());
-        NotificationEntity ent = entityCap.getValue();
-        assertThat(ent.getOrderUuid()).isEqualTo(dto.getOrderUuid());
-        assertThat(ent.getNotificationType()).isEqualTo(NotificationType.SHIPPING_CONFIRMATION);
-        assertThat(ent.getCommunicationChannel()).isEqualTo(CommunicationChanel.EMAIL);
-        assertThat(ent.getRecipient()).isEqualTo("jane@example.com");
-        assertThat(ent.getRetryCount()).isZero();
-        assertThat(ent.getStatus()).isEqualTo(NotificationStatus.SENT);
-        assertThat(ent.getSentAt()).isNotNull();
-        assertThat(ent.getErrorMessage()).isNull();
+        // SENT, retryCount=0, no failure
+        verify(outcomeRecorder).recordOutcome(eq(ctx), eq(NotificationStatus.SENT), eq(0), isNull());
     }
 
     @Test
-    void onShouldPersistFailedStatusWhenAllRetriesExhausted() {
+    void onShouldRecordFailedOutcomeWhenAllRetriesExhausted() {
         OrderEventDto dto = sampleEventDto();
         OrderShippedEvent event = new OrderShippedEvent(dto);
         doThrow(new RuntimeException("SMTP unreachable")).when(notificationDispatcher).dispatch(any());
@@ -105,19 +112,18 @@ class NotificationListenerTest {
 
         verify(notificationDispatcher, times(MAX_DISPATCH_RETRIES)).dispatch(any());
 
-        ArgumentCaptor<NotificationEntity> entityCap = ArgumentCaptor.forClass(NotificationEntity.class);
-        verify(notificationRepository).save(entityCap.capture());
-        NotificationEntity ent = entityCap.getValue();
-        assertThat(ent.getStatus()).isEqualTo(NotificationStatus.FAILED);
-        assertThat(ent.getRetryCount()).isEqualTo(MAX_DISPATCH_RETRIES);
-        assertThat(ent.getErrorMessage()).contains("SMTP unreachable");
-        assertThat(ent.getSentAt()).isNull();
-        assertThat(ent.getLastAttemptAt()).isNotNull();
-        assertThat(ent.getOrderUuid()).isEqualTo(dto.getOrderUuid());
+        ArgumentCaptor<Throwable> failureCap = ArgumentCaptor.forClass(Throwable.class);
+        verify(outcomeRecorder).recordOutcome(
+                any(NotificationContext.class),
+                eq(NotificationStatus.FAILED),
+                eq(MAX_DISPATCH_RETRIES),
+                failureCap.capture());
+        assertThat(failureCap.getValue()).isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("SMTP unreachable");
     }
 
     @Test
-    void onShouldRetryAndSucceedOnSecondAttempt() {
+    void onShouldRetryAndRecordSentOnSecondAttempt() {
         OrderEventDto dto = sampleEventDto();
         OrderShippedEvent event = new OrderShippedEvent(dto);
         doThrow(new RuntimeException("transient"))
@@ -128,12 +134,30 @@ class NotificationListenerTest {
 
         verify(notificationDispatcher, times(2)).dispatch(any());
 
-        ArgumentCaptor<NotificationEntity> entityCap = ArgumentCaptor.forClass(NotificationEntity.class);
-        verify(notificationRepository).save(entityCap.capture());
-        NotificationEntity ent = entityCap.getValue();
-        assertThat(ent.getStatus()).isEqualTo(NotificationStatus.SENT);
-        assertThat(ent.getRetryCount()).isEqualTo(1);
-        assertThat(ent.getSentAt()).isNotNull();
-        assertThat(ent.getErrorMessage()).isNull();
+        // attempts=2, success → retryCount = attempts - 1 = 1, no failure passed.
+        verify(outcomeRecorder).recordOutcome(
+                any(NotificationContext.class),
+                eq(NotificationStatus.SENT),
+                eq(1),
+                isNull());
+    }
+
+    @Test
+    void onShouldUseRecorderRatherThanRepositoryDirectly() {
+        // Pin: the listener is wired to the recorder, not to the repository
+        // (Phase 1 centralisation).
+        OrderEventDto dto = sampleEventDto();
+        when(outcomeRecorder.recordOutcome(any(), any(), any(Integer.class), any()))
+                .thenReturn(NotificationEntity.builder().build());
+
+        listener.on(new OrderShippedEvent(dto));
+
+        verify(outcomeRecorder).recordOutcome(
+                any(NotificationContext.class),
+                any(NotificationStatus.class),
+                any(Integer.class),
+                any());
+        // Sanity: a non-null context was passed.
+        verify(outcomeRecorder).recordOutcome(notNull(), any(), any(Integer.class), any());
     }
 }

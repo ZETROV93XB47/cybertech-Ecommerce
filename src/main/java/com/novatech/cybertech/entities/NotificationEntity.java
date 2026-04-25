@@ -27,7 +27,17 @@ import java.util.UUID;
 )
 public class NotificationEntity extends BaseEntity<Long> {
 
-    @Column(name = "orderUuid", nullable = false)
+    /**
+     * Linked order UUID. Made <em>nullable</em> in Phase 1: the {@code ORDER_CONFIRMATION}
+     * and {@code ORDER_UPDATE} paths populate the order UUID through the
+     * {@code OrderEventDto} placed in {@link com.novatech.cybertech.dto.data.NotificationContext#getData()}
+     * rather than via a typed payload, and we want a uniform persistence
+     * contract across all three notification types — including the defensive
+     * fallback where the recorder cannot extract the UUID for whatever reason
+     * (it's better to persist a partial audit row than to lose the trace
+     * entirely and silently mask a bug).
+     */
+    @Column(name = "orderUuid")
     private UUID orderUuid;
 
     @Column(name = "notificationType", nullable = false)
@@ -56,4 +66,26 @@ public class NotificationEntity extends BaseEntity<Long> {
 
     @Column(name = "errorMessage", length = 1000)
     private String errorMessage;
+
+    /**
+     * JSON-serialized {@link com.novatech.cybertech.dto.data.NotificationRedrivePayload}.
+     *
+     * <p><b>Why is this nullable?</b> Existing dev/staging databases will not
+     * have a payload for rows persisted before this column landed, and the
+     * Phase 1 recorder is allowed to persist {@code payload=null} when
+     * serialization itself blows up — losing the redrive trace must NEVER
+     * cause us to drop the audit row.
+     *
+     * <p><b>Why {@code TEXT} and not the default {@code VARCHAR(255)}?</b>
+     * MySQL maps {@code String} to {@code VARCHAR(255)} unless told otherwise;
+     * the JSON snapshot routinely exceeds that on real payloads (full
+     * shipping-confirmation context with provider + addresses).
+     *
+     * <p>Phase 3 will scan rows where status is {@code FAILED} or
+     * {@code PENDING_RETRY} and {@code payload IS NOT NULL} to drive the batch
+     * redrive tasklet.
+     */
+    @Lob
+    @Column(name = "payload", columnDefinition = "TEXT")
+    private String payload;
 }

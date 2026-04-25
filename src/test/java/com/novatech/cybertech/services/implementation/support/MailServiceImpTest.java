@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.novatech.cybertech.dto.data.EmailDto;
+import com.novatech.cybertech.exceptions.NotificationDeliveryException;
 import com.novatech.cybertech.services.implementation.MailServiceImp;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
@@ -18,6 +19,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
@@ -28,8 +30,10 @@ import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -38,13 +42,17 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for {@link MailServiceImp}.
  *
- * FIX-2507: {@code MessagingException} from {@link org.springframework.mail.javamail.MimeMessageHelper}
- * now causes an early {@code return} so {@code javaMailSender.send()} is never called with a broken message.
+ * <p>Phase 1 hardening — the previous swallow-and-return path on
+ * {@link jakarta.mail.MessagingException} (BUG-2507) is replaced by a rethrow
+ * as {@link NotificationDeliveryException}; SMTP-level
+ * {@link org.springframework.mail.MailException} failures are normalized to
+ * the same domain exception so the upstream retry policy can target a single
+ * type. The previous BUG-2511 pin (no notification-repository field) is
+ * obsolete: persistence is now delegated to
+ * {@link com.novatech.cybertech.services.implementation.NotificationOutcomeRecorder}
+ * called from the listeners, not from this service.
  *
- * FIX-2508: PII is no longer logged at INFO — recipient address is logged at DEBUG only.
- *
- * Pins {@code BUG-2511}: no NotificationEntity is persisted with SENT/FAILED — the service has no
- * notification-repository field and no dedup lookup.
+ * <p>FIX-2508 still applies: PII (recipient address) is logged at DEBUG only.
  */
 @ExtendWith(MockitoExtension.class)
 class MailServiceImpTest {
@@ -119,8 +127,8 @@ class MailServiceImpTest {
     }
 
     @Test
-    @DisplayName("FIX-2507: MessagingException from MimeMessageHelper is caught; send() is NOT called")
-    void doesNotCallSendAfterMessagingException() {
+    @DisplayName("Phase 1: MessagingException from MimeMessageHelper is rethrown as NotificationDeliveryException; send() is NOT called")
+    void mimeFailureIsRethrownAsNotificationDeliveryException() {
         // MimeMessageHelper internally calls the 2-arg setSubject(String, String charset) variant,
         // so both overloads must throw to trigger the MessagingException path.
         MimeMessage broken = new MimeMessage((Session) null) {
@@ -136,11 +144,27 @@ class MailServiceImpTest {
         when(javaMailSender.createMimeMessage()).thenReturn(broken);
         when(templateEngine.process(any(String.class), any(Context.class))).thenReturn("rendered");
 
-        // Exception is still swallowed (no propagation), but send() must NOT be called after the fix.
-        assertThatCode(() -> service.sendEmail(sampleEmail())).doesNotThrowAnyException();
+        assertThatThrownBy(() -> service.sendEmail(sampleEmail()))
+                .isInstanceOf(NotificationDeliveryException.class)
+                .hasMessageContaining("user@example.com")
+                .hasCauseInstanceOf(jakarta.mail.MessagingException.class);
 
-        // FIX-2507: send() must NOT be invoked after a MessagingException during helper setup.
+        // send() must NOT be invoked on a half-built MimeMessage.
         verify(javaMailSender, never()).send(broken);
+    }
+
+    @Test
+    @DisplayName("Phase 1: SMTP-level MailException from JavaMailSender.send() is rethrown as NotificationDeliveryException")
+    void smtpFailureIsRethrownAsNotificationDeliveryException() {
+        when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
+        when(templateEngine.process(any(String.class), any(Context.class))).thenReturn("rendered");
+        // Simulate SMTP-side failure (connection refused, timeout, ...).
+        doThrow(new MailSendException("connection refused")).when(javaMailSender).send(mimeMessage);
+
+        assertThatThrownBy(() -> service.sendEmail(sampleEmail()))
+                .isInstanceOf(NotificationDeliveryException.class)
+                .hasMessageContaining("user@example.com")
+                .hasCauseInstanceOf(MailSendException.class);
     }
 
     @Test
@@ -170,9 +194,13 @@ class MailServiceImpTest {
     }
 
     @Test
-    @DisplayName("BUG-2511: MailServiceImp has no notification repository — no SENT/FAILED tracking, no dedup")
-    void hasNoNotificationRepositoryDocumentingBug2511() {
-        // Reflective sanity check — only mailer + template engine + frontendUrl (ignoring the slf4j logger).
+    @DisplayName("Phase 1: MailServiceImp deliberately holds no notification repository — persistence lives in NotificationOutcomeRecorder (centralisation)")
+    void hasNoNotificationRepository() {
+        // Reflective sanity check — only mailer + template engine + frontendUrl.
+        // Persistence has been moved out of this service into
+        // NotificationOutcomeRecorder, which is invoked from the listeners.
+        // Replaces the BUG-2511 pin (which asserted the same shape but framed
+        // it as a defect — the centralisation choice is now intentional).
         assertThat(java.util.Arrays.stream(service.getClass().getDeclaredFields())
                         .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers()))
                         .map(java.lang.reflect.Field::getName)
@@ -191,5 +219,14 @@ class MailServiceImpTest {
 
         assertThat(context.getVariable("a")).isEqualTo("1");
         assertThat(context.getVariable("b")).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("happy path does not throw")
+    void happyPathDoesNotThrow() {
+        when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
+        when(templateEngine.process(any(String.class), any(Context.class))).thenReturn("rendered");
+
+        assertThatCode(() -> service.sendEmail(sampleEmail())).doesNotThrowAnyException();
     }
 }

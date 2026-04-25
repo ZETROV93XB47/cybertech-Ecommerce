@@ -7,7 +7,7 @@ import com.novatech.cybertech.entities.enums.EmailTemplateType;
 import com.novatech.cybertech.entities.enums.NotificationStatus;
 import com.novatech.cybertech.entities.enums.NotificationSubject;
 import com.novatech.cybertech.events.OrderShippedEvent;
-import com.novatech.cybertech.repositories.NotificationRepository;
+import com.novatech.cybertech.services.implementation.NotificationOutcomeRecorder;
 import com.novatech.cybertech.services.implementation.ShippingConfirmationPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,8 +15,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
-
-import java.time.LocalDateTime;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
 import static com.novatech.cybertech.entities.enums.NotificationType.SHIPPING_CONFIRMATION;
@@ -30,6 +28,13 @@ import static com.novatech.cybertech.entities.enums.NotificationType.SHIPPING_CO
  * <p>The shipping listener intentionally does NOT dispatch a notification itself — see
  * {@link ShippingListener} (BUG-122 cleanup).
  *
+ * <p><b>Phase 1 hardening:</b> persistence is delegated to
+ * {@link NotificationOutcomeRecorder} so the SHIPPING_CONFIRMATION,
+ * ORDER_CONFIRMATION, and ORDER_UPDATE paths share a single audit-row writer
+ * (was previously duplicated only here, with the order-event listeners writing
+ * nothing). The hand-rolled retry loop is intentionally KEPT in place for now —
+ * Phase 2 will replace it with Resilience4j {@code @Retry}.
+ *
  * <p>Retry contract: dispatch is attempted up to {@link #MAX_DISPATCH_RETRIES} times.
  * The persisted {@link NotificationEntity} reflects the final outcome — {@code SENT} on any
  * successful attempt, {@code FAILED} (with {@code errorMessage} + {@code retryCount}) only
@@ -42,8 +47,8 @@ public class NotificationListener {
 
     static final int MAX_DISPATCH_RETRIES = 3;
 
-    private final NotificationRepository notificationRepository;
     private final NotificationDispatcher notificationDispatcher;
+    private final NotificationOutcomeRecorder outcomeRecorder;
 
     /**
      * Sends the shipping-confirmation notification once the {@link ShippingListener} has
@@ -64,7 +69,7 @@ public class NotificationListener {
         final var dto = orderShippedEvent.getOrderEventDto();
         log.info("Received OrderShippedEvent for order {}", dto.getOrderUuid());
 
-        final NotificationContext notificationContext = NotificationContext.builder()
+        final NotificationContext<ShippingConfirmationPayload> notificationContext = NotificationContext.<ShippingConfirmationPayload>builder()
                 .payload(ShippingConfirmationPayload.builder()
                         .orderUuid(dto.getOrderUuid())
                         .shippingType(dto.getShippingType())
@@ -78,6 +83,10 @@ public class NotificationListener {
                 .communicationChanel(dto.getUserContactDto().getDefaultCommunicationChanel())
                 .build();
 
+        // KEEP this hand-rolled loop in place for Phase 1 — Phase 2 will
+        // replace it with Resilience4j @Retry on the dispatcher. Behavioural
+        // change here is limited to routing the SENT/FAILED row through the
+        // shared NotificationOutcomeRecorder.
         Exception lastException = null;
         int attempts = 0;
         for (int attempt = 1; attempt <= MAX_DISPATCH_RETRIES; attempt++) {
@@ -94,34 +103,16 @@ public class NotificationListener {
             }
         }
 
-        final NotificationEntity notificationEntity;
         if (lastException == null) {
-            notificationEntity = NotificationEntity.builder()
-                    .orderUuid(dto.getOrderUuid())
-                    .notificationType(SHIPPING_CONFIRMATION)
-                    .communicationChannel(dto.getUserContactDto().getDefaultCommunicationChanel())
-                    .status(NotificationStatus.SENT)
-                    .recipient(dto.getUserContactDto().getEmail())
-                    .retryCount(attempts - 1)
-                    .lastAttemptAt(LocalDateTime.now())
-                    .sentAt(LocalDateTime.now())
-                    .build();
+            // retryCount = (attempts - 1) preserves the previous semantic:
+            // a first-try success records 0, a success on attempt N records
+            // (N - 1) prior failures.
+            outcomeRecorder.recordOutcome(notificationContext, NotificationStatus.SENT, attempts - 1, null);
             log.info("Shipping notification sent for order {} after {} attempt(s)", dto.getOrderUuid(), attempts);
         } else {
-            notificationEntity = NotificationEntity.builder()
-                    .orderUuid(dto.getOrderUuid())
-                    .notificationType(SHIPPING_CONFIRMATION)
-                    .communicationChannel(dto.getUserContactDto().getDefaultCommunicationChanel())
-                    .status(NotificationStatus.FAILED)
-                    .recipient(dto.getUserContactDto().getEmail())
-                    .retryCount(attempts)
-                    .lastAttemptAt(LocalDateTime.now())
-                    .sentAt(null)
-                    .errorMessage(lastException.getMessage())
-                    .build();
+            outcomeRecorder.recordOutcome(notificationContext, NotificationStatus.FAILED, attempts, lastException);
             log.error("All {} dispatch attempts failed for order {}; persisting FAILED status",
                     MAX_DISPATCH_RETRIES, dto.getOrderUuid(), lastException);
         }
-        notificationRepository.save(notificationEntity);
     }
 }
