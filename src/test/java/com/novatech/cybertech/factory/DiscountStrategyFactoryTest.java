@@ -1,6 +1,6 @@
 package com.novatech.cybertech.factory;
 
-import com.novatech.cybertech.entities.enums.DiscountType;
+import com.novatech.cybertech.entities.enums.DiscountCalculationType;
 import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -17,17 +17,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit coverage for {@link DiscountStrategyFactory}. The factory is a thin Map-backed lookup;
- * we verify dispatch for every {@link DiscountType}, missing-key behaviour, duplicate-registration
- * (last-write-wins, BUG-095 shape pin), and the empty-registry default.
- *
- * Per F4: the strategies behind the factory now operate on raw BigDecimal — but the factory is
- * type-agnostic; we only assert which strategy is returned.
- *
- * BUG-094 audit: SA4.1 originally added a null-guard to the production factory that threw
- * {@code DiscountTypeCannotBeNullForStrategy}. That production change was reverted; the
- * factory now simply does {@code map.get(type)}, so {@code null} returns whatever the map
- * does for null. EnumMap.get(null) returns null (does NOT throw). HashMap.get(null) returns null.
+ * Unit coverage for {@link DiscountStrategyFactory}. Post-discount-campaign refactor the
+ * factory keys on {@link DiscountCalculationType} (algorithm), not the commercial
+ * {@code DiscountType} (campaign). Multiple campaigns can therefore share one strategy
+ * via the calculation-type indirection.
  */
 class DiscountStrategyFactoryTest {
 
@@ -36,11 +29,11 @@ class DiscountStrategyFactoryTest {
     class HappyPath {
 
         @ParameterizedTest(name = "{index} - dispatch returns wired strategy for {0}")
-        @EnumSource(DiscountType.class)
-        @DisplayName("Every DiscountType maps to its own registered strategy")
-        void dispatchesEachEnumToItsStrategy(final DiscountType type) {
-            final Map<DiscountType, DiscountStrategy> map = new EnumMap<>(DiscountType.class);
-            for (final DiscountType t : DiscountType.values()) {
+        @EnumSource(DiscountCalculationType.class)
+        @DisplayName("Every DiscountCalculationType maps to its own registered strategy")
+        void dispatchesEachEnumToItsStrategy(final DiscountCalculationType type) {
+            final Map<DiscountCalculationType, DiscountStrategy> map = new EnumMap<>(DiscountCalculationType.class);
+            for (final DiscountCalculationType t : DiscountCalculationType.values()) {
                 final DiscountStrategy stub = Mockito.mock(DiscountStrategy.class, t.name());
                 map.put(t, stub);
             }
@@ -52,15 +45,15 @@ class DiscountStrategyFactoryTest {
         }
 
         @Test
-        @DisplayName("BLACK_FRIDAY (the only currently-wired strategy in production) is returned by reference")
-        void blackFridayReturnedByReference() {
-            final DiscountStrategy bf = baseAmount -> baseAmount.multiply(new BigDecimal("0.4"));
-            final Map<DiscountType, DiscountStrategy> map = new EnumMap<>(DiscountType.class);
-            map.put(DiscountType.BLACK_FRIDAY, bf);
+        @DisplayName("PERCENTAGE strategy is returned by reference")
+        void percentageReturnedByReference() {
+            final DiscountStrategy pct = (baseAmount, items, ctx) -> baseAmount.multiply(new BigDecimal("0.4"));
+            final Map<DiscountCalculationType, DiscountStrategy> map = new EnumMap<>(DiscountCalculationType.class);
+            map.put(DiscountCalculationType.PERCENTAGE, pct);
 
             final DiscountStrategyFactory factory = new DiscountStrategyFactory(map);
 
-            assertThat(factory.getStrategy(DiscountType.BLACK_FRIDAY)).isSameAs(bf);
+            assertThat(factory.getStrategy(DiscountCalculationType.PERCENTAGE)).isSameAs(pct);
         }
     }
 
@@ -69,22 +62,22 @@ class DiscountStrategyFactoryTest {
     class Misses {
 
         @Test
-        @DisplayName("Unknown enum (no entry in map) returns null — no throw")
+        @DisplayName("Unknown calc type (no entry in map) returns null — no throw")
         void unknownEnumReturnsNull() {
-            final Map<DiscountType, DiscountStrategy> map = new EnumMap<>(DiscountType.class);
-            map.put(DiscountType.BLACK_FRIDAY, Mockito.mock(DiscountStrategy.class));
+            final Map<DiscountCalculationType, DiscountStrategy> map = new EnumMap<>(DiscountCalculationType.class);
+            map.put(DiscountCalculationType.PERCENTAGE, Mockito.mock(DiscountStrategy.class));
             final DiscountStrategyFactory factory = new DiscountStrategyFactory(map);
 
-            assertThat(factory.getStrategy(DiscountType.WINTER_SALES)).isNull();
+            assertThat(factory.getStrategy(DiscountCalculationType.BUY_ONE_GET_ONE_FREE)).isNull();
         }
 
         @Test
-        @DisplayName("Empty registry returns null for every enum value")
+        @DisplayName("Empty registry returns null for every calc type")
         void emptyRegistryReturnsNull() {
             final DiscountStrategyFactory factory =
-                    new DiscountStrategyFactory(new EnumMap<>(DiscountType.class));
+                    new DiscountStrategyFactory(new EnumMap<>(DiscountCalculationType.class));
 
-            for (final DiscountType type : DiscountType.values()) {
+            for (final DiscountCalculationType type : DiscountCalculationType.values()) {
                 assertThat(factory.getStrategy(type)).isNull();
             }
         }
@@ -93,7 +86,7 @@ class DiscountStrategyFactoryTest {
         @DisplayName("null type with EnumMap-backed registry returns null (EnumMap.get(null) -> null)")
         void nullTypeWithEnumMapReturnsNull() {
             final DiscountStrategyFactory factory =
-                    new DiscountStrategyFactory(new EnumMap<>(DiscountType.class));
+                    new DiscountStrategyFactory(new EnumMap<>(DiscountCalculationType.class));
 
             assertThat(factory.getStrategy(null)).isNull();
         }
@@ -112,30 +105,30 @@ class DiscountStrategyFactoryTest {
     class Registration {
 
         @Test
-        @DisplayName("Duplicate registration: last put() wins (BUG-095 shape pin)")
+        @DisplayName("Duplicate registration: last put() wins")
         void duplicateRegistrationLastWriteWins() {
             final DiscountStrategy first = Mockito.mock(DiscountStrategy.class, "first");
             final DiscountStrategy second = Mockito.mock(DiscountStrategy.class, "second");
-            final Map<DiscountType, DiscountStrategy> map = new EnumMap<>(DiscountType.class);
-            map.put(DiscountType.BLACK_FRIDAY, first);
-            map.put(DiscountType.BLACK_FRIDAY, second);
+            final Map<DiscountCalculationType, DiscountStrategy> map = new EnumMap<>(DiscountCalculationType.class);
+            map.put(DiscountCalculationType.PERCENTAGE, first);
+            map.put(DiscountCalculationType.PERCENTAGE, second);
 
             final DiscountStrategyFactory factory = new DiscountStrategyFactory(map);
 
-            assertThat(factory.getStrategy(DiscountType.BLACK_FRIDAY)).isSameAs(second);
-            assertThat(factory.getStrategy(DiscountType.BLACK_FRIDAY)).isNotSameAs(first);
+            assertThat(factory.getStrategy(DiscountCalculationType.PERCENTAGE)).isSameAs(second);
+            assertThat(factory.getStrategy(DiscountCalculationType.PERCENTAGE)).isNotSameAs(first);
         }
 
         @Test
         @DisplayName("Mutating the backing map after construction is visible (factory holds a reference)")
         void mutatingBackingMapIsVisibleByReference() {
-            final Map<DiscountType, DiscountStrategy> map = new EnumMap<>(DiscountType.class);
+            final Map<DiscountCalculationType, DiscountStrategy> map = new EnumMap<>(DiscountCalculationType.class);
             final DiscountStrategyFactory factory = new DiscountStrategyFactory(map);
-            assertThat(factory.getStrategy(DiscountType.BLACK_FRIDAY)).isNull();
+            assertThat(factory.getStrategy(DiscountCalculationType.PERCENTAGE)).isNull();
 
             final DiscountStrategy added = Mockito.mock(DiscountStrategy.class);
-            map.put(DiscountType.BLACK_FRIDAY, added);
-            assertThat(factory.getStrategy(DiscountType.BLACK_FRIDAY)).isSameAs(added);
+            map.put(DiscountCalculationType.PERCENTAGE, added);
+            assertThat(factory.getStrategy(DiscountCalculationType.PERCENTAGE)).isSameAs(added);
         }
     }
 }

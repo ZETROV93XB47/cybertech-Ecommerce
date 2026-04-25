@@ -84,12 +84,14 @@ public class AppConfig {
 
 
     @Bean
-    public Map<DiscountType, DiscountStrategy> discountStrategyMap(ApplicationContext context) {
-        Map<DiscountType, DiscountStrategy> map = new EnumMap<>(DiscountType.class);
+    public Map<DiscountCalculationType, DiscountStrategy> discountStrategyMap(ApplicationContext context) {
+        Map<DiscountCalculationType, DiscountStrategy> map = new EnumMap<>(DiscountCalculationType.class);
         context.getBeansOfType(DiscountStrategy.class).forEach((name, bean) -> {
             DiscountTypeHandler annotation = bean.getClass().getAnnotation(DiscountTypeHandler.class);
             if (annotation != null) {
-                map.put(annotation.value(), bean);
+                for (DiscountCalculationType calcType : annotation.value()) {
+                    map.put(calcType, bean);
+                }
             }
         });
         return map;

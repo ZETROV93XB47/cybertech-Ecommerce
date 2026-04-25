@@ -22,6 +22,8 @@ public class CyberTechAppConstants {
 
     public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/management/order";
 
+    public static final String DISCOUNT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/discounts";
+
     public static final String ORDER_SUMMARY_REPORT_JOB = "ORDER_SUMMARY_REPORT_JOB";
 
     public static final String NO_ORDERS_TO_CANCEL = "NO_ORDERS_TO_CANCEL";
