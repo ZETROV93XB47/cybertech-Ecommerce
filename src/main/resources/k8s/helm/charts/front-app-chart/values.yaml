@@ -1,0 +1,93 @@
+# ============================================================
+# CYBERTECH FRONT (Next.js standalone) — values
+# ============================================================
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+image:
+  repository: cybertech-front
+  tag: dev
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# ============================================================
+# RESOURCES
+# ============================================================
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# ============================================================
+# ENVIRONMENT (non-secret) — see Wave 7A frontend config.
+#   NEXT_PUBLIC_API_BASE: backend ingress host.
+#   AUTH_URL: NextAuth callback host (used by next-auth in prod).
+# ============================================================
+env:
+  NEXT_PUBLIC_API_BASE: "https://api.cybertech.local"
+  AUTH_URL: "https://cybertech.local"
+  NODE_ENV: "production"
+  PORT: "3000"
+  HOSTNAME: "0.0.0.0"
+
+# ============================================================
+# SECRETS — placeholders; in real deploys these come from Vault.
+# See `src/main/resources/k8s/helm/README.md` troubleshooting
+# section for the Vault wiring.
+# ============================================================
+secrets:
+  AUTH_SECRET: "dev-auth-secret-change-me"
+  AUTH_KEYCLOAK_ID: "cybertech-front-client"
+  AUTH_KEYCLOAK_SECRET: "dev-keycloak-front-secret-change-me"
+  AUTH_KEYCLOAK_ISSUER: "http://keycloak:8080/realms/cybertech"
+
+# ============================================================
+# PROBES
+# ============================================================
+probes:
+  liveness:
+    enabled: true
+    path: /
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    path: /
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# ============================================================
+# INGRESS — host -> Service.
+# TLS is intentionally OFF for the portfolio minikube setup.
+# Production would wire cert-manager + Let's Encrypt; documented
+# as future work in the README.
+# ============================================================
+ingress:
+  enabled: true
+  className: nginx
+  host: cybertech.local
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: false
+    secretName: ""
+
+# ============================================================
+# Pod scheduling knobs (left empty by default).
+# ============================================================
+nodeSelector: {}
+tolerations: []
+affinity: {}

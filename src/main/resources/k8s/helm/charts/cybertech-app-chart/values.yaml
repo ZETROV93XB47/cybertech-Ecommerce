@@ -133,6 +133,22 @@ frontend:
   url: "http://localhost:4200"
 
 # ============================================================
+# INGRESS — exposes the backend via nginx-ingress.
+# Host `api.cybertech.local` mapped to the minikube IP via /etc/hosts.
+# TLS is intentionally OFF for the portfolio minikube setup;
+# documented as future work in src/main/resources/k8s/helm/README.md.
+# ============================================================
+ingress:
+  enabled: true
+  className: nginx
+  host: api.cybertech.local
+  path: /api/
+  pathType: Prefix
+  tls:
+    enabled: false
+    secretName: ""
+
+# ============================================================
 # SPRING BOOT CONFIGURATION
 # ============================================================
 spring:
