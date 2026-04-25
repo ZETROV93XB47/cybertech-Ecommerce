@@ -20,8 +20,8 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 
 **Status:**
 - **Wave 1 COMPLETE** — 14 Tier-1 fixes landed, 1645 tests pass.
-- **Wave 2 COMPLETE** — 14 Tier-2 fixes landed across 6 parallel subagents, **1647 tests pass, 0 failures, 0 errors, 18 skipped**, `BUILD SUCCESS`.
-- **Wave 3 NEXT** — final backend hardening (integration tests, JaCoCo gate, regression sweep).
+- **Wave 2 COMPLETE** — 14 Tier-2 fixes landed across 6 parallel subagents, 1647 tests pass.
+- **Wave 3 IN FLIGHT** — IT suite running in background; regression-review agent dispatched in parallel.
 
 | Wave | Agent | Scope | Status | Commit |
 |------|-------|-------|--------|--------|
@@ -35,6 +35,11 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 | 2 | H | Cross-system consistency (Keycloak/DB transaction split, new `UserPersistenceService`) | DONE | `59ea6b6` |
 | 2 | I | DTO validation hardening (5 request DTOs + their fixtures/tests) | DONE | `cbd4353` |
 | 2 | J | N+1 elimination in `ReviewManagementServiceImp` (JOIN FETCH + boolean repo query) | DONE | `a66db6a` |
+| 3 | K | 4 regression-review fixes (admin bypass on `getOrderByUuid`, `registerAuto` shape, `ShipOrderTransactionalDelegate`, Redis allowlist) | DONE | `44fb0b9` |
+| 3 | L1 | `CartFlowIT` IT triage (concurrentAdds BUG-160 + deleteByUuid) | DISPATCHED | — |
+| 3 | L2 | `OrderFlowIT` IT triage (4 failures: 3× place-order body + lazy-init) | DISPATCHED | — |
+| 3 | L3 | `PaymentWebhookFlowIT` IT triage (7 failures: Stripe signature + dedup) | DISPATCHED | — |
+| 3 | L4 | `UserRegistrationFlowIT` IT triage (registerAuto shape + register persistence + actuator) | DISPATCHED | — |
 | — | Orchestrator | Aggregate + full-suite verification per wave | ONGOING | n/a |
 
 **Wave 1 verification:** `./mvnw test -DskipITs` → 1645 / 1645 pass (18 skipped pre-existing bug-pin).
@@ -76,10 +81,34 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 - [x] **J1** `OrderRepository.findReviewableOrdersWithItemsByKeycloakIdAndStatusIn` (JOIN FETCH on `orderItemEntities` + `productEntity`); old N+1 method removed (no other callers)
 - [x] **J2** `OrderItemRepository.userHasBoughtProduct(keycloakId, productUuid)` boolean query; `ReviewManagementServiceImp.checkIfUserAlreadyBoughtThisProduct` no longer iterates lazy graphs
 
-### Wave 3 — Final backend hardening (NEXT)
-- [ ] Re-run full audit on the changed surfaces, fix any regressions
-- [ ] Run integration-test suite (`./mvnw verify -P integration-test`) and resolve any IT failures introduced by Wave 1+2
-- [ ] Verify JaCoCo gate (80% line + branch) is still met
+### Wave 3 — Final backend hardening (IN FLIGHT)
+
+**Regression review findings (HIGH/MEDIUM confidence) — to fix in Agent K:**
+- [ ] **K1** `OrderManagementController.getOrderByUuid` — restore admin access. Currently `@PreAuthorize("hasRole('USER')")` only; admins lost the ability to fetch orders by UUID. Fix: change to `"hasRole('USER') or hasRole('ADMIN')"` AND add admin bypass in `OrderManagementServiceImp.getByUUID(UUID, String)` (mirror `UserManagementController.isAdmin()`).
+- [ ] **K2** `UserResponseDto.@JsonIgnore` on `keycloakId` breaks `POST /register/auto/single` admin endpoint. `registerAuto()` returns the DTO directly (not a `Map.of(...)`), so `keycloakId` is suppressed. Fix: switch `registerAuto()` to return `Map.of("id", uuid, "keycloakId", kid, ...)` consistent with `register`, OR introduce a dedicated `RegistrationResponseDto` without `@JsonIgnore`.
+- [ ] **K3** `ShipAllPaidOrdersTasklet.execute()` outer `@Transactional` defeats per-order optimistic-lock catch. The exception escapes the per-order try/catch because the flush happens at end-of-method. Fix: extract `processShipping(order)` into a delegate `@Service` annotated `@Transactional(propagation = REQUIRES_NEW)` (analogous to `UserPersistenceService`). Each order gets its own session+flush so the lock exception is raised and caught per-order, not on outer commit.
+- [ ] **K4** `RedisConfig` `BasicPolymorphicTypeValidator.allowIfBaseType(Object.class)` is over-broad. A future cache-poisoning attacker could craft `@class` headers and trigger gadget-chain RCE. Fix: enumerate concrete cached types (`allowIfSubType(CartResponseDto.class)`, `allowIfSubType(DiscountContext.class)`, `allowIfSubType(Boolean.class)`, etc.) — confirm by `Grep`-ing for `@Cacheable` and `cartCacheHelper` usages.
+
+**Pre-existing issue noted (NOT introduced by Wave 1/2, scheduled for Wave 3 follow-up):**
+- [ ] `OrderEntity.orderItemEntities` has `CascadeType.ALL` but no `orphanRemoval = true`. `OrderManagementServiceImp.updateOrder` calls `order.getOrderItemEntities().clear()`; without `orphanRemoval`, the old rows become orphaned (FK still set, no DELETE). Add `orphanRemoval = true` to the `@OneToMany` annotation on `OrderEntity`.
+
+**Wave 3 verification result:** `./mvnw verify -Pintegration-test` exited 1.
+- All 1647 unit tests still green.
+- JaCoCo `report` and `check` ran cleanly (gate appears to have passed; build failed downstream at failsafe verify).
+- Failsafe reported **5 IT failures + 1 IT error**:
+  - `CartFlowIT.concurrentAddsFromTwoThreadsShouldSumNotRace` (FAILURE — `expected: 4 but was: 2`, suggests cache double-write removal in Agent E broke concurrent add accumulation)
+  - `CartFlowIT.deleteByCartUuidBindsPathVariable` (FAILURE — `Expecting value to be false but was true`, possibly related to `@Modifying` derived-delete change in Agent G)
+  - `OrderFlowIT.happyPathPlaceOrderDecrementsStockAndPublishesEvent` (FAILURE — assertion mismatch)
+  - `OrderFlowIT.cancelOrderRestoresStockAndMovesStatusToCanceled` (FAILURE — likely related to Wave 1 B `cancelOrder` stock-release change)
+  - `OrderFlowIT.retryPaymentAfterInitialFailureEventuallyPays` (FAILURE — `expected: PAID but was: AWAITING_PAYMENT`, Stripe webhook listener not flipping the status)
+  - `OrderFlowIT.addsToCartForAuthenticatedUser` (ERROR — JSON parse error in `ReviewCrudController.createReview`; likely the test still sends a `userUuid` field that was removed by Agent I)
+- Pre-existing Stripe noise (`SignatureVerificationException`) appears in several test runs but is also visible against `master` baseline — not a Wave 1/2 regression.
+
+**Wave 3 follow-ups (after Agent K finishes the 4 regression-review fixes):**
+- [ ] **L1** Triage `CartFlowIT.concurrentAddsFromTwoThreadsShouldSumNotRace` — investigate whether removing Spring `@CachePut` exposed a missing read-modify-write lock in `CartServiceImp.addItemsToCart`. Likely fix: ensure `cartCacheHelper.putWithJitter` is called inside the same DB transaction OR re-read the cart from DB before the put. May need a redis distributed lock if the test exercises real concurrency.
+- [ ] **L2** Triage `CartFlowIT.deleteByCartUuidBindsPathVariable` — the `@Modifying` change in Agent G means the delete now runs as a single DELETE; some test environments don't have an outer TX. Verify the controller call path opens a TX (`@Transactional` on the service or the controller method).
+- [ ] **L3** Triage `OrderFlowIT` 3 assertion failures + 1 error. The error (`addsToCartForAuthenticatedUser`) is likely a stale test JSON body still sending `userUuid: null` post-Agent-I. The 3 assertion failures need stack traces from `target/failsafe-reports/` to pin the exact root cause.
+- [ ] Verify JaCoCo gate explicitly: `./mvnw jacoco:check` after fixes land
 
 ### Wave 4 — Swagger / OpenAPI doc (after Wave 3)
 - [ ] Verify all controllers have full `@Operation` / `@ApiResponse` annotations on the spec interfaces
