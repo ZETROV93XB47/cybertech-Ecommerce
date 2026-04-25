@@ -21,8 +21,10 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 **Status:**
 - **Wave 1 COMPLETE** — 14 Tier-1 fixes landed, 1645 tests pass.
 - **Wave 2 COMPLETE** — 14 Tier-2 fixes landed across 6 parallel subagents, 1647 tests pass.
-- **Wave 3 COMPLETE** — 4 regression-review fixes (Agent K) + 4 IT triage agents (L1–L4) + 2 deep root-cause agents (M1–M2). **1681 unit tests pass, 51 IT tests pass, 1 IT skipped (BUG-160 schema fix needed). `BUILD SUCCESS`.**
-- **Wave 4 NEXT** — Swagger / OpenAPI doc generation.
+- **Wave 3 COMPLETE** — 4 regression-review fixes (Agent K) + 4 IT triage agents (L1–L4) + 2 deep root-cause agents (M1–M2). 1681 unit tests pass, 51 IT tests pass, 1 IT skipped (BUG-160).
+- **Wave 4 COMPLETE** — 10 of 12 `*ApiSpec` interfaces enriched (`@Tag`, `@ApiResponse` 401/403/404 etc.); `OpenApiConfig` bean with `keycloak` security scheme; springdoc plugin wired `skip=true`; handcrafted `docs/openapi/openapi.yaml` covering all controllers.
+- **Wave 5 COMPLETE** — 58 requests across 11 domain folders in the Postman collection; Keycloak realm + client_id auto-discovered from properties; pre-request token-refresh script; environment file + README under `docs/postman/`.
+- **Wave 6 NEXT** — Frontend Tier-3 bugs (`OrderStatus` type alignment, `RefreshTokenError` redirect wiring) — only after backend is fully sealed. Backend IS sealed.
 
 | Wave | Agent | Scope | Status | Commit |
 |------|-------|-------|--------|--------|
@@ -43,7 +45,9 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 | 3 | L4 | `UserRegistrationFlowIT` triage — fixed `registerAuto` JSON-shape assertions, Keycloak stub, BankCard default; disabled ES health check; flagged `/actuator/**` security gap | DONE | `90d4b1a` |
 | 3 | M1 | `PaymentWebhookFlowIT` deep root cause — Stripe SDK 31.4.0 API_VERSION mismatch (`2026-02-25.clover` vs fixtures' `2024-04-10`) made `getObject()` return empty Optional, swallowed by BUG-2501 catch-all. Fix: fall back to `deserializeUnsafe()`. **All 11 IT pass** | DONE | `04ea74b` |
 | 3 | M2 | `OrderFlowIT.cancelOrder` race — async `@TransactionalEventListener(AFTER_COMMIT)` listener bumps `@Version` on a separate thread, conflicting with the cancel TX. Fix: 3-attempt retry loop with fresh fetch and idempotency short-circuit if already `CANCELED` | DONE | `8ca6f57` |
-| — | Orchestrator | Aggregate + full-suite verification per wave | DONE Wave 1+2+3 | n/a |
+| 4 | N | OpenAPI: 10 specs enriched, `OpenApiConfig` bean, springdoc plugin wired `skip=true`, handcrafted `docs/openapi/openapi.yaml` | DONE | `6ab1552` |
+| 5 | O | Postman: 58 requests / 11 folders, Keycloak auto-token script, env file, README under `docs/postman/` | DONE | `3a244fb` |
+| — | Orchestrator | Aggregate + full-suite verification per wave | DONE Wave 1–5 | n/a |
 
 **Wave 1 verification:** `./mvnw test -DskipITs` → 1645 / 1645 pass (18 skipped pre-existing bug-pin).
 **Wave 2 verification:** `./mvnw test -DskipITs` → **1647 / 1647 pass**, 18 skipped, EXIT 0, `BUILD SUCCESS`. Net +2 tests (Agent H added 4 `UserPersistenceServiceTest` tests; some review/order tests were renamed/consolidated, leaving +2 net).
@@ -114,6 +118,13 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 - [ ] **PRE-5** No `integration-test` Maven profile in `pom.xml` — `-Pintegration-test` is silently ignored. Failsafe runs unconditionally on `verify`. Either delete the `-P integration-test` invocations from CI/docs or add the profile to gate IT runs.
 - [ ] **PRE-6** Elasticsearch client/server version mismatch — 8.x client on 7.17.10 server cannot decode cluster-health responses. Either upgrade ES to 8.x in `TestcontainersConfiguration` or downgrade the client.
 
+**Wave 4 follow-ups (orphans / cosmetic — found by Agent N):**
+- [ ] **PRE-7** `RegistrationControllerApiSpec.java` is orphaned — no controller implements it; the actual `register` endpoint is on `UserManagementController`. Either delete the orphan spec or wire it.
+- [ ] **PRE-8** `DiscountController` and `DiscountAdminController` have no spec interface — annotations live inline on the controllers (only `@Tag`, no per-endpoint `@Operation`/`@ApiResponse`). Extract them into `*ApiSpec` interfaces for consistency with the rest of the codebase.
+- [ ] **PRE-9** `OrderManagementController.getOrderStatusByUuid` (`/status/{uuid}`) and `placeOrder2` (`/place/auto`) are missing from `OrderManagementControllerApiSpec`. Add their declarations.
+- [ ] **PRE-10** Cosmetic: `@Tag(name = " CartController", ...)`, `@Tag(name = " OrderManagementController", ...)`, `@Tag(name = " BankCardManagementController", ...)` have a leading space. Trim them.
+- [ ] **PRE-11** Two scheme names coexist: existing specs use `@SecurityRequirement(name = "bearerAuth")` while `OpenApiConfig` registers `keycloak`. Normalize to one.
+
 ### Wave 4 — Swagger / OpenAPI doc (after Wave 3)
 - [ ] Verify all controllers have full `@Operation` / `@ApiResponse` annotations on the spec interfaces
 - [ ] Ensure error responses (404, 403, 409, 401) are documented per endpoint
@@ -125,7 +136,19 @@ The frontend bugs identified in the original review are deferred to Wave 6 by us
 - [ ] Include an environment file (`{{base_url}}`, `{{access_token}}`) and a pre-request auth script for Keycloak
 - [ ] Commit under `docs/postman/`
 
-### Wave 6 — Frontend (after backend is sealed)
+### Wave 4 — Swagger / OpenAPI doc (DONE)
+- [x] Audit 12 `*ApiSpec` interfaces; 10 modified with `@Tag` + `@ApiResponse` (401/403/404 etc.)
+- [x] Add `OpenApiConfig` bean with `keycloak` bearer-JWT security scheme + global metadata
+- [x] Wire `springdoc-openapi-maven-plugin` (`skip=true`) for opt-in `mvn springdoc-openapi:generate -Dskip=false`
+- [x] Commit `docs/openapi/openapi.yaml` (handcrafted fallback covering all 12 specs + DiscountController + DiscountAdminController)
+
+### Wave 5 — Postman collection (DONE)
+- [x] `docs/postman/Cybertech-API.postman_collection.json` — 58 requests across 11 folders (auth/user/product/cart/order/review/bank-card/wishlist/discount/events/webhook)
+- [x] `docs/postman/Cybertech-API.postman_environment.json` — local env (port 8081, realm `cybertech`, client `cybertech-user-management-client`)
+- [x] Pre-request script auto-refreshes JWT via Keycloak token endpoint; caches until expiry
+- [x] `docs/postman/README.md` — import + credentials + quick-start workflow
+
+### Wave 6 — Frontend (NEXT)
 - [ ] Align frontend `OrderStatus` type with backend (`CANCELED` spelling + missing `AWAITING_PAYMENT`/`AWAITING_SHIPPING`/`RETURNED`/`REFUNDED`)
 - [ ] Wire `RefreshTokenError` to redirect to sign-in in `proxy.ts` / `apiFetch`
 
