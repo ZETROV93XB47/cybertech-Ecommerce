@@ -32,7 +32,7 @@ public interface OrderManagementControllerApiSpec {
                     shipping address, and payment type.
                     Requires a valid JWT token in the Authorization header (Bearer token).
                     """,
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @RequestBody(
                     description = "Order creation data for the currently authenticated user.",
                     required = true,
@@ -59,7 +59,7 @@ public interface OrderManagementControllerApiSpec {
                     The operation is allowed only if the order belongs to the authenticated user and is in a cancellable state.
                     Requires a valid JWT token in the Authorization header (Bearer token).
                     """,
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Order cancelled successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),
                     @ApiResponse(responseCode = "400", description = "Invalid order UUID or order cannot be cancelled", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
@@ -80,7 +80,7 @@ public interface OrderManagementControllerApiSpec {
             description = """
                     Updates an existing order's details based on their unique UUID. Fields not provided will not be updated.
                     """,
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @RequestBody(
                     description = "Order data for update. Only provide fields that need to be changed.",
                     required = true,
@@ -107,7 +107,7 @@ public interface OrderManagementControllerApiSpec {
     @Operation(
             summary = "Retry payment for a failed order",
             description = "Retries the payment process for an order that is in PAYMENT_FAILED status. Checks stock availability before proceeding.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "uuid", description = "The UUID of the order to retry payment for", required = true, schema = @Schema(implementation = UUID.class))
             },
@@ -142,7 +142,7 @@ public interface OrderManagementControllerApiSpec {
 
     @Operation(summary = "Get the current status of an order by UUID",
             description = "Lightweight status read for the order-confirmation polling loop after a Stripe payment. Ownership-checked at the service layer.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "uuid", description = "UUID of the order to read status for", required = true, schema = @Schema(implementation = UUID.class))
             },
@@ -157,7 +157,7 @@ public interface OrderManagementControllerApiSpec {
 
     @Operation(summary = "Place an auto-generated order (admin debug helper)",
             description = "Admin-only debug / load-test utility that forges an order from synthetic cart data via the data generator. Restricted to ADMIN to avoid letting any authenticated user spam orders against another's cart state (BUG-IDOR-D4).",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "201", description = "Auto-generated order placed successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
@@ -169,7 +169,7 @@ public interface OrderManagementControllerApiSpec {
 
     @Operation(summary = "Delete a Order by UUID",
             description = "Deletes a order based on their unique UUID.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "uuid", description = "The UUID of the order to delete", required = true, schema = @Schema(implementation = UUID.class))
             },

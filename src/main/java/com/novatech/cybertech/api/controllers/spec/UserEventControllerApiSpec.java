@@ -22,7 +22,7 @@ public interface UserEventControllerApiSpec {
 
     @Operation(summary = "Ingest a user event",
             description = "Receives user events (click, view, purchase) for recommendation engine.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserEventDto.class))),
             responses = {
                     @ApiResponse(responseCode = "201", description = "Event accepted", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserEvent.class))),

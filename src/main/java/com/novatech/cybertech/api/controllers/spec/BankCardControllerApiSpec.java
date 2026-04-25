@@ -29,7 +29,7 @@ public interface BankCardControllerApiSpec {
 
     @Operation(summary = "Add a bank card to current user",
             description = "Adds a new bank card for the authenticated user. User can only have one card.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardCreationRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "201", description = "Bank card added successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
@@ -41,7 +41,7 @@ public interface BankCardControllerApiSpec {
 
     @Operation(summary = "Delete current user's bank card",
             description = "Deletes the bank card associated with the authenticated user.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "204", description = "Bank card deleted successfully"),
                     @ApiResponse(responseCode = "404", description = "Bank card not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
@@ -51,7 +51,7 @@ public interface BankCardControllerApiSpec {
 
     @Operation(summary = "Update current user's bank card",
             description = "Updates the bank card details for the authenticated user.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardUpdateRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Bank card updated successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
@@ -106,7 +106,7 @@ public interface BankCardControllerApiSpec {
 
     @Operation(summary = "Set a bank card as the caller's default",
             description = "Marks the specified card as the authenticated user's default card, clearing any previous default. Enforces ownership via the JWT subject.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             parameters = {@Parameter(name = "cardUuid", description = "UUID of the card to promote to default")},
             responses = {
                     @ApiResponse(responseCode = "204", description = "Default card updated"),
@@ -118,7 +118,7 @@ public interface BankCardControllerApiSpec {
 
     @Operation(summary = "Get the caller's default bank card",
             description = "Returns the authenticated user's default card as a masked response DTO (no PAN is exposed).",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Default card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "No default bank card set", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),

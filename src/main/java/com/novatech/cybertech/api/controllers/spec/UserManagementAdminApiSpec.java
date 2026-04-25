@@ -27,7 +27,7 @@ public interface UserManagementAdminApiSpec {
 
     @Operation(summary = "Get all Users (Admin)",
             description = "Fetches all users registered in the system.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Users found successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = UserResponseDto.class)))),
@@ -42,7 +42,7 @@ public interface UserManagementAdminApiSpec {
 
     @Operation(summary = "Create a new User (Admin)",
             description = "Registers a new user in the system via Admin console.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "User data for creation.",
                     required = true,
@@ -66,7 +66,7 @@ public interface UserManagementAdminApiSpec {
 
     @Operation(summary = "Update an existing User by UUID (Admin)",
             description = "Updates an existing user's details based on their unique UUID.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "User data for update.", required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserUpdateRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "200", description = "User updated successfully",
@@ -86,7 +86,7 @@ public interface UserManagementAdminApiSpec {
 
     @Operation(summary = "Delete a User by UUID (Admin)",
             description = "Deletes a user based on their unique UUID.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "userUuid", description = "The UUID of the user to delete", required = true, schema = @Schema(implementation = UUID.class))
             },
@@ -107,7 +107,7 @@ public interface UserManagementAdminApiSpec {
 
     @Operation(summary = "Generate Users Automatically (Admin/Dev)",
             description = "Generates a batch of users for testing.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "201", description = "Users generated successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = UserResponseDto.class)))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",

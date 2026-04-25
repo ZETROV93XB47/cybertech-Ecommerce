@@ -28,7 +28,7 @@ public interface ProductManagementAdminApiSpec {
 
     @Operation(summary = "Get all Products (Admin)",
             description = "Fetches all products in the system.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Products found successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = ProductResponseDto.class)))),
@@ -43,7 +43,7 @@ public interface ProductManagementAdminApiSpec {
 
     @Operation(summary = "Create a new Product (Admin)",
             description = "Registers a new Product in the system.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Product data for creation. All fields are mandatory",
                     required = true,
@@ -65,7 +65,7 @@ public interface ProductManagementAdminApiSpec {
 
     @Operation(summary = "Update an existing Product by UUID (Admin)",
             description = "Updates an existing product's details based on their unique UUID. Fields not provided will not be updated.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Product data for update. Only provide fields that need to be changed.", required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductUpdateRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Product updated successfully",
@@ -85,7 +85,7 @@ public interface ProductManagementAdminApiSpec {
 
     @Operation(summary = "Delete a Product by UUID (Admin)",
             description = "Deletes a product based on their unique UUID.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "productUuid", description = "The UUID of the product to delete", required = true, schema = @Schema(implementation = UUID.class))
             },
@@ -107,7 +107,7 @@ public interface ProductManagementAdminApiSpec {
 
     @Operation(summary = "Create a new Product with an image (Admin)",
             description = "Creates a new product and uploads an associated image. Requires multipart/form-data.",
-            security = @SecurityRequirement(name = "bearerAuth"),
+            security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "201", description = "Product created successfully",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductResponseDto.class))),
