@@ -1,10 +1,10 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
+import com.novatech.cybertech.api.controllers.spec.DiscountAdminControllerApiSpec;
 import com.novatech.cybertech.dto.request.admin.DiscountCampaignUpdateRequestDto;
 import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
 import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.services.core.DiscountCampaignAdminService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,22 +26,25 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 /**
  * Admin-only back-office for discount campaigns. PATCH writes flush the runtime cache,
  * so the next price calculation picks up the new state without redeploy.
+ *
+ * <p>OpenAPI documentation lives on {@link DiscountAdminControllerApiSpec}.
  */
 @Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = DISCOUNT_ADMIN_CONTROLLER_BASE_PATH)
-@Tag(name = "DiscountAdminController", description = "Admin: list and update discount campaigns")
-public class DiscountAdminController {
+public class DiscountAdminController implements DiscountAdminControllerApiSpec {
 
     private final DiscountCampaignAdminService discountCampaignAdminService;
 
+    @Override
     @GetMapping(produces = APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<DiscountCampaignResponseDto>> getAll() {
         return ResponseEntity.ok(discountCampaignAdminService.getAll());
     }
 
+    @Override
     @GetMapping(value = "/{discountType}", produces = APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DiscountCampaignResponseDto> getByDiscountType(
@@ -49,6 +52,7 @@ public class DiscountAdminController {
         return ResponseEntity.ok(discountCampaignAdminService.getByDiscountType(discountType));
     }
 
+    @Override
     @PatchMapping(value = "/{discountType}", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DiscountCampaignResponseDto> update(

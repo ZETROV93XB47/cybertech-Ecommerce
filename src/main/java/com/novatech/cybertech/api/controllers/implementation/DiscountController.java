@@ -1,8 +1,8 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
+import com.novatech.cybertech.api.controllers.spec.DiscountControllerApiSpec;
 import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.services.core.DiscountCampaignService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -24,13 +24,14 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  * {@code /api/v1/services/discounts/**} — anonymous browsing of promos is desired marketing
  * behaviour. The admin-side mutation surface lives at
  * {@code /api/v1/services/admin/discounts} and is ROLE_ADMIN.
+ *
+ * <p>OpenAPI documentation lives on {@link DiscountControllerApiSpec}.
  */
 @Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = DISCOUNT_PUBLIC_CONTROLLER_BASE_PATH)
-@Tag(name = "DiscountController", description = "Public: list currently-active discount campaigns")
-public class DiscountController {
+public class DiscountController implements DiscountControllerApiSpec {
 
     private final DiscountCampaignService discountCampaignService;
 
@@ -39,6 +40,7 @@ public class DiscountController {
      * {@code [startsAt, endsAt]} window at request time. The frontend uses this to populate
      * the discount picker on the checkout screen.
      */
+    @Override
     @GetMapping(value = "/active", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<List<DiscountContext>> getActiveCampaigns() {
         return ResponseEntity.ok(discountCampaignService.getAllActiveCampaigns());
