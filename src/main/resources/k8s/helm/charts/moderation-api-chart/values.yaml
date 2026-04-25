@@ -1,3 +1,32 @@
 moderationApi:
   image: moderation-api:v1
   port: 5000
+
+  # Liveness/readiness probes.
+  # The Flask moderation app (api/external/moderation/app.py) only exposes
+  # /api/v1/moderation/analyze (POST). There is no GET /health endpoint, so
+  # we default to a TCP socket probe on the app port. To switch to an HTTP
+  # probe later (e.g. once a /health endpoint is added), set
+  # probes.type: http and probes.httpPath: /health.
+  probes:
+    enabled: true
+    type: tcp           # tcp | http
+    httpPath: /health
+    liveness:
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

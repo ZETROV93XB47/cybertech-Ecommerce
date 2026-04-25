@@ -18,3 +18,35 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: {{ .Values.moderationApi.port }}
+          {{- with .Values.moderationApi.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.moderationApi.probes.enabled }}
+          livenessProbe:
+            {{- if eq .Values.moderationApi.probes.type "http" }}
+            httpGet:
+              path: {{ .Values.moderationApi.probes.httpPath }}
+              port: {{ .Values.moderationApi.port }}
+            {{- else }}
+            tcpSocket:
+              port: {{ .Values.moderationApi.port }}
+            {{- end }}
+            initialDelaySeconds: {{ .Values.moderationApi.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.moderationApi.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.moderationApi.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.moderationApi.probes.liveness.failureThreshold }}
+          readinessProbe:
+            {{- if eq .Values.moderationApi.probes.type "http" }}
+            httpGet:
+              path: {{ .Values.moderationApi.probes.httpPath }}
+              port: {{ .Values.moderationApi.port }}
+            {{- else }}
+            tcpSocket:
+              port: {{ .Values.moderationApi.port }}
+            {{- end }}
+            initialDelaySeconds: {{ .Values.moderationApi.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.moderationApi.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.moderationApi.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.moderationApi.probes.readiness.failureThreshold }}
+          {{- end }}

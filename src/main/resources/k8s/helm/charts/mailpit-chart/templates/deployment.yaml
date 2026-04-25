@@ -24,6 +24,28 @@ spec:
           volumeMounts:
             - name: mailpit-data
               mountPath: /data
+          {{- with .Values.mailpit.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.mailpit.probes.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.mailpit.probes.httpPath }}
+              port: {{ .Values.mailpit.webPort }}
+            initialDelaySeconds: {{ .Values.mailpit.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.mailpit.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.mailpit.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.mailpit.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.mailpit.probes.httpPath }}
+              port: {{ .Values.mailpit.webPort }}
+            initialDelaySeconds: {{ .Values.mailpit.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.mailpit.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.mailpit.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.mailpit.probes.readiness.failureThreshold }}
+          {{- end }}
       volumes:
         - name: mailpit-data
           persistentVolumeClaim:
