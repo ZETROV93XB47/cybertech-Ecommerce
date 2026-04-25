@@ -107,13 +107,14 @@ cd src/main/resources/k8s/helm
 helmfile apply
 ```
 
-This rolls out 5 layers in dependency order:
+This rolls out 6 layers in dependency order:
 
 1. **vault** — secrets store (dev mode, root token).
 2. **mysql, mongodb, redis, elasticsearch** — stateful infra (PVCs).
 3. **keycloak, localstack, mailpit, moderation-api, stripe** — services that consume layer 2.
 4. **cybertech-app** — backend (waits on every layer-2/3 release).
 5. **front-app** — Next.js frontend (waits on `cybertech-app`).
+6. **prometheus, loki, tempo, grafana** — observability stack (Grafana waits on the three backends).
 
 Watch progress:
 
@@ -150,6 +151,121 @@ Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 > local play), set `ingress.tls.enabled=true` on both `cybertech-app-chart`
 > and `front-app-chart`, point `ingress.tls.secretName` at the cert, and
 > add a `redirect-http-to-https` annotation. Out of scope for this runbook.
+
+## 7b. Observability (Prometheus + Loki + Tempo + Grafana)
+
+Layer 6 ships a self-hosted observability stack — metrics, logs, traces and a
+Grafana UI on top. None of it is required to run the app; the backend just
+pushes to it when it is up. Single-replica each, no HA, small PVCs — strictly
+portfolio-grade.
+
+### Reach Grafana
+
+Either via the ingress (preferred):
+
+```bash
+minikube ip
+# append to /etc/hosts (Windows: C:\Windows\System32\drivers\etc\hosts):
+# <minikube-ip>  grafana.cybertech.local
+```
+
+Then open <http://grafana.cybertech.local/>.
+
+Or via a port-forward (no /etc/hosts change required):
+
+```bash
+kubectl port-forward svc/grafana 3000:3000
+# open http://localhost:3000/
+```
+
+### Login
+
+Default: `admin` / `admin`. Stored in the `grafana-admin` Secret.
+**REPLACE in real deploys via Vault** — the comment in
+`charts/grafana-chart/templates/secret.yaml` flags the swap-out path
+(Vault Agent injection of `/vault/secrets/grafana-admin`).
+
+### Pre-provisioned datasources
+
+All three backends auto-load on first boot via Grafana's file-based
+provisioning (see `charts/grafana-chart/templates/datasources-configmap.yaml`):
+
+| Datasource   | UID          | URL (in-cluster)        |
+|--------------|--------------|-------------------------|
+| Prometheus   | `prometheus` | `http://prometheus:9090` |
+| Loki         | `loki`       | `http://loki:3100`       |
+| Tempo        | `tempo`      | `http://tempo:3200`      |
+
+Tempo is wired to Loki + Prometheus (`tracesToLogsV2`, `tracesToMetrics`,
+`serviceMap`, `nodeGraph`), so a span page links straight back into the
+matching logs and span-derived metrics. Loki has a `derivedFields` rule
+that turns any `traceId` JSON field into a clickable Tempo link.
+
+### Dashboards
+
+Four skeleton dashboards ship as JSON in
+`charts/grafana-chart/dashboards/` and are mounted into Grafana via a
+ConfigMap. The dashboards provider (`folder: Cybertech`) picks them up
+automatically. Edit the JSON, re-run `helmfile apply`, refresh.
+
+| Dashboard UID                 | Shows                                                                |
+|-------------------------------|----------------------------------------------------------------------|
+| `cybertech-overview`          | Orders/sec, payment success rate, request rate, 5xx rate, JVM heap   |
+| `cybertech-jvm`               | Heap used vs max, GC time, threads (live/daemon), classes loaded     |
+| `cybertech-stripe-webhooks`   | Webhook 4xx/5xx, dedup ledger size, signature failures, events by type |
+| `cybertech-traces-overview`   | RED metrics from Tempo span-metrics + recent traces for `cybertech-app` |
+
+### Querying Loki for backend logs
+
+In Grafana → Explore → Loki:
+
+```logql
+{app="cybertech-app"}
+```
+
+Common filters once the backend ships JSON logs:
+
+```logql
+{app="cybertech-app"} |= "ERROR"
+{app="cybertech-app"} | json | level="ERROR"
+{app="cybertech-app"} | json | traceId="<your-trace-id>"
+```
+
+(The parallel agent wires Spring Boot to logstash-logback-encoder + a log
+shipper. This chart only stands up the Loki backend.)
+
+### Finding a trace in Tempo
+
+Cybertech-app responses include the trace ID as a header (e.g.
+`X-Trace-Id: 4bf92f3577b34da6a3ce929d0e0e4736`). To inspect that trace:
+
+1. Grafana → Explore → Tempo datasource.
+2. Switch query type to **TraceQL** (or **Search**).
+3. Paste the trace ID into the Trace ID field, or run:
+
+   ```
+   { trace:id="4bf92f3577b34da6a3ce929d0e0e4736" }
+   ```
+
+4. Click any span → "Logs for this span" jumps into Loki via the
+   provisioned `tracesToLogsV2` link. "Metrics" jumps into the matching
+   span-metrics in Prometheus.
+
+### Alert rules — what is and is not wired
+
+`charts/prometheus-chart/templates/rules-configmap.yaml` ships skeleton
+rules: 5xx rate > 1% over 5m, JVM heap > 85% over 10m, payment success
+rate < 95% over 15m, Stripe webhook failures > 5/min. They are evaluated
+by Prometheus and visible in its UI but **no Alertmanager is deployed** —
+pages, Slack messages and PagerDuty are intentionally out of scope.
+For a real deploy: add an `alertmanager-chart`, point Prometheus'
+`alerting.alertmanagers` at it, and wire the receivers there. Grafana
+OnCall is also intentionally not deployed (no real paging on minikube).
+
+### Persistence
+
+Prometheus 1Gi, Loki 5Gi, Tempo 5Gi PVCs. Wipe with the usual
+`kubectl delete pvc --all`.
 
 ## 8. Troubleshooting
 

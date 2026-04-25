@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  labels:
+    app: tempo
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9096
+      log_level: info
+
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+    ingester:
+      max_block_duration: 5m
+      trace_idle_period: 30s
+
+    compactor:
+      compaction:
+        block_retention: {{ .Values.retentionHours }}h
+        compacted_block_retention: 1h
+
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/blocks
+        wal:
+          path: /var/tempo/wal
+
+    metrics_generator:
+      registry:
+        external_labels:
+          source: tempo
+          cluster: cybertech-minikube
+      storage:
+        path: /var/tempo/generator/wal
+
+    overrides:
+      defaults:
+        metrics_generator:
+          processors: [service-graphs, span-metrics]
+
+    usage_report:
+      reporting_enabled: false

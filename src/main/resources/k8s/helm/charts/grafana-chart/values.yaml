@@ -1,0 +1,75 @@
+# ============================================================
+# GRAFANA — visualisation + alerting UI for the observability stack.
+# Datasources for Prometheus, Loki, Tempo are auto-provisioned via the
+# files-based provisioning model (config/provisioning/{datasources,
+# dashboards}/*.yaml). 4 skeleton dashboards ship as a ConfigMap mounted
+# under /var/lib/grafana/dashboards.
+# Admin credentials live in a Secret — REPLACE in real deploy via Vault.
+# ============================================================
+
+image:
+  repository: grafana/grafana
+  tag: 11.2.2
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# In-cluster datasource hostnames. Match the Service names of the other
+# Layer 6 charts.
+datasources:
+  prometheus:
+    name: Prometheus
+    url: http://prometheus:9090
+    default: true
+  loki:
+    name: Loki
+    url: http://loki:3100
+  tempo:
+    name: Tempo
+    url: http://tempo:3200
+
+# Admin bootstrap. Hardcoded for portfolio convenience — production deploys
+# should source these from Vault and rotate after first login.
+admin:
+  user: admin
+  password: admin
+
+# Anonymous viewer mode is OFF — you must log in.
+auth:
+  anonymousEnabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  host: grafana.cybertech.local
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: false
+    secretName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+probes:
+  liveness:
+    path: /api/health
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readiness:
+    path: /api/health
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5

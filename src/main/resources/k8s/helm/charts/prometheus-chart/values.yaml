@@ -1,0 +1,62 @@
+# ============================================================
+# PROMETHEUS — single-replica metrics scraper for portfolio minikube.
+# Scrapes Spring Boot /actuator/prometheus on cybertech-app:8081.
+# Alertmanager wiring is intentionally omitted: alert rules ship as a
+# ConfigMap skeleton but no Alertmanager service is deployed.
+# ============================================================
+
+image:
+  repository: prom/prometheus
+  tag: v2.54.1
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 9090
+
+# Backend target — defaults match the cybertech-app Service in this helmfile.
+scrape:
+  cybertechApp:
+    job: cybertech-app
+    host: cybertech-app
+    port: 8081
+    metricsPath: /actuator/prometheus
+    scrapeInterval: 15s
+
+# Self-scrape Prometheus too — handy for the overview dashboard.
+selfScrape:
+  enabled: true
+  scrapeInterval: 30s
+
+# Persistence — small PVC so reboots do not wipe the TSDB.
+# emptyDir is also fine on a portfolio cluster; switch via persistence.enabled=false.
+persistence:
+  enabled: true
+  size: 1Gi
+  accessMode: ReadWriteOnce
+
+retention: 7d
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+probes:
+  liveness:
+    path: /-/healthy
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    path: /-/ready
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3

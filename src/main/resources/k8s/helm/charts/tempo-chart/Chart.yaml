@@ -1,0 +1,6 @@
+apiVersion: v2
+name: tempo
+description: Grafana Tempo single-binary tracing backend (OTLP grpc/http) for portfolio minikube
+type: application
+version: 0.1.0
+appVersion: "2.6.0"

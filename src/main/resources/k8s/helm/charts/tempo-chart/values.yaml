@@ -1,0 +1,48 @@
+# ============================================================
+# TEMPO — single-binary tracing backend.
+# Receives OTLP grpc (4317) + http (4318) from cybertech-app's
+# OpenTelemetry SDK exporter. Local filesystem backend, 24h retention.
+# ============================================================
+
+image:
+  repository: grafana/tempo
+  tag: 2.6.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  httpPort: 3200       # Tempo HTTP API (Grafana datasource queries)
+  otlpGrpcPort: 4317   # OTLP gRPC receiver
+  otlpHttpPort: 4318   # OTLP HTTP receiver
+
+persistence:
+  enabled: true
+  size: 5Gi
+  accessMode: ReadWriteOnce
+
+# Local block-store retention. 24h is plenty for a portfolio demo.
+retentionHours: 24
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+probes:
+  liveness:
+    path: /ready
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readiness:
+    path: /ready
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5

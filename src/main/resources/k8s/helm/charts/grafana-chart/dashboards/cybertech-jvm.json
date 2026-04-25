@@ -1,0 +1,79 @@
+{
+  "uid": "cybertech-jvm",
+  "title": "Cybertech — JVM",
+  "tags": ["cybertech", "jvm"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Heap used vs max",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "used",
+          "expr": "sum(jvm_memory_used_bytes{app=\"cybertech-app\",area=\"heap\"})"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "max",
+          "expr": "sum(jvm_memory_max_bytes{app=\"cybertech-app\",area=\"heap\"})"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "GC time per second",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{action}} - {{cause}}",
+          "expr": "rate(jvm_gc_pause_seconds_sum{app=\"cybertech-app\"}[5m])"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Threads",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "live",
+          "expr": "jvm_threads_live_threads{app=\"cybertech-app\"}"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "daemon",
+          "expr": "jvm_threads_daemon_threads{app=\"cybertech-app\"}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Classes loaded",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "jvm_classes_loaded_classes{app=\"cybertech-app\"}"
+        }
+      ]
+    }
+  ]
+}

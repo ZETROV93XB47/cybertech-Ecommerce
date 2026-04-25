@@ -1,0 +1,6 @@
+apiVersion: v2
+name: grafana
+description: Grafana with pre-provisioned Prometheus, Loki and Tempo datasources + 4 skeleton dashboards
+type: application
+version: 0.1.0
+appVersion: "11.2.2"

@@ -1,0 +1,66 @@
+# Skeleton alert rules. Alertmanager is NOT deployed in this portfolio
+# stack — these rules are evaluated and surfaced in Prometheus' UI but
+# do not page anyone. Wire to Alertmanager + a notifier in a real deploy.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  labels:
+    app: prometheus
+data:
+  cybertech.rules.yml: |
+    groups:
+      - name: cybertech-app
+        interval: 30s
+        rules:
+          - alert: CybertechHigh5xxRate
+            expr: |
+              (
+                sum(rate(http_server_requests_seconds_count{app="cybertech-app",status=~"5.."}[5m]))
+                /
+                sum(rate(http_server_requests_seconds_count{app="cybertech-app"}[5m]))
+              ) > 0.01
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Cybertech 5xx rate above 1% over 5 minutes"
+              description: "More than 1% of HTTP responses are 5xx. Investigate."
+
+          - alert: CybertechJvmHeapHigh
+            expr: |
+              (
+                jvm_memory_used_bytes{app="cybertech-app",area="heap"}
+                /
+                jvm_memory_max_bytes{app="cybertech-app",area="heap"}
+              ) > 0.85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Cybertech JVM heap >85% for 10 minutes"
+              description: "Heap pressure detected — risk of long GC pauses or OOM."
+
+          - alert: CybertechPaymentSuccessRateLow
+            expr: |
+              (
+                sum(rate(cybertech_payments_total{outcome="success"}[15m]))
+                /
+                sum(rate(cybertech_payments_total[15m]))
+              ) < 0.95
+            for: 15m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Payment success rate <95% over 15 minutes"
+              description: "Payment failures elevated. Check Stripe + downstream errors."
+
+          - alert: CybertechStripeWebhookFailures
+            expr: |
+              sum(rate(cybertech_stripe_webhook_failures_total[1m])) * 60 > 5
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Stripe webhook failures > 5/min"
+              description: "Either signature verification or downstream processing is failing."

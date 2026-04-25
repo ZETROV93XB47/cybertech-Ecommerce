@@ -154,3 +154,38 @@ releases:
         value: {{ env "FRONT_AUTH_SECRET" | default "dev-auth-secret-change-me" }}
       - name: secrets.AUTH_KEYCLOAK_SECRET
         value: {{ env "FRONT_KEYCLOAK_CLIENT_SECRET" | default "dev-keycloak-front-secret-change-me" }}
+
+  # ============================================================
+  # LAYER 6 — Observability stack (metrics + logs + traces + UI)
+  # Independent of the app pods at deploy time; the app simply
+  # pushes to these once they are up. Grafana waits on its three
+  # datasource backends so its provisioning succeeds on first boot.
+  # ============================================================
+
+  - name: prometheus
+    chart: ./charts/prometheus-chart
+    namespace: default
+    values:
+      - ./charts/prometheus-chart/values.yaml
+
+  - name: loki
+    chart: ./charts/loki-chart
+    namespace: default
+    values:
+      - ./charts/loki-chart/values.yaml
+
+  - name: tempo
+    chart: ./charts/tempo-chart
+    namespace: default
+    values:
+      - ./charts/tempo-chart/values.yaml
+
+  - name: grafana
+    chart: ./charts/grafana-chart
+    namespace: default
+    needs:
+      - prometheus
+      - loki
+      - tempo
+    values:
+      - ./charts/grafana-chart/values.yaml

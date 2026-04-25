@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  labels:
+    app: grafana
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: {{ .Values.datasources.prometheus.name }}
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: {{ .Values.datasources.prometheus.url | quote }}
+        isDefault: {{ .Values.datasources.prometheus.default }}
+        jsonData:
+          httpMethod: POST
+          timeInterval: 30s
+      - name: {{ .Values.datasources.loki.name }}
+        uid: loki
+        type: loki
+        access: proxy
+        url: {{ .Values.datasources.loki.url | quote }}
+        jsonData:
+          maxLines: 1000
+          # Trace ID -> Tempo: clicking a traceId in a log line jumps into Tempo.
+          derivedFields:
+            - name: traceID
+              matcherRegex: '"traceId":"(\w+)"'
+              url: '$${__value.raw}'
+              datasourceUid: tempo
+      - name: {{ .Values.datasources.tempo.name }}
+        uid: tempo
+        type: tempo
+        access: proxy
+        url: {{ .Values.datasources.tempo.url | quote }}
+        jsonData:
+          # Tempo -> Loki / Prometheus glue. Reference UIDs above.
+          tracesToLogsV2:
+            datasourceUid: loki
+            tags:
+              - { key: service.name, value: app }
+          tracesToMetrics:
+            datasourceUid: prometheus
+          serviceMap:
+            datasourceUid: prometheus
+          nodeGraph:
+            enabled: true
+          search:
+            hide: false
+          lokiSearch:
+            datasourceUid: loki
