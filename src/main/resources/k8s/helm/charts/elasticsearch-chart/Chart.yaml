@@ -3,4 +3,4 @@ name: elasticsearch
 description: Elasticsearch single-node chart using official image
 type: application
 version: 0.1.0
-appVersion: "9.2.5"
+appVersion: "7.17.10"

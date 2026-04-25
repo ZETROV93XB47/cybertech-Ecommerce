@@ -19,16 +19,51 @@ spec:
         - name: elasticsearch
           image: {{ .Values.elasticsearch.image }}
           ports:
-            - containerPort: {{ .Values.elasticsearch.port }}
+            - name: http
+              containerPort: {{ .Values.elasticsearch.port }}
           env:
             - name: discovery.type
-              value: "single-node"
+              value: "{{ .Values.env.discoveryType }}"
             - name: xpack.security.enabled
-              value: "false"
+              value: "{{ .Values.env.xpackSecurity }}"
             - name: xpack.security.http.ssl.enabled
-              value: "false"
+              value: "{{ .Values.env.xpackSecurityHttpSsl }}"
             - name: ES_JAVA_OPTS
-              value: "-Xms512m -Xmx512m"
+              value: "{{ .Values.esJavaOpts }}"
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.startup.path }}
+              port: {{ .Values.elasticsearch.port }}
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: {{ .Values.elasticsearch.port }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: {{ .Values.elasticsearch.port }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
           volumeMounts:
             - name: elasticsearch-data
               mountPath: /usr/share/elasticsearch/data

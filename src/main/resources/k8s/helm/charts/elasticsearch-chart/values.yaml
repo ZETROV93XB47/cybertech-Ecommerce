@@ -1,8 +1,11 @@
 elasticsearch:
-  image: elasticsearch:9.2.5
+  image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
   port: 9200
 
-  heap: "512m"
+  # Heap kept for backwards-compatibility with the configmap; the live
+  # StatefulSet now drives heap from .Values.esJavaOpts (see below) so the
+  # value stays aligned with the container memory limit (heap <= limit / 2).
+  heap: "1g"
 
   persistence:
     enabled: true
@@ -18,3 +21,44 @@ env:
   discoveryType: "single-node"
   xpackSecurity: "false"
   xpackSecurityHttpSsl: "false"
+
+# JVM heap for the Elasticsearch container. Must stay <= resources.limits.memory / 2.
+# Default: 1Gi heap with a 2Gi container memory limit.
+esJavaOpts: "-Xms1g -Xmx1g"
+
+# Container resources. ES is memory-hungry; defaults are tuned for a single-node
+# portfolio cluster. Override per-environment as needed.
+resources:
+  requests:
+    cpu: 250m
+    memory: 1Gi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+# Health probes against the Elasticsearch HTTP port (.Values.elasticsearch.port).
+# - startupProbe gives the JVM up to ~5 min to come up on slow machines.
+# - readinessProbe waits for cluster status >= yellow (acceptable single-node).
+# - livenessProbe is a cheap local cluster-health ping.
+probes:
+  liveness:
+    enabled: true
+    path: /_cluster/health?local=true
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    path: /_cluster/health?wait_for_status=yellow&timeout=1s
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  startup:
+    enabled: true
+    path: /_cluster/health
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
