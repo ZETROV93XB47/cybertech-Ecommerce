@@ -114,18 +114,34 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
         final ObjectMapper mapper = new ObjectMapper();
         final StripeWebhookEventDto stripeWebhookEventDto = mapper.readValue(eventPayload, StripeWebhookEventDto.class);
 
+        boolean handled = false;
+
         switch (event.getType()) {
 
-            case PAYMENT_INTENT_SUCCEEDED -> handlePaymentSucceeded(event, stripeWebhookEventDto);
+            case PAYMENT_INTENT_SUCCEEDED -> {
+                handlePaymentSucceeded(event, stripeWebhookEventDto);
+                handled = true;
+            }
 
-            case PAYMENT_INTENT_PAYMENT_FAILED -> handlePaymentFailed(event, stripeWebhookEventDto);
+            case PAYMENT_INTENT_PAYMENT_FAILED -> {
+                handlePaymentFailed(event, stripeWebhookEventDto);
+                handled = true;
+            }
 
-            case CHARGE_REFUNDED -> handleRefund(event, stripeWebhookEventDto);
+            case CHARGE_REFUNDED -> {
+                handleRefund(event, stripeWebhookEventDto);
+                handled = true;
+            }
 
             default -> log.info("Unhandled Stripe event type: {}", event.getType());
         }
 
-        recordEventAsProcessed(stripeEventId);
+        // Only seal the dedup ledger for handled event types. Unknown event types must remain
+        // un-recorded so that, when a handler is later added, Stripe's retries are not silently
+        // dropped by the dedup short-circuit at the top of this method.
+        if (handled) {
+            recordEventAsProcessed(stripeEventId);
+        }
     }
 
     /**

@@ -3,6 +3,7 @@ package com.novatech.cybertech.clients;
 import com.novatech.cybertech.dto.response.moderation.ModerationResponseDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -19,8 +20,8 @@ public class CommentModerationClient {
     private final ObjectMapper objectMapper;
 
 
-    // @Value("${moderation.api.url:http://moderation-api:5000/analyze}")
-    private String moderationApiUrl = "http://127.0.0.1:5000/analyze";
+    @Value("${moderation.api.url}")
+    private String moderationApiUrl;
 
     public ModerationResponseDto moderate(final String comment) {
         Map<String, String> body = Map.of("comment", comment);
