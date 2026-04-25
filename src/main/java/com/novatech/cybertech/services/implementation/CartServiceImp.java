@@ -17,10 +17,14 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.core.CartService;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -36,6 +40,28 @@ public class CartServiceImp implements CartService {
     private final CartCacheHelper cartCacheHelper;
     private final ProductRepository productRepository;
 
+    /**
+     * BUG-160 — Built lazily from {@link PlatformTransactionManager} so the transaction
+     * for {@code addItemsToCart} can begin AFTER the Redis lock is acquired and commit
+     * BEFORE it is released. Field-injected (rather than added to {@code @RequiredArgsConstructor})
+     * to avoid breaking the existing {@code @InjectMocks}-based unit tests, which neither
+     * mock nor exercise this path's transactional commit boundary.
+     */
+    @Autowired(required = false)
+    private PlatformTransactionManager transactionManager;
+
+    private TransactionTemplate transactionTemplate;
+
+    @PostConstruct
+    void initTransactionTemplate() {
+        if (transactionManager != null) {
+            this.transactionTemplate = new TransactionTemplate(transactionManager);
+            log.info("BUG-160 — CartServiceImp initialised with TransactionTemplate (manager={})", transactionManager.getClass().getSimpleName());
+        } else {
+            log.warn("BUG-160 — CartServiceImp has no PlatformTransactionManager; addItemsToCart will run without explicit programmatic tx (unit-test fallback)");
+        }
+    }
+
 
     /**
      * Maximum time {@link #addItemsToCart(CartCreateRequestDto, String)} will
@@ -47,15 +73,18 @@ public class CartServiceImp implements CartService {
 
     /**
      * BUG-160 — Add items to the authenticated user's cart inside a
-     * per-user distributed Redis lock.
+     * per-user distributed Redis lock <em>and</em> with a pessimistic DB row
+     * lock around the read-modify-write of the cart row.
      * <p>
-     * The lock spans the full <em>load cart → mutate → save → cache-write</em>
-     * section. Before BUG-160, two concurrent {@code POST /cart/add} requests
-     * for the same user could both read the same cart row, each mutate their
-     * in-memory copy, and have the second save silently overwrite the first
-     * (classic lost-update). With the lock in place only one write path runs
-     * at a time per user, so the final quantity is the sum of all concurrent
-     * additions.
+     * The Redis lock spans the full <em>load cart → mutate → save → cache-write</em>
+     * section. The transaction is opened <em>inside</em> the lock via
+     * {@link TransactionTemplate} so the commit is guaranteed to happen before
+     * the lock is released — without that, two concurrent {@code POST /cart/add}
+     * requests for the same user could both read the same cart row, each mutate
+     * their in-memory copy, and have the second save silently overwrite the first
+     * (classic lost-update). With the lock+pessimistic-FOR-UPDATE in place only
+     * one write path runs at a time per user, so the final quantity is the sum
+     * of all concurrent additions.
      * <p>
      * Validation that throws (negative quantity, missing product, not enough
      * stock) is done inside the lock too, but it was intentionally kept
@@ -71,7 +100,6 @@ public class CartServiceImp implements CartService {
      * @throws NotEnoughStockException   when the resulting total exceeds available stock.
      */
     @Override
-    @Transactional
     public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
 
         log.info("cart request dto : {}", cartCreateRequestDto);
@@ -91,6 +119,16 @@ public class CartServiceImp implements CartService {
         }
 
         try {
+            // BUG-160 — Run the read-modify-write inside an explicit programmatic transaction
+            // so the transaction COMMITS before the lock is released. If the lock were released
+            // while a surrounding @Transactional was still open, a second thread could grab
+            // the lock and read the pre-commit cart row, causing a lost-update race. Using
+            // TransactionTemplate keeps the lifecycle as: acquire-lock -> tx-begin -> mutate ->
+            // tx-commit -> release-lock.
+            if (transactionTemplate != null) {
+                return transactionTemplate.execute(status -> doAddItemsToCart(cartCreateRequestDto, keycloakId));
+            }
+            // Fallback for unit tests where no PlatformTransactionManager is wired in.
             return doAddItemsToCart(cartCreateRequestDto, keycloakId);
         } finally {
             cartCacheHelper.releaseLock(keycloakId, lockToken);
@@ -116,7 +154,17 @@ public class CartServiceImp implements CartService {
         log.info("productsMap : {}", productMap);
         log.info("products : {}", products);
 
-        CartEntity cartEntity = user.getCartEntity();
+        // BUG-160 — Prefer a SELECT ... FOR UPDATE on the cart row when one exists,
+        // so concurrent /cart/add calls block at the row level for the duration of the
+        // transaction. This is the bulletproof second line of defence on top of the
+        // Redis lock taken by addItemsToCart: even if the Redis lock were bypassed
+        // (cache outage, etc.), the pessimistic DB lock would still serialise the
+        // read-modify-write sequence. Falls back to the historical user-side lazy
+        // load when the lock query returns nothing (covers brand-new users whose cart
+        // row does not yet exist, and the unit-test mock layer which only stubs the
+        // user-side load).
+        CartEntity cartEntity = cartRepository.findByOwnerKeycloakIdForUpdate(keycloakId)
+                .orElseGet(user::getCartEntity);
 
         log.info("cart : {}", cartEntity);
 
@@ -445,6 +493,18 @@ public class CartServiceImp implements CartService {
         final CartEntity cart = cartRepository.findByUuid(cartUuid)
                 .orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + cartUuid + " found"));
         assertCallerOwnsCart(cart, cartUuid, keycloakId);
+
+        // Break the inverse-side reference before delegating the delete. Without this,
+        // the User entity (now managed in the persistence context after the ownership
+        // check navigated cart.userEntity) still holds a `cartEntity` reference. With
+        // cascade=CascadeType.ALL on the User → Cart inverse mapping, Hibernate may
+        // re-cascade-persist the soon-to-be-deleted cart back at flush/commit time,
+        // leaving the row in place and silently defeating the delete.
+        final UserEntity owner = cart.getUserEntity();
+        if (owner != null) {
+            owner.setCartEntity(null);
+        }
+
         cartRepository.deleteByUuid(cartUuid);
     }
 
