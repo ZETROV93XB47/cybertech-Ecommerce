@@ -34,6 +34,13 @@ export const bankCardApi = {
 
   getDefault: () => apiFetch<BankCardResponseDto>(`${ROOT}/default`),
 
+  /**
+   * Multi-card listing for the authenticated user. Endpoint being added in a
+   * parallel task — a 404 means we should fall back to the single-default
+   * read so the page still has something to render.
+   */
+  allMine: () => apiFetch<BankCardResponseDto[]>(`${ROOT}/all-mine`),
+
   // Admin
   listAll: (page = 0, size = 10) =>
     apiFetch<Page<BankCardResponseDto>>(ROOT, {

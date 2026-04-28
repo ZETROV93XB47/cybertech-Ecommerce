@@ -6,6 +6,7 @@ import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface BankCardManagementService extends CrudBaseService<UUID, BankCardCreationRequestDto, BankCardUpdateRequestDto, BankCardResponseDto> {
@@ -52,4 +53,18 @@ public interface BankCardManagementService extends CrudBaseService<UUID, BankCar
      * @throws com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException when the caller does not own the card.
      */
     void deleteByUUID(java.util.UUID uuid, String keycloakId);
+
+    /**
+     * Frontend-gap #4 — list every bank card belonging to the authenticated user.
+     *
+     * <p>The current domain model enforces 1-card-per-user via {@code UserEntity.bankCardEntity}
+     * (a {@code @OneToOne}), so this endpoint will return either an empty list or a list with
+     * exactly one masked DTO. The list shape is preserved to keep the contract forward-
+     * compatible: should the team relax the 1-card constraint in the future, no clients will
+     * need to change.</p>
+     *
+     * @param keycloakId the JWT subject of the authenticated caller.
+     * @return all cards owned by that user (PCI-masked DTOs); empty list when the user has none.
+     */
+    List<BankCardResponseDto> findAllMine(String keycloakId);
 }

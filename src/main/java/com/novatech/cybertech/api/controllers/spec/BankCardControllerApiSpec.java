@@ -18,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -125,4 +126,20 @@ public interface BankCardControllerApiSpec {
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<BankCardResponseDto> getDefaultBankCard(Jwt jwt);
+
+    @Operation(summary = "List the authenticated user's bank cards",
+            description = """
+                    Frontend-gap #4 — returns every bank card owned by the authenticated caller as a
+                    list of PCI-masked DTOs. The current domain model enforces 1-card-per-user
+                    (UserEntity.bankCardEntity is @OneToOne) so the list contains at most one entry,
+                    but the list shape keeps the contract forward-compatible should that constraint
+                    be relaxed.
+                    """,
+            security = @SecurityRequirement(name = "keycloak"),
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "List of cards (possibly empty)", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = BankCardResponseDto.class)))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<List<BankCardResponseDto>> getAllMine(Jwt jwt);
 }

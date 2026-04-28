@@ -6,6 +6,7 @@ import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -14,9 +15,12 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.util.Set;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -187,5 +191,29 @@ public interface OrderManagementControllerApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<Void> deleteOrderByUuid(final UUID orderUuid, final Jwt jwt);
+
+
+    @Operation(summary = "List the authenticated user's orders (paginated)",
+            description = """
+                    Frontend-gap #1 — paginated listing of every order belonging to the authenticated
+                    user, optionally filtered by status. The user's identity is resolved from the JWT
+                    subject so there is no IDOR risk: callers see only their own orders.
+                    """,
+            security = @SecurityRequirement(name = "keycloak"),
+            parameters = {
+                    @Parameter(name = "status", description = "Optional set of OrderStatus values to keep — repeat the query param to pass multiple values", required = false),
+                    @Parameter(name = "page", description = "0-based page index (default 0)", required = false),
+                    @Parameter(name = "size", description = "page size (default 20)", required = false)
+            },
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Page of orders for the caller", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = Page.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<Page<OrderResponseDto>> getMyOrders(
+            @Parameter(hidden = true) final Jwt jwt,
+            @Parameter(hidden = true) final Pageable pageable,
+            @Parameter(description = "Optional status filter") final Set<OrderStatus> status
+    );
 
 }

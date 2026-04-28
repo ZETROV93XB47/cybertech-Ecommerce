@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserSelfUpdateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.UserEntity;
@@ -160,5 +161,52 @@ public class UserManagementServiceImp implements UserManagementService {
     @Transactional
     public Collection<UserResponseDto> createAutomatically(Collection<UserEntity> users) {
         return new ArrayList<>(userMapper.mapFromEntityToResponseDto(users.stream().map(userRepository::save).toList()));
+    }
+
+    /**
+     * Frontend-gap #3 — self-service update path. Resolves the caller's entity via the JWT
+     * subject ({@code keycloakId}), then reuses the same Phase-DB-then-Keycloak choreography
+     * as {@link #update(UserUpdateRequestDto)}: SQL write inside the persistence service's
+     * REQUIRES_NEW TX, Keycloak update outside any TX, with a clean rethrow when the Keycloak
+     * step fails after a durable DB commit.
+     *
+     * <p>The {@link UserSelfUpdateRequestDto} is mapped onto a transient
+     * {@link UserUpdateRequestDto} carrying only the four fields a user is allowed to mutate
+     * on themselves. We deliberately do NOT propagate the Keycloak email change here — the
+     * self DTO has no email field — but we do propagate first/last name to keep Keycloak
+     * profile data in sync with the DB row (mirrors the same fields {@code KeycloakUserManagementService.updateUser}
+     * already syncs in the admin path).</p>
+     */
+    @Override
+    public UserResponseDto updateMe(final String keycloakId, final UserSelfUpdateRequestDto dto) {
+        final UserEntity loadedUser = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new UserNotFoundException("No user with the keycloakId: " + keycloakId + " found"));
+
+        final UserUpdateRequestDto adapted = new UserUpdateRequestDto();
+        adapted.setUuid(loadedUser.getUuid());
+        adapted.setFirstName(dto.getFirstName());
+        adapted.setLastName(dto.getLastName());
+        adapted.setAddress(dto.getAddress());
+
+        // Phase 1 — DB first under its own REQUIRES_NEW transaction.
+        final UserResponseDto saved = userPersistenceService.updateUser(adapted, loadedUser);
+
+        // Phone number isn't on UserUpdateRequestDto — patch directly when supplied. No
+        // Keycloak side effect: phone is not synced through KeycloakUserManagementService.
+        if (dto.getPhoneNumber() != null) {
+            loadedUser.setPhoneNumber(dto.getPhoneNumber());
+            userRepository.save(loadedUser);
+        }
+
+        // Phase 2 — push name change to Keycloak (no transaction). Same handling as #update.
+        try {
+            keycloakUserManagementService.updateUser(loadedUser.getKeycloakId(), adapted);
+        } catch (Exception kce) {
+            log.error("CRITICAL: DB updated but Keycloak update failed for user {} — manual reconciliation required",
+                    loadedUser.getKeycloakId(), kce);
+            throw new RuntimeException("Keycloak sync failed after DB update: " + kce.getMessage(), kce);
+        }
+
+        return saved;
     }
 }

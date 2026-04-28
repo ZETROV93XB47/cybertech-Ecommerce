@@ -237,6 +237,22 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     /**
+     * Frontend-gap #4 — list every card owned by the authenticated user.
+     *
+     * <p>Backed by the existing {@link BankCardRepository#findAllByUserEntity_KeycloakId(String)}
+     * (also used by {@link #setDefault} to clear sibling defaults), so no new repository method
+     * is needed. Today the list is at most one entry — see {@link BankCardManagementService#findAllMine}
+     * for the rationale around the 1-card-per-user constraint.</p>
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<BankCardResponseDto> findAllMine(final String keycloakId) {
+        return bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId).stream()
+                .map(bankCardMapper::mapFromEntityToResponseDto)
+                .toList();
+    }
+
+    /**
      * BUG-038: returns the user's default card, already masked for safe API exposure.
      *
      * @throws NoDefaultBankCartSetException if the user has not flagged any card as default.

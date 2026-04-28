@@ -4,8 +4,12 @@ import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -68,4 +72,32 @@ public interface OrderManagementService {
      * full {@code OrderResponseDto} read for richer payloads.
      */
     OrderStatusDto getStatusByUUID(final UUID orderUuid, final String keycloakId);
+
+    /**
+     * Frontend-gap #1 — paginated listing of orders for the authenticated user.
+     *
+     * <p>Pure read-only query with no IDOR risk: the {@code keycloakId} parameter is sourced
+     * from the JWT subject by the controller, so the user can only see their own orders.
+     * The {@code statuses} parameter is optional — pass {@code null} (or an empty set, which
+     * the impl normalises to {@code null}) to fetch every order regardless of state.</p>
+     *
+     * @param keycloakId the JWT subject of the authenticated caller.
+     * @param pageable   Spring Data pagination + sort hint.
+     * @param statuses   optional status filter; {@code null} returns every order.
+     * @return one page of {@link OrderResponseDto} mapped from {@code OrderEntity}.
+     */
+    Page<OrderResponseDto> findMyOrders(final String keycloakId, final Pageable pageable, final Set<OrderStatus> statuses);
+
+    /**
+     * Frontend-gap #2 — admin paginated listing with optional status / user filters.
+     *
+     * <p>This is the admin-side counterpart of {@link #findMyOrders}. Both filters are nullable.
+     * The endpoint that exposes this method enforces ADMIN role at the controller layer.</p>
+     *
+     * @param statuses        optional set of {@link OrderStatus} to keep; {@code null} returns every status.
+     * @param userKeycloakId  optional filter by user keycloakId; {@code null} returns every user.
+     * @param pageable        Spring Data pagination + sort hint.
+     * @return one page of {@link OrderResponseDto} mapped from {@code OrderEntity}.
+     */
+    Page<OrderResponseDto> findAllPaged(final Set<OrderStatus> statuses, final String userKeycloakId, final Pageable pageable);
 }

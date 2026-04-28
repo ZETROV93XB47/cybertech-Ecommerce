@@ -510,4 +510,42 @@ class BankCardManagementControllerTest {
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isForbidden());
     }
+
+    // ---------- GET /all-mine (Frontend-gap #4) ----------
+
+    @Test
+    void shouldGetAllMineSuccessfully() throws Exception {
+        BankCardResponseDto card = UserDtoFixtures.aSampleBankCardResponse();
+        when(bankCardService.findAllMine(KEYCLOAK_ID)).thenReturn(List.of(card));
+
+        mockMvc.perform(get(BASE + "/all-mine")
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(1));
+
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        verify(bankCardService).findAllMine(subjectCaptor.capture());
+        assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldGetAllMineReturnEmptyListWhenNoCard() throws Exception {
+        when(bankCardService.findAllMine(KEYCLOAK_ID)).thenReturn(List.of());
+
+        mockMvc.perform(get(BASE + "/all-mine")
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void shouldFailGetAllMineWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(get(BASE + "/all-mine")
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
 }

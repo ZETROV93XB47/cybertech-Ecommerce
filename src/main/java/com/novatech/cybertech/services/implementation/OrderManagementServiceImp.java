@@ -38,6 +38,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -631,6 +633,38 @@ public class OrderManagementServiceImp implements OrderManagementService {
         return orderMapper.mapFromEntityToResponseDto(orderRepository.save(orderEntity));
     }
 
+
+    /**
+     * Frontend-gap #1 — paginated read of the authenticated user's orders.
+     *
+     * <p>Resolves through the JPQL paginated finder
+     * {@link OrderRepository#findByUserKeycloakIdAndOptionalStatuses}; an empty / null
+     * status set is normalised to {@code null} so the WHERE clause's
+     * {@code :statuses IS NULL OR ...} short-circuit returns every order. Read-only TX
+     * mirrors the rest of the read-path methods in this service.</p>
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OrderResponseDto> findMyOrders(final String keycloakId, final Pageable pageable, final Set<OrderStatus> statuses) {
+        final Set<OrderStatus> effectiveStatuses = (statuses == null || statuses.isEmpty()) ? null : statuses;
+        return orderRepository.findByUserKeycloakIdAndOptionalStatuses(keycloakId, effectiveStatuses, pageable)
+                .map(orderMapper::mapFromEntityToResponseDto);
+    }
+
+    /**
+     * Frontend-gap #2 — admin-side paginated read with optional status / user filters.
+     *
+     * <p>Both filters short-circuit when null: passing {@code null} for both returns every
+     * order in the system (paginated). Role enforcement is the controller's job; this
+     * method assumes a trusted caller.</p>
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OrderResponseDto> findAllPaged(final Set<OrderStatus> statuses, final String userKeycloakId, final Pageable pageable) {
+        final Set<OrderStatus> effectiveStatuses = (statuses == null || statuses.isEmpty()) ? null : statuses;
+        return orderRepository.findAllByOptionalStatusesAndUserKeycloakId(effectiveStatuses, userKeycloakId, pageable)
+                .map(orderMapper::mapFromEntityToResponseDto);
+    }
 
     private void validateUserBeforeProcessingPayment(final UserEntity userEntity) {
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()

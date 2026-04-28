@@ -20,6 +20,17 @@ export const userApi = {
 
   get: (uuid: string) => apiFetch<UserResponseDto>(`${PUBLIC}/get/${uuid}`),
 
+  /**
+   * Self-service profile update for the authenticated caller.
+   * Endpoint shipping in parallel — 404 means the route hasn't merged yet
+   * and the form should display a graceful "edits coming soon" notice.
+   */
+  updateMe: (req: Omit<UserUpdateRequestDto, "uuid">) =>
+    apiFetch<UserResponseDto>(`${PUBLIC}/me`, {
+      method: "PATCH",
+      body: req as unknown as Record<string, unknown>,
+    }),
+
   // Admin
   listAll: (page = 0, size = 20) =>
     apiFetch<Page<UserResponseDto>>(`${ADMIN}/get/all`, {

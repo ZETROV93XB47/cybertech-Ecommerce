@@ -22,6 +22,12 @@ public class CyberTechAppConstants {
 
     public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/management/order";
 
+    /**
+     * Frontend-gap #2 — admin-side paginated order listing controller base path.
+     * Mirrors the {@code USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH} convention.
+     */
+    public static final String ORDER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/management/order";
+
     public static final String DISCOUNT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/discounts";
     public static final String DISCOUNT_PUBLIC_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/discounts";
 

@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.spec.UserControllerApiSpec;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserSelfUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,6 +21,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -179,5 +181,18 @@ public class UserManagementController implements UserControllerApiSpec {
     @GetMapping(value = "/ok", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<String> healthCheck() {
         return ok("Hello Guys !!! 😁🔥🔥🔥");
+    }
+
+    /**
+     * Frontend-gap #3 — self-service profile update. Resolves the caller via the JWT subject
+     * and delegates to {@link UserManagementServiceImp#updateMe(String, UserSelfUpdateRequestDto)};
+     * no UUID is accepted from the body, ruling out IDOR by construction.
+     */
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PatchMapping(value = "/me", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<UserResponseDto> updateMe(@Valid @RequestBody final UserSelfUpdateRequestDto dto,
+                                                    @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.ok(userManagementServiceImp.updateMe(jwt.getSubject(), dto));
     }
 }
