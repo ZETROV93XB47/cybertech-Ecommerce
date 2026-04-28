@@ -223,9 +223,7 @@ public class CartServiceImp implements CartService {
             log.info("newQuantity : {}", newQuantity);
 
             // 3. Vérifier le stock (Stock total vs Stock réservé + Quantité demandée totale)
-            if (product.getReservedStock() + newQuantity > product.getStock()) {
-                throw new NotEnoughStockException("Not enough stock for product " + product.getName() + ". Available: " + (product.getStock() - product.getReservedStock()));
-            }
+            validateStockAvailability(product, newQuantity);
 
             log.info("product stock : {}", product.getStock());
             log.info("product reserved stock : {}", product.getReservedStock());
@@ -453,15 +451,18 @@ public class CartServiceImp implements CartService {
 
         final List<CartItemAddRequestDto> items = dto.getCartItemAddRequestDtos();
 
-        if (cart.getCartItems() != null) {
-            cart.getCartItems().clear();
-        }
-
+        // BUG-7 — Validate every line (product existence + stock availability) BEFORE
+        // mutating the cart. Without this fail-fast pass, updateCart would clear the
+        // existing items and re-add them one by one; if line N had insufficient stock
+        // we would have already wiped the cart and partially rebuilt it. Loading the
+        // products via findAllByUuidIn keeps this on a single DB roundtrip — the same
+        // pattern doAddItemsToCart already uses — so no extra queries are introduced.
+        final Map<UUID, ProductEntity> productMap;
         if (items != null && !items.isEmpty()) {
             final List<UUID> productUuids = items.stream()
                     .map(CartItemAddRequestDto::getProductUuid)
                     .collect(Collectors.toList());
-            final Map<UUID, ProductEntity> productMap = productRepository.findAllByUuidIn(productUuids).stream()
+            productMap = productRepository.findAllByUuidIn(productUuids).stream()
                     .collect(Collectors.toMap(ProductEntity::getUuid, p -> p));
 
             for (final CartItemAddRequestDto line : items) {
@@ -469,6 +470,19 @@ public class CartServiceImp implements CartService {
                 if (product == null) {
                     throw new ProductNotFoundException("No product with the UUID : " + line.getProductUuid() + " found");
                 }
+                validateStockAvailability(product, line.getQuantity());
+            }
+        } else {
+            productMap = Map.of();
+        }
+
+        if (cart.getCartItems() != null) {
+            cart.getCartItems().clear();
+        }
+
+        if (items != null && !items.isEmpty()) {
+            for (final CartItemAddRequestDto line : items) {
+                final ProductEntity product = productMap.get(line.getProductUuid());
                 final CartItemEntity newItem = CartItemEntity.builder()
                         .quantity(line.getQuantity())
                         .unitPrice(product.getPrice())
@@ -484,6 +498,27 @@ public class CartServiceImp implements CartService {
         final CartResponseDto resp = cartMapper.mapFromEntityToResponseDto(saved);
         cartCacheHelper.putWithJitter(keycloakId, resp);
         return resp;
+    }
+
+    /**
+     * BUG-7 — Shared stock-availability check used by both
+     * {@link #doAddItemsToCart(CartCreateRequestDto, String)} and
+     * {@link #updateCart(UUID, CartUpdateRequestDto, String)}.
+     * <p>
+     * Throws {@link NotEnoughStockException} when {@code reservedStock + requestedQty > totalStock},
+     * with a message that surfaces both the requested and the currently-available
+     * quantity so the caller can adjust their request.
+     *
+     * @param product      product whose stock is being checked.
+     * @param requestedQty total quantity the caller wants in the cart for that product.
+     * @throws NotEnoughStockException when the request would exceed available stock.
+     */
+    private static void validateStockAvailability(final ProductEntity product, final int requestedQty) {
+        if (product.getReservedStock() + requestedQty > product.getStock()) {
+            throw new NotEnoughStockException(
+                    "Not enough stock for product " + product.getName()
+                            + ". Available: " + (product.getStock() - product.getReservedStock()));
+        }
     }
 
     @Override

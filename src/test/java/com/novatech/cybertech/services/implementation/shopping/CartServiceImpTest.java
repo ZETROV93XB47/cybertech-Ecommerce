@@ -792,6 +792,123 @@ class CartServiceImpTest {
         }
 
         @Test
+        @DisplayName("BUG-7: updateCart rejects when requested qty exceeds available stock")
+        void updateCartShouldFailWhenRequestedQtyExceedsAvailableStock() {
+            final UUID cartUuid = UUID.randomUUID();
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
+                    .stock(2).reservedStock(0).build();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(cartUuid).userEntity(owner).cartItems(new ArrayList<>()).build();
+            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
+                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
+                            CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(5).build())))
+                    .build();
+
+            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
+            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
+
+            assertThatThrownBy(() -> service.updateCart(cartUuid, dto, keycloakId))
+                    .isInstanceOf(NotEnoughStockException.class);
+
+            verify(cartRepository, never()).save(any());
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
+        }
+
+        @Test
+        @DisplayName("BUG-7: updateCart rejects when requested qty exceeds (stock - reservedStock)")
+        void updateCartShouldFailWhenRequestedQtyExceedsStockMinusReservedStock() {
+            // stock=10, reservedStock=8, requested=5 -> 8+5=13 > 10 -> must throw.
+            final UUID cartUuid = UUID.randomUUID();
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
+                    .stock(10).reservedStock(8).build();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(cartUuid).userEntity(owner).cartItems(new ArrayList<>()).build();
+            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
+                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
+                            CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(5).build())))
+                    .build();
+
+            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
+            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
+
+            assertThatThrownBy(() -> service.updateCart(cartUuid, dto, keycloakId))
+                    .isInstanceOf(NotEnoughStockException.class);
+
+            verify(cartRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("BUG-7: updateCart succeeds when requested qty equals available stock (boundary)")
+        void updateCartShouldSucceedWhenRequestedQtyEqualsAvailableStock() {
+            // stock=5, reserved=2, requested=3 -> 2+3=5 == stock -> ok.
+            final UUID cartUuid = UUID.randomUUID();
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
+                    .stock(5).reservedStock(2).build();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(cartUuid).userEntity(owner).cartItems(new ArrayList<>()).build();
+            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
+                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
+                            CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(3).build())))
+                    .build();
+            final CartResponseDto mapped = stubMappedResponse();
+
+            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
+            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
+            when(cartRepository.save(existingCart)).thenReturn(existingCart);
+            when(cartMapper.mapFromEntityToResponseDto(existingCart)).thenReturn(mapped);
+
+            final CartResponseDto result = service.updateCart(cartUuid, dto, keycloakId);
+
+            assertThat(result).isSameAs(mapped);
+            assertThat(existingCart.getCartItems()).hasSize(1);
+            assertThat(existingCart.getCartItems().get(0).getQuantity()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("BUG-7: updateCart fail-fast — when one line fails stock check, cart NOT mutated at all")
+        void updateCartShouldNotMutateOtherItemsWhenOneFails() {
+            // Two lines: line 1 ok, line 2 over stock. Existing cart has a pre-existing
+            // item that must remain in place because the validation must happen BEFORE
+            // the cart is cleared/re-populated.
+            final UUID cartUuid = UUID.randomUUID();
+            final ProductEntity okProduct = ProductEntityBuilder.aValidProductBuilder()
+                    .stock(10).reservedStock(0).build();
+            final ProductEntity overStockProduct = ProductEntityBuilder.aValidProductBuilder()
+                    .stock(2).reservedStock(0).build();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final ProductEntity preExistingProduct = ProductEntityBuilder.aValidProduct();
+            final CartItemEntity preExistingItem = CartItemEntityBuilder.aValidCartItemBuilder()
+                    .productEntity(preExistingProduct).quantity(7).build();
+            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
+                    .uuid(cartUuid).userEntity(owner)
+                    .cartItems(new ArrayList<>(List.of(preExistingItem))).build();
+
+            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
+                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
+                            CartItemAddRequestDto.builder().productUuid(okProduct.getUuid()).quantity(2).build(),
+                            CartItemAddRequestDto.builder().productUuid(overStockProduct.getUuid()).quantity(99).build())))
+                    .build();
+
+            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
+            when(productRepository.findAllByUuidIn(anyCollection()))
+                    .thenReturn(List.of(okProduct, overStockProduct));
+
+            assertThatThrownBy(() -> service.updateCart(cartUuid, dto, keycloakId))
+                    .isInstanceOf(NotEnoughStockException.class);
+
+            // The cart must NOT have been mutated: pre-existing item still there with original qty.
+            assertThat(existingCart.getCartItems()).hasSize(1);
+            assertThat(existingCart.getCartItems().get(0).getQuantity()).isEqualTo(7);
+            assertThat(existingCart.getCartItems().get(0).getProductEntity().getUuid())
+                    .isEqualTo(preExistingProduct.getUuid());
+            verify(cartRepository, never()).save(any());
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
+        }
+
+        @Test
         @DisplayName("BUG-026 + BUG-161: updateCart rejects caller that doesn't own the cart")
         void updateCart_rejectsNonOwner_BUG026_BUG161_closed() {
             final UUID cartUuid = UUID.randomUUID();
