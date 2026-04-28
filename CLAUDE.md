@@ -7,6 +7,12 @@ what to do next, divide the progress.md in 3 differents seciton with the first s
 section being a list of the task that has been done and the following tasks and the 3rd section being remarqs related to
 these taks.
 
+## Code Style & Patterns
+- **Suis les patterns existants du code.** Avant d'ajouter une nouvelle classe ou un nouveau pattern, regarde si le projet a déjà une convention en place (interface avant impl, exception custom + handler dans `ErrorManagementController`, event + listener AFTER_COMMIT, `*ApiSpec` pour OpenAPI, `UserPersistenceService` pour saga Keycloak/DB...). La cohérence avec l'existant prime sur la "meilleure pratique théorique".
+- **Controllers propres à 100%.** Aucune méthode utilitaire (helper d'auth, extraction JWT, validation custom...) ne doit vivre dans un controller. Migre-la dans `com.novatech.cybertech.utils.ControllerSecurityUtils` ou une classe `*Utils` dédiée selon la nature.
+- **Constantes obligatoires pour les literals string sémantiques.** Tout literal qui (a) apparaît plus d'une fois dans la même classe ou (b) porte un sens métier (rôle, clé JSON, nom d'endpoint, message d'erreur récurrent) doit être extrait en `private static final String XXX = ...` (local) ou dans `CyberTechAppConstants` (global). Exception : les annotations Spring (`@PreAuthorize`, `@RequestMapping`) qui exigent une compile-time constant — laisser tel quel quand l'extraction casserait la compile.
+- **Pas de duplication cross-classes.** Si une méthode utilitaire (`isAdmin`, parsing JWT, formatage...) existe dans une classe `*Utils`, réutilise-la — ne duplique pas dans un nouveau service ou controller.
+
 project context :
 
 # Cybertech E-Commerce Backend — Project Context
