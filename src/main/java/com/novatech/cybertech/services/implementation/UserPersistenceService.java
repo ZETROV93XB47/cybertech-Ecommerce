@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Role;
@@ -30,8 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class UserPersistenceService {
 
-    private final UserRepository userRepository;
     private final UserMapper userMapper;
+    private final UserRepository userRepository;
     private final BankCardManagementService bankCardManagementService;
 
     /**
@@ -69,6 +70,30 @@ public class UserPersistenceService {
             bankCardManagementService.addBankCard(keycloakId, req.getBankCardCreationRequestDto());
         }
 
+        return userMapper.mapFromEntityToResponseDto(savedUser);
+    }
+
+    /**
+     * Persist a user update under a fresh transaction (Bug 3 — Option B).
+     *
+     * <p>Same propagation rationale as {@link #saveNewUser}: the SQL work is isolated from the
+     * orchestrating
+     * {@link UserManagementServiceImp#update(UserUpdateRequestDto)}, which intentionally has NO
+     * outer transaction so it can call Keycloak's HTTP {@code updateUser} ONLY after the DB
+     * commit is durable. A failure inside this REQUIRES_NEW boundary rolls back the SQL write
+     * cleanly and propagates so the orchestrator skips the Keycloak call entirely — no orphan
+     * Keycloak mutation against a row that will never exist.
+     *
+     * @param dto        the patch payload (resolved via the {@link UserMapper#updateEntityFromDto}).
+     * @param loadedUser the entity already resolved by the caller — kept under the persistence
+     *                   context only for the duration of this REQUIRES_NEW TX.
+     * @return mapped {@link UserResponseDto} reflecting the saved state.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public UserResponseDto updateUser(final UserUpdateRequestDto dto, final UserEntity loadedUser) {
+        userMapper.updateEntityFromDto(dto, loadedUser);
+        final UserEntity savedUser = userRepository.save(loadedUser);
+        log.info("Updated user : {}", savedUser);
         return userMapper.mapFromEntityToResponseDto(savedUser);
     }
 }

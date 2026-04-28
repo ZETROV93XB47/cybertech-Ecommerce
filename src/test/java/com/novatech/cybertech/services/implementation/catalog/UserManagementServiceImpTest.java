@@ -5,6 +5,7 @@ import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Role;
+import com.novatech.cybertech.events.UserDeletedEvent;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
@@ -22,6 +23,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.Optional;
@@ -58,6 +60,7 @@ class UserManagementServiceImpTest {
     @Mock UserRepository userRepository;
     @Mock KeycloakUserManagementService keycloakUserManagementService;
     @Mock UserPersistenceService userPersistenceService;
+    @Mock ApplicationEventPublisher eventPublisher;
 
     @InjectMocks UserManagementServiceImp service;
 
@@ -208,28 +211,28 @@ class UserManagementServiceImpTest {
     class Update {
 
         @Test
-        @DisplayName("happy path — updates Keycloak then patches local entity then saves")
-        void update_happyPath() {
+        @DisplayName("Bug 3 — DB persisted FIRST via UserPersistenceService (REQUIRES_NEW), THEN Keycloak; returns mapped DTO")
+        void updateShouldPersistInDbBeforeCallingKeycloak() {
+            // Bug 3 fix (Option B): UserManagementServiceImp.update no longer wraps the call in
+            // an outer @Transactional. The DB save runs in UserPersistenceService.updateUser
+            // (REQUIRES_NEW). Only after that returns do we touch Keycloak.
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-1").build();
-            UserEntity saved = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).build();
             UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
 
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
-            when(userRepository.save(user)).thenReturn(saved);
-            when(userMapper.mapFromEntityToResponseDto(saved)).thenReturn(expected);
+            when(userPersistenceService.updateUser(dto, user)).thenReturn(expected);
 
             UserResponseDto result = service.update(dto);
 
             assertThat(result).isSameAs(expected);
-            InOrder order = inOrder(keycloakUserManagementService, userMapper, userRepository);
+            InOrder order = inOrder(userPersistenceService, keycloakUserManagementService);
+            order.verify(userPersistenceService).updateUser(dto, user);
             order.verify(keycloakUserManagementService).updateUser("kc-1", dto);
-            order.verify(userMapper).updateEntityFromDto(dto, user);
-            order.verify(userRepository).save(user);
         }
 
         @Test
-        @DisplayName("missing user throws UserNotFoundException — Keycloak not touched")
+        @DisplayName("missing user throws UserNotFoundException — Keycloak and persistence both untouched")
         void update_notFound_throws() {
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.empty());
@@ -239,18 +242,18 @@ class UserManagementServiceImpTest {
                     .hasMessageContaining(dto.getUuid().toString());
 
             verifyNoInteractions(keycloakUserManagementService);
+            verifyNoInteractions(userPersistenceService);
         }
 
         @Test
-        @DisplayName("email change pushed to Keycloak — but no verify-new-email step (tech-debt pin)")
+        @DisplayName("Bug 3 — email change still propagated to Keycloak (after DB save)")
         void update_emailChange_pushedToKeycloak_noVerifyEmail() {
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
             dto.setEmail("changed@example.com");
             UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-9").build();
 
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
-            when(userRepository.save(user)).thenReturn(user);
-            when(userMapper.mapFromEntityToResponseDto(user)).thenReturn(UserDtoFixtures.aSampleUserResponse());
+            when(userPersistenceService.updateUser(dto, user)).thenReturn(UserDtoFixtures.aSampleUserResponse());
 
             service.update(dto);
 
@@ -261,16 +264,37 @@ class UserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("Keycloak update failure aborts — local save not invoked")
-        void update_keycloakFails_localSaveSkipped() {
+        @DisplayName("Bug 3 — DB save fails → Keycloak NOT called (no orphan IDP mutation)")
+        void updateShouldNotCallKeycloakWhenDbSaveFails() {
+            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-1").build();
+            when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(dto, user))
+                    .thenThrow(new RuntimeException("db down"));
+
+            assertThatThrownBy(() -> service.update(dto))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("db down");
+
+            verifyNoInteractions(keycloakUserManagementService);
+        }
+
+        @Test
+        @DisplayName("Bug 3 — DB save OK then Keycloak fails → wrapped in RuntimeException, original is the cause")
+        void updateShouldLogAndPropagateWhenKeycloakFailsAfterDbSuccess() {
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-2").build();
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
-            doThrow(new RuntimeException("kc fail")).when(keycloakUserManagementService).updateUser("kc-2", dto);
+            when(userPersistenceService.updateUser(dto, user)).thenReturn(UserDtoFixtures.aSampleUserResponse());
+            doThrow(new RuntimeException("kc 500")).when(keycloakUserManagementService).updateUser("kc-2", dto);
 
-            assertThatThrownBy(() -> service.update(dto)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> service.update(dto))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessageContaining("Keycloak sync failed after DB update")
+                    .hasCauseInstanceOf(RuntimeException.class);
 
-            verify(userRepository, never()).save(any());
+            // DB write was already attempted (and committed inside REQUIRES_NEW) — no rollback path.
+            verify(userPersistenceService).updateUser(dto, user);
         }
     }
 
@@ -280,21 +304,41 @@ class UserManagementServiceImpTest {
     class Delete {
 
         @Test
-        @DisplayName("deleteByUUID — happy path: Keycloak then SQL")
-        void deleteByUUID_happyPath() {
+        @DisplayName("Bug 4 — DB delete first then publishes UserDeletedEvent (Keycloak deferred to AFTER_COMMIT listener)")
+        void deleteShouldDeleteFromDbAndPublishEvent() {
             UUID id = UUID.randomUUID();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(id).keycloakId("kc-d").build();
             when(userRepository.findByUuid(id)).thenReturn(Optional.of(user));
 
             service.deleteByUUID(id);
 
-            InOrder order = inOrder(keycloakUserManagementService, userRepository);
-            order.verify(keycloakUserManagementService).deleteUser("kc-d");
+            InOrder order = inOrder(userRepository, eventPublisher);
             order.verify(userRepository).deleteByUuid(id);
+            ArgumentCaptor<UserDeletedEvent> evt = ArgumentCaptor.forClass(UserDeletedEvent.class);
+            order.verify(eventPublisher).publishEvent(evt.capture());
+            assertThat(evt.getValue().getKeycloakId()).isEqualTo("kc-d");
+            // The service no longer calls Keycloak directly — that's the listener's job.
+            verifyNoInteractions(keycloakUserManagementService);
         }
 
         @Test
-        @DisplayName("deleteByUUID — missing user throws UserNotFoundException, Keycloak not touched")
+        @DisplayName("Bug 4 — when DB delete throws, no event is published (no orphan Keycloak delete)")
+        void deleteShouldNotPublishEventWhenDbDeleteFails() {
+            UUID id = UUID.randomUUID();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(id).keycloakId("kc-d").build();
+            when(userRepository.findByUuid(id)).thenReturn(Optional.of(user));
+            doThrow(new RuntimeException("FK violation")).when(userRepository).deleteByUuid(id);
+
+            assertThatThrownBy(() -> service.deleteByUUID(id))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("FK violation");
+
+            verifyNoInteractions(eventPublisher);
+            verifyNoInteractions(keycloakUserManagementService);
+        }
+
+        @Test
+        @DisplayName("deleteByUUID — missing user throws UserNotFoundException, no event, no Keycloak call")
         void deleteByUUID_notFound_throws() {
             UUID id = UUID.randomUUID();
             when(userRepository.findByUuid(id)).thenReturn(Optional.empty());
@@ -304,6 +348,7 @@ class UserManagementServiceImpTest {
                     .hasMessageContaining(id.toString());
 
             verifyNoInteractions(keycloakUserManagementService);
+            verifyNoInteractions(eventPublisher);
         }
 
         @Test

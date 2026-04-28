@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation.catalog;
 
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Role;
@@ -129,5 +130,26 @@ class UserPersistenceServiceTest {
         assertThatThrownBy(() -> service.saveNewUser(req, kcId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("constraint violation");
+    }
+
+    @Test
+    @DisplayName("Bug 3 — updateUser patches entity via mapper, saves under REQUIRES_NEW, returns mapped DTO")
+    void updateUserShouldSaveAndReturnDto() {
+        // The orchestrator (UserManagementServiceImp.update) resolves the entity then hands it
+        // off here. This collaborator owns the SQL portion exclusively — the keycloak call is
+        // performed by the caller AFTER this returns.
+        UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+        UserEntity loadedUser = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-upd").build();
+        UserEntity savedUser = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-upd").build();
+        UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
+        when(userRepository.save(loadedUser)).thenReturn(savedUser);
+        when(userMapper.mapFromEntityToResponseDto(savedUser)).thenReturn(expected);
+
+        UserResponseDto result = service.updateUser(dto, loadedUser);
+
+        assertThat(result).isSameAs(expected);
+        verify(userMapper).updateEntityFromDto(dto, loadedUser);
+        verify(userRepository).save(loadedUser);
+        verify(userMapper).mapFromEntityToResponseDto(savedUser);
     }
 }
