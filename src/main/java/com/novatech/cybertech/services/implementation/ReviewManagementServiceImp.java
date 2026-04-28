@@ -31,14 +31,20 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import static com.novatech.cybertech.utils.DataGenerator.generateReviewEntity;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReviewManagementServiceImp implements ReviewManagementService {
 
     private static final float HATEFUL_COMMENT_SCORE_THRESHOLD = 0.7f;
+
+    /**
+     * Orders are considered "reviewable" once the customer has actually paid for them. We
+     * accept PAID / SHIPPED / DELIVERED so users can leave a review as soon as the payment
+     * settles, without waiting for delivery. Pre-payment statuses (CREATED, AWAITING_PAYMENT,
+     * PAYMENT_FAILED) and post-cancel statuses must NOT be reviewable.
+     */
+    private static final Set<OrderStatus> REVIEWABLE_ORDER_STATUSES = EnumSet.of(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
 
     private final ReviewMapper reviewMapper;
     private final UserRepository userRepository;
@@ -66,6 +72,11 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         if (!order.getUserEntity().getKeycloakId().equals(keycloakId)) {
             throw new OrderDoesntBelongsToUserException("Order " + reviewCreateRequestDto.getOrderUuid() + " does not belong to the current user");
+        }
+
+        if (!REVIEWABLE_ORDER_STATUSES.contains(order.getStatus())) {
+            throw new OrderNotReviewableException(
+                    "Order " + order.getUuid() + " is not in a reviewable state: " + order.getStatus());
         }
 
         checkIfUserAlreadyBoughtThisProduct(reviewCreateRequestDto, keycloakId, order, user);
@@ -116,14 +127,6 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
     }
 
 
-    /**
-     * Orders are considered "reviewable" once the customer has actually paid for them. We
-     * accept PAID / SHIPPED / DELIVERED so users can leave a review as soon as the payment
-     * settles, without waiting for delivery.
-     */
-    private static final Set<OrderStatus> REVIEWABLE_ORDER_STATUSES =
-            EnumSet.of(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
-
     @Override
     @Transactional(readOnly = true)
     public List<ReviewableProductDto> getReviewableProducts(final String keycloakId) {
@@ -165,24 +168,6 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         if (!isCurrentUserAuthorOfTheRequestReview) throw new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user");
 
         reviewRepository.deleteByUuid(uuid);
-    }
-
-
-    @Transactional
-    public ReviewResponseDto saveReview() {
-        ReviewEntity reviewEntity = generateReviewEntity();
-        log.info(reviewEntity.toString());
-
-        ModerationResponseDto moderationResponseDto = moderationService.checkIfIsHateful(reviewEntity.getComment());
-
-        log.info("moderation service response : {}", moderationResponseDto.toString());
-
-        if (moderationResponseDto.getScore() > HATEFUL_COMMENT_SCORE_THRESHOLD)
-            throw new CommentPostNotAllowedException("Your comment seems similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.");
-
-        log.info("review saved");
-        return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(reviewEntity));
-
     }
 
 

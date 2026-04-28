@@ -14,6 +14,7 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.exceptions.CommentPostNotAllowedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
+import com.novatech.cybertech.exceptions.OrderNotReviewableException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.ReviewNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotAuthorOfReviewException;
@@ -93,11 +94,16 @@ class ReviewManagementServiceImpTest {
     }
 
     private OrderEntity orderContainingProduct(final UUID uuid, final UserEntity owner) {
+        // Default to a reviewable status (PAID) so happy-path tests do not trip the BUG-2 status guard.
+        return orderContainingProduct(uuid, owner, OrderStatus.PAID);
+    }
+
+    private OrderEntity orderContainingProduct(final UUID uuid, final UserEntity owner, final OrderStatus status) {
         ProductEntity p = productWith(uuid);
         OrderItemEntity oi = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(p).build();
         List<OrderItemEntity> items = new ArrayList<>();
         items.add(oi);
-        return OrderEntityBuilder.aValidOrderBuilder().uuid(orderUuid).orderItemEntities(items).userEntity(owner).build();
+        return OrderEntityBuilder.aValidOrderBuilder().uuid(orderUuid).orderItemEntities(items).userEntity(owner).status(status).build();
     }
 
     /** Convenience overload: builds a caller-owned order (keycloakId = {@code "kc-1"}). */
@@ -221,7 +227,8 @@ class ReviewManagementServiceImpTest {
             List<OrderItemEntity> items = new ArrayList<>();
             items.add(otherItem);
             // Order belongs to the caller so the ownership check passes; product check fails.
-            OrderEntity order = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).build();
+            // Status PAID so the BUG-2 reviewability guard is satisfied (we want the product check to fire).
+            OrderEntity order = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).status(OrderStatus.PAID).build();
 
             when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
             when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
@@ -250,7 +257,8 @@ class ReviewManagementServiceImpTest {
             OrderItemEntity otherItem = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(otherProduct).build();
             List<OrderItemEntity> items = new ArrayList<>();
             items.add(otherItem);
-            OrderEntity requestOrder = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).build();
+            // PAID so the BUG-2 reviewability guard is satisfied for this happy-path scenario.
+            OrderEntity requestOrder = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).status(OrderStatus.PAID).build();
 
             ReviewEntity reviewEntity = ReviewEntity.builder().comment("Excellent").build();
             ProductEntity product = productWith(productUuid);
@@ -350,6 +358,95 @@ class ReviewManagementServiceImpTest {
                     .isInstanceOf(CommentPostNotAllowedException.class);
 
             verify(reviewRepository, never()).save(any());
+        }
+
+        // ============================ BUG-2: order status guard ============================
+        // create() must reject reviews on orders that have not reached a "reviewable" lifecycle
+        // state. Pre-payment statuses (CREATED, AWAITING_PAYMENT, PAYMENT_FAILED) and post-cancel
+        // statuses must produce OrderNotReviewableException; PAID/SHIPPED/DELIVERED must succeed.
+
+        @Test
+        @DisplayName("BUG-2: status CREATED -> OrderNotReviewableException; nothing persisted")
+        void createReviewShouldFailWhenOrderStatusIsCreated() {
+            assertOrderStatusIsRejected(OrderStatus.CREATED);
+        }
+
+        @Test
+        @DisplayName("BUG-2: status PAYMENT_FAILED -> OrderNotReviewableException; nothing persisted")
+        void createReviewShouldFailWhenOrderStatusIsPaymentFailed() {
+            assertOrderStatusIsRejected(OrderStatus.PAYMENT_FAILED);
+        }
+
+        @Test
+        @DisplayName("BUG-2: status AWAITING_PAYMENT -> OrderNotReviewableException; nothing persisted")
+        void createReviewShouldFailWhenOrderStatusIsAwaitingPayment() {
+            assertOrderStatusIsRejected(OrderStatus.AWAITING_PAYMENT);
+        }
+
+        @Test
+        @DisplayName("BUG-2 regression: status PAID is reviewable -> review persists")
+        void createReviewShouldSucceedWhenOrderStatusIsPaid() {
+            assertOrderStatusIsAccepted(OrderStatus.PAID);
+        }
+
+        @Test
+        @DisplayName("BUG-2 regression: status SHIPPED is reviewable -> review persists")
+        void createReviewShouldSucceedWhenOrderStatusIsShipped() {
+            assertOrderStatusIsAccepted(OrderStatus.SHIPPED);
+        }
+
+        @Test
+        @DisplayName("BUG-2 regression: status DELIVERED is reviewable -> review persists")
+        void createReviewShouldSucceedWhenOrderStatusIsDelivered() {
+            assertOrderStatusIsAccepted(OrderStatus.DELIVERED);
+        }
+
+        /**
+         * Asserts that creating a review against an order in {@code status} raises
+         * {@link OrderNotReviewableException} and that no review is persisted. The order is
+         * caller-owned and contains the requested product, so the only check that can fail
+         * is the BUG-2 status guard.
+         */
+        private void assertOrderStatusIsRejected(final OrderStatus status) {
+            final ReviewCreateRequestDto dto = createDto();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order = orderContainingProduct(productUuid, user, status);
+
+            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
+            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
+                    .isInstanceOf(OrderNotReviewableException.class)
+                    .hasMessageContaining(status.name());
+
+            verify(reviewRepository, never()).save(any());
+        }
+
+        /**
+         * Asserts that creating a review against an order in {@code status} succeeds (review
+         * persisted, mapped DTO returned). Used for the PAID/SHIPPED/DELIVERED regression coverage.
+         */
+        private void assertOrderStatusIsAccepted(final OrderStatus status) {
+            final ReviewCreateRequestDto dto = createDto();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order = orderContainingProduct(productUuid, user, status);
+            final ProductEntity product = productWith(productUuid);
+            final ReviewEntity reviewEntity = ReviewEntity.builder().comment("Excellent").build();
+            final ReviewResponseDto responseDto = ReviewResponseDto.builder().rating(5).build();
+
+            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
+            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+            when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
+            when(moderationService.checkIfIsHateful("Excellent"))
+                    .thenReturn(ModerationResponseDto.builder().score(0.1).build());
+            when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
+            when(reviewMapper.mapFromEntityToResponseDto(reviewEntity)).thenReturn(responseDto);
+
+            final ReviewResponseDto result = service.create(dto, keycloakId);
+
+            assertThat(result).isSameAs(responseDto);
+            verify(reviewRepository).save(reviewEntity);
         }
 
         @Test

@@ -322,4 +322,15 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), USER_NOT_AUTHOR_OF_REVIEW.getResponseStatus().value(), USER_NOT_AUTHOR_OF_REVIEW.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, USER_NOT_AUTHOR_OF_REVIEW.getResponseStatus());
     }
+
+    /**
+     * Maps {@link OrderNotReviewableException} to HTTP 409 CONFLICT. Raised when a user attempts to
+     * post a review against an order that has not yet reached a reviewable lifecycle state
+     * (only PAID / SHIPPED / DELIVERED orders can be reviewed).
+     */
+    @ExceptionHandler(OrderNotReviewableException.class)
+    public ResponseEntity<ErrorResponseDto> handleOrderNotReviewableException(OrderNotReviewableException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_NOT_REVIEWABLE.getResponseStatus().value(), ORDER_NOT_REVIEWABLE.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ORDER_NOT_REVIEWABLE.getResponseStatus());
+    }
 }
