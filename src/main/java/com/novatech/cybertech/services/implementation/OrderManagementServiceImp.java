@@ -30,6 +30,7 @@ import com.novatech.cybertech.services.core.OrderManagementService;
 import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
+import com.novatech.cybertech.utils.ControllerSecurityUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -38,9 +39,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -118,8 +116,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * {@code GET /order/get/{uuid}} endpoint to prevent IDOR.
      *
      * <p>Wave 3 regression-fix: callers carrying {@code ROLE_ADMIN} bypass the ownership
-     * check (read from the {@link SecurityContextHolder}). USERs still get the IDOR
-     * protection.</p>
+     * check (resolved via {@link ControllerSecurityUtils#isCurrentCallerAdmin()}). USERs
+     * still get the IDOR protection.</p>
      *
      * @param uuid       order UUID to fetch.
      * @param keycloakId caller's Keycloak subject; must equal the order's owner (USER role only).
@@ -132,7 +130,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final OrderEntity order = orderRepository.findByUuid(uuid)
                 .orElseThrow(() -> new OrderNotFoundException("No product with the UUID : " + uuid + " found"));
 
-        if (!isCurrentCallerAdmin()
+        if (!ControllerSecurityUtils.isCurrentCallerAdmin()
                 && (order.getUserEntity() == null
                     || order.getUserEntity().getKeycloakId() == null
                     || !order.getUserEntity().getKeycloakId().equals(keycloakId))) {
@@ -143,21 +141,12 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     /**
-     * Returns {@code true} when the current {@link SecurityContextHolder} authentication
-     * carries {@code ROLE_ADMIN}. Mirrors {@code KeycloakRoleConverter}'s naming convention
-     * ({@code ROLE_ + uppercase}). Returns {@code false} on null / anonymous authentication.
-     */
-    private static boolean isCurrentCallerAdmin() {
-        final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) return false;
-        return auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch("ROLE_ADMIN"::equals);
-    }
-
-    /**
      * Lightweight status read with ownership check — used by the frontend's order-confirmation
      * polling loop after a Stripe payment so we don't refetch the full {@code OrderResponseDto}.
+     *
+     * <p>BUG-5 FIX: callers carrying {@code ROLE_ADMIN} bypass the ownership check — mirrors the
+     * admin escape-hatch already implemented in {@link #getByUUID(UUID, String)}. Without this,
+     * admin support tooling would receive HTTP 403 when polling status on a customer's order.</p>
      */
     @Override
     @Transactional(readOnly = true)
@@ -165,9 +154,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final OrderEntity order = orderRepository.findByUuid(orderUuid)
                 .orElseThrow(() -> new OrderNotFoundException("No order with the UUID : " + orderUuid + " found"));
 
-        if (order.getUserEntity() == null
-                || order.getUserEntity().getKeycloakId() == null
-                || !order.getUserEntity().getKeycloakId().equals(keycloakId)) {
+        if (!ControllerSecurityUtils.isCurrentCallerAdmin()
+                && (order.getUserEntity() == null
+                    || order.getUserEntity().getKeycloakId() == null
+                    || !order.getUserEntity().getKeycloakId().equals(keycloakId))) {
             throw new OrderDoesntBelongsToUserException("Order " + orderUuid + " does not belong to the current user");
         }
 
@@ -609,8 +599,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private OrderResponseDto doCancelOrder(final UUID orderUUID, final Jwt jwt) {
         final OrderEntity orderEntity = orderRepository.findByUuid(orderUUID).orElseThrow(() -> new OrderNotFoundException("Order with UUID " + orderUUID + " not found"));
 
-        if (isOrderAlreadyShipped(orderEntity)) {
-            log.info("User tried to cancel an order in a status over delivered status");
+        if (isCancellationLockedDueToShipping(orderEntity)) {
+            log.info("User tried to cancel an order whose status is at or beyond AWAITING_SHIPPING");
             throw new CannotCancelOrderException("Order is already shipped and can't be cancelled, please consider initiating Return process");
         }
 
@@ -743,8 +733,30 @@ public class OrderManagementServiceImp implements OrderManagementService {
         return productRepository.findAllByUuidIn(orderItemCreateRequestDto.stream().map(OrderItemCreateRequestDto::getProductUuid).toList());
     }
 
+    /**
+     * {@code true} when the order's status is at or beyond {@link OrderStatus#SHIPPED}.
+     * Used by {@link #updateOrder(OrderUpdateRequestDto, Jwt)} to short-circuit edits to a
+     * physically dispatched order — the {@link OrderAlreadyShippedException} message it raises
+     * ("already shipped") is only accurate from {@code SHIPPED} onwards, so this gate
+     * intentionally still allows updates while the order sits in {@link OrderStatus#AWAITING_SHIPPING}.
+     */
     private static boolean isOrderAlreadyShipped(OrderEntity orderEntity) {
         return orderEntity.getStatus().getCode() >= SHIPPED.getCode();
+    }
+
+    /**
+     * {@code true} when the order's status is at or beyond {@link OrderStatus#AWAITING_SHIPPING}.
+     *
+     * <p>Cancellation lock is stricter than the {@code updateOrder} shipping guard: by the time
+     * an order reaches {@code AWAITING_SHIPPING}, the async {@code OrderPaymentConfirmationEventListener}
+     * has already called {@code stockService.commitStock()} which decrements
+     * {@code productEntity.stock} and removes the reservation. A subsequent cancel would refund the
+     * customer but {@code stockService.releaseStock(orderUUID)} is then a no-op — the stock would
+     * never come back. Block cancel here so the merchant can keep the inventory until shipping
+     * actually leaves the warehouse, or until a return process is initiated post-delivery.</p>
+     */
+    private static boolean isCancellationLockedDueToShipping(final OrderEntity orderEntity) {
+        return orderEntity.getStatus().getCode() >= AWAITING_SHIPPING.getCode();
     }
 
     private static boolean isCurrentUserOrderInitiator(OrderEntity orderEntity, String keycloakId) {

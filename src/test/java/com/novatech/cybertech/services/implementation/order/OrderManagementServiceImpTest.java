@@ -56,6 +56,7 @@ import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
 import com.novatech.cybertech.validator.core.OrderValidator;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -67,6 +68,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.math.BigDecimal;
@@ -150,6 +154,25 @@ class OrderManagementServiceImpTest {
                         .currencyCode(CurrencyCode.EUR)
                         .discountType(DiscountType.NO_DISCOUNT)
                         .build());
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        // The admin-bypass tests below mutate the SecurityContextHolder to inject ROLE_ADMIN.
+        // Clearing here keeps those mutations from leaking into sibling tests / parallel runs.
+        SecurityContextHolder.clearContext();
+    }
+
+    /**
+     * Helper to install an authentication carrying the requested role into the
+     * {@link SecurityContextHolder} — drives {@code OrderManagementServiceImp.isCurrentCallerAdmin()}.
+     */
+    private static void setAuthenticatedRole(final String role) {
+        final TestingAuthenticationToken auth = new TestingAuthenticationToken("test-user", "n/a", role);
+        auth.setAuthenticated(true);
+        final SecurityContext ctx = SecurityContextHolder.createEmptyContext();
+        ctx.setAuthentication(auth);
+        SecurityContextHolder.setContext(ctx);
     }
 
     // ---- helpers --------------------------------------------------------
@@ -553,6 +576,86 @@ class OrderManagementServiceImpTest {
                             new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now())));
             final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
                     .userEntity(user).status(OrderStatus.AWAITING_PAYMENT).paymentAttempts(noneSuccess).build();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            service.cancelOrder(order.getUuid(), jwt);
+
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+            verifyNoInteractions(paymentService);
+        }
+
+        /**
+         * BUG-1 FIX: AWAITING_SHIPPING used to satisfy {@code isOrderAlreadyShipped}'s
+         * {@code >= SHIPPED} check by returning {@code false}, so cancellation went through, the
+         * Stripe refund fired, but {@code stockService.releaseStock(uuid)} ran AFTER the async
+         * commitStock listener — i.e. it was a no-op and the stock never came back. The fix
+         * introduces {@code isCancellationLockedDueToShipping} which kicks in at AWAITING_SHIPPING
+         * (code 5), refusing cancel before any refund/release work runs.
+         */
+        @Test
+        @DisplayName("BUG-1 FIX: AWAITING_SHIPPING is now locked for cancel — CannotCancelOrderException, no refund")
+        void cancelOrderShouldThrowWhenStatusIsAwaitingShipping() {
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build())
+                    .status(OrderStatus.AWAITING_SHIPPING)
+                    .paymentAttempts(new ArrayList<>(List.of(
+                            paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                                    new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now()))))
+                    .build();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.cancelOrder(order.getUuid(), jwt))
+                    .isInstanceOf(CannotCancelOrderException.class);
+
+            // Critical: the lock fires BEFORE any refund issues / stock release / save runs.
+            verifyNoInteractions(paymentService);
+            verify(stockService, never()).releaseStock(any(UUID.class));
+            verify(orderRepository, never()).save(any());
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_SHIPPING); // unchanged
+        }
+
+        @Test
+        @DisplayName("regression: SHIPPED still throws CannotCancelOrderException")
+        void cancelOrderShouldThrowWhenStatusIsShipped() {
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build())
+                    .status(OrderStatus.SHIPPED)
+                    .build();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.cancelOrder(order.getUuid(), jwt))
+                    .isInstanceOf(CannotCancelOrderException.class);
+
+            verifyNoInteractions(paymentService);
+        }
+
+        @Test
+        @DisplayName("regression: PAID still cancels successfully (refunds the success payment)")
+        void cancelOrderShouldSucceedWhenStatusIsPaid() {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final PaymentEntity successPayment = paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT,
+                    PaymentType.VISA, new Money(new BigDecimal("75.00"), CurrencyCode.EUR), LocalDateTime.now());
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(user).status(OrderStatus.PAID)
+                    .paymentAttempts(new ArrayList<>(List.of(successPayment))).build();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            service.cancelOrder(order.getUuid(), jwt);
+
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+            verify(paymentService).refund(eq(order), eq(PaymentType.VISA), eq(successPayment.getAmount()), anyString());
+        }
+
+        @Test
+        @DisplayName("regression: CREATED still cancels successfully (no payment yet, no refund issued)")
+        void cancelOrderShouldSucceedWhenStatusIsCreated() {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(user).status(OrderStatus.CREATED)
+                    .paymentAttempts(new ArrayList<>())
+                    .build();
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -1200,6 +1303,61 @@ class OrderManagementServiceImpTest {
 
             assertThatThrownBy(() -> service.getStatusByUUID(uuid, keycloakId))
                     .isInstanceOf(OrderDoesntBelongsToUserException.class);
+        }
+
+        /**
+         * BUG-5 FIX: getStatusByUUID was missing the {@code !isCurrentCallerAdmin()} guard that
+         * {@link OrderManagementServiceImp#getByUUID(UUID, String)} already had — admin support
+         * tooling polling status on a customer's order would receive HTTP 403. The fix mirrors
+         * {@code getByUUID}'s admin escape-hatch.
+         */
+        @Test
+        @DisplayName("BUG-5 FIX: ADMIN caller bypasses ownership check, status returned for foreign user's order")
+        void getStatusByUuidAsAdminShouldReturnAnyOrderStatus() {
+            setAuthenticatedRole("ROLE_ADMIN");
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity stranger = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-stranger").build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.SHIPPED).userEntity(stranger).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            // Caller passes its own (non-owner) keycloakId — admin role should override the IDOR check.
+            final com.novatech.cybertech.dto.response.order.OrderStatusDto dto =
+                    service.getStatusByUUID(uuid, keycloakId);
+
+            assertThat(dto.uuid()).isEqualTo(uuid);
+            assertThat(dto.status()).isEqualTo(OrderStatus.SHIPPED);
+        }
+
+        @Test
+        @DisplayName("regression: USER caller without ROLE_ADMIN reading another user's order is still rejected")
+        void getStatusByUuidAsUserShouldThrowWhenOrderBelongsToOtherUser() {
+            setAuthenticatedRole("ROLE_USER");
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity stranger = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-stranger").build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.PAID).userEntity(stranger).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.getStatusByUUID(uuid, keycloakId))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+        }
+
+        @Test
+        @DisplayName("regression: USER caller reading their OWN order succeeds")
+        void getStatusByUuidAsUserShouldSucceedWhenOrderBelongsToCaller() {
+            setAuthenticatedRole("ROLE_USER");
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.PAID).userEntity(owner).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            final com.novatech.cybertech.dto.response.order.OrderStatusDto dto =
+                    service.getStatusByUUID(uuid, keycloakId);
+
+            assertThat(dto.uuid()).isEqualTo(uuid);
+            assertThat(dto.status()).isEqualTo(OrderStatus.PAID);
         }
     }
 }
