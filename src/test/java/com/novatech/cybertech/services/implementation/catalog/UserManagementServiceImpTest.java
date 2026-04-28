@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation.catalog;
 
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserSelfUpdateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.UserEntity;
@@ -406,6 +407,150 @@ class UserManagementServiceImpTest {
             when(userMapper.mapFromEntityToResponseDto(List.<UserEntity>of())).thenReturn(List.of());
 
             assertThat(service.createAutomatically(List.of())).isEmpty();
+        }
+    }
+
+    // -----------------------------------------------------------------
+    @Nested
+    @DisplayName("updateMe — Frontend-gap #3 self-service profile update")
+    class UpdateMe {
+
+        private UserSelfUpdateRequestDto selfDto() {
+            return UserSelfUpdateRequestDto.builder()
+                    .firstName("Alice")
+                    .lastName("Doe")
+                    .phoneNumber("+33611111111")
+                    .address("42 rue Selfservice")
+                    .build();
+        }
+
+        @Test
+        @DisplayName("happy path — DB save first via persistence service, then Keycloak push, returns mapped DTO")
+        void updateMe_happyPath_dbThenKeycloak() {
+            final String keycloakId = "kc-self-1";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                    .uuid(UUID.randomUUID()).keycloakId(keycloakId).build();
+            final UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user))).thenReturn(expected);
+
+            final UserResponseDto result = service.updateMe(keycloakId, selfDto());
+
+            assertThat(result).isSameAs(expected);
+            // Skeptical: DB write MUST happen before any Keycloak call (mirrors Bug 3 update() ordering).
+            InOrder order = inOrder(userPersistenceService, keycloakUserManagementService);
+            order.verify(userPersistenceService).updateUser(any(UserUpdateRequestDto.class), eq(user));
+            order.verify(keycloakUserManagementService).updateUser(eq(keycloakId), any(UserUpdateRequestDto.class));
+        }
+
+        @Test
+        @DisplayName("adapts UserSelfUpdateRequestDto into UserUpdateRequestDto carrying ONLY first/last name + address (admin fields stay untouched)")
+        void updateMe_adaptsToUpdateRequestDto_minimalSurface() {
+            final String keycloakId = "kc-self-2";
+            final UUID userUuid = UUID.randomUUID();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(userUuid).keycloakId(keycloakId).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
+                    .thenReturn(UserDtoFixtures.aSampleUserResponse());
+
+            service.updateMe(keycloakId, selfDto());
+
+            ArgumentCaptor<UserUpdateRequestDto> dtoCaptor = ArgumentCaptor.forClass(UserUpdateRequestDto.class);
+            verify(userPersistenceService).updateUser(dtoCaptor.capture(), eq(user));
+            final UserUpdateRequestDto adapted = dtoCaptor.getValue();
+            assertThat(adapted.getUuid()).isEqualTo(userUuid);
+            assertThat(adapted.getFirstName()).isEqualTo("Alice");
+            assertThat(adapted.getLastName()).isEqualTo("Doe");
+            assertThat(adapted.getAddress()).isEqualTo("42 rue Selfservice");
+            // Privilege-elevation guard: email is admin-managed (would resync Keycloak login) so the
+            // self-update path must never propagate it. The DTO surface itself has no role/status field,
+            // so the only sensitive write the adapter could leak is email.
+            assertThat(adapted.getEmail()).isNull();
+            assertThat(adapted.getSex()).isNull();
+            assertThat(adapted.getBirthDate()).isNull();
+        }
+
+        @Test
+        @DisplayName("phone number patched directly on the entity (UserUpdateRequestDto has no phoneNumber field)")
+        void updateMe_patchesPhoneNumberDirectlyOnEntity() {
+            final String keycloakId = "kc-self-3";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).phoneNumber("+33600000000").build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
+                    .thenReturn(UserDtoFixtures.aSampleUserResponse());
+
+            service.updateMe(keycloakId, selfDto());
+
+            assertThat(user.getPhoneNumber()).isEqualTo("+33611111111");
+            verify(userRepository).save(user);
+        }
+
+        @Test
+        @DisplayName("null phone number short-circuits the side write (no extra repository.save)")
+        void updateMe_nullPhoneNumberSkipsExtraSave() {
+            final String keycloakId = "kc-self-no-phone";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).phoneNumber("+33600000000").build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
+                    .thenReturn(UserDtoFixtures.aSampleUserResponse());
+
+            final UserSelfUpdateRequestDto noPhone = UserSelfUpdateRequestDto.builder()
+                    .firstName("Alice").lastName("Doe").address("42 rue").build();
+            service.updateMe(keycloakId, noPhone);
+
+            verify(userRepository, never()).save(any(UserEntity.class));
+            // Pin: the entity's phoneNumber stays whatever it was (impl must NOT overwrite with null).
+            assertThat(user.getPhoneNumber()).isEqualTo("+33600000000");
+        }
+
+        @Test
+        @DisplayName("missing user → UserNotFoundException; persistence service and Keycloak both untouched")
+        void updateMe_missingUser_throws() {
+            final String keycloakId = "kc-missing";
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.updateMe(keycloakId, selfDto()))
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining(keycloakId);
+
+            verifyNoInteractions(userPersistenceService);
+            verifyNoInteractions(keycloakUserManagementService);
+        }
+
+        @Test
+        @DisplayName("DB save fails → no Keycloak call (no orphan IDP mutation)")
+        void updateMe_dbFailsBeforeKeycloak() {
+            final String keycloakId = "kc-self-dbfail";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
+                    .thenThrow(new RuntimeException("db down"));
+
+            assertThatThrownBy(() -> service.updateMe(keycloakId, selfDto()))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("db down");
+
+            verifyNoInteractions(keycloakUserManagementService);
+        }
+
+        @Test
+        @DisplayName("DB ok then Keycloak fails → wrapped RuntimeException with original cause (operator must reconcile)")
+        void updateMe_keycloakFailsAfterDbSuccess_wraps() {
+            final String keycloakId = "kc-self-kcfail";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
+                    .thenReturn(UserDtoFixtures.aSampleUserResponse());
+            doThrow(new RuntimeException("kc 500"))
+                    .when(keycloakUserManagementService).updateUser(eq(keycloakId), any(UserUpdateRequestDto.class));
+
+            assertThatThrownBy(() -> service.updateMe(keycloakId, selfDto()))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessageContaining("Keycloak sync failed after DB update")
+                    .hasCauseInstanceOf(RuntimeException.class);
+
+            // DB write was already attempted (and committed inside REQUIRES_NEW) — no rollback path.
+            verify(userPersistenceService).updateUser(any(UserUpdateRequestDto.class), eq(user));
         }
     }
 }

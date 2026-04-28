@@ -5,12 +5,14 @@ import com.novatech.cybertech.api.controllers.implementation.UserManagementContr
 import com.novatech.cybertech.api.error.ErrorManagementController;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserSelfUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -24,13 +26,17 @@ import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNIC
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.json.JsonCompareMode.STRICT;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,6 +69,7 @@ class UserManagementControllerTest {
     private static final String REGISTER_ENDPOINT = "/api/v1/services/user/register";
     private static final String REGISTER_AUTO_SINGLE_ENDPOINT = "/api/v1/services/user/register/auto/single";
     private static final String HEALTH_CHECK_ENDPOINT = "/api/v1/services/user/ok";
+    private static final String UPDATE_ME_ENDPOINT = "/api/v1/services/user/me";
 
     private static final String KEYCLOAK_ID = "keycloak-test-subject";
 
@@ -317,5 +324,119 @@ class UserManagementControllerTest {
         mockMvc.perform(get(HEALTH_CHECK_ENDPOINT)
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- PATCH /me (Frontend-gap #3) ----------
+
+    @Test
+    void updateMeShouldPatchSelfProfile() throws Exception {
+        // Happy path: the JWT subject reaches the service unchanged and the response body is the mapped DTO.
+        final UserSelfUpdateRequestDto dto = UserSelfUpdateRequestDto.builder()
+                .firstName("Alice")
+                .lastName("Doe")
+                .phoneNumber("+33611111111")
+                .address("42 rue de Test")
+                .build();
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
+                .firstName("Alice")
+                .lastName("Doe")
+                .build();
+
+        when(userManagementServiceImp.updateMe(eq(KEYCLOAK_ID), any(UserSelfUpdateRequestDto.class)))
+                .thenReturn(response);
+
+        mockMvc.perform(patch(UPDATE_ME_ENDPOINT)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(dto)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.firstName").value("Alice"))
+                .andExpect(jsonPath("$.lastName").value("Doe"));
+
+        // Skeptical: subject (String) — NOT the whole Jwt — reaches the service.
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<UserSelfUpdateRequestDto> dtoCaptor = ArgumentCaptor.forClass(UserSelfUpdateRequestDto.class);
+        verify(userManagementServiceImp).updateMe(subjectCaptor.capture(), dtoCaptor.capture());
+        assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
+        assertThat(dtoCaptor.getValue().getFirstName()).isEqualTo("Alice");
+        assertThat(dtoCaptor.getValue().getPhoneNumber()).isEqualTo("+33611111111");
+    }
+
+    @Test
+    void updateMeShouldRequireAuth() throws Exception {
+        // Anonymous = 401 via CustomAuthenticationEntryPoint (path is not in PUBLIC_URLS).
+        final UserSelfUpdateRequestDto dto = UserSelfUpdateRequestDto.builder().firstName("Alice").build();
+
+        mockMvc.perform(patch(UPDATE_ME_ENDPOINT)
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(dto)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void updateMeShouldReturn400OnInvalidPayload() throws Exception {
+        // @Size(min=2) on firstName + lastName: a 1-char value triggers Bean Validation → 400 TECHNICAL.
+        final UserSelfUpdateRequestDto invalid = UserSelfUpdateRequestDto.builder()
+                .firstName("A")
+                .lastName("Z")
+                .build();
+
+        mockMvc.perform(patch(UPDATE_ME_ENDPOINT)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(invalid)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void updateMeShouldRejectAdminFields() throws Exception {
+        // The DTO surface is the contract: it has NO role / status / email / username fields, so even
+        // when the request body smuggles those, Jackson silently drops them and the captured DTO must
+        // not carry any privilege-elevation hint. The skeptical assertion catches a regression where
+        // someone might accidentally widen UserSelfUpdateRequestDto to include admin-owned fields.
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponse();
+        when(userManagementServiceImp.updateMe(eq(KEYCLOAK_ID), any(UserSelfUpdateRequestDto.class)))
+                .thenReturn(response);
+
+        final String smuggledBody = "{"
+                + "\"firstName\":\"Alice\","
+                + "\"lastName\":\"Doe\","
+                + "\"role\":\"ADMIN\","
+                + "\"status\":\"ACTIVE\","
+                + "\"email\":\"hacker@example.com\","
+                + "\"username\":\"root\""
+                + "}";
+
+        mockMvc.perform(patch(UPDATE_ME_ENDPOINT)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(smuggledBody))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<UserSelfUpdateRequestDto> dtoCaptor = ArgumentCaptor.forClass(UserSelfUpdateRequestDto.class);
+        verify(userManagementServiceImp).updateMe(eq(KEYCLOAK_ID), dtoCaptor.capture());
+        // The DTO surface has no admin-only field; reflection check via toString suffices to pin
+        // that the published surface stayed minimal.
+        final String dtoString = dtoCaptor.getValue().toString();
+        assertThat(dtoString).contains("firstName=Alice", "lastName=Doe");
+        assertThat(dtoString)
+                .as("UserSelfUpdateRequestDto must NOT expose role/status/email/username — keeps self-service safe from privilege elevation")
+                .doesNotContainIgnoringCase("role=")
+                .doesNotContainIgnoringCase("status=")
+                .doesNotContainIgnoringCase("email=")
+                .doesNotContainIgnoringCase("username=");
     }
 }

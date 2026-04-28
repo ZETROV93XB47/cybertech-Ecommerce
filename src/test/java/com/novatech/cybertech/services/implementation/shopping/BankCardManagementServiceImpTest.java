@@ -666,4 +666,47 @@ class BankCardManagementServiceImpTest {
             verify(bankCardRepository, never()).deleteByUuid(any(UUID.class));
         }
     }
+
+    // =================================================================
+    @Nested
+    @DisplayName("findAllMine — Frontend-gap #4 list every card belonging to the caller")
+    class FindAllMine {
+
+        @Test
+        @DisplayName("happy path: user has 1 card -> repo result mapped to single-element list")
+        void findAllMine_oneCard_returnsMappedSingleton() {
+            final BankCardEntity card = BankCardEntityBuilder.aValidBankCard();
+            final BankCardResponseDto responseDto = new BankCardResponseDto();
+            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of(card));
+            when(bankCardMapper.mapFromEntityToResponseDto(card)).thenReturn(responseDto);
+
+            final List<BankCardResponseDto> result = service.findAllMine(keycloakId);
+
+            assertThat(result).hasSize(1).first().isSameAs(responseDto);
+            verify(bankCardRepository).findAllByUserEntity_KeycloakId(keycloakId);
+        }
+
+        @Test
+        @DisplayName("user with no card -> empty list, mapper never called")
+        void findAllMine_noCard_returnsEmpty() {
+            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of());
+
+            final List<BankCardResponseDto> result = service.findAllMine(keycloakId);
+
+            assertThat(result).isEmpty();
+            verify(bankCardMapper, never()).mapFromEntityToResponseDto(any(BankCardEntity.class));
+        }
+
+        @Test
+        @DisplayName("forwards keycloakId to the repository verbatim — no normalisation, no transformation")
+        void findAllMine_forwardsKeycloakIdVerbatim() {
+            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of());
+
+            service.findAllMine(keycloakId);
+
+            ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+            verify(bankCardRepository).findAllByUserEntity_KeycloakId(captor.capture());
+            assertThat(captor.getValue()).isEqualTo(keycloakId);
+        }
+    }
 }

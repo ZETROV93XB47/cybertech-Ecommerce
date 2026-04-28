@@ -7,6 +7,7 @@ import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
@@ -17,10 +18,15 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
@@ -66,6 +72,7 @@ class OrderManagementControllerTest {
     private static final String GET_BY_UUID = BASE + "/get/{uuid}";
     private static final String STATUS_BY_UUID = BASE + "/status/{uuid}";
     private static final String DELETE_BY_UUID = BASE + "/delete/{uuid}";
+    private static final String GET_MINE = BASE + "/mine";
 
     private static final String KEYCLOAK_ID = "keycloak-subject-id";
 
@@ -564,5 +571,76 @@ class OrderManagementControllerTest {
                         .with(jwtUser(KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isNotFound());
+    }
+
+    // ---------- GET /mine (Frontend-gap #1) ----------
+
+    @Test
+    void getMyOrdersShouldReturnPaginatedUserOrders() throws Exception {
+        // Happy path: the JWT subject reaches the service unchanged and the page is serialised back.
+        UUID orderUuid = UUID.randomUUID();
+        OrderResponseDto resp = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
+        Page<OrderResponseDto> page = new PageImpl<>(List.of(resp));
+
+        when(orderService.findMyOrders(eq(KEYCLOAK_ID), any(Pageable.class), any())).thenReturn(page);
+
+        mockMvc.perform(get(GET_MINE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].uuid").value(orderUuid.toString()))
+                .andExpect(jsonPath("$.totalElements").value(1));
+
+        // Skeptical: subject (String) — NOT the whole Jwt — reaches the service.
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        verify(orderService).findMyOrders(subjectCaptor.capture(), any(Pageable.class), any());
+        assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getMyOrdersShouldFilterByStatus() throws Exception {
+        // ?status=PAID,SHIPPED is bound to a Set<OrderStatus> by the converter and forwarded to the service.
+        OrderResponseDto resp = OrderDtoFixtures.aSampleOrderResponseBuilder().status(OrderStatus.PAID).build();
+        Page<OrderResponseDto> page = new PageImpl<>(List.of(resp));
+
+        when(orderService.findMyOrders(eq(KEYCLOAK_ID), any(Pageable.class), any())).thenReturn(page);
+
+        mockMvc.perform(get(GET_MINE)
+                        .param("status", "PAID", "SHIPPED")
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.content.length()").value(1));
+
+        ArgumentCaptor<Set<OrderStatus>> statusCaptor = ArgumentCaptor.forClass(Set.class);
+        verify(orderService).findMyOrders(eq(KEYCLOAK_ID), any(Pageable.class), statusCaptor.capture());
+        assertThat(statusCaptor.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.SHIPPED);
+    }
+
+    @Test
+    void getMyOrdersShouldHandleEmptyResult() throws Exception {
+        // Empty page is still a valid page — body shape stays consistent.
+        when(orderService.findMyOrders(eq(KEYCLOAK_ID), any(Pageable.class), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get(GET_MINE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void getMyOrdersShouldRequireAuth() throws Exception {
+        // Anonymous = 401 via CustomAuthenticationEntryPoint (the path is not in PUBLIC_URLS).
+        mockMvc.perform(get(GET_MINE)
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
     }
 }

@@ -1360,4 +1360,147 @@ class OrderManagementServiceImpTest {
             assertThat(dto.status()).isEqualTo(OrderStatus.PAID);
         }
     }
+
+    // =================================================================
+    @Nested
+    @DisplayName("findMyOrders — Frontend-gap #1 paginated read of caller's own orders")
+    class FindMyOrders {
+
+        @Test
+        @DisplayName("happy path: forwards keycloakId + pageable to repo and maps each entity through the mapper")
+        void findMyOrders_happyPath_mapsThroughRepository() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            final OrderEntity entity = OrderEntityBuilder.aValidOrder();
+            final org.springframework.data.domain.Page<OrderEntity> page =
+                    new org.springframework.data.domain.PageImpl<>(List.of(entity));
+            when(orderRepository.findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), eq(null), eq(pageable)))
+                    .thenReturn(page);
+
+            final org.springframework.data.domain.Page<OrderResponseDto> result =
+                    service.findMyOrders(keycloakId, pageable, null);
+
+            assertThat(result.getTotalElements()).isEqualTo(1);
+            assertThat(result.getContent()).hasSize(1);
+            verify(orderMapper).mapFromEntityToResponseDto(entity);
+        }
+
+        @Test
+        @DisplayName("empty status set is normalised to null so the JPQL :statuses IS NULL OR ... short-circuits")
+        void findMyOrders_emptyStatusSet_normalisedToNull() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findMyOrders(keycloakId, pageable, java.util.Set.of());
+
+            // The skeptical assertion: the impl MUST forward null to the repository when the caller passes an empty set.
+            ArgumentCaptor<Collection<OrderStatus>> statusesCaptor = ArgumentCaptor.forClass(Collection.class);
+            verify(orderRepository).findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), statusesCaptor.capture(), eq(pageable));
+            assertThat(statusesCaptor.getValue()).isNull();
+        }
+
+        @Test
+        @DisplayName("non-empty status set is forwarded verbatim — service does not transform user-supplied filters")
+        void findMyOrders_filterByStatus_forwardedVerbatim() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            final java.util.Set<OrderStatus> statuses = java.util.Set.of(OrderStatus.PAID, OrderStatus.SHIPPED);
+            when(orderRepository.findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), eq(statuses), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findMyOrders(keycloakId, pageable, statuses);
+
+            ArgumentCaptor<Collection<OrderStatus>> statusesCaptor = ArgumentCaptor.forClass(Collection.class);
+            verify(orderRepository).findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), statusesCaptor.capture(), eq(pageable));
+            assertThat(statusesCaptor.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.SHIPPED);
+        }
+
+        @Test
+        @DisplayName("empty result page surfaces as empty, mapper never invoked")
+        void findMyOrders_emptyPage_returnsEmpty() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            final org.springframework.data.domain.Page<OrderResponseDto> result =
+                    service.findMyOrders(keycloakId, pageable, null);
+
+            assertThat(result.getTotalElements()).isZero();
+            assertThat(result.getContent()).isEmpty();
+            verify(orderMapper, never()).mapFromEntityToResponseDto(any(OrderEntity.class));
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("findAllPaged — Frontend-gap #2 admin paginated read with optional filters")
+    class FindAllPaged {
+
+        @Test
+        @DisplayName("happy path: forwards both nullable filters to repo and maps entity → DTO")
+        void findAllPaged_noFilters_returnsAllOrders() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            final OrderEntity entity = OrderEntityBuilder.aValidOrder();
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(entity)));
+
+            final org.springframework.data.domain.Page<OrderResponseDto> result =
+                    service.findAllPaged(null, null, pageable);
+
+            assertThat(result.getTotalElements()).isEqualTo(1);
+            verify(orderMapper).mapFromEntityToResponseDto(entity);
+        }
+
+        @Test
+        @DisplayName("empty status set is normalised to null (mirrors findMyOrders) so :statuses IS NULL short-circuits")
+        void findAllPaged_emptyStatusSet_normalisedToNull() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq("kc-target"), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findAllPaged(java.util.Set.of(), "kc-target", pageable);
+
+            ArgumentCaptor<Collection<OrderStatus>> statusesCaptor = ArgumentCaptor.forClass(Collection.class);
+            verify(orderRepository).findAllByOptionalStatusesAndUserKeycloakId(statusesCaptor.capture(), eq("kc-target"), eq(pageable));
+            assertThat(statusesCaptor.getValue()).isNull();
+        }
+
+        @Test
+        @DisplayName("status filter only — userKeycloakId stays null and is forwarded as-is")
+        void findAllPaged_statusFilterOnly_userIdNull() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            final java.util.Set<OrderStatus> statuses = java.util.Set.of(OrderStatus.CANCELED);
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(statuses), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findAllPaged(statuses, null, pageable);
+
+            verify(orderRepository).findAllByOptionalStatusesAndUserKeycloakId(eq(statuses), eq(null), eq(pageable));
+        }
+
+        @Test
+        @DisplayName("user filter only — statuses stay null, the userKeycloakId reaches the repo verbatim")
+        void findAllPaged_userFilterOnly_statusesNull() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq("kc-only-user"), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findAllPaged(null, "kc-only-user", pageable);
+
+            verify(orderRepository).findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq("kc-only-user"), eq(pageable));
+        }
+
+        @Test
+        @DisplayName("empty result: mapper never called, surface stays an empty page")
+        void findAllPaged_emptyPage_returnsEmpty() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            final org.springframework.data.domain.Page<OrderResponseDto> result =
+                    service.findAllPaged(null, null, pageable);
+
+            assertThat(result.getTotalElements()).isZero();
+            verify(orderMapper, never()).mapFromEntityToResponseDto(any(OrderEntity.class));
+        }
+    }
 }
