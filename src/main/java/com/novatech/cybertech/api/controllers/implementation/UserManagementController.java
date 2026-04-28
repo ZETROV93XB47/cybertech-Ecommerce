@@ -17,7 +17,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +31,7 @@ import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_CRUD_CONTROLLER_BASE_PATH;
+import static com.novatech.cybertech.utils.ControllerSecurityUtils.isAdmin;
 import static com.novatech.cybertech.utils.DataGenerator.generateUserCreateRequestDto;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 import static org.springframework.http.ResponseEntity.ok;
@@ -61,6 +61,16 @@ import static org.springframework.http.ResponseEntity.ok;
 @Tag(name = "UserController", description = "API for user management")
 public class UserManagementController implements UserControllerApiSpec {
 
+    private static final String ACCESS_DENIED_OWN_PROFILE_ONLY = "Access denied: user can only fetch their own profile";
+
+    // Response payload keys returned by /register and /register/auto/single. Extracted as
+    // constants so the JSON contract surfaces in one place — adding a field is a one-line
+    // change and rename refactors no longer rely on string-search across the file.
+    private static final String RESPONSE_KEY_ID = "id";
+    private static final String RESPONSE_KEY_KEYCLOAK_ID = "keycloakId";
+    private static final String RESPONSE_KEY_EMAIL = "email";
+    private static final String RESPONSE_KEY_USERNAME = "username";
+
     private final UserManagementServiceImp userManagementServiceImp;
 
     /**
@@ -86,22 +96,10 @@ public class UserManagementController implements UserControllerApiSpec {
         final UserResponseDto loadedUser = userManagementServiceImp.getByUUID(userUuid);
 
         if (!isAdmin(authentication) && !loadedUser.getKeycloakId().equals(jwt.getSubject())) {
-            throw new AccessDeniedException("Access denied: user can only fetch their own profile");
+            throw new AccessDeniedException(ACCESS_DENIED_OWN_PROFILE_ONLY);
         }
 
         return ResponseEntity.status(HttpStatus.OK).body(loadedUser);
-    }
-
-    /**
-     * Returns {@code true} when the {@link Authentication} carries the {@code ROLE_ADMIN}
-     * authority. Mirrors {@link com.novatech.cybertech.converter.KeycloakRoleConverter}'s
-     * naming convention ({@code ROLE_ + uppercase} prefix).
-     */
-    private static boolean isAdmin(final Authentication authentication) {
-        if (authentication == null) return false;
-        return authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch("ROLE_ADMIN"::equals);
     }
 
     /**
@@ -113,16 +111,23 @@ public class UserManagementController implements UserControllerApiSpec {
      * local {@code UserEntity} are persisted in a single transaction.</p>
      *
      * @param userCreateRequestDto the human-supplied signup payload.
-     * @return HTTP 201 with a compact {@code Map} body containing {@code id} (local UUID)
-     *         and {@code keycloakId}.
+     * @return HTTP 201 with a compact {@code Map} body containing {@code id} (local UUID),
+     *         {@code email} and {@code username}.
+     *
+     * <p><b>BUG-LEAK-D6 (this fix):</b> the {@code keycloakId} previously included in this
+     * anonymous-public response is now stripped — it is an identity-system internal that an
+     * attacker probing signup must not be able to harvest. The admin-only
+     * {@link #registerAuto()} endpoint still exposes it because the synthetic-user use case
+     * legitimately needs the handle.</p>
      */
     @PostMapping("/register")
     public ResponseEntity<Map<?, ?>> register(@Valid @RequestBody UserCreateRequestDto userCreateRequestDto) {
         final UserResponseDto created = userManagementServiceImp.create(userCreateRequestDto);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-                "id", created.getUuid(),
-                "keycloakId", created.getKeycloakId()
+                RESPONSE_KEY_ID, created.getUuid(),
+                RESPONSE_KEY_EMAIL, created.getEmail(),
+                RESPONSE_KEY_USERNAME, created.getUsername()
         ));
     }
 
@@ -152,10 +157,10 @@ public class UserManagementController implements UserControllerApiSpec {
     public ResponseEntity<Map<String, Object>> registerAuto() {
         final UserResponseDto created = userManagementServiceImp.create(generateUserCreateRequestDto());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-                "id", created.getUuid(),
-                "keycloakId", created.getKeycloakId(),
-                "email", created.getEmail(),
-                "username", created.getUsername()
+                RESPONSE_KEY_ID, created.getUuid(),
+                RESPONSE_KEY_KEYCLOAK_ID, created.getKeycloakId(),
+                RESPONSE_KEY_EMAIL, created.getEmail(),
+                RESPONSE_KEY_USERNAME, created.getUsername()
         ));
     }
 

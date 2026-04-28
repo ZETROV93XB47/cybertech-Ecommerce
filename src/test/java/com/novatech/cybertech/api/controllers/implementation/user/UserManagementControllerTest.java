@@ -162,6 +162,8 @@ class UserManagementControllerTest {
 
     @Test
     void shouldRegisterUserSuccessfullyReturning201WithMapShape() throws Exception {
+        // Bug 6 fix: anonymous /register response body NO longer carries keycloakId — the
+        // server-built Map.of(...) returns id + email + username only. Asserting the new shape.
         final UUID createdUuid = UUID.randomUUID();
         final String keycloakId = "keycloak-" + UUID.randomUUID();
 
@@ -169,12 +171,13 @@ class UserManagementControllerTest {
         final UserResponseDto created = UserDtoFixtures.aSampleUserResponseBuilder()
                 .uuid(createdUuid)
                 .keycloakId(keycloakId)
+                .email("user@example.com")
+                .username("jane.doe")
                 .build();
 
         when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
 
         // /register is whitelisted in TestSecurityConfig → reachable without auth.
-        // Response body is the bespoke Map.of("id", uuid, "keycloakId", kid) shape (tech-debt).
         mockMvc.perform(post(REGISTER_ENDPOINT)
                         .with(csrf())
                         .accept(APPLICATION_JSON)
@@ -183,7 +186,29 @@ class UserManagementControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(createdUuid.toString()))
-                .andExpect(jsonPath("$.keycloakId").value(keycloakId));
+                .andExpect(jsonPath("$.email").value("user@example.com"))
+                .andExpect(jsonPath("$.username").value("jane.doe"))
+                .andExpect(jsonPath("$.keycloakId").doesNotExist());
+    }
+
+    @Test
+    void registerResponseShouldNotContainKeycloakId() throws Exception {
+        // Bug 6 explicit pin: the anonymous-public signup endpoint MUST NOT leak the Keycloak
+        // subject. Even when the service returns a DTO carrying keycloakId, the controller
+        // strips it from the response body.
+        final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequest();
+        final UserResponseDto created = UserDtoFixtures.aSampleUserResponseBuilder()
+                .keycloakId("keycloak-secret-id")
+                .build();
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
+
+        mockMvc.perform(post(REGISTER_ENDPOINT)
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.keycloakId").doesNotExist());
     }
 
     @Test
