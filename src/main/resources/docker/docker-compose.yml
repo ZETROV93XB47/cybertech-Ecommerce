@@ -124,6 +124,11 @@ services:
     command: start-dev
     ports:
       - "8080:8080"
+    volumes:
+      # Custom Cybertech login theme (overrides login/register/forgot/error pages
+      # with the Material 3 design tokens used by the Next.js front-end).
+      # Activate it from the admin UI: Realm settings -> Themes -> Login theme.
+      - ./../keycloak/themes/cybertech:/opt/keycloak/themes/cybertech:ro
     depends_on:
       mysql:
         condition: service_healthy

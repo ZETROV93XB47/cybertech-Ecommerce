@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 48" role="img" aria-label="Cybertech">
+  <defs>
+    <style>
+      .ct-mark { fill: #0058be; }
+      .ct-text {
+        fill: #000000;
+        font-family: "Space Grotesk", "Inter", "Segoe UI", system-ui, sans-serif;
+        font-weight: 700;
+        font-size: 28px;
+        letter-spacing: -0.04em;
+      }
+    </style>
+  </defs>
+  <rect class="ct-mark" x="2" y="8" width="32" height="32" rx="8"/>
+  <path d="M10 24 L18 32 L26 24 L18 16 Z" fill="#ffffff"/>
+  <text class="ct-text" x="44" y="33">Cybertech</text>
+</svg>
