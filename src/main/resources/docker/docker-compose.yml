@@ -139,10 +139,17 @@ services:
       AWS_DEFAULT_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      # Forwarded to init-aws.sh so the bucket name stays in sync with
+      # application.bucket.name (Spring) and aws.s3.bucket (Helm chart).
+      BUCKET_NAME: cybertech-products
     ports:
       - "4566:4566"
     volumes:
       - localstack_data:/var/lib/localstack
+      # Auto-create the S3 bucket + open CORS for the Next.js dev origin.
+      # Mounted into /etc/localstack/init/ready.d/ so LocalStack runs it
+      # exactly once when the edge service reports ready.
+      - ./localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
     networks:
       - ecommerce-net
 
