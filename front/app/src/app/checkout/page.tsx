@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { Icon } from "@/components/ui/Icon";
 import { auth } from "@/lib/auth";
 import { ApiError, cartApi, discountApi, userApi } from "@/lib/api";
@@ -81,18 +82,14 @@ export default async function CheckoutPage() {
   return (
     <MainLayout>
       <div className="max-w-[1280px] mx-auto px-margin-mobile md:px-margin-desktop pt-12 pb-section-gap">
-        <nav
-          aria-label="Breadcrumb"
-          className="flex items-center gap-2 mb-12 text-slate-400 font-label-caps uppercase tracking-widest"
-        >
-          <Link href="/cart" className="hover:text-primary transition-colors">
-            Cart
-          </Link>
-          <Icon name="chevron_right" size={14} />
-          <span className="text-primary font-bold">Checkout</span>
-          <Icon name="chevron_right" size={14} />
-          <span>Confirmation</span>
-        </nav>
+        <Breadcrumbs
+          className="mb-12"
+          items={[
+            { label: "Home", href: "/" },
+            { label: "Cart", href: "/cart" },
+            { label: "Checkout" },
+          ]}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           <CheckoutForm

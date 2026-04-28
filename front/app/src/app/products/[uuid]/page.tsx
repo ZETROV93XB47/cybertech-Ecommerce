@@ -3,6 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProductActions } from "@/components/product/ProductActions";
+import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { Icon } from "@/components/ui/Icon";
 import { auth } from "@/lib/auth";
 import { ApiError, productApi, reviewApi } from "@/lib/api";
@@ -50,23 +51,18 @@ export default async function ProductDetailPage({
   return (
     <MainLayout>
       <div className="max-w-[1440px] mx-auto px-margin-mobile md:px-margin-desktop pt-12 pb-section-gap">
-        <nav
-          aria-label="Breadcrumb"
-          className="flex items-center gap-2 text-label-caps uppercase tracking-widest text-slate-400 mb-8"
-        >
-          <Link href="/products" className="hover:text-primary transition-colors">
-            Catalog
-          </Link>
-          <Icon name="chevron_right" size={14} />
-          <Link
-            href={`/products?category=${encodeURIComponent(product.category)}`}
-            className="hover:text-primary transition-colors"
-          >
-            {product.category}
-          </Link>
-          <Icon name="chevron_right" size={14} />
-          <span className="text-primary font-bold truncate">{product.name}</span>
-        </nav>
+        <Breadcrumbs
+          className="mb-8"
+          items={[
+            { label: "Home", href: "/" },
+            { label: "Products", href: "/products" },
+            {
+              label: product.category,
+              href: `/products?category=${encodeURIComponent(product.category)}`,
+            },
+            { label: product.name },
+          ]}
+        />
 
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           {/* Gallery — backend gives us one photoUrl. We render the hero plus a

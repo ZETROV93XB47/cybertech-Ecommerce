@@ -2,6 +2,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { CatalogFilters } from "@/components/product/CatalogFilters";
 import { Pagination } from "@/components/ui/Pagination";
+import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { ApiError, productApi } from "@/lib/api";
 import type { Page, ProductResponseDto } from "@/lib/api";
 
@@ -67,6 +68,15 @@ export default async function ProductsPage({
 
   return (
     <MainLayout>
+      <div className="max-w-[1440px] mx-auto px-6 md:px-8 pt-6">
+        <Breadcrumbs
+          items={[
+            { label: "Home", href: "/" },
+            { label: "Products", href: category ? "/products" : undefined },
+            ...(category ? [{ label: category }] : []),
+          ]}
+        />
+      </div>
       <div className="max-w-[1440px] mx-auto flex flex-col lg:flex-row">
         <CatalogFilters
           current={{
