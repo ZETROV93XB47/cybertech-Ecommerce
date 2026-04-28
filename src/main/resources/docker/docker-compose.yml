@@ -147,6 +147,11 @@ services:
       # Forwarded to init-aws.sh so the bucket name stays in sync with
       # application.bucket.name (Spring) and aws.s3.bucket (Helm chart).
       BUCKET_NAME: cybertech-products
+      # LocalStack 4 stores everything in memory by default; the named volume
+      # below has no effect until persistence is explicitly turned on. With
+      # PERSISTENCE=1 the S3 state is snapshotted to /var/lib/localstack so
+      # uploaded product images survive container restarts.
+      PERSISTENCE: 1
     ports:
       - "4566:4566"
     volumes:
