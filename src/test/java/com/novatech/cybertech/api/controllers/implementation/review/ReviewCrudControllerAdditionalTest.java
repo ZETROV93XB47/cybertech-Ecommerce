@@ -81,6 +81,7 @@ class ReviewCrudControllerAdditionalTest {
                 .thenThrow(new ReviewNotFoundException("No review with the UUID : " + reviewUuid + " found"));
 
         mockMvc.perform(get(GET_REVIEW_BY_UUID_ENDPOINT, reviewUuid)
+                        .with(jwtUser("keycloakId"))
                         .contentType(APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(APPLICATION_JSON))

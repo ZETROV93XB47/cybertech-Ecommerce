@@ -353,8 +353,13 @@ class UserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("deleteByUUIDs — fans out Keycloak deletes per user, then SQL bulk delete")
+        @DisplayName("FIX(SAGA-INCONSISTENCY) — deleteByUUIDs runs SQL bulk delete then publishes one UserDeletedEvent per user (Keycloak deferred to AFTER_COMMIT listener)")
         void deleteByUUIDs_happyPath() {
+            // FIX(SAGA-INCONSISTENCY): the previous implementation called Keycloak inside the
+            // surrounding @Transactional BEFORE the SQL delete — a late SQL rollback would leave
+            // orphan Keycloak deletions for rows still in the DB. We now mirror the singular
+            // deleteByUUID pattern: SQL first, then publish events that the listener drains
+            // under AFTER_COMMIT.
             UUID a = UUID.randomUUID();
             UUID b = UUID.randomUUID();
             UserEntity ua = UserEntityBuilder.aValidUserBuilder().uuid(a).keycloakId("kc-a").build();
@@ -363,19 +368,30 @@ class UserManagementServiceImpTest {
 
             service.deleteByUUIDs(List.of(a, b));
 
-            verify(keycloakUserManagementService).deleteUser("kc-a");
-            verify(keycloakUserManagementService).deleteUser("kc-b");
-            verify(userRepository).deleteAllByUuidIn(List.of(a, b));
+            // SQL delete runs first.
+            InOrder order = inOrder(userRepository, eventPublisher);
+            order.verify(userRepository).deleteAllByUuidIn(List.of(a, b));
+
+            // One UserDeletedEvent per resolved user — captured to assert keycloakId fan-out.
+            ArgumentCaptor<UserDeletedEvent> events = ArgumentCaptor.forClass(UserDeletedEvent.class);
+            order.verify(eventPublisher, org.mockito.Mockito.times(2)).publishEvent(events.capture());
+            assertThat(events.getAllValues())
+                    .extracting(UserDeletedEvent::getKeycloakId)
+                    .containsExactly("kc-a", "kc-b");
+
+            // The service no longer calls Keycloak directly — that is now the listener's job.
+            verifyNoInteractions(keycloakUserManagementService);
         }
 
         @Test
-        @DisplayName("deleteByUUIDs — empty list still calls SQL bulk delete (no Keycloak calls)")
+        @DisplayName("FIX(SAGA-INCONSISTENCY) — empty list still calls SQL bulk delete and publishes no events")
         void deleteByUUIDs_emptyList() {
             when(userRepository.findAllByUuidIn(List.of())).thenReturn(List.of());
 
             service.deleteByUUIDs(List.of());
 
             verifyNoInteractions(keycloakUserManagementService);
+            verifyNoInteractions(eventPublisher);
             verify(userRepository).deleteAllByUuidIn(List.of());
         }
     }

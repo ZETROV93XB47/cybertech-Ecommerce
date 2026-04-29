@@ -68,10 +68,26 @@ public interface OrderManagementService {
 
     /**
      * Lightweight status read for the order-confirmation polling loop. Verifies the caller
-     * owns the order before returning. Use {@link #getByUUID(UUID)} (admin path) or the
+     * owns the order before returning. Use {@link #getByUUID(UUID, String)} (admin path) or the
      * full {@code OrderResponseDto} read for richer payloads.
      */
     OrderStatusDto getStatusByUUID(final UUID orderUuid, final String keycloakId);
+
+    // FIX(INTERFACE-CONTRACT): added missing method to honor interface-first convention
+    /**
+     * BUG-IDOR-D1 — ownership-checked read of a single order.
+     *
+     * <p>Resolves the order and verifies its initiator's {@code keycloakId} matches the
+     * caller's JWT subject. Differing identities throw
+     * {@link com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException} (mapped
+     * to HTTP 403 by {@code ErrorManagementController}). Callers carrying {@code ROLE_ADMIN}
+     * bypass the ownership check.</p>
+     *
+     * @param uuid       order UUID to fetch.
+     * @param keycloakId caller's Keycloak subject; must equal the order's owner (USER role only).
+     * @return the order DTO when ownership matches (USER) or unconditionally (ADMIN).
+     */
+    OrderResponseDto getByUUID(final UUID uuid, final String keycloakId);
 
     /**
      * Frontend-gap #1 — paginated listing of orders for the authenticated user.

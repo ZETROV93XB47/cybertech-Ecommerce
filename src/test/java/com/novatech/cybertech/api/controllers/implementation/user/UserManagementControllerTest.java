@@ -10,7 +10,7 @@ import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
-import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
+import com.novatech.cybertech.services.core.UserManagementService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,7 +77,7 @@ class UserManagementControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    UserManagementServiceImp userManagementServiceImp;
+    UserManagementService userManagementServiceImp;
 
     // ---------- GET /get/{uuid} ----------
 

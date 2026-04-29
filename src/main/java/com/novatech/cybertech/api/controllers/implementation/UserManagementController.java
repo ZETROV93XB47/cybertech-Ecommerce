@@ -4,7 +4,7 @@ import com.novatech.cybertech.api.controllers.spec.UserControllerApiSpec;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserSelfUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
-import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
+import com.novatech.cybertech.services.core.UserManagementService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -73,7 +73,8 @@ public class UserManagementController implements UserControllerApiSpec {
     private static final String RESPONSE_KEY_EMAIL = "email";
     private static final String RESPONSE_KEY_USERNAME = "username";
 
-    private final UserManagementServiceImp userManagementServiceImp;
+    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    private final UserManagementService userManagementServiceImp;
 
     /**
      * Returns a user by UUID. Authenticated users only — not in the public whitelist.
@@ -185,7 +186,7 @@ public class UserManagementController implements UserControllerApiSpec {
 
     /**
      * Frontend-gap #3 — self-service profile update. Resolves the caller via the JWT subject
-     * and delegates to {@link UserManagementServiceImp#updateMe(String, UserSelfUpdateRequestDto)};
+     * and delegates to {@link UserManagementService#updateMe(String, UserSelfUpdateRequestDto)};
      * no UUID is accepted from the body, ruling out IDOR by construction.
      */
     @Override

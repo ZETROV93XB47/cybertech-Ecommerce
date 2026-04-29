@@ -11,7 +11,7 @@ import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
-import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
+import com.novatech.cybertech.services.core.OrderManagementService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -80,7 +80,7 @@ class OrderManagementControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    OrderManagementServiceImp orderService;
+    OrderManagementService orderService;
 
     // ---------- POST /place ----------
 

@@ -87,8 +87,7 @@ public class CartManagementController implements CartManagementControllerApiSpec
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @GetMapping(value = "/get", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> getCart(@AuthenticationPrincipal final Jwt jwt) {
-        log.info("jwt value  : {}", jwt.toString());
-
+        // FIX(PII-LEAK): removed log of full JWT claims (sub, email, realm_access roles) — only the subject is needed below
         return ResponseEntity.status(HttpStatus.OK).body(cartService.getCart(jwt.getSubject()));
     }
 

@@ -1,6 +1,8 @@
 package com.novatech.cybertech.dto.request.order;
 
 import com.novatech.cybertech.entities.enums.DiscountType;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -27,4 +29,10 @@ public class PriceCalculationRequestDto {
 
     @NotNull
     private CurrencyCode currencyCode;
+
+    @NotNull
+    private ShippingProvider shippingProvider;
+
+    @NotNull
+    private ShippingType shippingType;
 }

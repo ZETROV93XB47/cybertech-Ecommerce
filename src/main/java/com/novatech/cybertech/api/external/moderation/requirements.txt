@@ -1,4 +1,4 @@
-flask
-transformers
-torch
-flask_debugtoolbar
+# Versions pinned to prevent unintended pulls of CUDA torch (~2GB) which exceeds chart memory limit
+flask==3.1.1
+transformers==4.47.1
+torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu

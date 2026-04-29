@@ -62,7 +62,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
     private final OrderMapper orderMapper;
 
-    //private final CartService cartService;
     private final StockService stockService;
     private final PaymentService paymentService;
 
@@ -127,6 +126,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * @throws OrderNotFoundException             when no order matches {@code uuid}.
      * @throws OrderDoesntBelongsToUserException  when a non-admin caller is not the order's initiator.
      */
+    @Override
     @Transactional(readOnly = true)
     public OrderResponseDto getByUUID(final UUID uuid, final String keycloakId) {
         final OrderEntity order = orderRepository.findByUuid(uuid)
@@ -277,6 +277,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
                     .items(priceDtos)
                     .discountType(DiscountType.NO_DISCOUNT)
                     .currencyCode(CurrencyCode.fromCode("EUR"))
+                    .shippingProvider(dto.getShippingProvider())
+                    .shippingType(dto.getShippingType())
                     .build();
 
             amount = orderPriceCalculationService.calculate(priceReq).getFinalAmount();
@@ -333,6 +335,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
 
         final PaymentEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), updateIdempotencyKey);
+
+        // FIX(LISIBILITE): explicit save instead of relying on JPA dirty-check
+        orderRepository.save(order);
 
         sendOrderUpdatedEvent(order, order.getUserEntity(), total.getAmount(), attempt.getStatus());
 
@@ -474,6 +479,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .items(priceDtos)
                 .discountType(req.getDiscountType())
                 .currencyCode(CurrencyCode.fromCode("EUR"))
+                .shippingProvider(req.getShippingProvider())
+                .shippingType(req.getShippingType())
                 .build();
 
         final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceRequest);

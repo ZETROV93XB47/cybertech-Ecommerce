@@ -4,7 +4,7 @@ import com.novatech.cybertech.api.controllers.spec.ProductManagementAdminApiSpec
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
-import com.novatech.cybertech.services.implementation.ProductManagementServiceImp;
+import com.novatech.cybertech.services.core.ProductManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,8 @@ import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
 @PreAuthorize("hasRole('ADMIN')")
 public class ProductManagementAdminController implements ProductManagementAdminApiSpec {
 
-    private final ProductManagementServiceImp productService;
+    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    private final ProductManagementService productService;
 
 
     @Override

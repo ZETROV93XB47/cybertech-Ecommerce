@@ -3,7 +3,7 @@ package com.novatech.cybertech.api.controllers.implementation;
 import com.novatech.cybertech.api.controllers.spec.ProductSearchApiSpec;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
-import com.novatech.cybertech.services.implementation.ProductManagementServiceImp;
+import com.novatech.cybertech.services.core.ProductManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "ProductSearchController", description = "API for Product Search")
 public class ProductSearchController implements ProductSearchApiSpec {
 
-    private final ProductManagementServiceImp productService;
+    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    private final ProductManagementService productService;
 
     @Override
     @GetMapping(value = "/get/{productUuid}", produces = APPLICATION_JSON_VALUE)
@@ -35,8 +36,11 @@ public class ProductSearchController implements ProductSearchApiSpec {
         return ResponseEntity.status(HttpStatus.OK).body(productService.getByUUID(productUuid));
     }
 
+    @Override
+    // FIX(DEAD-CODE): removed redundant alias variable; @Override added to enforce ApiSpec contract at compile-time
     @PostMapping(value = "/search", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public Page<ProductResponseDto> searchProducts(@Valid @RequestBody final ProductSearchRequestDto productSearchRequestDto) {
+        log.info("products search :: {}", productSearchRequestDto);
         return productService.searchProducts(productSearchRequestDto);
     }
 

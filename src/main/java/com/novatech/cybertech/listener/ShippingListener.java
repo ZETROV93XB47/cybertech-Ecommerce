@@ -4,9 +4,12 @@ import com.novatech.cybertech.dispatcher.ShippingDispatcher;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.ShippingContext;
 import com.novatech.cybertech.dto.data.UserContactDto;
+import com.novatech.cybertech.entities.BaseEntity;
 import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.OrderShippedEvent;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
@@ -20,6 +23,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+
+import java.util.Comparator;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
 
@@ -106,6 +111,12 @@ public class ShippingListener {
         // the actual shipping-confirmation notification is sent by NotificationListener
         // when it consumes the OrderShippedEvent below. Dead code removed.
 
+        // FIX(NPE-EDGE-CASE): guard against empty paymentAttempts (race condition where listener fires before flush, or migrated orders with no legacy attempts)
+        final PaymentAttemptStatus lastAttemptStatus = order.getPaymentAttempts().stream()
+                .max(Comparator.comparing(BaseEntity::getCreatedAt))
+                .map(PaymentEntity::getStatus)
+                .orElse(PaymentAttemptStatus.SUCCESS);
+
         final OrderEventDto orderEventDto = OrderEventDto.builder()
                 .orderUuid(order.getUuid())
                 .totalAmount(order.getTotalAmount().getAmount())
@@ -113,7 +124,7 @@ public class ShippingListener {
                 .userContactDto(userContactDto)
                 .shippingType(order.getShippingType())
                 .shippingProvider(order.getShippingProvider())
-                .paymentAttemptStatus(order.getPaymentAttempts().getLast().getStatus())
+                .paymentAttemptStatus(lastAttemptStatus)
                 .build();
 
 

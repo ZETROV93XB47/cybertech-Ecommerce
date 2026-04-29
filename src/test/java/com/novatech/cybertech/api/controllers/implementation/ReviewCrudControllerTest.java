@@ -64,6 +64,7 @@ class ReviewCrudControllerTest {
         when(reviewService.getByUUID(reviewUUID)).thenReturn(reviewResponseDto);
 
         mockMvc.perform(get(GET_REVIEW_BY_UUID_ENDPOINT, reviewUUID)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))

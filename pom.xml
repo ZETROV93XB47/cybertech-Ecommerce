@@ -305,6 +305,20 @@
             <version>8.10.1</version>
             <scope>compile</scope>
         </dependency>
+        <!--
+             FIX(DOS-MEMORY): Caffeine in-memory cache used by RateLimitFilter to back the
+             per-client bucket store. Replaces the previous unbounded ConcurrentHashMap so
+             that key rotation (IP/JWT churn) cannot grow the heap without bound. The
+             cache is configured with expireAfterAccess + maximumSize, which preserves the
+             existing token-bucket semantics for active callers while evicting idle keys.
+             3.2.x is the latest 3.x line targeting Java 11+ bytecode.
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>3.2.0</version>
+            <scope>compile</scope>
+        </dependency>
         <dependency>
             <groupId>net.datafaker</groupId>
             <artifactId>datafaker</artifactId>

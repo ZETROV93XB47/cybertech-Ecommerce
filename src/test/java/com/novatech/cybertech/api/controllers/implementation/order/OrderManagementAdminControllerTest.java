@@ -6,7 +6,7 @@ import com.novatech.cybertech.api.error.ErrorManagementController;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
-import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
+import com.novatech.cybertech.services.core.OrderManagementService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -58,7 +58,7 @@ class OrderManagementAdminControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    OrderManagementServiceImp orderManagementService;
+    OrderManagementService orderManagementService;
 
     @Test
     void getAllAsAdminShouldReturn200() throws Exception {

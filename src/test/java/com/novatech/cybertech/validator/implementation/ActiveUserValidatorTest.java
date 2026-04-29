@@ -1,6 +1,7 @@
 package com.novatech.cybertech.validator.implementation;
 
 import com.novatech.cybertech.dto.data.OrderValidationDto;
+import com.novatech.cybertech.exceptions.UserNotActiveException;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,14 +53,17 @@ class ActiveUserValidatorTest {
     }
 
     @Test
-    @DisplayName("Inactive user: throws IllegalStateException with French message and short-circuits chain")
+    @DisplayName("Inactive user: throws UserNotActiveException (mapped to HTTP 403 by ErrorManagementController) and short-circuits chain")
     void inactiveUserThrowsAndShortCircuits() {
+        // FIX(EXCEPTION-MAPPING): the validator now raises UserNotActiveException so the global
+        // @ControllerAdvice can return a structured 403 instead of leaking IllegalStateException
+        // as an opaque HTTP 500. The English message is the new contract surface.
         validator.setNext(nextValidator);
         OrderValidationDto dto = dtoWithUserActive(false);
 
         assertThatThrownBy(() -> validator.validate(dto))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Utilisateur inactif !");
+                .isInstanceOf(UserNotActiveException.class)
+                .hasMessage("User is inactive");
 
         verify(nextValidator, never()).validate(any());
     }

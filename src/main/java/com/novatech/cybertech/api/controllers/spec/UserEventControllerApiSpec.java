@@ -2,7 +2,7 @@ package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.event.UserEventDto;
-import com.novatech.cybertech.entities.document.UserEvent;
+import com.novatech.cybertech.dto.response.userevent.UserEventResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -25,12 +25,12 @@ public interface UserEventControllerApiSpec {
             security = @SecurityRequirement(name = "keycloak"),
             requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserEventDto.class))),
             responses = {
-                    @ApiResponse(responseCode = "201", description = "Event accepted", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserEvent.class))),
+                    @ApiResponse(responseCode = "201", description = "Event accepted", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserEventResponseDto.class))),
                     @ApiResponse(responseCode = "400", description = "Invalid event data", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     @ResponseStatus(HttpStatus.CREATED)
-    ResponseEntity<UserEvent> collectEvent(UserEventDto eventDto, Jwt jwt);
+    ResponseEntity<UserEventResponseDto> collectEvent(UserEventDto eventDto, Jwt jwt);
 }

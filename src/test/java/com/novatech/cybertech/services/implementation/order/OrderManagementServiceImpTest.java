@@ -146,10 +146,13 @@ class OrderManagementServiceImpTest {
                 .thenReturn(OrderDtoFixtures.aSampleOrderResponse());
 
         // Default stub for orderPriceCalculationService — tests that need a specific amount override this.
+        // Includes a non-null shippingCost reflecting the SHIPPING-INT integration so any consumer that
+        // starts reading getShippingCost() will see a deterministic value.
         lenient().when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
                 .thenReturn(PriceCalculationResultDto.builder()
                         .baseAmount(new BigDecimal("10.00"))
                         .discountAmount(BigDecimal.ZERO)
+                        .shippingCost(new BigDecimal("5.00"))
                         .finalAmount(new BigDecimal("10.00"))
                         .currencyCode(CurrencyCode.EUR)
                         .discountType(DiscountType.NO_DISCOUNT)
@@ -459,6 +462,38 @@ class OrderManagementServiceImpTest {
                     .isInstanceOf(UserNotFoundException.class)
                     .hasMessageContaining("JWT subject missing");
             verify(userRepository, never()).findByKeycloakId(null);
+        }
+
+        /**
+         * SHIPPING-INT contract: placeOrder must forward {@code shippingProvider} and
+         * {@code shippingType} from the {@link OrderPlacingRequestDto} into the
+         * {@link PriceCalculationRequestDto} so the price calculation service can resolve the
+         * correct {@link com.novatech.cybertech.services.core.ShippingProviderService} and fold
+         * the shipping cost into the final amount.
+         */
+        @Test
+        @DisplayName("SHIPPING-INT: placeOrder forwards shippingProvider + shippingType to OrderPriceCalculationService")
+        void placeOrder_forwardsShippingProviderAndTypeToPriceCalc() {
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            // Use a non-default (FEDEX / EXPRESS) pair so we can prove the values come from the request.
+            final OrderPlacingRequestDto req = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                    .shippingProvider(ShippingProvider.FEDEX)
+                    .shippingType(ShippingType.EXPRESS)
+                    .build();
+
+            service.placeOrder(req, jwt);
+
+            final ArgumentCaptor<PriceCalculationRequestDto> cap = ArgumentCaptor.forClass(PriceCalculationRequestDto.class);
+            verify(orderPriceCalculationService).calculate(cap.capture());
+            assertThat(cap.getValue().getShippingProvider()).isEqualTo(ShippingProvider.FEDEX);
+            assertThat(cap.getValue().getShippingType()).isEqualTo(ShippingType.EXPRESS);
         }
 
         @Test
@@ -913,6 +948,14 @@ class OrderManagementServiceImpTest {
             assertThat(order.getShippingType()).isEqualTo(ShippingType.EXPRESS);
             assertThat(order.getShippingProvider()).isEqualTo(ShippingProvider.FEDEX);
             assertThat(order.getTotalAmount().getAmount()).isEqualByComparingTo("99.00");
+
+            // SHIPPING-INT contract: updateOrder must forward shippingProvider/shippingType from the
+            // request into the PriceCalculationRequestDto for the price-calculation service.
+            final ArgumentCaptor<PriceCalculationRequestDto> priceCap =
+                    ArgumentCaptor.forClass(PriceCalculationRequestDto.class);
+            verify(orderPriceCalculationService).calculate(priceCap.capture());
+            assertThat(priceCap.getValue().getShippingProvider()).isEqualTo(ShippingProvider.FEDEX);
+            assertThat(priceCap.getValue().getShippingType()).isEqualTo(ShippingType.EXPRESS);
         }
     }
 

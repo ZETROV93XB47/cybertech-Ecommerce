@@ -3,7 +3,7 @@ package com.novatech.cybertech.api.controllers.implementation;
 import com.novatech.cybertech.api.controllers.spec.OrderManagementAdminControllerApiSpec;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
+import com.novatech.cybertech.services.core.OrderManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +42,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "OrderAdminController", description = "API for Order management (Admin)")
 public class OrderManagementAdminController implements OrderManagementAdminControllerApiSpec {
 
-    private final OrderManagementServiceImp orderManagementService;
+    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    private final OrderManagementService orderManagementService;
 
     @Override
     @GetMapping(value = "/get/all", produces = APPLICATION_JSON_VALUE)

@@ -66,6 +66,8 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
     private final ApplicationEventPublisher eventPublisher;
     private final PaymentAttemptRepository attemptRepository;
     private final ProcessedWebhookEventRepository processedWebhookEventRepository;
+    // FIX(BEAN-BYPASS): use the Spring-managed Jackson 3 ObjectMapper instead of instantiating a new one — avoids losing global module config (Java time, custom serializers) and is cheaper than per-call construction
+    private final ObjectMapper objectMapper;
 
     /**
      * The expected {@code livemode} value of incoming events. Defaults to {@code false} so any
@@ -114,8 +116,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
             return;
         }
 
-        final ObjectMapper mapper = new ObjectMapper();
-        final StripeWebhookEventDto stripeWebhookEventDto = mapper.readValue(eventPayload, StripeWebhookEventDto.class);
+        final StripeWebhookEventDto stripeWebhookEventDto = objectMapper.readValue(eventPayload, StripeWebhookEventDto.class);
 
         boolean handled = false;
 

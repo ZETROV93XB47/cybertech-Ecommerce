@@ -11,6 +11,7 @@ import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.UserManagementService;
+import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -49,7 +50,9 @@ public class UserManagementServiceImp implements UserManagementService {
      */
     @Override
     public UserResponseDto create(final UserCreateRequestDto req) {
-        log.info("user creation request : {}", req);
+        // FIX(PII-LEAK): the full request DTO contains the raw password, bank-card details and email —
+        // log only the email domain so traffic patterns stay observable without leaking PII into log appenders.
+        log.info("user creation request received for email domain '{}'", LogSafetyUtils.extractEmailDomain(req.getEmail()));
 
         // Phase 1 — Keycloak only, NO transaction. A failure here is terminal: no compensation needed.
         final String keycloakId = keycloakUserManagementService.createUser(
@@ -76,6 +79,7 @@ public class UserManagementServiceImp implements UserManagementService {
         return userMapper.mapFromEntityToResponseDto(userRepository.findAll());
     }
 
+    @Override
     @Transactional(readOnly = true)
     public Page<UserResponseDto> getAll(final Pageable pageable) {
         return userRepository.findAll(pageable).map(userMapper::mapFromEntityToResponseDto);
@@ -149,15 +153,28 @@ public class UserManagementServiceImp implements UserManagementService {
         eventPublisher.publishEvent(new UserDeletedEvent(this, keycloakId));
     }
 
+    /**
+     * Bulk delete that mirrors the {@link #deleteByUUID} AFTER_COMMIT pattern (Bug 4).
+     *
+     * <p>FIX(SAGA-INCONSISTENCY): the previous implementation called Keycloak inside the
+     * surrounding transaction <i>before</i> issuing the SQL delete. A late SQL rollback (FK
+     * violation, unique constraint, ...) therefore left orphan Keycloak deletions for rows that
+     * still existed in the DB — the exact anti-pattern the singular {@code deleteByUUID} path
+     * already fixes via {@link UserDeletedEvent}. We mirror that fix here: publish one event per
+     * resolved entity and let {@code UserDeletionListener} drain them under
+     * {@code TransactionPhase.AFTER_COMMIT} so Keycloak only fires once the SQL bulk delete has
+     * actually committed.
+     */
     @Override
     @Transactional
     public void deleteByUUIDs(final Collection<UUID> uuids) {
-        List<UserEntity> users = userRepository.findAllByUuidIn(uuids);
+        final List<UserEntity> users = userRepository.findAllByUuidIn(uuids);
 
-        users.forEach(user -> keycloakUserManagementService.deleteUser(user.getKeycloakId()));
         userRepository.deleteAllByUuidIn(uuids);
+        users.forEach(user -> eventPublisher.publishEvent(new UserDeletedEvent(this, user.getKeycloakId())));
     }
 
+    @Override
     @Transactional
     public Collection<UserResponseDto> createAutomatically(Collection<UserEntity> users) {
         return new ArrayList<>(userMapper.mapFromEntityToResponseDto(users.stream().map(userRepository::save).toList()));

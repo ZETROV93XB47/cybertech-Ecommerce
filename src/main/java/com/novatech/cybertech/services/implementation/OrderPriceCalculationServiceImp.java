@@ -7,9 +7,12 @@ import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
 import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
+import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
+import com.novatech.cybertech.factory.ShippingProviderStrategyFactory;
 import com.novatech.cybertech.services.core.DiscountCampaignService;
 import com.novatech.cybertech.services.core.OrderPriceCalculationService;
+import com.novatech.cybertech.services.core.ShippingProviderService;
 import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,8 +37,11 @@ import java.math.RoundingMode;
 @RequiredArgsConstructor
 public class OrderPriceCalculationServiceImp implements OrderPriceCalculationService {
 
+    private static final String NO_SHIPPING_STRATEGY_MESSAGE_PREFIX = "No ShippingProviderService wired for provider ";
+
     private final DiscountStrategyFactory discountStrategyFactory;
     private final DiscountCampaignService discountCampaignService;
+    private final ShippingProviderStrategyFactory shippingProviderStrategyFactory;
 
     @Override
     public PriceCalculationResultDto calculate(final PriceCalculationRequestDto request) {
@@ -46,14 +52,20 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
 
+        // FIX(SHIPPING-INT): include shipping cost computed via ShippingProviderStrategyFactory in final order price (previously omitted)
+        final BigDecimal shippingCost = computeShippingCost(request);
+
         // Short-circuit for NO_DISCOUNT: avoid touching the discount_campaign table.
         // A missing NO_DISCOUNT row used to break every placeOrder call with
         // DiscountTypeNotActiveException — there is nothing to look up here.
         if (discountType == DiscountType.NO_DISCOUNT) {
+            final BigDecimal finalAmount = baseAmount.add(shippingCost)
+                    .setScale(2, RoundingMode.HALF_UP);
             return PriceCalculationResultDto.builder()
                     .baseAmount(baseAmount)
                     .discountAmount(zero())
-                    .finalAmount(baseAmount)
+                    .shippingCost(shippingCost)
+                    .finalAmount(finalAmount)
                     .currencyCode(request.getCurrencyCode())
                     .discountType(discountType)
                     .build();
@@ -65,20 +77,34 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
 
         final BigDecimal discountAmount = computeDiscount(baseAmount, request.getItems(), context);
 
-        final BigDecimal finalAmount = baseAmount.subtract(discountAmount).max(BigDecimal.ZERO)
+        // Shipping is added AFTER clamping the post-discount subtotal at zero, so a 100% discount
+        // still leaves the customer paying the shipping fee.
+        final BigDecimal discountedSubtotal = baseAmount.subtract(discountAmount).max(BigDecimal.ZERO);
+        final BigDecimal finalAmount = discountedSubtotal.add(shippingCost)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        log.info("Price calculation for {} items — base={} discount={} final={} ({} / {})",
-                request.getItems().size(), baseAmount, discountAmount, finalAmount,
-                discountType, request.getCurrencyCode());
+        log.info("Price calculation for {} items — base={} discount={} shipping={} final={} ({} / {} / {} / {})",
+                request.getItems().size(), baseAmount, discountAmount, shippingCost, finalAmount,
+                discountType, request.getCurrencyCode(), request.getShippingProvider(), request.getShippingType());
 
         return PriceCalculationResultDto.builder()
                 .baseAmount(baseAmount)
                 .discountAmount(discountAmount)
+                .shippingCost(shippingCost)
                 .finalAmount(finalAmount)
                 .currencyCode(request.getCurrencyCode())
                 .discountType(discountType)
                 .build();
+    }
+
+    private BigDecimal computeShippingCost(final PriceCalculationRequestDto request) {
+        final ShippingProviderService shippingStrategy = shippingProviderStrategyFactory.getStrategy(request.getShippingProvider());
+        if (shippingStrategy == null) {
+            throw new NoStrategyFoundForProcessingTheRequest(
+                    NO_SHIPPING_STRATEGY_MESSAGE_PREFIX + request.getShippingProvider());
+        }
+        return shippingStrategy.calculateShippingCost(request.getShippingType())
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal computeDiscount(final BigDecimal baseAmount,

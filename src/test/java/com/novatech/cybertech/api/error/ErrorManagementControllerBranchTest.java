@@ -21,6 +21,7 @@ import com.novatech.cybertech.exceptions.NoDefaultBankCartSetException;
 import com.novatech.cybertech.exceptions.NoPreviousPaymentAttemptException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.NotificationDeliveryException;
 import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
@@ -123,12 +124,12 @@ class ErrorManagementControllerBranchTest {
     }
 
     @Test
-    @DisplayName("CannotCancelOrderException → 403 FUNCTIONAL with passthrough message")
-    void cannotCancelOrderReturns403() {
+    @DisplayName("CannotCancelOrderException → 409 FUNCTIONAL with passthrough message")
+    void cannotCancelOrderReturns409() {
         final ResponseEntity<ErrorResponseDto> response =
                 controller.handleCannotCancelOrderException(new CannotCancelOrderException("already shipped"));
 
-        assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "already shipped");
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "already shipped");
     }
 
     @Test
@@ -150,12 +151,12 @@ class ErrorManagementControllerBranchTest {
     }
 
     @Test
-    @DisplayName("FailedRetryingPayment → 403 FUNCTIONAL with passthrough message")
-    void failedRetryingPaymentReturns403() {
+    @DisplayName("FailedRetryingPayment → 422 FUNCTIONAL with passthrough message")
+    void failedRetryingPaymentReturns422() {
         final ResponseEntity<ErrorResponseDto> response =
                 controller.handleFailedUpdatingOrder(new FailedRetryingPayment("retry boom"));
 
-        assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "retry boom");
+        assertEnvelope(response, HttpStatus.UNPROCESSABLE_ENTITY, ErrorCodeType.FUNCTIONAL, "retry boom");
     }
 
     @Test
@@ -168,12 +169,12 @@ class ErrorManagementControllerBranchTest {
     }
 
     @Test
-    @DisplayName("OrderAlreadyShippedException → 403 FUNCTIONAL with passthrough message")
-    void orderAlreadyShippedReturns403() {
+    @DisplayName("OrderAlreadyShippedException → 409 FUNCTIONAL with passthrough message")
+    void orderAlreadyShippedReturns409() {
         final ResponseEntity<ErrorResponseDto> response =
                 controller.handleOrderAlreadyShippedException(new OrderAlreadyShippedException("shipped"));
 
-        assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "shipped");
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "shipped");
     }
 
     @Test
@@ -430,6 +431,15 @@ class ErrorManagementControllerBranchTest {
                 controller.handleUserNotAuthorOfReviewException(new UserNotAuthorOfReviewException("not author"));
 
         assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "not author");
+    }
+
+    @Test
+    @DisplayName("NotificationDeliveryException → 500 TECHNICAL with passthrough message")
+    void notificationDeliveryReturns500() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleNotificationDeliveryException(new NotificationDeliveryException("smtp down"));
+
+        assertEnvelope(response, HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL, "smtp down");
     }
 
     @Test

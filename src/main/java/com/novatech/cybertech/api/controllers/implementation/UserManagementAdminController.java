@@ -5,7 +5,7 @@ import com.novatech.cybertech.api.controllers.spec.UserManagementAdminApiSpec;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
-import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
+import com.novatech.cybertech.services.core.UserManagementService;
 import com.novatech.cybertech.utils.DataGenerator;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,7 +37,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "UserAdminController", description = "API for User management (Admin)")
 public class UserManagementAdminController implements UserManagementAdminApiSpec {
 
-    private final UserManagementServiceImp userManagementServiceImp;
+    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    private final UserManagementService userManagementServiceImp;
 
     @Override
     @GetMapping(value = "/get/all", produces = APPLICATION_JSON_VALUE)

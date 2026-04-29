@@ -29,6 +29,8 @@ spec:
               value: "{{ .Values.environment.awsDefaultRegion }}"
             - name: DEBUG
               value: "{{ .Values.environment.debug }}"
+            - name: PERSISTENCE
+              value: "{{ .Values.environment.persistence }}"
             - name: DATA_DIR
               value: "{{ .Values.environment.dataDir }}"
             - name: AWS_ACCESS_KEY_ID
@@ -47,10 +49,10 @@ spec:
           {{- end }}
           volumeMounts:
             - name: localstack-data
-              mountPath: /tmp/localstack
+              mountPath: /var/lib/localstack
           livenessProbe:
             httpGet:
-              path: /health
+              path: /_localstack/health
               port: {{ .Values.service.port }}
             initialDelaySeconds: 15
             periodSeconds: 20
@@ -58,7 +60,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health
+              path: /_localstack/health
               port: {{ .Values.service.port }}
             initialDelaySeconds: 10
             periodSeconds: 5

@@ -61,7 +61,9 @@ public class UserPersistenceService {
                 .build();
 
         final UserEntity savedUser = userRepository.save(user);
-        log.info("Saved user : {}", savedUser);
+        // FIX(PII-LEAK): UserEntity.toString() (Lombok @Data) exposes email, keycloakId, address and phoneNumber —
+        // log only the UUID so the entity write stays auditable without leaking PII.
+        log.info("Saved user with UUID: {}", savedUser.getUuid());
 
         // Bank card is optional. When provided, delegate to BankCardManagementService.addBankCard
         // so PCI-DSS rules (PAN encryption + last4 masking, expiry guard) are applied. The call
@@ -93,7 +95,8 @@ public class UserPersistenceService {
     public UserResponseDto updateUser(final UserUpdateRequestDto dto, final UserEntity loadedUser) {
         userMapper.updateEntityFromDto(dto, loadedUser);
         final UserEntity savedUser = userRepository.save(loadedUser);
-        log.info("Updated user : {}", savedUser);
+        // FIX(PII-LEAK): see saveNewUser — never log the full UserEntity (Lombok @Data toString leaks email + keycloakId).
+        log.info("Updated user with UUID: {}", savedUser.getUuid());
         return userMapper.mapFromEntityToResponseDto(savedUser);
     }
 }

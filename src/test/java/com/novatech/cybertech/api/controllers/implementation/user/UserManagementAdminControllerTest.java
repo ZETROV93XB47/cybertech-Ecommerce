@@ -11,7 +11,7 @@ import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
 import com.novatech.cybertech.exceptions.UserNotActiveException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
-import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
+import com.novatech.cybertech.services.core.UserManagementService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -81,7 +81,7 @@ class UserManagementAdminControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    UserManagementServiceImp userManagementServiceImp;
+    UserManagementService userManagementServiceImp;
 
     // ---------- GET /get/all ----------
 

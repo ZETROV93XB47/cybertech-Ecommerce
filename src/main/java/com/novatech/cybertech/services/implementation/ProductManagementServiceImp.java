@@ -49,6 +49,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
         return productMapper.mapFromEntityToResponseDto(productRepository.findAll());
     }
 
+    @Override
     @Transactional(readOnly = true)
     public Page<ProductResponseDto> getAll(final Pageable pageable) {
         return productRepository.findAll(pageable).map(productMapper::mapFromEntityToResponseDto);
@@ -108,6 +109,8 @@ public class ProductManagementServiceImp implements ProductManagementService {
         final ProductEntity saved = productRepository.save(existing);
 
         final ProductDocument document = productMapper.mapFromProductEntityToProductDocument(saved);
+        // FIX(ES-SYNC): mirror the create() flow — attributes must be re-applied via the factory so Elasticsearch reflects updated category-specific typed fields (CPU, RAM, screen size, etc.)
+        document.setAttributes(attributesFactory.create(saved.getCategory(), saved.getAttributes()));
         productSearchRepository.save(document);
 
         return productMapper.mapFromEntityToResponseDto(saved);
@@ -129,12 +132,14 @@ public class ProductManagementServiceImp implements ProductManagementService {
         }
     }
 
+    @Override
     public Page<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto) {
         final Page<ProductDocument> productDocuments = productSearchService.search(productSearchRequestDto);
         return productDocuments.map(productMapper::mapFromProductDocumentToProductResponseDto);
     }
 
 
+    @Override
     @Transactional(readOnly = true)
     public Page<ProductResponseDto> getBestSellers(final Pageable pageable) {
         return productRepository.findBestSellers(pageable).map(productMapper::mapFromEntityToResponseDto);

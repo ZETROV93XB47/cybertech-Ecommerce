@@ -20,6 +20,18 @@ public class PriceCalculationResultDto {
 
     private BigDecimal discountAmount;
 
+    /**
+     * Shipping fee computed by the {@link com.novatech.cybertech.factory.ShippingProviderStrategyFactory}
+     * for the requested {@code shippingProvider} / {@code shippingType} pair. Already folded into
+     * {@link #finalAmount} — exposed separately so callers / receipts can show the breakdown.
+     */
+    private BigDecimal shippingCost;
+
+    /**
+     * Post-discount, post-shipping total: {@code max(baseAmount - discountAmount, 0) + shippingCost}.
+     * The shipping fee is added AFTER clamping the discounted subtotal at zero so a 100% discount
+     * still leaves the customer paying the shipping fee.
+     */
     private BigDecimal finalAmount;
 
     private CurrencyCode currencyCode;

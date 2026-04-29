@@ -96,6 +96,15 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         bankCardRepository.delete(bankCard);
     }
 
+    /**
+     * FIX(PCI): {@code updateBankCard} previously called the mapper directly without applying the
+     * same encryption + expiry guards as {@link #addBankCard}. A user could PATCH a brand-new
+     * plaintext PAN and the mapper would overwrite the encrypted column with the raw card number,
+     * silently undoing the BUG-036 fix. We now mirror the add-path: validate expiry, encrypt the
+     * PAN (when supplied), then apply the mapper. Updates that omit {@code cardNumber} (e.g. a
+     * holder-name only edit) still skip {@link #applyPciStorageRules} so we never wipe an existing
+     * encrypted column with a {@code null} cipher.
+     */
     @Override
     @Transactional
     public BankCardResponseDto updateBankCard(String keycloakId, BankCardUpdateRequestDto dto) {
@@ -107,7 +116,19 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
             throw new BankCardNotFoundException("No bank card found for this user.");
         }
 
+        // FIX(PCI): expiry guard — same rule as addBankCard, runs before any persistence.
+        if (dto.getExpiryDate() != null && !dto.getExpiryDate().isBlank()) {
+            validateExpiryNotInThePast(dto.getExpiryDate());
+        }
+
         bankCardMapper.updateEntityFromDto(dto, bankCard);
+
+        // FIX(PCI): only re-encrypt when a fresh PAN was supplied. A holder-name-only PATCH must
+        // NOT erase the existing ciphertext by re-running applyPciStorageRules with a null PAN.
+        if (dto.getCardNumber() != null && !dto.getCardNumber().isBlank()) {
+            applyPciStorageRules(bankCard, dto.getCardNumber());
+        }
+
         BankCardEntity savedCard = bankCardRepository.save(bankCard);
         return bankCardMapper.mapFromEntityToResponseDto(savedCard);
     }
@@ -165,12 +186,27 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.save(entity));
     }
 
+    /**
+     * FIX(PCI): admin-side update was bypassing the same PCI guards as
+     * {@link #updateBankCard(String, BankCardUpdateRequestDto)}. Mirror the user-context path
+     * here — expiry must not be in the past, and a freshly supplied PAN must be re-encrypted via
+     * {@link #applyPciStorageRules} so we never persist a plaintext PAN through the admin API.
+     */
     @Override
     @Transactional
     public BankCardResponseDto update(BankCardUpdateRequestDto dto) {
         BankCardEntity entity = bankCardRepository.findByUuid(dto.getUuid()).orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + dto.getUuid()));
 
+        if (dto.getExpiryDate() != null && !dto.getExpiryDate().isBlank()) {
+            validateExpiryNotInThePast(dto.getExpiryDate());
+        }
+
         bankCardMapper.updateEntityFromDto(dto, entity);
+
+        if (dto.getCardNumber() != null && !dto.getCardNumber().isBlank()) {
+            applyPciStorageRules(entity, dto.getCardNumber());
+        }
+
         return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.save(entity));
     }
 

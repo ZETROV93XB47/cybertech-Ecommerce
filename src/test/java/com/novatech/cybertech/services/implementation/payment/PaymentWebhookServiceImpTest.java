@@ -30,6 +30,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -95,6 +96,12 @@ class PaymentWebhookServiceImpTest {
         // a "test" deployment (false). Tests that need to flip to "prod" do so via
         // ReflectionTestUtils inline.
         ReflectionTestUtils.setField(service, "expectedLivemode", false);
+        // The Spring-managed Jackson 3 ObjectMapper is also missing under @InjectMocks (Mockito
+        // does not auto-mock interfaces it cannot guess). Inject a real instance so readValue on
+        // the JSON-fixture payloads behaves identically to production.
+        if (ReflectionTestUtils.getField(service, "objectMapper") == null) {
+            ReflectionTestUtils.setField(service, "objectMapper", new ObjectMapper());
+        }
     }
 
     // ===== Helpers ==================================================================

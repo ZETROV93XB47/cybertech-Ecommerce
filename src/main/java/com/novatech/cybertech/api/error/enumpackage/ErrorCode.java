@@ -11,11 +11,13 @@ public enum ErrorCode {
     APPLICATION_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.TECHNICAL),
     ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
-    CANNOT_CANCEL_ORDER(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    // FIX(HTTP-SEMANTIC): business state conflict, not authorization denial — use 409 instead of 403
+    CANNOT_CANCEL_ORDER(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     CANNOT_REMOVE_ITEM_FROM_EMPTY_CART(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     ORDER_DOESNT_BELONGS_TO_USER(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
-    FAILED_UPDATING_ORDER(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    // FIX(HTTP-SEMANTIC): retry/business failure, not authorization denial — use 422 instead of 403
+    FAILED_UPDATING_ORDER(HttpStatus.UNPROCESSABLE_ENTITY, ErrorCodeType.FUNCTIONAL),
     CART_IS_EMPTY(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     CART_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     CART_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
@@ -24,7 +26,8 @@ public enum ErrorCode {
     MALFORMED_JSON(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
     METHOD_ARGUMENT_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
-    ORDER_ALREADY_SHIPPED(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    // FIX(HTTP-SEMANTIC): business state conflict, not authorization denial — use 409 instead of 403
+    ORDER_ALREADY_SHIPPED(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     PRODUCT_ALREADY_IN_WISHLIST(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
@@ -50,7 +53,9 @@ public enum ErrorCode {
     /** BUG-161 — Authenticated user tried to read/update/delete a cart they do not own (IDOR). */
     UNAUTHORIZED_CART_ACCESS(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     /** Order is not in a status that allows reviewing (only PAID/SHIPPED/DELIVERED are reviewable). */
-    ORDER_NOT_REVIEWABLE(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL);
+    ORDER_NOT_REVIEWABLE(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
+    /** Notification delivery failed through its underlying transport (mail server / SMS gateway). */
+    NOTIFICATION_DELIVERY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;

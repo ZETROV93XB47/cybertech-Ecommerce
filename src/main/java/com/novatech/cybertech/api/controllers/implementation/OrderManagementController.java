@@ -7,7 +7,7 @@ import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
+import com.novatech.cybertech.services.core.OrderManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,7 +40,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "OrderManagementController", description = "API for managing Orders")
 public class OrderManagementController implements OrderManagementControllerApiSpec {
 
-    private final OrderManagementServiceImp orderManagementService;
+    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    private final OrderManagementService orderManagementService;
 
 
     @Override
@@ -128,7 +129,7 @@ public class OrderManagementController implements OrderManagementControllerApiSp
      * Frontend-gap #1 — paginated read of the authenticated user's own orders.
      *
      * <p>Resolves the caller via the JWT subject and delegates to
-     * {@link OrderManagementServiceImp#findMyOrders(String, Pageable, Set)}; the optional
+     * {@link OrderManagementService#findMyOrders(String, Pageable, Set)}; the optional
      * {@code status} query param is forwarded unchanged. Spring auto-binds the {@code page}
      * + {@code size} + {@code sort} request params to {@link Pageable} via
      * {@link PageableDefault} (size 20, sort {@code createdAt DESC}).</p>

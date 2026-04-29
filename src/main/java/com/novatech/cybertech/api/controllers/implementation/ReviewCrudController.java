@@ -36,6 +36,8 @@ public class ReviewCrudController implements ReviewCrudControllerApiSpec {
 
 
     @Override
+    @PreAuthorize("hasRole('USER')")
+    // FIX(SEC-INCONSISTENCY): explicit auth check matching the rest of the controller; previously relied on default authenticated() but was inconsistent with siblings using hasRole
     @GetMapping(value = "/get/{reviewUuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<ReviewResponseDto> getReviewByUuid(final @PathVariable("reviewUuid") UUID reviewUuid) {
         return ResponseEntity.status(HttpStatus.OK).body(reviewService.getByUUID(reviewUuid));

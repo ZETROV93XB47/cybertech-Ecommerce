@@ -5,9 +5,11 @@ import com.novatech.cybertech.api.controllers.implementation.UserEventController
 import com.novatech.cybertech.api.error.ErrorManagementController;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.event.UserEventDto;
+import com.novatech.cybertech.dto.response.userevent.UserEventResponseDto;
 import com.novatech.cybertech.entities.document.UserEvent;
 import com.novatech.cybertech.entities.enums.UserEventType;
 import com.novatech.cybertech.fixtures.dto.UserEventDtoFixtures;
+import com.novatech.cybertech.mappers.document.UserEventMapper;
 import com.novatech.cybertech.services.core.UserEventService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -63,6 +65,9 @@ class UserEventControllerTest {
     @MockitoBean
     UserEventService userEventService;
 
+    @MockitoBean
+    UserEventMapper userEventMapper;
+
     // ---------- POST /consume-event ----------
 
     @Test
@@ -80,7 +85,18 @@ class UserEventControllerTest {
                 .metadata(request.getMetadata())
                 .build();
 
+        final UserEventResponseDto responseDto = UserEventResponseDto.builder()
+                .id(persisted.getId())
+                .userId(persisted.getUserId())
+                .sessionId(persisted.getSessionId())
+                .productId(persisted.getProductId())
+                .eventType(persisted.getEventType())
+                .timestamp(persisted.getTimestamp())
+                .metadata(persisted.getMetadata())
+                .build();
+
         when(userEventService.processEvent(any(UserEventDto.class))).thenReturn(persisted);
+        when(userEventMapper.toResponseDto(persisted)).thenReturn(responseDto);
 
         mockMvc.perform(post(COLLECT_EVENT_ENDPOINT)
                         .with(jwtUser(USER_KEYCLOAK_ID))
@@ -90,13 +106,13 @@ class UserEventControllerTest {
                         .content(asJsonString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                // Compare on the stable shape of UserEvent. timestamp is set client-side here
+                // Compare on the stable shape of UserEventResponseDto. timestamp is set client-side here
                 // so JSON shape is stable enough for a lenient compare on the load-bearing fields.
-                .andExpect(jsonPath("$.id").value(persisted.getId()))
-                .andExpect(jsonPath("$.userId").value(persisted.getUserId()))
-                .andExpect(jsonPath("$.sessionId").value(persisted.getSessionId()))
-                .andExpect(jsonPath("$.productId").value(persisted.getProductId()))
-                .andExpect(jsonPath("$.eventType").value(persisted.getEventType().name()));
+                .andExpect(jsonPath("$.id").value(responseDto.getId()))
+                .andExpect(jsonPath("$.userId").value(responseDto.getUserId()))
+                .andExpect(jsonPath("$.sessionId").value(responseDto.getSessionId()))
+                .andExpect(jsonPath("$.productId").value(responseDto.getProductId()))
+                .andExpect(jsonPath("$.eventType").value(responseDto.getEventType().name()));
     }
 
     @Test
@@ -111,6 +127,8 @@ class UserEventControllerTest {
 
         when(userEventService.processEvent(any(UserEventDto.class)))
                 .thenReturn(UserEvent.builder().id(UUID.randomUUID().toString()).build());
+        when(userEventMapper.toResponseDto(any(UserEvent.class)))
+                .thenReturn(UserEventResponseDto.builder().id(UUID.randomUUID().toString()).build());
 
         mockMvc.perform(post(COLLECT_EVENT_ENDPOINT)
                         .with(jwtUser(USER_KEYCLOAK_ID))

@@ -13,6 +13,8 @@ import com.stripe.model.Refund;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.RefundCreateParams;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,11 +30,15 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
 
     private static final String ORDER_UUID = "orderUuid";
     private static final String IDEMPOTENCY_KEY = "idempotencyKey";
+    private static final String STRIPE_API_RESILIENCE_INSTANCE = "stripeApi";
 
     @Value("${stripe.payment-method:}")
     private String defaultPaymentMethod;
 
+    // FIX(RESILIENCE): protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
     @Override
+    @Retry(name = STRIPE_API_RESILIENCE_INSTANCE)
+    @CircuitBreaker(name = STRIPE_API_RESILIENCE_INSTANCE, fallbackMethod = "processPaymentFallback")
     public PaymentAttemptResult processPayment(
             final UUID orderUuid,
             final Money amount,
@@ -89,7 +95,10 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
         }
     }
 
+    // FIX(RESILIENCE): protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
     @Override
+    @Retry(name = STRIPE_API_RESILIENCE_INSTANCE)
+    @CircuitBreaker(name = STRIPE_API_RESILIENCE_INSTANCE, fallbackMethod = "refundFallback")
     public PaymentAttemptResult refund(UUID orderUuid, Money amount, String idempotencyKey, String stripePaymentID) {
 
         log.info("idempotencykey : {}", idempotencyKey);
@@ -170,6 +179,42 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             case "canceled" -> PaymentAttemptStatus.CANCELED;
             default -> PaymentAttemptStatus.PROCESSING;
         };
+    }
+
+    /**
+     * Resilience4j fallback for {@link #processPayment(UUID, Money, String)}. Invoked when the
+     * circuit breaker is OPEN or after the retry budget is exhausted. The signature must mirror
+     * the protected method's args plus a trailing {@link Throwable}.
+     */
+    @SuppressWarnings("unused") // referenced by name from @CircuitBreaker(fallbackMethod = ...)
+    private PaymentAttemptResult processPaymentFallback(
+            final UUID orderUuid,
+            final Money amount,
+            final String idempotencyKey,
+            final Throwable cause
+    ) {
+        log.error("Stripe processPayment fallback engaged | order={} | cause={}",
+                orderUuid, cause != null ? cause.getMessage() : "<no cause>");
+        throw new PaymentProcessingException(
+                "Stripe payment unavailable for order " + orderUuid + " (resilience4j fallback)", cause);
+    }
+
+    /**
+     * Resilience4j fallback for {@link #refund(UUID, Money, String, String)}. Invoked when the
+     * circuit breaker is OPEN or after the retry budget is exhausted.
+     */
+    @SuppressWarnings("unused") // referenced by name from @CircuitBreaker(fallbackMethod = ...)
+    private PaymentAttemptResult refundFallback(
+            final UUID orderUuid,
+            final Money amount,
+            final String idempotencyKey,
+            final String stripePaymentID,
+            final Throwable cause
+    ) {
+        log.error("Stripe refund fallback engaged | order={} | cause={}",
+                orderUuid, cause != null ? cause.getMessage() : "<no cause>");
+        throw new PaymentProcessingException(
+                "Stripe refund unavailable for order " + orderUuid + " (resilience4j fallback)", cause);
     }
 
 }

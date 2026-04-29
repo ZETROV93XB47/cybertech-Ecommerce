@@ -2,7 +2,8 @@ package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.spec.UserEventControllerApiSpec;
 import com.novatech.cybertech.dto.request.event.UserEventDto;
-import com.novatech.cybertech.entities.document.UserEvent;
+import com.novatech.cybertech.dto.response.userevent.UserEventResponseDto;
+import com.novatech.cybertech.mappers.document.UserEventMapper;
 import com.novatech.cybertech.services.core.UserEventService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,18 +34,19 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 public class UserEventController implements UserEventControllerApiSpec {
 
     private final UserEventService userEventService;
+    private final UserEventMapper userEventMapper;
 
     /**
      * POST /consume-event — accepts a behavioural event for the calling user.
      *
      * @param eventDto the inbound event payload
      * @param jwt      the caller identity
-     * @return 201 with the persisted event document
+     * @return 201 with the persisted event projected as a response DTO
      */
     @Override
     @PreAuthorize("hasRole('USER')")
     @PostMapping(value = "/consume-event", produces = APPLICATION_JSON_VALUE, consumes = APPLICATION_JSON_VALUE)
-    public ResponseEntity<UserEvent> collectEvent(@Valid @RequestBody UserEventDto eventDto, @AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<UserEventResponseDto> collectEvent(@Valid @RequestBody UserEventDto eventDto, @AuthenticationPrincipal Jwt jwt) {
 
         log.info("Received event for user {} : ", jwt.getSubject());
 
@@ -52,6 +54,8 @@ public class UserEventController implements UserEventControllerApiSpec {
         // so events are always attributed to the calling user (and stop attribution spoofing).
         eventDto.setUserId(jwt.getSubject());
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(userEventService.processEvent(eventDto));
+        // FIX(MASS-ASSIGN): expose a curated DTO instead of the MongoDB entity to avoid leaking internal fields and decouple API contract from persistence schema
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(userEventMapper.toResponseDto(userEventService.processEvent(eventDto)));
     }
 }

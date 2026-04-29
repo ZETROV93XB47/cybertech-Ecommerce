@@ -20,8 +20,11 @@ environment:
   awsDefaultRegion: "us-east-1"
   # LocalStack debug mode
   debug: "0"
-  # Data directory persistence
-  dataDir: "/tmp/localstack"
+  # LocalStack 4.x persistence — see https://docs.localstack.cloud/references/filesystem/
+  # /var/lib/localstack is the persistence root; /tmp/localstack must remain
+  # writable & unmounted because LocalStack wipes it on every boot.
+  persistence: "1"
+  dataDir: "/var/lib/localstack"
 
 # AWS credentials - À passer via --set ou secrets (NE PAS laisser en clair)
 # Pour développement local uniquement avec des credentials fictifs

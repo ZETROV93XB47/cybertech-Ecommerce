@@ -333,4 +333,12 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_NOT_REVIEWABLE.getResponseStatus().value(), ORDER_NOT_REVIEWABLE.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, ORDER_NOT_REVIEWABLE.getResponseStatus());
     }
+
+    // FIX(MISSING-HANDLER): map NotificationDeliveryException to a meaningful 5xx with a stable ErrorCode instead of falling through to the generic RuntimeException handler
+    @ExceptionHandler(NotificationDeliveryException.class)
+    public ResponseEntity<ErrorResponseDto> handleNotificationDeliveryException(final NotificationDeliveryException exception) {
+        log.error("Notification delivery failed", exception);
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), NOTIFICATION_DELIVERY_FAILED.getResponseStatus().value(), NOTIFICATION_DELIVERY_FAILED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, NOTIFICATION_DELIVERY_FAILED.getResponseStatus());
+    }
 }

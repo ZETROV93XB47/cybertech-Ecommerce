@@ -129,3 +129,151 @@ Foreign files to leave alone (other agents): `NotificationListener.java`, `Notif
 - [x] CartCacheHelperImpTest updated (3 tests) to mock the new callback path.
 - [ ] commit
 
+---
+
+## Wave User-Bugs — Bug 3 / Bug 4 / Bug 6 (this session)
+
+Order: Bug 6 (1 line) -> Bug 4 (event/listener) -> Bug 3 (REQUIRES_NEW refactor).
+
+### Bug 6 — register() leaks keycloakId
+- [x] `UserManagementController.register()` body strips `keycloakId`, includes `email` + `username`
+- [x] `UserManagementControllerTest`: adapt `shouldRegisterUserSuccessfullyReturning201WithMapShape`
+- [x] `UserManagementControllerTest`: add `registerResponseShouldNotContainKeycloakId`
+
+### Bug 4 — deleteByUUID Keycloak-before-DB -> AFTER_COMMIT event
+- [x] Create `events/UserDeletedEvent.java`
+- [x] Create `events/listener/UserDeletionListener.java`
+- [x] Refactor `UserManagementServiceImp.deleteByUUID()` to publish event after DB delete
+- [x] Tests in `UserManagementServiceImpTest`: `deleteShouldDeleteFromDbAndPublishEvent`, `deleteShouldNotPublishEventWhenDbDeleteFails`
+- [x] New `UserDeletionListenerTest`: `onUserDeletedShouldCallKeycloakDelete`, `onUserDeletedShouldLogAndSwallowWhenKeycloakFails`
+
+### Bug 3 — update() Keycloak inside @Transactional -> Option B REQUIRES_NEW
+- [x] Add `UserPersistenceService.updateUser(UserUpdateRequestDto, UserEntity)` with REQUIRES_NEW
+- [x] Refactor `UserManagementServiceImp.update()`: drop `@Transactional`, DB-first then Keycloak
+- [x] Tests in `UserManagementServiceImpTest`: ordering + DB-fail-skips-KC + KC-fail-after-DB
+- [x] Tests in `UserPersistenceServiceTest`: `updateUserShouldSaveAndReturnDto`
+
+### Verification
+- [x] `mvnw compile` clean
+- [x] `mvnw test -Dtest=UserManagementServiceImpTest,UserPersistenceServiceTest,UserManagementControllerTest,UserDeletionListenerTest` -> 42/42 GREEN
+
+### Decisions
+- Bug 3 exception: no `KeycloakSyncException` exists -> `RuntimeException("Keycloak sync failed after DB update: " + cause.getMessage(), cause)`.
+- `updateUser` signature: `UserResponseDto updateUser(UserUpdateRequestDto dto, UserEntity loadedUser)`.
+- `UserDeletedEvent` style: Lombok `@Getter` + explicit `super(source)` constructor (mirrors `OrderCreatedEvent`).
+
+---
+
+## Wave Frontend-Gaps — 4 backend endpoints (this session)
+
+### Endpoints
+- [x] **#1** `GET /services/management/order/mine` (paginated) — added on existing `OrderManagementController` (class base `/api/v1/services/management/order`); the requested `/services/order/mine` would have required a brand-new controller for a single endpoint, which contradicts the "follow existing patterns" rule. Documented as a deviation.
+- [x] **#2** `GET /api/v1/services/admin/management/order/get/all` — new `OrderManagementAdminController` + `OrderManagementAdminControllerApiSpec`. New constant `ORDER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH`.
+- [x] **#3** `PATCH /api/v1/services/user/me` — new `UserSelfUpdateRequestDto`, new service method `updateMe`, new controller method.
+- [x] **#4** `GET /api/v1/services/bank-card/all-mine` — model is 1-card-per-user (UserEntity OneToOne BankCardEntity); endpoint returns the (possibly empty) list of cards for the JWT subject — currently 0 or 1 entry.
+
+### Tests
+- [x] OrderRepository — JPQL paginated finder used by service unit (no @DataJpaTest needed; covered through service tests)
+- [x] OrderManagementServiceImp — `findMyOrders`, `findAllPaged` unit tests
+- [x] OrderManagementController — getMyOrders (200, 401, status filter)
+- [x] OrderManagementAdminController — listing (200, 401, 403)
+- [x] UserManagementServiceImp — `updateMe` happy path + Keycloak fail
+- [x] UserManagementController — updateMe (200, 401, 404 user-not-found)
+- [x] BankCardManagementServiceImp — `findAllMine`
+- [x] BankCardManagementController — getAllMine (200, 401)
+
+### Verification
+- [ ] mvnw test green
+
+---
+
+## Wave Shipping-Integration — Inject ShippingProviderStrategyFactory into OrderPriceCalculationService (this session)
+
+### Files modified
+- [x] `dto/request/order/PriceCalculationRequestDto.java` — add `@NotNull shippingProvider` + `@NotNull shippingType` fields
+- [x] `dto/response/order/PriceCalculationResultDto.java` — add `shippingCost` field, finalAmount now includes shipping (asFinalMoney() returns Money(finalAmount,…))
+- [x] `services/implementation/OrderPriceCalculationServiceImp.java` — inject `ShippingProviderStrategyFactory`, fold shipping into both NO_DISCOUNT and discounted branches; throws `NoStrategyFoundForProcessingTheRequest` when factory returns null
+- [x] `services/implementation/OrderManagementServiceImp.java` — placeOrder & updateOrder forward `shippingProvider`/`shippingType` to PriceCalculationRequestDto; explicit `orderRepository.save(order)` after handlePaymentUpdate
+
+### Tests updated
+- [x] `OrderPriceCalculationServiceImpTest` — added `@BeforeEach` shipping factory stub (DEFAULT_SHIPPING_COST=15.00), enriched `request(...)` helper with DHL+STANDARD defaults, recomputed `finalAmount` assertions on existing tests, added 3 new tests: `shippingCostAddedToFinalAmount`, `noShippingStrategyThrowsNoStrategyFoundForProcessingTheRequest`, `shippingCostNotDoubleCountedOnNO_DISCOUNT`
+- [x] `OrderManagementServiceImpTest` — `@BeforeEach` default stub now includes `shippingCost`; added `placeOrder_forwardsShippingProviderAndTypeToPriceCalc` and shipping-fields ArgumentCaptor assertion in `updatesAddressTotalAndStatus`
+
+### Verification
+- [x] `mvnw test -Dtest='*PriceCalculation*Test,*OrderManagementService*Test'` GREEN — Tests run: 81, Failures: 0, Errors: 0, Skipped: 0
+
+---
+
+## Wave User-Bank-Validator Hardening — PII / saga / PCI / exception mapping (this session)
+
+Scope: 4 targeted fixes on the User + Bank-card + Validator domains. Constraint: do not touch the
+controllers (parallel agent) and only add the minimum needed to `ErrorCode.java` /
+`ErrorManagementController.java` (parallel agent owns these for the NotificationDeliveryException
+mapping).
+
+### FIX 1 — PII leaks in service logs
+- [x] Created `utils/LogSafetyUtils.java` with `maskEmail`, `extractEmailDomain`, `maskUuid` (null-safe, no-throw).
+- [x] `UserManagementServiceImp.create()` — replaced `log.info("user creation request : {}", req)` with email-domain-only log.
+- [x] `UserPersistenceService.saveNewUser()` — replaced `log.info("Saved user : {}", savedUser)` with UUID-only log.
+- [x] `UserPersistenceService.updateUser()` — same fix on the update branch.
+
+### FIX 2 — `deleteByUUIDs` saga inconsistency
+- [x] Refactored `UserManagementServiceImp.deleteByUUIDs` to publish one `UserDeletedEvent` per resolved user AFTER the SQL bulk delete, mirroring the singular `deleteByUUID` AFTER_COMMIT pattern.
+- [x] Updated `UserManagementServiceImpTest.deleteByUUIDs_happyPath` + `_emptyList` to pin the new ordering (SQL -> event publish, no direct Keycloak call from the service).
+
+### FIX 3 — `BankCardManagementServiceImp.updateBankCard` PCI bypass
+- [x] User-facing `updateBankCard` now runs `validateExpiryNotInThePast` + `applyPciStorageRules` (only when PAN supplied).
+- [x] Admin `update(BankCardUpdateRequestDto)` — same guards added.
+- [x] `BankCardManagementServiceImpTest` — added 4 new tests (re-encrypt user-update, expiry user-update, re-encrypt admin-update, expiry admin-update); existing happy-path tests now stub `cardEncryptionService.encrypt`.
+
+### FIX 4 — `ActiveUserValidator` exception mapping
+- [x] Replaced `IllegalStateException("Utilisateur inactif !")` with `UserNotActiveException("User is inactive")` — reuses the existing exception and its already-registered handler (HTTP 403, `USER_NOT_ACTIVE`).
+- [x] No new exception class created — CLAUDE.md "Pas de duplication cross-classes". `ErrorCode.java` and `ErrorManagementController.java` were not modified, leaving them clear of merge conflicts with the parallel agent.
+- [x] `ActiveUserValidatorTest.inactiveUserThrowsAndShortCircuits` — updated to assert `UserNotActiveException` + English message.
+
+### Verification
+- [x] `mvnw test -Dtest=UserManagementServiceImpTest,UserPersistenceServiceTest,BankCardManagementServiceImpTest,ActiveUserValidatorTest` -> 81 tests, 0 failures, 0 errors.
+- [x] Extended sweep adding `UserDeletionListenerTest,ErrorManagementControllerBranchTest,UserManagementAdminControllerTest` -> 151 tests, 0 failures, 0 errors.
+
+---
+
+## Wave Interface-Contract — controllers must depend on interface, not impl (this session)
+
+Convention CLAUDE.md "Interface avant impl systématique" — six controllers were injecting their concrete `*ServiceImp`. Root cause: several methods used by controllers were missing from the interfaces. Fix: lift the missing methods to the interfaces, then flip the injections.
+
+### Methods promoted to interface
+
+**OrderManagementService** (`services/core/OrderManagementService.java`)
+- [x] `OrderResponseDto getByUUID(UUID uuid, String keycloakId)` — used by `OrderManagementController#getOrderByUuid`. Ownership-checked variant. `@Override` added on impl.
+
+**ProductManagementService** (`services/core/ProductManagementService.java`)
+- [x] `Page<ProductResponseDto> getAll(Pageable)` — used by `ProductManagementAdminController#getAllProducts`.
+- [x] `Page<ProductResponseDto> searchProducts(ProductSearchRequestDto)` — used by `ProductSearchController#searchProducts`.
+- [x] `Page<ProductResponseDto> getBestSellers(Pageable)` — used by `ProductSearchController#getBestSellers`.
+- [x] `@Override` annotations added on the three impl methods.
+
+**UserManagementService** (`services/core/UserManagementService.java`)
+- [x] `Page<UserResponseDto> getAll(Pageable)` — used by `UserManagementAdminController#getAllUsers`.
+- [x] `Collection<UserResponseDto> createAutomatically(Collection<UserEntity>)` — used by `UserManagementAdminController#createUserAutomatically`. Return type kept as `Collection` (impl returns `ArrayList`); the broader interface contract preserves Collection semantics.
+- [x] `@Override` annotations added on the two impl methods.
+
+### Controllers flipped to interface
+- [x] `OrderManagementController` — `OrderManagementService`
+- [x] `OrderManagementAdminController` — `OrderManagementService`
+- [x] `ProductManagementAdminController` — `ProductManagementService`
+- [x] `ProductSearchController` — `ProductManagementService`
+- [x] `UserManagementController` — `UserManagementService`
+- [x] `UserManagementAdminController` — `UserManagementService`
+
+### Tests updated (`@MockitoBean` types switched to interface)
+- [x] `OrderManagementControllerTest`
+- [x] `OrderManagementAdminControllerTest`
+- [x] `ProductManagementAdminControllerTest`
+- [x] `ProductSearchControllerTest`
+- [x] `UserManagementControllerTest`
+- [x] `UserManagementAdminControllerTest`
+
+### Verification
+- [x] `./mvnw compile` — BUILD SUCCESS.
+- [x] `./mvnw test -Dtest='OrderManagementControllerTest,OrderManagementAdminControllerTest,ProductManagementAdminControllerTest,ProductSearchControllerTest,UserManagementControllerTest,UserManagementAdminControllerTest'` — 107 tests, 0 failures, 0 errors.
+

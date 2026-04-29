@@ -10,6 +10,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.Customizer;
@@ -43,6 +46,25 @@ public class SecurityConfig {
     private final StripeWebhookIpAllowlistFilter stripeWebhookIpAllowlistFilter;
 
     /**
+     * Spring profile name guarding development-only relaxations (e.g. anonymous access to
+     * the H2 console). MUST stay package-private static so the dedicated dev-only filter
+     * chain ({@link #h2ConsoleSecurityFilterChain(HttpSecurity)}) can reference it via the
+     * {@code @Profile} annotation, which requires a compile-time constant.
+     */
+    static final String DEV_PROFILE = "dev";
+
+    /**
+     * URL pattern of the H2 console. Kept as a module-private constant so the dev-only
+     * filter chain and any future references stay in lock-step.
+     */
+    private static final String H2_CONSOLE_URL_PATTERN = "/h2-console/**";
+
+    // FIX(H2-CONSOLE): H2 console is now exposed only under the 'dev' profile to prevent
+    // accidental exposure in non-dev environments. The pattern was deliberately removed
+    // from PUBLIC_URLS below — the dedicated h2ConsoleSecurityFilterChain bean (annotated
+    // @Profile("dev") + @Order(HIGHEST_PRECEDENCE)) wires it up only when the dev profile
+    // is active and disables frame-options so the H2 web UI iframe renders.
+    /**
      * BUG-PRE-3: actuator probes ({@code /actuator/health}, {@code /actuator/health/liveness},
      * {@code /actuator/health/readiness}, {@code /actuator/info}) MUST be reachable anonymously
      * so kubelet liveness/readiness probes (and Helm chart wait jobs) succeed without
@@ -51,7 +73,6 @@ public class SecurityConfig {
      * the per-path permitAll must come BEFORE the ROLE_ADMIN catch-all to take effect.
      */
     private static final String[] PUBLIC_URLS = {
-            "/h2-console/**",       // Accès à la console H2 (Très important en développement !)
             "/api/public/**",       // Exemple: Tous les endpoints sous /api/public/
             "/auth/register",       // Exemple: Endpoint d'enregistrement
             "/auth/login",          // Exemple: Endpoint de connexion (si géré sans sécurité initiale)
@@ -102,6 +123,32 @@ public class SecurityConfig {
 
     @Value("${cybertech.cors.allowed-origins:http://localhost:3000}")
     private String corsAllowedOrigins;
+
+    /**
+     * FIX(H2-CONSOLE): dev-only SecurityFilterChain that exposes the H2 web console
+     * ({@value #H2_CONSOLE_URL_PATTERN}) without authentication and disables frame-options
+     * so the console's nested iframe layout renders. Active only when the {@value #DEV_PROFILE}
+     * Spring profile is on; in every other profile the H2 console is unreachable through
+     * the main filter chain (it is no longer in {@link #PUBLIC_URLS}).
+     *
+     * <p>Order is set to {@link Ordered#HIGHEST_PRECEDENCE} so the dedicated H2 chain is
+     * matched before the main {@code securityFilterChain} below, which would otherwise
+     * authenticate the request via {@code anyRequest().authenticated()}.
+     */
+    @Bean
+    @Profile(DEV_PROFILE)
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public SecurityFilterChain h2ConsoleSecurityFilterChain(final HttpSecurity http) throws Exception {
+        http
+                .securityMatcher(H2_CONSOLE_URL_PATTERN)
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
+                // H2 console renders inside an iframe — disable frame-options so the
+                // browser does not block the nested document. Defence-in-depth: this
+                // chain only exists under the 'dev' profile.
+                .headers(headers -> headers.frameOptions(frame -> frame.disable()));
+        return http.build();
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(final HttpSecurity http) throws Exception {

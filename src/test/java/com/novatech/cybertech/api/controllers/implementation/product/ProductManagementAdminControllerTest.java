@@ -9,7 +9,7 @@ import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.exceptions.ProductConstraintsViolationException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
-import com.novatech.cybertech.services.implementation.ProductManagementServiceImp;
+import com.novatech.cybertech.services.core.ProductManagementService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,7 +67,7 @@ class ProductManagementAdminControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    ProductManagementServiceImp productService;
+    ProductManagementService productService;
 
     // ----------------------------------------------------------------------
     // GET /get/all

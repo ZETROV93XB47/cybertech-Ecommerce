@@ -1,5 +1,7 @@
 package com.novatech.cybertech.security;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
@@ -20,17 +22,17 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
  * In-memory token-bucket rate limit (Bucket4j) for sensitive endpoints.
  *
  * <p>Buckets are keyed by {@code policyId + ":" + clientId}, where {@code clientId} is the JWT
- * subject when the request is authenticated and the remote address otherwise. The map is
- * unbounded across the lifetime of the JVM — acceptable for the current single-replica deployment;
- * a Redis-backed Bucket4j proxy is the next step when we scale out (see ProductionReadyLeftToDo).
+ * subject when the request is authenticated and the remote address otherwise. Storage is a
+ * Caffeine cache bounded by {@link #BUCKET_IDLE_TTL} (idle eviction) and {@link #BUCKET_MAX_SIZE}
+ * (hard ceiling) to prevent slow heap exhaustion when an attacker rotates IPs / JWT subjects
+ * — a Redis-backed Bucket4j proxy is the next step when we scale out (see ProductionReadyLeftToDo).
  *
  * <p>Per-endpoint policies (see {@link Policy}):
  * <ul>
@@ -60,7 +62,30 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final String ORDER_PLACE_PATH_PREFIX = "/api/v1/services/management/order/place";
     private static final String CART_PATH_PREFIX = "/api/v1/services/cart";
 
-    private final ConcurrentMap<String, Bucket> buckets = new ConcurrentHashMap<>();
+    /**
+     * Idle-bucket TTL — a key (policyId + clientId) that is not touched for this duration
+     * is evicted from the cache. The longest refill window in {@link #POLICIES} is 1
+     * minute, so 2 minutes leaves a comfortable buffer for tokens to refill before the
+     * bucket is GC'd, while still bounding heap growth from rotating IPs / JWT subjects.
+     */
+    private static final Duration BUCKET_IDLE_TTL = Duration.ofMinutes(2L);
+
+    /**
+     * Hard upper bound on the number of distinct buckets retained at any time. Acts as a
+     * safety net even when the TTL fails to evict fast enough under a sustained burst of
+     * unique keys (worst-case during a DoS where every request rotates IP / JWT). At
+     * ~256 bytes per Bucket entry, 100k entries cap memory at ~25 MB.
+     */
+    private static final long BUCKET_MAX_SIZE = 100_000L;
+
+    // FIX(DOS-MEMORY): switched from unbounded ConcurrentHashMap to Caffeine with TTL+maxSize
+    // to prevent slow OOM under IP/JWT rotation. Bucket4j's Bucket itself is thread-safe,
+    // and Caffeine's get(key, mapper) provides the same atomic compute-if-absent semantics
+    // as ConcurrentMap#computeIfAbsent — no concurrency regression on the hot path.
+    private final Cache<String, Bucket> buckets = Caffeine.newBuilder()
+            .expireAfterAccess(BUCKET_IDLE_TTL.toMillis(), TimeUnit.MILLISECONDS)
+            .maximumSize(BUCKET_MAX_SIZE)
+            .build();
 
     @Override
     protected void doFilterInternal(final HttpServletRequest request,
@@ -76,7 +101,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         final String clientId = resolveClientId(request);
         final String bucketKey = policy.id() + ":" + clientId;
-        final Bucket bucket = buckets.computeIfAbsent(bucketKey, k -> policy.bucketSupplier().get());
+        final Bucket bucket = buckets.get(bucketKey, k -> policy.bucketSupplier().get());
 
         final ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
         if (probe.isConsumed()) {
@@ -156,8 +181,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
                     () -> newBucket(60L, Duration.ofMinutes(1L)))
     );
 
-    // Visible for testing / introspection.
+    // Visible for testing / introspection. Snapshot via Caffeine#asMap and copy to
+    // an immutable view so callers cannot mutate the live cache.
     Map<String, Bucket> bucketsView() {
-        return Map.copyOf(buckets);
+        return Map.copyOf(buckets.asMap());
     }
 }
