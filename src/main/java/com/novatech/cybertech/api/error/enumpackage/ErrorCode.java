@@ -53,9 +53,7 @@ public enum ErrorCode {
     /** BUG-161 — Authenticated user tried to read/update/delete a cart they do not own (IDOR). */
     UNAUTHORIZED_CART_ACCESS(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     /** Order is not in a status that allows reviewing (only PAID/SHIPPED/DELIVERED are reviewable). */
-    ORDER_NOT_REVIEWABLE(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
-    /** Notification delivery failed through its underlying transport (mail server / SMS gateway). */
-    NOTIFICATION_DELIVERY_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL);
+    ORDER_NOT_REVIEWABLE(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;

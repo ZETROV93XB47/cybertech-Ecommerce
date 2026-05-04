@@ -21,7 +21,6 @@ import com.novatech.cybertech.exceptions.NoDefaultBankCartSetException;
 import com.novatech.cybertech.exceptions.NoPreviousPaymentAttemptException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
-import com.novatech.cybertech.exceptions.NotificationDeliveryException;
 import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
@@ -431,15 +430,6 @@ class ErrorManagementControllerBranchTest {
                 controller.handleUserNotAuthorOfReviewException(new UserNotAuthorOfReviewException("not author"));
 
         assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "not author");
-    }
-
-    @Test
-    @DisplayName("NotificationDeliveryException → 500 TECHNICAL with passthrough message")
-    void notificationDeliveryReturns500() {
-        final ResponseEntity<ErrorResponseDto> response =
-                controller.handleNotificationDeliveryException(new NotificationDeliveryException("smtp down"));
-
-        assertEnvelope(response, HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL, "smtp down");
     }
 
     @Test

@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
  * we record each {@code event.getId()} (e.g. {@code "evt_1NxYz..."}) the first time we successfully
  * process it. A subsequent delivery of the same event short-circuits before any side-effect is
  * executed (no DB mutation, no domain event re-published).
- *
+ *i
  * <p>The {@code stripeEventId} column carries a {@code UNIQUE} constraint so that even if two
  * concurrent deliveries race past the {@code existsByStripeEventId} pre-check, the database itself
  * rejects the duplicate insert (race-safe second line of defence).
