@@ -22,11 +22,15 @@ ce qu'un crash a laissé en suspens.
 
 ## 2. Décisions de design (verrouillées)
 
-1. **Contrat synchrone.** `/register`, update, delete restent **synchrones** : succès = effet
-   immédiat (compte utilisable tout de suite). Un échec **propre** (Keycloak down, validation rejetée)
-   renvoie une erreur et marque la ligne outbox **terminale** ; l'utilisateur réessaie. Le job ne
-   rattrape **que** les lignes laissées `PENDING` par un **vrai crash** (au-delà d'une fenêtre de
-   staleness). Pas de « 500 puis le compte apparaît plus tard ».
+1. **Contrat synchrone.** `/register` et delete restent **synchrones** : succès = effet
+   immédiat (compte utilisable tout de suite). Un échec **propre** (Keycloak down) renvoie une erreur
+   et marque la ligne outbox **terminale** ; l'utilisateur réessaie. Le job ne rattrape **que** les
+   lignes laissées `PENDING` par un **vrai crash** (au-delà d'une fenêtre de staleness). Pas de
+   « 500 puis le compte apparaît plus tard ».
+
+   **Scope : CREATE + DELETE uniquement.** `update` est **laissé tel quel** (Keycloak-first + DB
+   REQUIRES_NEW + log de réconciliation manuelle) — pas d'outbox sur update (décision utilisateur :
+   le gain y est marginal). Il pourra recevoir le même breadcrumb plus tard (cf. §8).
 
 2. **Le job ne crée JAMAIS d'user Keycloak (contrainte sécurité décisive).** Créer un user Keycloak
    exige le **mot de passe brut**. On ne le **stocke jamais** au repos. Conséquence : le mot de passe
@@ -48,11 +52,10 @@ ce qu'un crash a laissé en suspens.
 
 | colonne | type | rôle |
 |---|---|---|
-| `operation_type` | enum `OutboxOperationType` { CREATE, UPDATE, DELETE } | type d'action Keycloak |
+| `operation_type` | enum `OutboxOperationType` { CREATE, DELETE } | type d'action Keycloak |
 | `status` | enum `OutboxStatus` { PENDING, DONE, FAILED } | cycle de vie |
-| `keycloak_id` | String, nullable | rempli pour UPDATE/DELETE ; pour CREATE au DONE (audit) |
+| `keycloak_id` | String, nullable | rempli pour DELETE ; pour CREATE au DONE (audit) |
 | `email` | String, nullable, indexé | clé de réconciliation pour CREATE (lookup Keycloak) |
-| `payload` | String (JSON), nullable | UPDATE → champs modifiés ; CREATE/DELETE → null |
 | `attempts` | int, default 0 | incrémenté à chaque passage job ; plafond → FAILED |
 | `last_error` | String, nullable, tronqué | dernier message d'échec (debug / lignes FAILED) |
 
@@ -87,18 +90,10 @@ AFTER_COMMIT : Keycloak.deleteUser + status=DONE              (immédiat, happy 
 Remplace `UserDeletedEvent` / `UserDeletionListener` (le cousin non durable) ; `deleteByUUIDs` (bulk)
 écrit une ligne outbox par user supprimé.
 
-### UPDATE — Keycloak-first conservé (fail-fast) + breadcrumb pré-appel
-```
-TX1 : INSERT outbox(UPDATE, keycloakId, fields, PENDING)   ── commit
-Keycloak.updateUser(…)        (rejet validation ⇒ status=FAILED + erreur renvoyée : fail-fast préservé)
-TX2 : DB update + status=DONE
-```
-**Job (crash)** : `PENDING` UPDATE périmée → ré-applique Keycloak (idempotent) + DB update → `DONE`.
-(update idempotent, payload = champs, aucun secret.)
-
-> Valeur relative : **DELETE** = gain le plus net ; **CREATE** corrige le trou visé ; **UPDATE** = le
-> moins rentable (crash Keycloak→DB rare, déjà loggé aujourd'hui). Option de coupe : livrer
-> create + delete, laisser update tel quel. **Décision : inclure les 3** (demande utilisateur).
+### UPDATE — inchangé (hors scope)
+`update` garde sa saga actuelle : Keycloak-first (fail-fast sur rejet de validation) + DB
+`REQUIRES_NEW` + log de réconciliation manuelle sur le cas rare (crash Keycloak→DB). **Aucune ligne
+outbox.** Décision utilisateur : le gain y est marginal. Évolution possible en §8.
 
 ## 5. Composants
 
@@ -109,14 +104,15 @@ TX2 : DB update + status=DONE
   - **logique de réconciliation par type** (`reconcile(row)`), réutilisée par le tasklet **et**
     potentiellement par l'AFTER_COMMIT du delete. Toute la logique idempotente vit ici → testable
     sans Spring.
-- Saga : `UserManagementServiceImp.create/update/deleteByUUID/deleteByUUIDs` et `UserPersistenceService`
-  écrivent/clôturent les lignes outbox aux bons points de transaction.
+- Saga : `UserManagementServiceImp.create/deleteByUUID/deleteByUUIDs` et `UserPersistenceService`
+  écrivent/clôturent les lignes outbox aux bons points de transaction. `update` **non touché**.
 - `KeycloakUserManagementService` : ajouter `searchByEmail(email) → Optional<keycloakId>` (lookup de
   réconciliation CREATE) ; `deleteUser` déjà idempotent-friendly (traiter 404 comme succès).
 - Batch (réplique de `RedeliverFailedNotificationsJob`) :
   - `batch/job/KeycloakOutboxReconciliationJob` : `@Scheduled(cron=…)` + `JobLauncher` + flag `activated`.
   - config Job + `batch/task/KeycloakOutboxReconciliationTasklet` : page les `PENDING` périmées,
-    `outboxService.reconcile(row)` chacune, `attempts++`, plafond → `FAILED` + log fort.
+    `outboxService.reconcile(row)` chacune (CREATE → lookup/compensation ; DELETE → idempotent delete),
+    `attempts++`, plafond → `FAILED` + log fort.
   - cron par défaut ~15 min (UTC), propriété override, comme les jobs existants.
 
 ## 6. Gestion des erreurs / cohérence
@@ -131,8 +127,7 @@ TX2 : DB update + status=DONE
 
 - **Unitaires (Mockito)** :
   - `KeycloakOutboxServiceImp` : chaque `reconcile` (CREATE orphelin→compensation, CREATE rien→FAILED,
-    UPDATE→ré-application, DELETE→idempotent), plafond attempts→FAILED, idempotence (rejouer ne
-    duplique pas).
+    DELETE→idempotent), plafond attempts→FAILED, idempotence (rejouer ne duplique pas).
   - Sagas `UserManagementServiceImp` : happy paths + chaque fenêtre de crash simulée (mock qui jette
     entre les phases) → on asserte l'état outbox attendu et l'absence de double-effet.
   - Tasklet : PENDING périmées dispatché, non-périmées ignorées, plafond.
@@ -143,6 +138,8 @@ TX2 : DB update + status=DONE
 
 ## 8. Hors scope / évolutions futures (documentées, non implémentées)
 
+- **Breadcrumb outbox sur `update`** (même pattern que create : ligne pré-appel + ré-application
+  idempotente par le job) — laissé de côté car gain marginal.
 - Vraie **dead-letter box** séparée + alerting.
 - **Outbox transactionnel générique** (CDC/Debezium, broker) pour d'autres effets externes.
 - Réconciliation inverse périodique (scan Keycloak ↔ DB) pour détecter des divergences hors outbox.
