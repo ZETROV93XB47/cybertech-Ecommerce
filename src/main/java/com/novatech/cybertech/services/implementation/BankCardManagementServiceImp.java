@@ -16,6 +16,8 @@ import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.BankCardManagementService;
 import com.novatech.cybertech.services.core.CardEncryptionService;
+import com.novatech.cybertech.utils.ControllerSecurityUtils;
+import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -97,37 +99,27 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     /**
-     * FIX(PCI): {@code updateBankCard} previously called the mapper directly without applying the
-     * same encryption + expiry guards as {@link #addBankCard}. A user could PATCH a brand-new
-     * plaintext PAN and the mapper would overwrite the encrypted column with the raw card number,
-     * silently undoing the BUG-036 fix. We now mirror the add-path: validate expiry, encrypt the
-     * PAN (when supplied), then apply the mapper. Updates that omit {@code cardNumber} (e.g. a
-     * holder-name only edit) still skip {@link #applyPciStorageRules} so we never wipe an existing
-     * encrypted column with a {@code null} cipher.
+     * Updates the editable fields of the caller's bank card: holder name and expiry date only.
+     * The PAN is WRITE-ONCE — {@link BankCardUpdateRequestDto} no longer carries {@code cardNumber},
+     * so the encrypted-at-rest ciphertext (BUG-036) can never be mutated through this path. To
+     * change the card number, delete the card and add a new one.
      */
     @Override
     @Transactional
-    public BankCardResponseDto updateBankCard(String keycloakId, BankCardUpdateRequestDto dto) {
-        UserEntity user = userRepository.findByKeycloakId(keycloakId)
-                .orElseThrow(() -> new UserNotFoundException("User not found"));
+    public BankCardResponseDto updateBankCard(final String keycloakId, final BankCardUpdateRequestDto dto) {
+        UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         BankCardEntity bankCard = user.getBankCardEntity();
         if (bankCard == null) {
             throw new BankCardNotFoundException("No bank card found for this user.");
         }
 
-        // FIX(PCI): expiry guard — same rule as addBankCard, runs before any persistence.
+        // Expiry guard — a card may only be updated to a non-past expiry.
         if (dto.getExpiryDate() != null && !dto.getExpiryDate().isBlank()) {
             validateExpiryNotInThePast(dto.getExpiryDate());
         }
 
         bankCardMapper.updateEntityFromDto(dto, bankCard);
-
-        // FIX(PCI): only re-encrypt when a fresh PAN was supplied. A holder-name-only PATCH must
-        // NOT erase the existing ciphertext by re-running applyPciStorageRules with a null PAN.
-        if (dto.getCardNumber() != null && !dto.getCardNumber().isBlank()) {
-            applyPciStorageRules(bankCard, dto.getCardNumber());
-        }
 
         BankCardEntity savedCard = bankCardRepository.save(bankCard);
         return bankCardMapper.mapFromEntityToResponseDto(savedCard);
@@ -187,10 +179,9 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     /**
-     * FIX(PCI): admin-side update was bypassing the same PCI guards as
-     * {@link #updateBankCard(String, BankCardUpdateRequestDto)}. Mirror the user-context path
-     * here — expiry must not be in the past, and a freshly supplied PAN must be re-encrypted via
-     * {@link #applyPciStorageRules} so we never persist a plaintext PAN through the admin API.
+     * Admin-side update. Same write-once PAN policy as
+     * {@link #updateBankCard(String, BankCardUpdateRequestDto)}: only holder name and expiry are
+     * editable; the encrypted card number is never mutated in place.
      */
     @Override
     @Transactional
@@ -203,17 +194,28 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
 
         bankCardMapper.updateEntityFromDto(dto, entity);
 
-        if (dto.getCardNumber() != null && !dto.getCardNumber().isBlank()) {
-            applyPciStorageRules(entity, dto.getCardNumber());
-        }
-
         return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.save(entity));
     }
 
+    /**
+     * Admin delete path: an admin has full authority over any user's data by design. We do NOT
+     * gate this on ownership, but we DO emit a PCI audit trail recording which admin removed which
+     * user's card, so the destructive write on PCI data has a traceable actor.
+     */
     @Override
     @Transactional
     public void deleteByUUID(UUID uuid) {
-        bankCardRepository.deleteByUuid(uuid);
+        bankCardRepository.findByUuid(uuid).ifPresentOrElse(
+                card -> {
+                    final String ownerKeycloakId = card.getUserEntity() == null ? null : card.getUserEntity().getKeycloakId();
+                    log.info("ADMIN-AUDIT: admin '{}' deleting bank card {} owned by user '{}'",
+                            LogSafetyUtils.maskUuid(ControllerSecurityUtils.currentCallerName()),
+                            uuid,
+                            LogSafetyUtils.maskUuid(ownerKeycloakId));
+                    bankCardRepository.deleteByUuid(uuid);
+                },
+                () -> log.warn("ADMIN-AUDIT: admin '{}' attempted to delete non-existent bank card {}",
+                        LogSafetyUtils.maskUuid(ControllerSecurityUtils.currentCallerName()), uuid));
     }
 
     /**

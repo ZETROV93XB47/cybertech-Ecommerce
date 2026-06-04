@@ -8,8 +8,6 @@ import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
-import com.novatech.cybertech.events.PaymentFailedEvent;
-import com.novatech.cybertech.events.PaymentSucceededEvent;
 import com.novatech.cybertech.exceptions.PaymentAlreadyCompletedForThisOrderException;
 import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.exceptions.PaymentProcessingException;
@@ -30,8 +28,6 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEvent;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -73,9 +69,6 @@ class PaymentServiceImpTest {
 
     @Mock
     private IdempotencyKeyServiceGenerator idempotencyKeyService;
-
-    @Mock
-    private ApplicationEventPublisher applicationEventPublisher;
 
     @Mock
     private PaymentAttemptProcessor processor;
@@ -169,7 +162,7 @@ class PaymentServiceImpTest {
                     .hasMessageContaining("already completed");
 
             verify(paymentAttemptRepository, never()).save(any());
-            verifyNoInteractions(paymentStrategyFactory, processor, applicationEventPublisher);
+            verifyNoInteractions(paymentStrategyFactory, processor);
         }
 
         @Test
@@ -214,8 +207,11 @@ class PaymentServiceImpTest {
         }
 
         @Test
-        @DisplayName("processor returns FAILED → entity persisted with FAILED status, PaymentFailedEvent published")
-        void failedOutcome_publishesPaymentFailedEvent() {
+        @DisplayName("processor returns FAILED → entity persisted with FAILED status, no in-process event (webhook-only)")
+        void failedOutcome_persistsFailedStatus_noEvent() {
+            // Webhook-only refactor: processPayment NEVER publishes a domain event. The
+            // PAYMENT_FAILED side-effect (stock release) is driven by the Stripe
+            // payment_intent.payment_failed webhook, the single source of truth.
             final OrderEntity order = newOrder();
             final String key = "idem-failed-result";
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
@@ -227,14 +223,14 @@ class PaymentServiceImpTest {
             final PaymentEntity result = service.processPayment(order, PaymentType.VISA, tenEur(), key);
 
             assertThat(result.getStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
-            // F2 added publishPaymentOutcomeEvent — FAILED triggers PaymentFailedEvent
-            verify(applicationEventPublisher).publishEvent(any(PaymentFailedEvent.class));
-            verify(applicationEventPublisher, never()).publishEvent(any(PaymentSucceededEvent.class));
+            assertThat(result.getStripePaymentID()).isEqualTo("pi_fail");
         }
 
         @Test
-        @DisplayName("processor returns SUCCESS → PaymentSucceededEvent published (BUG-070 partial fix)")
-        void successOutcome_publishesPaymentSucceededEvent() {
+        @DisplayName("processor returns SUCCESS → entity persisted with SUCCESS status, no in-process event (webhook-only)")
+        void successOutcome_persistsSuccessStatus_noEvent() {
+            // Webhook-only refactor: the PAID side-effects (commit stock / mark PAID /
+            // clear cart) are driven by the Stripe payment_intent.succeeded webhook only.
             final OrderEntity order = newOrder();
             final String key = "idem-ok";
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
@@ -243,23 +239,15 @@ class PaymentServiceImpTest {
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_ok"));
             wireSaveReturnsArg();
 
-            service.processPayment(order, PaymentType.VISA, tenEur(), key);
+            final PaymentEntity result = service.processPayment(order, PaymentType.VISA, tenEur(), key);
 
-            final ArgumentCaptor<ApplicationEvent> ev = ArgumentCaptor.forClass(ApplicationEvent.class);
-            verify(applicationEventPublisher).publishEvent(ev.capture());
-            assertThat(ev.getValue()).isInstanceOf(PaymentSucceededEvent.class);
-            // Verify the synthetic dto carries order_uuid metadata (so listeners can resolve the order).
-            final PaymentSucceededEvent evt = (PaymentSucceededEvent) ev.getValue();
-            assertThat(evt.getStripeEvent()).isNotNull();
-            assertThat(evt.getStripeEvent().getData().getPaymentIntentPayload().getId()).isEqualTo("pi_ok");
-            assertThat(evt.getStripeEvent().getData().getPaymentIntentPayload().getMetadata())
-                    .containsEntry("order_uuid", order.getUuid().toString())
-                    .containsEntry("idempotency_key", key);
+            assertThat(result.getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
+            assertThat(result.getStripePaymentID()).isEqualTo("pi_ok");
         }
 
         @Test
-        @DisplayName("non-terminal status (PROCESSING) → no event published")
-        void processingOutcome_doesNotPublish() {
+        @DisplayName("non-terminal status (PROCESSING) → entity persisted with PROCESSING status")
+        void processingOutcome_persistsProcessingStatus() {
             final OrderEntity order = newOrder();
             final String key = "idem-proc";
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
@@ -268,9 +256,9 @@ class PaymentServiceImpTest {
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.PROCESSING, "pi_proc"));
             wireSaveReturnsArg();
 
-            service.processPayment(order, PaymentType.VISA, tenEur(), key);
+            final PaymentEntity result = service.processPayment(order, PaymentType.VISA, tenEur(), key);
 
-            verifyNoInteractions(applicationEventPublisher);
+            assertThat(result.getStatus()).isEqualTo(PaymentAttemptStatus.PROCESSING);
         }
 
         @Test
@@ -466,10 +454,11 @@ class PaymentServiceImpTest {
     class DocumentedFindings {
 
         @Test
-        @DisplayName("BUG-070: refund() does NOT publish PaymentRefundedEvent (PIN — webhook-only)")
-        void refund_doesNotPublishRefundedEvent() {
-            // PIN: BUG-070. F2 added publishPaymentOutcomeEvent only to processPayment().
-            // refund() still does not publish PaymentRefundedEvent; that surface remains webhook-only.
+        @DisplayName("refund() persists the refund attempt and publishes no in-process event (webhook-only)")
+        void refund_persistsAttempt_noEvent() {
+            // The refund side-effect (mark REFUNDED / release stock) remains webhook-only:
+            // refund() persists the attempt and returns; the charge.refunded webhook drives
+            // the domain event. Nothing here publishes in-process.
             final OrderEntity order = newOrder();
             final String originalKey = "idem-no-refund-event";
             final PaymentEntity originalAttempt = PaymentEntityBuilder.aValidPaymentBuilder()
@@ -482,9 +471,10 @@ class PaymentServiceImpTest {
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "re_ok"));
             wireSaveReturnsArg();
 
-            service.refund(order, PaymentType.VISA, tenEur(), originalKey);
+            final PaymentEntity result = service.refund(order, PaymentType.VISA, tenEur(), originalKey);
 
-            verifyNoInteractions(applicationEventPublisher);
+            assertThat(result.getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
+            assertThat(result.getStripePaymentID()).isEqualTo("re_ok");
         }
     }
 }

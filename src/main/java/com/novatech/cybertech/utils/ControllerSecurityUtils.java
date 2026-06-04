@@ -54,4 +54,17 @@ public final class ControllerSecurityUtils {
     public static boolean isCurrentCallerAdmin() {
         return isAdmin(SecurityContextHolder.getContext().getAuthentication());
     }
+
+    /**
+     * Returns the current caller's identity name from the {@link SecurityContextHolder}. For a
+     * Keycloak-issued JWT this is the {@code sub} claim (the caller's {@code keycloakId}). Used by
+     * service-layer audit logging that needs to record <i>who</i> performed a sensitive action
+     * without threading the {@code Jwt} through the method signature.
+     *
+     * @return the authentication name, or {@code "anonymous"} when no authentication is present.
+     */
+    public static String currentCallerName() {
+        final Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication == null ? "anonymous" : authentication.getName();
+    }
 }

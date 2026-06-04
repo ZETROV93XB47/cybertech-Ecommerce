@@ -60,6 +60,13 @@ import static com.novatech.cybertech.entities.enums.OrderStatus.*;
 @RequiredArgsConstructor
 public class OrderManagementServiceImp implements OrderManagementService {
 
+    /**
+     * Idempotency-key context token marking a payment retry. Combined with a monotonic
+     * attempt counter (and a capture timestamp) so each retry of the same order produces
+     * a DISTINCT key — see {@link #retryPayment(UUID, Jwt)}.
+     */
+    private static final String RETRY_PAYMENT_ACTION = "retry";
+
     private final OrderMapper orderMapper;
 
     private final StockService stockService;
@@ -409,8 +416,16 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .map(PaymentEntity::getPaymentType)
                 .orElseThrow(() -> new NoPreviousPaymentAttemptException("No previous payment attempt found for failed order"));
 
-        // 3. Tenter le paiement
-        final String idempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), "retry");
+        // 3. Tenter le paiement.
+        // H-3 fix: the idempotency key MUST be unique per retry attempt. The old constant
+        // key (orderUuid + "retry") made Stripe keep returning the cached FAILED result of
+        // the first retry forever, and collided with the DB unique constraint on the second.
+        // We now mix in the monotonic attempt counter (guarantees uniqueness) plus a capture
+        // timestamp (human-readable trace of WHEN the retry fired). Both are evaluated once
+        // here, so a transient @Retry of this very call still dedupes correctly at Stripe.
+        final int retryAttemptNumber = order.getPaymentAttempts().size() + 1;
+        final String retryTimestamp = LocalDateTime.now().toString();
+        final String idempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), List.of(RETRY_PAYMENT_ACTION, String.valueOf(retryAttemptNumber), retryTimestamp));
         final PaymentEntity attempt = paymentService.processPayment(
                 order,
                 paymentType,
@@ -582,7 +597,13 @@ public class OrderManagementServiceImp implements OrderManagementService {
         }
 
         final int maxAttempts = 3;
-        ObjectOptimisticLockingFailureException lastLockFailure = null;
+        // Catch the Spring superclass OptimisticLockingFailureException, NOT only its
+        // ObjectOptimisticLockingFailureException subtype: depending on the underlying cause
+        // (Hibernate StaleObjectStateException vs a plain row-version mismatch) Spring Data may
+        // surface either type. Catching only the subtype let the generic superclass escape the
+        // retry loop and surface as an HTTP 500 — the exact place-order/webhook race the retry
+        // was meant to absorb.
+        OptimisticLockingFailureException lastLockFailure = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 // Run the cancel work in its own TX via TransactionTemplate so a retry after
@@ -590,7 +611,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 // entity snapshot. (Calling a self @Transactional method would bypass the
                 // Spring proxy and lose transactional semantics.)
                 return transactionTemplate.execute(status -> doCancelOrder(orderUUID, jwt));
-            } catch (ObjectOptimisticLockingFailureException ex) {
+            } catch (OptimisticLockingFailureException ex) {
                 lastLockFailure = ex;
                 log.warn("Optimistic lock failure cancelling order {} (attempt {}/{}). Retrying with fresh state.", orderUUID, attempt, maxAttempts);
             }

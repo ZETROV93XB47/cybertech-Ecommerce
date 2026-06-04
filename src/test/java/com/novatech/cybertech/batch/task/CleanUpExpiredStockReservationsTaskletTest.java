@@ -97,8 +97,8 @@ class CleanUpExpiredStockReservationsTaskletTest {
         }
 
         @Test
-        @DisplayName("threshold passed to repo is roughly now - 15 minutes")
-        void thresholdIsNowMinus15Minutes() throws Exception {
+        @DisplayName("threshold passed to repo is roughly now - 7 minutes")
+        void thresholdIsNowMinus7Minutes() throws Exception {
             when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
                     .thenReturn(Collections.emptyList());
             final LocalDateTime before = LocalDateTime.now();
@@ -108,8 +108,8 @@ class CleanUpExpiredStockReservationsTaskletTest {
             final ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
             verify(stockRepository).findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), captor.capture());
             final LocalDateTime threshold = captor.getValue();
-            // Reasonable bracket — should be ~15min in the past
-            assertThat(threshold).isBetween(before.minusMinutes(16), LocalDateTime.now().minusMinutes(14));
+            // Reasonable bracket — should be ~7min in the past
+            assertThat(threshold).isBetween(before.minusMinutes(8), LocalDateTime.now().minusMinutes(6));
         }
     }
 

@@ -91,15 +91,14 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
                 .shippingProvider(order.getShippingProvider())
                 .build();
 
-        // Atomically claim the order before dispatching: flip PAID -> AWAITING_SHIPPING and save
-        // FIRST so JPA's @Version optimistic locking can detect the race against ShippingListener
-        // (which also ships PAID orders on OrderPaidEvent). The claim+dispatch run in their own
-        // REQUIRES_NEW tx so the optimistic-lock flush commits inside this call and can be
-        // observed by the per-order try/catch in execute(...).
+        // Atomically claim the order, dispatch, and persist the terminal SHIPPED status — all in
+        // one REQUIRES_NEW transaction inside the delegate. The PAID -> AWAITING_SHIPPING claim
+        // flips first so JPA's @Version optimistic locking detects the race against ShippingListener
+        // (which also ships PAID orders on OrderPaidEvent); the loser throws
+        // OptimisticLockingFailureException, caught per-order in execute(...). The SHIPPED transition
+        // now lives inside the delegate too — doing it here on the detached `order` after the
+        // delegate already bumped @Version failed the save with a stale-version optimistic lock.
         shipOrderDelegate.claimAndShip(order, shippingContext);
-
-        order.setStatus(OrderStatus.SHIPPED);
-        orderRepository.save(order);
 
         final ShippingConfirmationPayload payload = ShippingConfirmationPayload.builder()
                 .orderUuid(order.getUuid())

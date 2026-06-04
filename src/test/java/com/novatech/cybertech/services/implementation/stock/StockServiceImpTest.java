@@ -77,7 +77,7 @@ class StockServiceImpTest {
 
     private StockServiceImp service;
 
-    private static final Duration EXPECTED_TTL = Duration.ofMinutes(10);
+    private static final Duration EXPECTED_TTL = Duration.ofMinutes(5);
     private static final String KEY_PREFIX = "reservation:order:";
 
     @BeforeEach
@@ -754,8 +754,8 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("Redis: TTL value equals Duration.ofMinutes(10)")
-    void redis_ttlIsTenMinutes() {
+    @DisplayName("Redis: TTL value equals Duration.ofMinutes(5)")
+    void redis_ttlIsFiveMinutes() {
         UUID orderUuid = UUID.randomUUID();
         UUID productUuid = UUID.randomUUID();
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
@@ -765,7 +765,7 @@ class StockServiceImpTest {
 
         ArgumentCaptor<Duration> ttlCaptor = ArgumentCaptor.forClass(Duration.class);
         verify(valueOps).set(anyString(), any(), ttlCaptor.capture());
-        assertThat(ttlCaptor.getValue()).isEqualTo(Duration.ofMinutes(10));
+        assertThat(ttlCaptor.getValue()).isEqualTo(Duration.ofMinutes(5));
     }
 
     @Test
@@ -814,7 +814,7 @@ class StockServiceImpTest {
         ArgumentCaptor<Duration> ttlCaptor = ArgumentCaptor.forClass(Duration.class);
         verify(redisTemplate).expire(keyCaptor.capture(), ttlCaptor.capture());
         assertThat(keyCaptor.getValue()).isEqualTo("reservation:order:" + orderUuid);
-        assertThat(ttlCaptor.getValue()).isEqualTo(Duration.ofMinutes(10));
+        assertThat(ttlCaptor.getValue()).isEqualTo(Duration.ofMinutes(5));
     }
 
     // ---------------------------------------------------------------------

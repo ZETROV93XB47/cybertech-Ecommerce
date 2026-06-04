@@ -40,6 +40,7 @@ public class CartCacheHelperImp implements CartCacheHelper {
     private static final long BLOCKING_RETRY_INITIAL_MS = 5L;
     /** Cap on the back-off — keeps tail latency bounded. */
     private static final long BLOCKING_RETRY_MAX_MS = 50L;
+    private static final String CART_LOCKING_PREFFIX = "cart:lock:";
     private static final String UNLOCK_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
     private static final DefaultRedisScript<Long> UNLOCK_REDIS_SCRIPT = new DefaultRedisScript<>(UNLOCK_SCRIPT, Long.class);
     private static final StringRedisSerializer STRING_SERIALIZER = new StringRedisSerializer();
@@ -198,7 +199,7 @@ public class CartCacheHelperImp implements CartCacheHelper {
     }
 
     private static String lockKey(final String userId) {
-        return "lock:cart:" + userId;
+        return CART_LOCKING_PREFFIX + userId;
     }
 
     // Symmetric jitter around baseTtlSeconds so writes at the same instant don't all expire together.

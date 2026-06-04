@@ -87,6 +87,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
@@ -1277,8 +1278,8 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("retryPayment uses the default (String, String) overload with literal 'retry'")
-        void retryPayment_usesStringOverload() {
+        @DisplayName("retryPayment builds a unique key via the (String, List) overload — context contains 'retry' + monotonic attempt counter")
+        void retryPayment_usesListOverloadWithRetryActionAndCounter() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
             final OrderItemEntity item = OrderItemEntityBuilder.aValidOrderItemBuilder()
@@ -1298,9 +1299,13 @@ class OrderManagementServiceImpTest {
 
             service.retryPayment(order.getUuid(), jwt);
 
-            // The default-method (String, String) overload delegates to the (String, List<String>) one
-            // — assert the (String, String) entry-point was hit with the literal "retry".
-            verify(idempotencyKeyService).generateKey(eq(order.getUuid().toString()), eq("retry"));
+            // H-3 fix: the constant (String, String) "retry" key is gone. Each retry now mixes
+            // the 'retry' marker + a monotonic attempt counter (1 prior FAILED attempt → "2")
+            // + a capture timestamp into the (String, List) overload context, so every retry of
+            // the same order produces a DISTINCT idempotency key.
+            verify(idempotencyKeyService).generateKey(
+                    eq(order.getUuid().toString()),
+                    argThat((List<String> ctx) -> ctx.contains("retry") && ctx.contains("2")));
         }
     }
 

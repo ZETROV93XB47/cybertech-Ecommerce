@@ -87,9 +87,7 @@ class BankCardManagementServiceImpTest {
         return BankCardUpdateRequestDto.builder()
                 .uuid(uuid)
                 .cardHolderName("Jane Doe Updated")
-                .cardNumber("4242424242424242")
                 .expiryDate(LocalDate.now().plusYears(3).format(DateTimeFormatter.ofPattern("MM/yyyy")))
-                .cardType(BankCardType.VISA)
                 .build();
     }
 
@@ -357,8 +355,6 @@ class BankCardManagementServiceImpTest {
             final BankCardResponseDto resp = new BankCardResponseDto();
 
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            // FIX(PCI): updateBankCard now re-encrypts the PAN through CardEncryptionService whenever the DTO carries a fresh card number.
-            when(cardEncryptionService.encrypt(anyString())).thenReturn("ENC:4242");
             when(bankCardRepository.save(card)).thenReturn(card);
             when(bankCardMapper.mapFromEntityToResponseDto(card)).thenReturn(resp);
 
@@ -369,51 +365,36 @@ class BankCardManagementServiceImpTest {
         }
 
         /**
-         * FIX(PCI): the mapper alone was leaking the raw PAN back into the {@code cardNumber} column,
-         * silently undoing BUG-036. The user-facing update path now re-encrypts the PAN, masks the
-         * last four digits and blanks the legacy column — exactly like {@code addBankCard}.
+         * Write-once PAN: the update DTO no longer carries a card number, so the encrypted column
+         * can never be touched here. The PAN re-encryption path was removed entirely — changing the
+         * card number now requires deleting the card and adding a new one. We assert the encryption
+         * service is never invoked on the update path.
          */
         @Test
-        @DisplayName("FIX(PCI): updateBankCard re-encrypts the PAN and blanks the legacy cardNumber column")
-        void updateBankCard_reEncryptsPan() {
+        @DisplayName("write-once PAN: updateBankCard never touches the encryption service")
+        void updateBankCard_neverReEncryptsPan() {
             final BankCardEntity card = BankCardEntityBuilder.aValidBankCard();
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(card).build();
-            final BankCardUpdateRequestDto dto = BankCardUpdateRequestDto.builder()
-                    .uuid(card.getUuid())
-                    .cardHolderName("Jane Doe Updated")
-                    .cardNumber("4111111111111111")
-                    .expiryDate("12/2099")
-                    .cardType(BankCardType.VISA)
-                    .build();
+            final BankCardUpdateRequestDto dto = updateDto(card.getUuid());
 
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(cardEncryptionService.encrypt("4111111111111111")).thenReturn("ENCRYPTED_PAN");
             when(bankCardRepository.save(card)).thenAnswer(inv -> inv.getArgument(0));
             when(bankCardMapper.mapFromEntityToResponseDto(card)).thenReturn(new BankCardResponseDto());
 
             service.updateBankCard(keycloakId, dto);
 
-            verify(cardEncryptionService).encrypt("4111111111111111");
-            assertThat(card.getEncryptedNumber()).isEqualTo("ENCRYPTED_PAN");
-            assertThat(card.getLastFourDigits()).isEqualTo("1111");
-            assertThat(card.getCardNumber()).isNull();
+            verifyNoInteractions(cardEncryptionService);
         }
 
-        /**
-         * FIX(PCI): the expiry guard is now applied on the update path too — the mapper used to
-         * happily overwrite the expiry column with a past-dated value.
-         */
         @Test
-        @DisplayName("FIX(PCI): updateBankCard rejects a past expiry with BankCardExpiredException before save")
+        @DisplayName("updateBankCard rejects a past expiry with BankCardExpiredException before save")
         void updateBankCard_expiredCard_throws() {
             final BankCardEntity card = BankCardEntityBuilder.aValidBankCard();
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(card).build();
             final BankCardUpdateRequestDto dto = BankCardUpdateRequestDto.builder()
                     .uuid(card.getUuid())
                     .cardHolderName("Jane Doe")
-                    .cardNumber("4111111111111111")
                     .expiryDate("01/2000") // expired
-                    .cardType(BankCardType.VISA)
                     .build();
 
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
@@ -647,8 +628,6 @@ class BankCardManagementServiceImpTest {
             final BankCardResponseDto resp = new BankCardResponseDto();
 
             when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.of(entity));
-            // FIX(PCI): admin update now re-encrypts when a fresh PAN is supplied.
-            when(cardEncryptionService.encrypt(anyString())).thenReturn("ENC:4242");
             when(bankCardRepository.save(entity)).thenReturn(entity);
             when(bankCardMapper.mapFromEntityToResponseDto(entity)).thenReturn(resp);
 
@@ -657,46 +636,34 @@ class BankCardManagementServiceImpTest {
         }
 
         /**
-         * FIX(PCI): the admin-side {@code update(BankCardUpdateRequestDto)} previously called the
-         * mapper directly without applying {@link com.novatech.cybertech.services.core.CardEncryptionService}.
+         * Write-once PAN on the admin path too: the update DTO carries no card number, so the
+         * encryption service is never invoked on update.
          */
         @Test
-        @DisplayName("FIX(PCI): admin update re-encrypts the PAN, masks last4 and blanks legacy cardNumber")
-        void update_admin_reEncryptsPan() {
+        @DisplayName("write-once PAN: admin update never touches the encryption service")
+        void update_admin_neverReEncryptsPan() {
             final UUID uuid = UUID.randomUUID();
             final BankCardEntity entity = BankCardEntityBuilder.aValidBankCardBuilder().uuid(uuid).build();
-            final BankCardUpdateRequestDto dto = BankCardUpdateRequestDto.builder()
-                    .uuid(uuid)
-                    .cardHolderName("Admin User")
-                    .cardNumber("4111111111111111")
-                    .expiryDate("12/2099")
-                    .cardType(BankCardType.VISA)
-                    .build();
+            final BankCardUpdateRequestDto dto = updateDto(uuid);
 
             when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.of(entity));
-            when(cardEncryptionService.encrypt("4111111111111111")).thenReturn("ENC_ADMIN");
             when(bankCardRepository.save(entity)).thenAnswer(inv -> inv.getArgument(0));
             when(bankCardMapper.mapFromEntityToResponseDto(entity)).thenReturn(new BankCardResponseDto());
 
             service.update(dto);
 
-            verify(cardEncryptionService).encrypt("4111111111111111");
-            assertThat(entity.getEncryptedNumber()).isEqualTo("ENC_ADMIN");
-            assertThat(entity.getLastFourDigits()).isEqualTo("1111");
-            assertThat(entity.getCardNumber()).isNull();
+            verifyNoInteractions(cardEncryptionService);
         }
 
         @Test
-        @DisplayName("FIX(PCI): admin update rejects a past expiry with BankCardExpiredException before save")
+        @DisplayName("admin update rejects a past expiry with BankCardExpiredException before save")
         void update_admin_expired_throws() {
             final UUID uuid = UUID.randomUUID();
             final BankCardEntity entity = BankCardEntityBuilder.aValidBankCardBuilder().uuid(uuid).build();
             final BankCardUpdateRequestDto dto = BankCardUpdateRequestDto.builder()
                     .uuid(uuid)
                     .cardHolderName("Admin User")
-                    .cardNumber("4111111111111111")
                     .expiryDate("01/2000")
-                    .cardType(BankCardType.VISA)
                     .build();
 
             when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.of(entity));
@@ -719,10 +686,18 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("deleteByUUID delegates to repository")
+        @DisplayName("deleteByUUID (admin) loads the card for the PCI audit log then delegates to repository")
         void deleteByUuid_delegates() {
             final UUID uuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-owner").build();
+            final BankCardEntity card = BankCardEntityBuilder.aValidBankCardBuilder()
+                    .uuid(uuid)
+                    .userEntity(owner)
+                    .build();
+            when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.of(card));
+
             service.deleteByUUID(uuid);
+
             verify(bankCardRepository).deleteByUuid(uuid);
         }
 

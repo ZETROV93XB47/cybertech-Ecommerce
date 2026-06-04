@@ -46,8 +46,19 @@ public class ShipOrderTransactionalDelegate {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void claimAndShip(final OrderEntity order, final ShippingContext context) {
+        // Atomic claim: PAID -> AWAITING_SHIPPING. The optimistic-lock UPDATE (... WHERE version=?)
+        // is what detects a concurrent claim by the OrderPaidEvent listener; the loser throws
+        // OptimisticLockingFailureException at this REQUIRES_NEW commit, observed by the caller.
         order.setStatus(OrderStatus.AWAITING_SHIPPING);
-        orderRepository.save(order);
+        final OrderEntity claimed = orderRepository.save(order);
+
         shippingDispatcher.dispatch(context);
+
+        // Persist the terminal SHIPPED status on the SAME managed entity, inside THIS transaction.
+        // Previously the tasklet did this on the detached `order` AFTER the REQUIRES_NEW commit had
+        // already bumped @Version — the stale-version save then failed with
+        // OptimisticLockingFailureException and the order never reached SHIPPED in the DB.
+        claimed.setStatus(OrderStatus.SHIPPED);
+        orderRepository.save(claimed);
     }
 }

@@ -29,6 +29,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -55,6 +57,11 @@ class OrderPaymentConfirmationEventListenerTest {
     private static OrderEntity orderWithKeycloakId(UUID uuid, String keycloakId) {
         UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
         return OrderEntityBuilder.aValidOrderBuilder().uuid(uuid).userEntity(user).build();
+    }
+
+    private static OrderEntity orderWithStatus(UUID uuid, OrderStatus status) {
+        UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-status").build();
+        return OrderEntityBuilder.aValidOrderBuilder().uuid(uuid).userEntity(user).status(status).build();
     }
 
     // ---------- @TransactionalEventListener phase reflection ----------
@@ -129,7 +136,8 @@ class OrderPaymentConfirmationEventListenerTest {
     @Test
     void handleRefundShouldReleaseStockAndMarkRefunded() {
         UUID uuid = UUID.randomUUID();
-        OrderEntity order = orderWithKeycloakId(uuid, "kc-3");
+        // A refund only applies to an order that actually got paid (or was canceled awaiting refund).
+        OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
         when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
 
         listener.handleRefund(new PaymentRefundedEvent(eventForOrder(uuid)));
@@ -139,6 +147,64 @@ class OrderPaymentConfirmationEventListenerTest {
         verify(orderRepository).save(cap.capture());
         assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.REFUNDED);
         verifyNoInteractions(cartService);
+    }
+
+    // ---------- status guard: stale / out-of-order webhooks must not regress the order ----------
+
+    @Test
+    void handlePaymentSuccess_onCanceledOrder_isIgnored_noResurrection() {
+        // A late payment_intent.succeeded arriving AFTER the user canceled (and got refunded)
+        // must NOT resurrect the order to PAID.
+        UUID uuid = UUID.randomUUID();
+        OrderEntity order = orderWithStatus(uuid, OrderStatus.CANCELED);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        listener.handlePaymentSuccess(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(stockService, cartService);
+    }
+
+    @Test
+    void handlePaymentSuccess_onRetryablePaymentFailedOrder_completesToPaid() {
+        // retryPayment leaves the order in PAYMENT_FAILED; the success webhook must still complete it.
+        UUID uuid = UUID.randomUUID();
+        OrderEntity order = orderWithStatus(uuid, OrderStatus.PAYMENT_FAILED);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        listener.handlePaymentSuccess(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        verify(stockService).commitStock(uuid);
+        verify(orderRepository).save(any());
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+    }
+
+    @Test
+    void handlePaymentFailed_onPaidOrder_isIgnored_noRegression() {
+        // A late payment_intent.payment_failed must NOT regress an already-PAID order.
+        UUID uuid = UUID.randomUUID();
+        OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        listener.handlePaymentFailed(new PaymentFailedEvent(eventForOrder(uuid)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(stockService, cartService);
+    }
+
+    @Test
+    void handleRefund_onAlreadyRefundedOrder_isIgnored() {
+        UUID uuid = UUID.randomUUID();
+        OrderEntity order = orderWithStatus(uuid, OrderStatus.REFUNDED);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        listener.handleRefund(new PaymentRefundedEvent(eventForOrder(uuid)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.REFUNDED);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(stockService, cartService);
     }
 
     @Test

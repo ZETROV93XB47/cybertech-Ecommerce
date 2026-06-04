@@ -1,10 +1,8 @@
 package com.novatech.cybertech.dto.request.user;
 
-import com.novatech.cybertech.entities.enums.BankCardType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,6 +10,12 @@ import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
+/**
+ * Update payload for a bank card. By design the PAN ({@code cardNumber}) and the derived
+ * {@code cardType} are WRITE-ONCE: once a card has been stored (and the PAN encrypted at rest)
+ * it is never mutated in place. To change the card number, delete the card and add a new one.
+ * Only the holder name and the expiry date are editable here.
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -24,14 +28,7 @@ public class BankCardUpdateRequestDto {
     @NotBlank(message = "Card holder name cannot be blank")
     private String cardHolderName;
 
-    @NotBlank(message = "Card number cannot be blank")
-    @Size(min = 13, max = 19, message = "Card number must be between 13 and 19 digits")
-    private String cardNumber;
-
     @NotBlank(message = "Expiry date cannot be blank")
     @Pattern(regexp = "(0[1-9]|1[0-2])/[0-9]{4}", message = "Expiry date must be in format MM/YYYY")
     private String expiryDate;
-
-    @NotNull(message = "Card type cannot be null")
-    private BankCardType cardType;
 }

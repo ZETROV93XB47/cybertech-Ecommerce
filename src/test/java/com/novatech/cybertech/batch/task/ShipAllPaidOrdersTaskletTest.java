@@ -103,9 +103,14 @@ class ShipAllPaidOrdersTaskletTest {
         doAnswer(invocation -> {
             final OrderEntity ord = invocation.getArgument(0);
             final ShippingContext ctx = invocation.getArgument(1);
+            // Mirror the real REQUIRES_NEW delegate contract: claim (PAID -> AWAITING_SHIPPING) +
+            // save, dispatch, then mark SHIPPED + save — all inside the delegate now (the tasklet
+            // no longer performs the SHIPPED transition).
             ord.setStatus(OrderStatus.AWAITING_SHIPPING);
             orderRepository.save(ord);
             shippingDispatcher.dispatch(ctx);
+            ord.setStatus(OrderStatus.SHIPPED);
+            orderRepository.save(ord);
             return null;
         }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
     }
@@ -216,6 +221,8 @@ class ShipAllPaidOrdersTaskletTest {
                     throw new RuntimeException("shipping vendor down");
                 }
                 shippingDispatcher.dispatch(ctx);
+                ord.setStatus(OrderStatus.SHIPPED);
+                orderRepository.save(ord);
                 return null;
             }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
 
@@ -294,6 +301,8 @@ class ShipAllPaidOrdersTaskletTest {
                 ord.setStatus(OrderStatus.AWAITING_SHIPPING);
                 orderRepository.save(ord);
                 shippingDispatcher.dispatch(ctx);
+                ord.setStatus(OrderStatus.SHIPPED);
+                orderRepository.save(ord);
                 return null;
             }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
 

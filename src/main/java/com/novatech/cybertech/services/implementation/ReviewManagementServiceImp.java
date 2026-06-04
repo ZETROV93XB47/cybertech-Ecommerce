@@ -88,7 +88,10 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         //I ned to recompile the moderation api module cause made some changes in it
 
         ModerationResponseDto moderationResponseDto = moderationService.checkIfIsHateful(reviewEntity.getComment());
-        if (moderationResponseDto.getScore() > HATEFUL_COMMENT_SCORE_THRESHOLD)
+        // Fail closed on a missing / malformed moderation verdict: a null response or null score
+        // means we could NOT confirm the comment is clean, so we reject rather than publish blind.
+        if (moderationResponseDto == null || moderationResponseDto.getScore() == null
+                || moderationResponseDto.getScore() > HATEFUL_COMMENT_SCORE_THRESHOLD)
             throw new CommentPostNotAllowedException("Your comment looks similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.");
 
         reviewEntity.setIsHateful(false);

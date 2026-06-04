@@ -11,10 +11,14 @@ import java.util.List;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-// BUG-160 (PRE-2) — UNIQUE(userId) at the entity level so Hibernate's `ddl-auto=update`
-// also creates the constraint when the schema is generated from JPA metadata (e.g. for
-// Testcontainers integration tests). The matching constraint is also declared explicitly
-// in src/main/resources/sql/databaseSchemaInitFile.sql for the production init path.
+// UNIQUE(userId) — declarative "one cart per user" data invariant, created by Hibernate's
+// `ddl-auto=update` from JPA metadata (e.g. for Testcontainers integration tests) and also
+// declared explicitly in src/main/resources/sql/databaseSchemaInitFile.sql for the production
+// init path. NOTE: this constraint used to back the BUG-160 first-insert-race retry (layer 3,
+// the SELECT ... FOR UPDATE + DataIntegrityViolationException one-shot retry). That layer was
+// removed — the per-user Redis lock now serialises the cart-add read-modify-write, including the
+// first insert — so this constraint is no longer load-bearing for concurrency; it is kept purely
+// as a cheap integrity guard. See CartServiceImp.addItemsToCart for the rationale.
 @Table(name = "cartTable", uniqueConstraints = @UniqueConstraint(name = "uk_cart_user", columnNames = "userId"))
 @ToString(callSuper = true, exclude = {"cartItems", "userEntity"})
 @EqualsAndHashCode(callSuper = true, exclude = {"cartItems", "userEntity"})

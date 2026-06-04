@@ -212,11 +212,11 @@ class UserManagementServiceImpTest {
     class Update {
 
         @Test
-        @DisplayName("Bug 3 — DB persisted FIRST via UserPersistenceService (REQUIRES_NEW), THEN Keycloak; returns mapped DTO")
-        void updateShouldPersistInDbBeforeCallingKeycloak() {
-            // Bug 3 fix (Option B): UserManagementServiceImp.update no longer wraps the call in
-            // an outer @Transactional. The DB save runs in UserPersistenceService.updateUser
-            // (REQUIRES_NEW). Only after that returns do we touch Keycloak.
+        @DisplayName("Bug 3 (Option B) — Keycloak FIRST, THEN DB persisted via UserPersistenceService (REQUIRES_NEW); returns mapped DTO")
+        void updateShouldCallKeycloakBeforePersistingInDb() {
+            // Bug 3 fix (Option B): Keycloak is called BEFORE the DB write, so a Keycloak rejection
+            // (the common failure mode) aborts before either system is mutated. The DB save runs
+            // afterwards in UserPersistenceService.updateUser (REQUIRES_NEW).
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-1").build();
             UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
@@ -227,9 +227,9 @@ class UserManagementServiceImpTest {
             UserResponseDto result = service.update(dto);
 
             assertThat(result).isSameAs(expected);
-            InOrder order = inOrder(userPersistenceService, keycloakUserManagementService);
-            order.verify(userPersistenceService).updateUser(dto, user);
+            InOrder order = inOrder(keycloakUserManagementService, userPersistenceService);
             order.verify(keycloakUserManagementService).updateUser("kc-1", dto);
+            order.verify(userPersistenceService).updateUser(dto, user);
         }
 
         @Test
@@ -265,37 +265,34 @@ class UserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("Bug 3 — DB save fails → Keycloak NOT called (no orphan IDP mutation)")
-        void updateShouldNotCallKeycloakWhenDbSaveFails() {
+        @DisplayName("Bug 3 (Option B) — Keycloak fails → DB never touched (no orphan DB mutation)")
+        void updateShouldNotPersistInDbWhenKeycloakFails() {
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-1").build();
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
-            when(userPersistenceService.updateUser(dto, user))
-                    .thenThrow(new RuntimeException("db down"));
+            doThrow(new RuntimeException("kc down")).when(keycloakUserManagementService).updateUser("kc-1", dto);
+
+            assertThatThrownBy(() -> service.update(dto))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("kc down");
+
+            verifyNoInteractions(userPersistenceService);
+        }
+
+        @Test
+        @DisplayName("Bug 3 (Option B) — Keycloak OK then DB fails → original DB exception propagates (rare: Keycloak now ahead, logged)")
+        void updateShouldPropagateWhenDbFailsAfterKeycloakSuccess() {
+            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-2").build();
+            when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(dto, user)).thenThrow(new RuntimeException("db down"));
 
             assertThatThrownBy(() -> service.update(dto))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("db down");
 
-            verifyNoInteractions(keycloakUserManagementService);
-        }
-
-        @Test
-        @DisplayName("Bug 3 — DB save OK then Keycloak fails → wrapped in RuntimeException, original is the cause")
-        void updateShouldLogAndPropagateWhenKeycloakFailsAfterDbSuccess() {
-            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
-            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-2").build();
-            when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
-            when(userPersistenceService.updateUser(dto, user)).thenReturn(UserDtoFixtures.aSampleUserResponse());
-            doThrow(new RuntimeException("kc 500")).when(keycloakUserManagementService).updateUser("kc-2", dto);
-
-            assertThatThrownBy(() -> service.update(dto))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Keycloak sync failed after DB update")
-                    .hasCauseInstanceOf(RuntimeException.class);
-
-            // DB write was already attempted (and committed inside REQUIRES_NEW) — no rollback path.
-            verify(userPersistenceService).updateUser(dto, user);
+            // Keycloak was already updated (phase 1) before the DB write failed.
+            verify(keycloakUserManagementService).updateUser("kc-2", dto);
         }
     }
 
@@ -441,8 +438,8 @@ class UserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("happy path — DB save first via persistence service, then Keycloak push, returns mapped DTO")
-        void updateMe_happyPath_dbThenKeycloak() {
+        @DisplayName("happy path — Keycloak push first, then DB save via persistence service, returns mapped DTO")
+        void updateMe_happyPath_keycloakThenDb() {
             final String keycloakId = "kc-self-1";
             final UserEntity user = UserEntityBuilder.aValidUserBuilder()
                     .uuid(UUID.randomUUID()).keycloakId(keycloakId).build();
@@ -453,10 +450,10 @@ class UserManagementServiceImpTest {
             final UserResponseDto result = service.updateMe(keycloakId, selfDto());
 
             assertThat(result).isSameAs(expected);
-            // Skeptical: DB write MUST happen before any Keycloak call (mirrors Bug 3 update() ordering).
-            InOrder order = inOrder(userPersistenceService, keycloakUserManagementService);
-            order.verify(userPersistenceService).updateUser(any(UserUpdateRequestDto.class), eq(user));
+            // Option B: Keycloak MUST be called before the DB write (mirrors update() ordering).
+            InOrder order = inOrder(keycloakUserManagementService, userPersistenceService);
             order.verify(keycloakUserManagementService).updateUser(eq(keycloakId), any(UserUpdateRequestDto.class));
+            order.verify(userPersistenceService).updateUser(any(UserUpdateRequestDto.class), eq(user));
         }
 
         @Test
@@ -534,8 +531,25 @@ class UserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("DB save fails → no Keycloak call (no orphan IDP mutation)")
-        void updateMe_dbFailsBeforeKeycloak() {
+        @DisplayName("Option B — Keycloak fails → DB never touched (no orphan DB mutation)")
+        void updateMe_keycloakFails_dbNeverCalled() {
+            final String keycloakId = "kc-self-kcfail";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            doThrow(new RuntimeException("kc down"))
+                    .when(keycloakUserManagementService).updateUser(eq(keycloakId), any(UserUpdateRequestDto.class));
+
+            assertThatThrownBy(() -> service.updateMe(keycloakId, selfDto()))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("kc down");
+
+            verifyNoInteractions(userPersistenceService);
+            verify(userRepository, never()).save(any(UserEntity.class));
+        }
+
+        @Test
+        @DisplayName("Option B — Keycloak ok then DB fails → original DB exception propagates (rare: Keycloak now ahead)")
+        void updateMe_dbFailsAfterKeycloakSuccess_propagates() {
             final String keycloakId = "kc-self-dbfail";
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
@@ -546,27 +560,8 @@ class UserManagementServiceImpTest {
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("db down");
 
-            verifyNoInteractions(keycloakUserManagementService);
-        }
-
-        @Test
-        @DisplayName("DB ok then Keycloak fails → wrapped RuntimeException with original cause (operator must reconcile)")
-        void updateMe_keycloakFailsAfterDbSuccess_wraps() {
-            final String keycloakId = "kc-self-kcfail";
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
-                    .thenReturn(UserDtoFixtures.aSampleUserResponse());
-            doThrow(new RuntimeException("kc 500"))
-                    .when(keycloakUserManagementService).updateUser(eq(keycloakId), any(UserUpdateRequestDto.class));
-
-            assertThatThrownBy(() -> service.updateMe(keycloakId, selfDto()))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Keycloak sync failed after DB update")
-                    .hasCauseInstanceOf(RuntimeException.class);
-
-            // DB write was already attempted (and committed inside REQUIRES_NEW) — no rollback path.
-            verify(userPersistenceService).updateUser(any(UserUpdateRequestDto.class), eq(user));
+            // Keycloak was already updated (phase 1) before the DB write failed.
+            verify(keycloakUserManagementService).updateUser(eq(keycloakId), any(UserUpdateRequestDto.class));
         }
     }
 }

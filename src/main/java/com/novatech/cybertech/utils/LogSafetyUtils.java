@@ -82,10 +82,24 @@ public final class LogSafetyUtils {
         if (uuid == null) {
             return NULL_SENTINEL;
         }
-        final String full = uuid.toString();
-        if (full.length() <= UUID_PREFIX_KEEP) {
-            return full + UUID_TAIL_MASK;
+        return maskUuid(uuid.toString());
+    }
+
+    /**
+     * String overload of {@link #maskUuid(UUID)} for identifiers already held as text — e.g. a
+     * Keycloak {@code sub} claim or a security-context principal name that may not be a strict UUID
+     * (such as {@code "anonymous"}). Keeps the first {@value #UUID_PREFIX_KEEP} characters and masks
+     * the rest. Null-safe and never throws.
+     *
+     * <p>Example: {@code 550e8400-e29b-41d4-a716-446655440000} -> {@code 550e84***}.
+     */
+    public static String maskUuid(final String id) {
+        if (id == null) {
+            return NULL_SENTINEL;
         }
-        return full.substring(0, UUID_PREFIX_KEEP) + UUID_TAIL_MASK;
+        if (id.length() <= UUID_PREFIX_KEEP) {
+            return id + UUID_TAIL_MASK;
+        }
+        return id.substring(0, UUID_PREFIX_KEEP) + UUID_TAIL_MASK;
     }
 }

@@ -163,7 +163,8 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
         return builder.build();
     }
 
-    private PaymentAttemptStatus mapStripeStatus(String stripeStatus) {
+    private PaymentAttemptStatus
+    mapStripeStatus(String stripeStatus) {
 
         return switch (stripeStatus) {
             case "succeeded" -> PaymentAttemptStatus.SUCCESS;

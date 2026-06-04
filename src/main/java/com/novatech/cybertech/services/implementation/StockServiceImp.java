@@ -48,7 +48,10 @@ public class StockServiceImp implements StockService {
     private final ProductRepository productRepository;
     private final RedisTemplate<String, Object> redisTemplate;
 
-    private static final Duration RESERVATION_TTL = Duration.ofMinutes(10);
+    // How long stock stays reserved while we wait for the payment-confirmation webhook. Kept
+    // short on purpose: we hold inventory at most 5 minutes for an unpaid order, then release it.
+    // (Stripe's own delivery-retry window of up to 3 days is external and not configurable here.)
+    private static final Duration RESERVATION_TTL = Duration.ofMinutes(5);
 
 
     /**

@@ -294,6 +294,20 @@
             <scope>compile</scope>
         </dependency>
         <!--
+             Vavr 1.0.1 (first stable 1.x, released 2026-03-01) — object-functional
+             library. Used selectively at external-integration boundaries (Stripe calls,
+             crypto digests, Jackson deserialization) where Vavr's Try<T> collapses noisy
+             try/catch-then-rethrow blocks into a single fluent expression. Domain code
+             stays on plain Java Optional/Stream — we deliberately do NOT swap the JDK
+             collections for Vavr's persistent ones to avoid two competing idioms.
+        -->
+        <dependency>
+            <groupId>io.vavr</groupId>
+            <artifactId>vavr</artifactId>
+            <version>1.0.1</version>
+            <scope>compile</scope>
+        </dependency>
+        <!--
              Bucket4j core: in-memory token-bucket rate limiting used by RateLimitFilter
              on register / order-place / cart endpoints. 8.10.x is the latest 8.x line
              (compiled for JDK 17, runs on JDK 26). When we move to a multi-replica

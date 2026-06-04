@@ -77,19 +77,18 @@ class BankCardMapperTest {
     class FromUpdateRequest {
 
         @Test
-        void shouldMapAllFieldsIncludingUuid() {
+        void shouldMapEditableFieldsIncludingUuid() {
             UUID cardUuid = UUID.randomUUID();
+            // Write-once PAN: the update DTO carries only uuid + holder name + expiry.
             BankCardUpdateRequestDto dto = new BankCardUpdateRequestDto(
-                    cardUuid, "Holder", "5555555555554444", "01/2099", BankCardType.VISA);
+                    cardUuid, "Holder", "01/2099");
 
             BankCardEntity entity = mapper.mapFromUpdateRequestToEntity(dto);
 
             assertThat(entity).isNotNull();
             assertThat(entity.getUuid()).isEqualTo(cardUuid);
             assertThat(entity.getCardHolderName()).isEqualTo("Holder");
-            assertThat(entity.getCardNumber()).isEqualTo("5555555555554444");
             assertThat(entity.getExpiryDate()).isEqualTo("01/2099");
-            assertThat(entity.getCardType()).isEqualTo(BankCardType.VISA);
         }
 
         @Test
@@ -110,21 +109,19 @@ class BankCardMapperTest {
                     .uuid(originalUuid)
                     .userEntity(originalUser)
                     .build();
+            // Write-once PAN: only holder name + expiry are mutable; uuid, user, card number and
+            // card type must be left untouched by the in-place update.
             BankCardUpdateRequestDto dto = new BankCardUpdateRequestDto(
                     UUID.randomUUID(),
                     "New holder",
-                    "4111111111111111",
-                    "06/2099",
-                    BankCardType.AMERICAN_EXPRESS);
+                    "06/2099");
 
             mapper.updateEntityFromDto(dto, entity);
 
             assertThat(entity.getUuid()).isEqualTo(originalUuid);
             assertThat(entity.getUserEntity()).isSameAs(originalUser);
             assertThat(entity.getCardHolderName()).isEqualTo("New holder");
-            assertThat(entity.getCardNumber()).isEqualTo("4111111111111111");
             assertThat(entity.getExpiryDate()).isEqualTo("06/2099");
-            assertThat(entity.getCardType()).isEqualTo(BankCardType.AMERICAN_EXPRESS);
         }
 
         @Test

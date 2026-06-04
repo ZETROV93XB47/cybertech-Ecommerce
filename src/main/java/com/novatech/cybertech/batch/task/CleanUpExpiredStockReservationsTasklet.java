@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 
 /**
  * Spring Batch tasklet that scans for stuck {@link ReservationStatus#ACTIVE} reservations older
- * than 15 minutes and releases them. Used as a safety-net behind the
+ * than 7 minutes and releases them. Used as a safety-net behind the
  * {@link com.novatech.cybertech.listener.RedisExpirationListener} TTL flow: covers the case
  * where Redis loses the keyspace event (restart, network partition, listener crash) so a stuck
  * reservation cannot indefinitely pin product inventory.
@@ -40,7 +40,7 @@ public class CleanUpExpiredStockReservationsTasklet extends BaseTasklet {
     private final StockService stockService;
 
     /**
-     * Runs the cleanup: queries ACTIVE reservations older than the 15-minute threshold and
+     * Runs the cleanup: queries ACTIVE reservations older than the 7-minute threshold and
      * fires {@link StockService#releaseStock(UUID)} for each distinct order UUID found.
      * {@code releaseStock} is idempotent so collapsing on UUID is safe even if a single order
      * has multiple per-product reservations.
@@ -52,7 +52,10 @@ public class CleanUpExpiredStockReservationsTasklet extends BaseTasklet {
     public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) {
         log.info("Starting CleanUpExpiredStockReservationsTasklet");
 
-        final LocalDateTime threshold = LocalDateTime.now().minusMinutes(15);
+        // Safety net just behind the 5-minute Redis RESERVATION_TTL (StockServiceImp): the Redis
+        // keyspace listener is the primary release trigger; this batch only catches reservations
+        // stranded by a lost keyspace event (restart, partition, listener crash).
+        final LocalDateTime threshold = LocalDateTime.now().minusMinutes(7);
 
         final List<StockEntity> expired = stockRepository
                 .findByReservationStatusAndCreatedAtBefore(ReservationStatus.ACTIVE, threshold);

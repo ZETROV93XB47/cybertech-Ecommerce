@@ -17,15 +17,11 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.core.CartService;
-import jakarta.annotation.PostConstruct;
+import com.novatech.cybertech.services.core.CartWriteTransactionalDelegate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -42,27 +38,12 @@ public class CartServiceImp implements CartService {
     private final ProductRepository productRepository;
 
     /**
-     * BUG-160 — Built lazily from {@link PlatformTransactionManager} so the transaction
-     * for {@code addItemsToCart} can begin AFTER the Redis lock is acquired and commit
-     * BEFORE it is released. Field-injected (rather than added to {@code @RequiredArgsConstructor})
-     * to avoid breaking the existing {@code @InjectMocks}-based unit tests, which neither
-     * mock nor exercise this path's transactional commit boundary.
+     * BUG-160 — The transactional inner half of the cart-add design. Held as a separate Spring bean
+     * (not an inlined private method) so Spring's transaction proxy actually applies when we cross
+     * the bean boundary — the basis of the commit-before-unlock guarantee. See
+     * {@link CartWriteTransactionalDelegate} for the full rationale.
      */
-    @Autowired(required = false)
-    private PlatformTransactionManager transactionManager;
-
-    private TransactionTemplate transactionTemplate;
-
-    @PostConstruct
-    void initTransactionTemplate() {
-        if (transactionManager != null) {
-            this.transactionTemplate = new TransactionTemplate(transactionManager);
-            log.info("BUG-160 — CartServiceImp initialised with TransactionTemplate (manager={})", transactionManager.getClass().getSimpleName());
-        } else {
-            log.warn("BUG-160 — CartServiceImp has no PlatformTransactionManager; addItemsToCart will run without explicit programmatic tx (unit-test fallback)");
-        }
-    }
-
+    private final CartWriteTransactionalDelegate cartWriteTransactionalDelegate;
 
     /**
      * Maximum time {@link #addItemsToCart(CartCreateRequestDto, String)} will
@@ -73,29 +54,67 @@ public class CartServiceImp implements CartService {
     private static final long CART_ADD_LOCK_WAIT_MS = 4_000L;
 
     /**
-     * BUG-160 — Add items to the authenticated user's cart inside a
-     * per-user distributed Redis lock <em>and</em> with a pessimistic DB row
-     * lock around the read-modify-write of the cart row.
-     * <p>
-     * The Redis lock spans the full <em>load cart → mutate → save → cache-write</em>
-     * section. The transaction is opened <em>inside</em> the lock via
-     * {@link TransactionTemplate} so the commit is guaranteed to happen before
-     * the lock is released — without that, two concurrent {@code POST /cart/add}
-     * requests for the same user could both read the same cart row, each mutate
-     * their in-memory copy, and have the second save silently overwrite the first
-     * (classic lost-update). With the lock+pessimistic-FOR-UPDATE in place only
-     * one write path runs at a time per user, so the final quantity is the sum
-     * of all concurrent additions.
-     * <p>
-     * Validation that throws (negative quantity, missing product, not enough
-     * stock) is done inside the lock too, but it was intentionally kept
-     * <em>after</em> the input-level null/negative guard so obviously-bogus
-     * payloads fail fast without taking the lock.
+     * BUG-160 — Add items to the authenticated user's cart, serialising concurrent writes for the
+     * same user with a per-user <b>Redis distributed lock</b> (a single-node Redlock).
+     *
+     * <h2>The race being defended against</h2>
+     * Adding items is a read-modify-write: {@code load cart → merge quantities → save}. Two
+     * concurrent {@code POST /cart/add} for the same user can interleave so the second save
+     * overwrites the first (lost-update):
+     * <pre>{@code
+     * Thread A: read qty=1 ─┐
+     * Thread B: read qty=1 ─┤  both read before either writes
+     * Thread A: write qty=2 │
+     * Thread B: write qty=2 ┘  ← A's +1 is lost; the correct result is 3
+     * }</pre>
+     *
+     * <h2>The two surviving layers (and the one removed)</h2>
+     * <ol>
+     *   <li><b>Layer 1 — Redis lock (Redlock).</b> {@link CartCacheHelper#acquireLockBlocking}
+     *       atomically writes {@code SET lock:cart:<userId> <token> NX EX 5} (set-if-absent +
+     *       5s TTL) and spins with back-off until it wins or {@link #CART_ADD_LOCK_WAIT_MS}
+     *       elapses. The matching {@link CartCacheHelper#releaseLock} runs a token-checked Lua
+     *       compare-and-delete ({@code GET == token ? DEL : noop}) so a worker can never delete a
+     *       lock that a TTL expiry already handed to someone else. The token and the key are
+     *       written as raw string bytes so they match what the Lua script compares against — see
+     *       {@link CartCacheHelperImp} for that serialisation subtlety (BUG-160). This is the
+     *       application-level mutual exclusion, and it works across pods (a JVM {@code synchronized}
+     *       would not).</li>
+     *   <li><b>Layer 2 — commit-before-unlock, via the two-method split.</b> A Redis lock is a
+     *       different object from the JPA transaction; nothing intrinsically orders "release lock"
+     *       against "commit tx". If the mutation ran under a plain {@code @Transactional} on THIS
+     *       lock-holding method, the {@code finally} that releases the lock would run before the
+     *       proxy commits — and a waiter could read the pre-commit cart, reviving the lost-update.
+     *       So the mutation lives on a SEPARATE bean,
+     *       {@link CartWriteTransactionalDelegate#addItemsWithinTransaction}: crossing the bean
+     *       boundary makes Spring's transaction proxy fire, and the delegate's {@code @Transactional}
+     *       method commits when it returns — i.e. INSIDE the locked region. Lifecycle:
+     *       {@code acquire-lock → delegate (tx-begin → mutate → tx-commit) → release-lock}.</li>
+     * </ol>
+     *
+     * <h3>Why the old DB pessimistic lock (layer 3) was removed</h3>
+     * The previous design ALSO took a {@code SELECT ... FOR UPDATE} on the cart row
+     * ({@code findByOwnerKeycloakIdForUpdate}) plus a {@code UNIQUE(userId)} + one-shot
+     * {@code DataIntegrityViolationException} retry, as a "bulletproof" DB-level second line of
+     * defence. For a single MySQL that is redundant: the Redis lock already serialises the RMW per
+     * user, including the first-insert case — when a brand-new user's two concurrent adds contend,
+     * the loser simply waits for the winner to commit-and-release, then reads the now-existing cart
+     * and merges into it. Carrying two independent locking mechanisms for one invariant was the
+     * over-engineering we set out to remove, so the FOR UPDATE query and the DIVE retry are gone.
+     * The {@code UNIQUE(userId)} constraint is intentionally kept as a cheap, declarative
+     * data-integrity invariant ("one cart per user"), but it is no longer load-bearing for
+     * concurrency. The deliberate residual risk: if Redis were unavailable the lock would silently
+     * become a no-op and a concurrent first-insert could surface a raw DIVE — acceptable for this
+     * project, where Redis is a hard dependency of the cart path anyway.
+     *
+     * <p>Input validation that throws (negative/zero/null quantity) is done <em>before</em> the lock
+     * so obviously-bogus payloads fail fast without taking it.
      *
      * @param cartCreateRequestDto items to add; each quantity must be {@code >= 1}.
      * @param keycloakId           Keycloak subject of the caller.
      * @return the updated cart DTO.
      * @throws NegativeQuantityException when any requested quantity is null or below 1.
+     * @throws IllegalStateException     when the per-user lock cannot be acquired within the budget.
      * @throws UserNotFoundException     when no user matches {@code keycloakId}.
      * @throws ProductNotFoundException  when a requested product UUID has no product.
      * @throws NotEnoughStockException   when the resulting total exceeds available stock.
@@ -112,6 +131,7 @@ public class CartServiceImp implements CartService {
             }
         });
 
+        // Layer 1 — acquire the per-user Redis lock (bounded wait).
         final String lockToken = cartCacheHelper.acquireLockBlocking(keycloakId, CART_ADD_LOCK_WAIT_MS);
         if (lockToken == null) {
             // Couldn't get the lock in time — surface a retryable error rather than racing.
@@ -120,138 +140,15 @@ public class CartServiceImp implements CartService {
         }
 
         try {
-            // BUG-160 — Run the read-modify-write inside an explicit programmatic transaction
-            // so the transaction COMMITS before the lock is released. If the lock were released
-            // while a surrounding @Transactional was still open, a second thread could grab
-            // the lock and read the pre-commit cart row, causing a lost-update race. Using
-            // TransactionTemplate keeps the lifecycle as: acquire-lock -> tx-begin -> mutate ->
-            // tx-commit -> release-lock.
-            try {
-                if (transactionTemplate != null) {
-                    return transactionTemplate.execute(status -> doAddItemsToCart(cartCreateRequestDto, keycloakId));
-                }
-                // Fallback for unit tests where no PlatformTransactionManager is wired in.
-                return doAddItemsToCart(cartCreateRequestDto, keycloakId);
-            } catch (DataIntegrityViolationException dive) {
-                // BUG-160 (PRE-2) — Schema-level UNIQUE(userId) on cartTable closes the
-                // first-time-insert race: when two concurrent /cart/add requests for a brand-
-                // new user both attempt to INSERT a cart row, the loser hits a unique-violation.
-                // We retry exactly once: by now the winning thread has committed, so the cart
-                // row exists and the SELECT ... FOR UPDATE in doAddItemsToCart will find it
-                // and properly serialise on it. No infinite loop — a second DIVE would imply
-                // a different constraint violation and is allowed to propagate.
-                log.warn("BUG-160 — concurrent cart insert raced for user {} (DataIntegrityViolation: {}). Retrying once.",
-                        keycloakId, dive.getMostSpecificCause() != null ? dive.getMostSpecificCause().getMessage() : dive.getMessage());
-                if (transactionTemplate != null) {
-                    return transactionTemplate.execute(status -> doAddItemsToCart(cartCreateRequestDto, keycloakId));
-                }
-                return doAddItemsToCart(cartCreateRequestDto, keycloakId);
-            }
+            // Layer 2 — delegate the read-modify-write to a SEPARATE @Transactional bean so the
+            // commit lands INSIDE this locked region (commit-before-unlock). Crossing the bean
+            // boundary is what makes Spring's transaction proxy fire — a self-invoked private method
+            // would silently run without a transaction and reopen the lost-update race.
+            return cartWriteTransactionalDelegate.addItemsWithinTransaction(cartCreateRequestDto, keycloakId);
         } finally {
+            // Always release the lock — the token-checked Lua CAS makes a stale-token release a no-op.
             cartCacheHelper.releaseLock(keycloakId, lockToken);
         }
-    }
-
-    /**
-     * BUG-160 — Core read-modify-write for {@link #addItemsToCart}.
-     * <p>
-     * Extracted so the lock-acquire / lock-release wrapper in
-     * {@link #addItemsToCart(CartCreateRequestDto, String)} stays readable.
-     * This method assumes the caller already holds the per-user write lock.
-     */
-    private CartResponseDto doAddItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
-        final Map<UUID, Integer> productsToAdd = cartCreateRequestDto.getCartItemAddRequestDtos().stream().collect(Collectors.toMap(CartItemAddRequestDto::getProductUuid, CartItemAddRequestDto::getQuantity));
-        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-
-        // Récupération des produits en une seule requête pour optimiser les performances
-        List<ProductEntity> products = productRepository.findAllByUuidIn(productsToAdd.keySet());
-        Map<UUID, ProductEntity> productMap = products.stream().collect(Collectors.toMap(ProductEntity::getUuid, p -> p));
-
-        log.info("products to add : {}", productsToAdd);
-        log.info("productsMap : {}", productMap);
-        log.info("products : {}", products);
-
-        // BUG-160 — Prefer a SELECT ... FOR UPDATE on the cart row when one exists,
-        // so concurrent /cart/add calls block at the row level for the duration of the
-        // transaction. This is the bulletproof second line of defence on top of the
-        // Redis lock taken by addItemsToCart: even if the Redis lock were bypassed
-        // (cache outage, etc.), the pessimistic DB lock would still serialise the
-        // read-modify-write sequence. Falls back to the historical user-side lazy
-        // load when the lock query returns nothing (covers brand-new users whose cart
-        // row does not yet exist, and the unit-test mock layer which only stubs the
-        // user-side load).
-        CartEntity cartEntity = cartRepository.findByOwnerKeycloakIdForUpdate(keycloakId)
-                .orElseGet(user::getCartEntity);
-
-        log.info("cart : {}", cartEntity);
-
-        // 1. Créer le panier s'il n'existe pas
-        if (cartEntity == null) {
-            cartEntity = CartEntity.builder()
-                    .userEntity(user)
-                    .cartItems(new ArrayList<>())
-                    .uuid(UuidCreator.getTimeOrderedEpoch())
-                    .build();
-        }
-
-        // Pour chaque produit à ajouter
-        for (Map.Entry<UUID, Integer> entry : productsToAdd.entrySet()) {
-            UUID productUuid = entry.getKey();
-            Integer quantity = entry.getValue();
-            ProductEntity product = productMap.get(productUuid);
-            if (product == null) {
-                throw new ProductNotFoundException("No product with the UUID : " + productUuid + " found");
-            }
-
-            // 2. Vérifier si le produit est déjà dans le panier
-            CartEntity finalCartEntity = cartEntity;
-            Optional<CartItemEntity> existingItem = finalCartEntity.getCartItems().stream()
-                    .filter(item -> item.getProductEntity().getUuid().equals(productUuid))
-                    .findFirst();
-
-            log.info("existingItem : {} and old quantity : {}", existingItem, quantity);
-
-            int newQuantity = existingItem.map(item -> {
-                int res = item.getQuantity() + quantity;
-
-                log.info("newQuantity in lambda : {}", res);
-
-                return res;
-
-            }).orElse(quantity);
-
-            log.info("newQuantity : {}", newQuantity);
-
-            // 3. Vérifier le stock (Stock total vs Stock réservé + Quantité demandée totale)
-            validateStockAvailability(product, newQuantity);
-
-            log.info("product stock : {}", product.getStock());
-            log.info("product reserved stock : {}", product.getReservedStock());
-
-            if (existingItem.isPresent()) {
-                // Mise à jour de la quantité existante
-                log.info("existing item before quantity update: {}", existingItem);
-                existingItem.get().increaseQuantity(quantity);
-                log.info("existing item after quantity update: {}", existingItem);
-            } else {
-                // Ajout d'un nouvel item
-                final CartItemEntity newItem = CartItemEntity.builder()
-                        .quantity(quantity)
-                        .unitPrice(product.getPrice())
-                        .productEntity(product)
-                        .cart(cartEntity) // Important : Lier l'enfant au parent
-                        .uuid(UuidCreator.getTimeOrderedEpoch())
-                        .build();
-
-                cartEntity.getCartItems().add(newItem);
-            }
-        }
-
-        CartEntity savedCart = cartRepository.save(cartEntity);
-        CartResponseDto cartResponseDto = cartMapper.mapFromEntityToResponseDto(savedCart);
-        cartCacheHelper.putWithJitter(keycloakId, cartResponseDto);
-
-        return cartResponseDto;
     }
 
     @Override
@@ -470,7 +367,7 @@ public class CartServiceImp implements CartService {
                 if (product == null) {
                     throw new ProductNotFoundException("No product with the UUID : " + line.getProductUuid() + " found");
                 }
-                validateStockAvailability(product, line.getQuantity());
+                CartStockValidator.validateStockAvailability(product, line.getQuantity());
             }
         } else {
             productMap = Map.of();
@@ -498,27 +395,6 @@ public class CartServiceImp implements CartService {
         final CartResponseDto resp = cartMapper.mapFromEntityToResponseDto(saved);
         cartCacheHelper.putWithJitter(keycloakId, resp);
         return resp;
-    }
-
-    /**
-     * BUG-7 — Shared stock-availability check used by both
-     * {@link #doAddItemsToCart(CartCreateRequestDto, String)} and
-     * {@link #updateCart(UUID, CartUpdateRequestDto, String)}.
-     * <p>
-     * Throws {@link NotEnoughStockException} when {@code reservedStock + requestedQty > totalStock},
-     * with a message that surfaces both the requested and the currently-available
-     * quantity so the caller can adjust their request.
-     *
-     * @param product      product whose stock is being checked.
-     * @param requestedQty total quantity the caller wants in the cart for that product.
-     * @throws NotEnoughStockException when the request would exceed available stock.
-     */
-    private static void validateStockAvailability(final ProductEntity product, final int requestedQty) {
-        if (product.getReservedStock() + requestedQty > product.getStock()) {
-            throw new NotEnoughStockException(
-                    "Not enough stock for product " + product.getName()
-                            + ". Available: " + (product.getStock() - product.getReservedStock()));
-        }
     }
 
     @Override

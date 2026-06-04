@@ -35,11 +35,18 @@ public class TestcontainersConfiguration {
     @Bean
     @ServiceConnection
     ElasticsearchContainer elasticsearchContainer() {
-        // Aligned with the Helm chart appVersion (elasticsearch-chart/Chart.yaml).
-        // ES 8.x requires xpack.security.enabled=false for the single-node portfolio
-        // setup so HTTP works without TLS/auth (matches the Helm env block).
+        // The container's MAJOR version MUST match the elasticsearch-java client major, otherwise the
+        // client's `Accept/Content-Type: application/vnd.elasticsearch+json;compatible-with=<major>`
+        // negotiation header is rejected by the server with a 400 on the very first `indices.exists`
+        // HEAD request — which the client surfaces as "Expecting a response body, but none was sent",
+        // failing every IT at Spring context load. Spring Boot 4.0.4 -> spring-data-elasticsearch
+        // 6.0.4 pulls co.elastic.clients:elasticsearch-java:9.2.6, so the test server is pinned to a
+        // matching ES 9.x image. (NB: the prod Helm chart appVersion should be bumped to 9.x too for
+        // parity — tracked separately; it does not affect this test harness.)
+        // ES 9.x still honours xpack.security.enabled=false for the single-node portfolio setup so
+        // plain HTTP works without TLS/auth.
         return new ElasticsearchContainer(
-                DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:8.15.3"))
+                DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:9.2.6"))
                 .withEnv("xpack.security.enabled", "false")
                 .withEnv("xpack.security.http.ssl.enabled", "false")
                 .withEnv("discovery.type", "single-node");

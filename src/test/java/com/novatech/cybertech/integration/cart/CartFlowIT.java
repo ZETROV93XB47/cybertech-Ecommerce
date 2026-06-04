@@ -360,6 +360,70 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
+    // 6b. Higher-contention concurrency: 5 threads add 2 each → final qty MUST equal 10.
+    //     Stresses the Redis-lock + two-method-split serialization AFTER the DB pessimistic
+    //     lock (layer 3) was removed — proving the Redis lock alone serialises the RMW.
+    // ----------------------------------------------------------------------------------
+    @Test
+    @DisplayName("BUG-160 (CLOSED): 5 concurrent /cart/add — final qty MUST sum to 10 (Redis lock only)")
+    void concurrentAddsFromFiveThreadsShouldSumNotRace() throws Exception {
+        final int threads = 5;
+        final int qtyPerThread = 2;
+        // Ensure stock can absorb the full concurrent demand so the only thing under test is the
+        // lost-update race, not the stock guard.
+        ProductEntity richStock = productRepository.save(
+                ProductEntityBuilder.aValidProductBuilder().name("rich").stock(100).reservedStock(0).build());
+
+        final CountDownLatch start = new CountDownLatch(1);
+        final CountDownLatch done = new CountDownLatch(threads);
+        final AtomicInteger errorCount = new AtomicInteger();
+        final ExecutorService pool = Executors.newFixedThreadPool(threads);
+
+        Runnable addOne = () -> {
+            try {
+                start.await();
+                CartCreateRequestDto req = CartCreateRequestDto.builder()
+                        .cartItemAddRequestDtos(List.of(
+                                CartItemAddRequestDto.builder()
+                                        .productUuid(richStock.getUuid())
+                                        .quantity(qtyPerThread)
+                                        .build()))
+                        .build();
+                mockMvc.perform(post(CART_ADD_ENDPOINT)
+                                .with(JwtTestUtils.jwtUser(keycloakId))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
+                        .andExpect(status().isCreated());
+            } catch (Exception e) {
+                errorCount.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        };
+
+        for (int i = 0; i < threads; i++) {
+            pool.submit(addOne);
+        }
+        start.countDown();
+        boolean completed = done.await(60, TimeUnit.SECONDS);
+        pool.shutdownNow();
+
+        assertThat(completed).as("all threads should finish in time").isTrue();
+        assertThat(errorCount.get()).as("no thread should have errored (no DIVE/500 without layer 3)").isZero();
+
+        transactionTemplate.executeWithoutResult(tx -> {
+            UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
+            CartEntity cart = reloaded.getCartEntity();
+            assertThat(cart).isNotNull();
+            assertThat(cart.getCartItems()).hasSize(1);
+            assertThat(cart.getCartItems().get(0).getQuantity())
+                    .as("final qty must equal sum of all 5 concurrent additions (Redis lock serialises RMW)")
+                    .isEqualTo(threads * qtyPerThread);
+        });
+    }
+
+    // ----------------------------------------------------------------------------------
     // 7. Delete-by-uuid endpoint audit — verifies path binds correctly post-F2 BUG-027 fix.
     // ----------------------------------------------------------------------------------
     @Test

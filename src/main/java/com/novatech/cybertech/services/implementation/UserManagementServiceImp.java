@@ -99,37 +99,36 @@ public class UserManagementServiceImp implements UserManagementService {
     }
 
     /**
-     * Update a user's profile across the local DB and Keycloak without coupling them in a single
-     * outer transaction (Bug 3 — Option B, mirrors the Wave 2 H1 pattern applied to {@link #create}).
+     * Update a user's profile across Keycloak and the local DB without coupling them in a single
+     * outer transaction (Bug 3 — Option B: Keycloak FIRST).
      *
-     * <p>Phase 1 (DB, REQUIRES_NEW): {@link UserPersistenceService#updateUser} patches the local
-     * entity and saves it under its own transaction. If the SQL fails, the inner TX rolls back
-     * and we propagate without ever calling Keycloak — no orphan Keycloak update.
+     * <p>Phase 1 (Keycloak, NO transaction): propagate the change to Keycloak first. Keycloak
+     * rejections (e.g. a duplicate email in the realm or a profile-policy violation) are the
+     * COMMON failure mode for a profile update; calling Keycloak before any DB write means a
+     * rejection aborts here with <i>neither</i> system mutated — no silent desync.
      *
-     * <p>Phase 2 (Keycloak, NO transaction): once the DB update is durable we propagate the change
-     * to Keycloak. If this throws we cannot roll back the DB write, so we log loudly and surface
-     * a {@link RuntimeException} to the caller so they know a manual reconciliation is needed.
+     * <p>Phase 2 (DB, REQUIRES_NEW): {@link UserPersistenceService#updateUser} patches the local
+     * entity and saves it under its own transaction. A failure here is rare (a simple update of an
+     * already-loaded row) but would leave Keycloak ahead of the DB — we log loudly and propagate so
+     * the caller knows a manual reconciliation is needed.
      */
     @Override
     public UserResponseDto update(final UserUpdateRequestDto userUpdateRequestDto) {
         final UserEntity loadedUser = userRepository.findByUuid(userUpdateRequestDto.getUuid())
                 .orElseThrow(() -> new UserNotFoundException("No user with the UUID: " + userUpdateRequestDto.getUuid() + " found"));
 
-        // Phase 1 — DB first under its own REQUIRES_NEW transaction.
-        final UserResponseDto saved = userPersistenceService.updateUser(userUpdateRequestDto, loadedUser);
+        // Phase 1 — Keycloak first (no transaction). A rejection here aborts before any DB write.
+        keycloakUserManagementService.updateUser(loadedUser.getKeycloakId(), userUpdateRequestDto);
 
-        // Phase 2 — push to Keycloak (no transaction). On failure: log + propagate so the API
-        // surfaces the desync to the caller for manual reconciliation. No KeycloakSyncException
-        // type exists yet — wrapping in a plain RuntimeException keeps the change minimal.
+        // Phase 2 — DB write under its own REQUIRES_NEW transaction. Rare failure → Keycloak is
+        // ahead of the DB; log loudly and propagate for manual reconciliation.
         try {
-            keycloakUserManagementService.updateUser(loadedUser.getKeycloakId(), userUpdateRequestDto);
-        } catch (Exception kce) {
-            log.error("CRITICAL: DB updated but Keycloak update failed for user {} — manual reconciliation required",
-                    loadedUser.getKeycloakId(), kce);
-            throw new RuntimeException("Keycloak sync failed after DB update: " + kce.getMessage(), kce);
+            return userPersistenceService.updateUser(userUpdateRequestDto, loadedUser);
+        } catch (RuntimeException dbFailure) {
+            log.error("CRITICAL: Keycloak updated but DB write failed for user {} — manual reconciliation required",
+                    loadedUser.getKeycloakId(), dbFailure);
+            throw dbFailure;
         }
-
-        return saved;
     }
 
     /**
@@ -205,23 +204,25 @@ public class UserManagementServiceImp implements UserManagementService {
         adapted.setLastName(dto.getLastName());
         adapted.setAddress(dto.getAddress());
 
-        // Phase 1 — DB first under its own REQUIRES_NEW transaction.
-        final UserResponseDto saved = userPersistenceService.updateUser(adapted, loadedUser);
+        // Phase 1 — Keycloak first (no transaction). Same Option B ordering as #update: a Keycloak
+        // rejection aborts before any DB write so the two systems can't silently diverge.
+        keycloakUserManagementService.updateUser(loadedUser.getKeycloakId(), adapted);
+
+        // Phase 2 — DB write under its own REQUIRES_NEW transaction.
+        final UserResponseDto saved;
+        try {
+            saved = userPersistenceService.updateUser(adapted, loadedUser);
+        } catch (RuntimeException dbFailure) {
+            log.error("CRITICAL: Keycloak updated but DB write failed for user {} — manual reconciliation required",
+                    loadedUser.getKeycloakId(), dbFailure);
+            throw dbFailure;
+        }
 
         // Phone number isn't on UserUpdateRequestDto — patch directly when supplied. No
         // Keycloak side effect: phone is not synced through KeycloakUserManagementService.
         if (dto.getPhoneNumber() != null) {
             loadedUser.setPhoneNumber(dto.getPhoneNumber());
             userRepository.save(loadedUser);
-        }
-
-        // Phase 2 — push name change to Keycloak (no transaction). Same handling as #update.
-        try {
-            keycloakUserManagementService.updateUser(loadedUser.getKeycloakId(), adapted);
-        } catch (Exception kce) {
-            log.error("CRITICAL: DB updated but Keycloak update failed for user {} — manual reconciliation required",
-                    loadedUser.getKeycloakId(), kce);
-            throw new RuntimeException("Keycloak sync failed after DB update: " + kce.getMessage(), kce);
         }
 
         return saved;
