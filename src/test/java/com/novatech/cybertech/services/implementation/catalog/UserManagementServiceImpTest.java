@@ -12,6 +12,7 @@ import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.KeycloakOutboxService;
 import com.novatech.cybertech.services.implementation.KeycloakUserManagementService;
 import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
 import com.novatech.cybertech.services.implementation.UserPersistenceService;
@@ -62,6 +63,7 @@ class UserManagementServiceImpTest {
     @Mock KeycloakUserManagementService keycloakUserManagementService;
     @Mock UserPersistenceService userPersistenceService;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock KeycloakOutboxService keycloakOutboxService;
 
     @InjectMocks UserManagementServiceImp service;
 
@@ -149,6 +151,60 @@ class UserManagementServiceImpTest {
                     .hasMessage("db down");
 
             verify(keycloakUserManagementService).deleteUser(kcId);
+        }
+
+        // ---------- OUTBOX (crash-safe saga) ----------
+
+        @Test
+        @DisplayName("OUTBOX — breadcrumb recorded FIRST, then Keycloak, then DB persist, then row marked DONE")
+        void create_breadcrumb_thenKeycloak_thenPersist_thenDone() {
+            UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
+            UUID outboxUuid = UUID.randomUUID();
+            when(keycloakOutboxService.recordCreatePending(req.getEmail())).thenReturn(outboxUuid);
+            when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn("kc-1");
+            UserResponseDto mapped = UserDtoFixtures.aSampleUserResponse();
+            when(userPersistenceService.saveNewUser(req, "kc-1")).thenReturn(mapped);
+
+            UserResponseDto result = service.create(req);
+
+            assertThat(result).isSameAs(mapped);
+            InOrder inOrder = inOrder(keycloakOutboxService, keycloakUserManagementService, userPersistenceService);
+            inOrder.verify(keycloakOutboxService).recordCreatePending(req.getEmail());
+            inOrder.verify(keycloakUserManagementService).createUser(any(), any(), any(), any(), any());
+            inOrder.verify(userPersistenceService).saveNewUser(req, "kc-1");
+            inOrder.verify(keycloakOutboxService).markDone(outboxUuid, "kc-1");
+            verify(keycloakOutboxService, never()).markFailed(any(), any());
+        }
+
+        @Test
+        @DisplayName("OUTBOX — DB failure: in-line compensation runs AND the row is marked terminal FAILED")
+        void create_dbFailure_compensatesKeycloak_andMarksOutboxFailed() {
+            UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
+            UUID outboxUuid = UUID.randomUUID();
+            when(keycloakOutboxService.recordCreatePending(req.getEmail())).thenReturn(outboxUuid);
+            when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn("kc-2");
+            when(userPersistenceService.saveNewUser(req, "kc-2")).thenThrow(new RuntimeException("dup"));
+
+            assertThatThrownBy(() -> service.create(req)).isInstanceOf(RuntimeException.class);
+
+            verify(keycloakUserManagementService).deleteUser("kc-2"); // compensation
+            verify(keycloakOutboxService).markFailed(eq(outboxUuid), any());
+            verify(keycloakOutboxService, never()).markDone(any(), any());
+        }
+
+        @Test
+        @DisplayName("OUTBOX — clean Keycloak failure: row marked terminal FAILED (job has nothing to reconcile)")
+        void create_keycloakFailure_marksOutboxFailed() {
+            UserCreateRequestDto req = UserDtoFixtures.aValidCreateRequest();
+            UUID outboxUuid = UUID.randomUUID();
+            when(keycloakOutboxService.recordCreatePending(req.getEmail())).thenReturn(outboxUuid);
+            when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any()))
+                    .thenThrow(new RuntimeException("kc 500"));
+
+            assertThatThrownBy(() -> service.create(req)).hasMessage("kc 500");
+
+            verify(keycloakOutboxService).markFailed(eq(outboxUuid), any());
+            verify(keycloakOutboxService, never()).markDone(any(), any());
         }
     }
 
@@ -294,6 +350,63 @@ class UserManagementServiceImpTest {
             // Keycloak was already updated (phase 1) before the DB write failed.
             verify(keycloakUserManagementService).updateUser("kc-2", dto);
         }
+
+        // ---------- OUTBOX (crash-safe saga) ----------
+
+        @Test
+        @DisplayName("OUTBOX — breadcrumb (with payload) recorded FIRST, then Keycloak, then DB, then row DONE")
+        void update_breadcrumbFirst_thenKeycloak_thenDb_thenDone() {
+            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-ob").build();
+            UUID outboxUuid = UUID.randomUUID();
+            when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
+            when(keycloakOutboxService.recordUpdatePending("kc-ob", dto)).thenReturn(outboxUuid);
+            when(userPersistenceService.updateUser(dto, user)).thenReturn(UserDtoFixtures.aSampleUserResponse());
+
+            service.update(dto);
+
+            InOrder order = inOrder(keycloakOutboxService, keycloakUserManagementService, userPersistenceService);
+            order.verify(keycloakOutboxService).recordUpdatePending("kc-ob", dto);
+            order.verify(keycloakUserManagementService).updateUser("kc-ob", dto);
+            order.verify(userPersistenceService).updateUser(dto, user);
+            order.verify(keycloakOutboxService).markDone(outboxUuid, "kc-ob");
+            verify(keycloakOutboxService, never()).markFailed(any(), any());
+        }
+
+        @Test
+        @DisplayName("OUTBOX — Keycloak rejection (neither system mutated) → row marked terminal FAILED, caller retries")
+        void update_keycloakRejection_marksOutboxFailedTerminal() {
+            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-rej").build();
+            UUID outboxUuid = UUID.randomUUID();
+            when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
+            when(keycloakOutboxService.recordUpdatePending("kc-rej", dto)).thenReturn(outboxUuid);
+            doThrow(new RuntimeException("duplicate realm email")).when(keycloakUserManagementService).updateUser("kc-rej", dto);
+
+            assertThatThrownBy(() -> service.update(dto)).hasMessage("duplicate realm email");
+
+            verify(keycloakOutboxService).markFailed(eq(outboxUuid), any());
+            verify(keycloakOutboxService, never()).markDone(any(), any());
+            verifyNoInteractions(userPersistenceService);
+        }
+
+        @Test
+        @DisplayName("OUTBOX — DB failure AFTER Keycloak success → row deliberately STAYS PENDING (job re-applies the payload)")
+        void update_dbFailureAfterKeycloak_leavesRowPendingForJob() {
+            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(dto.getUuid()).keycloakId("kc-div").build();
+            UUID outboxUuid = UUID.randomUUID();
+            when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
+            when(keycloakOutboxService.recordUpdatePending("kc-div", dto)).thenReturn(outboxUuid);
+            when(userPersistenceService.updateUser(dto, user)).thenThrow(new RuntimeException("db down"));
+
+            assertThatThrownBy(() -> service.update(dto)).hasMessage("db down");
+
+            // THE pinned contract: this is the divergence window the outbox exists to close.
+            // No terminal markFailed, no markDone — the PENDING row lets the job converge the DB side.
+            verify(keycloakOutboxService, never()).markFailed(any(), any());
+            verify(keycloakOutboxService, never()).markDone(any(), any());
+        }
     }
 
     // -----------------------------------------------------------------
@@ -302,25 +415,28 @@ class UserManagementServiceImpTest {
     class Delete {
 
         @Test
-        @DisplayName("Bug 4 — DB delete first then publishes UserDeletedEvent (Keycloak deferred to AFTER_COMMIT listener)")
+        @DisplayName("OUTBOX — DB delete first, DELETE outbox row co-committed, event carries the row's uuid")
         void deleteShouldDeleteFromDbAndPublishEvent() {
             UUID id = UUID.randomUUID();
+            UUID outboxUuid = UUID.randomUUID();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(id).keycloakId("kc-d").build();
             when(userRepository.findByUuid(id)).thenReturn(Optional.of(user));
+            when(keycloakOutboxService.recordDeletePending("kc-d")).thenReturn(outboxUuid);
 
             service.deleteByUUID(id);
 
-            InOrder order = inOrder(userRepository, eventPublisher);
+            InOrder order = inOrder(userRepository, keycloakOutboxService, eventPublisher);
             order.verify(userRepository).deleteByUuid(id);
+            order.verify(keycloakOutboxService).recordDeletePending("kc-d"); // co-commits with the delete TX
             ArgumentCaptor<UserDeletedEvent> evt = ArgumentCaptor.forClass(UserDeletedEvent.class);
             order.verify(eventPublisher).publishEvent(evt.capture());
-            assertThat(evt.getValue().getKeycloakId()).isEqualTo("kc-d");
-            // The service no longer calls Keycloak directly — that's the listener's job.
+            assertThat(evt.getValue().getOutboxUuid()).isEqualTo(outboxUuid);
+            // The service no longer calls Keycloak directly — that's the listener's/job's job.
             verifyNoInteractions(keycloakUserManagementService);
         }
 
         @Test
-        @DisplayName("Bug 4 — when DB delete throws, no event is published (no orphan Keycloak delete)")
+        @DisplayName("Bug 4 — when DB delete throws, no outbox row and no event (the shared TX rolls everything back)")
         void deleteShouldNotPublishEventWhenDbDeleteFails() {
             UUID id = UUID.randomUUID();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(id).keycloakId("kc-d").build();
@@ -333,6 +449,7 @@ class UserManagementServiceImpTest {
 
             verifyNoInteractions(eventPublisher);
             verifyNoInteractions(keycloakUserManagementService);
+            verifyNoInteractions(keycloakOutboxService);
         }
 
         @Test
@@ -350,18 +467,17 @@ class UserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("FIX(SAGA-INCONSISTENCY) — deleteByUUIDs runs SQL bulk delete then publishes one UserDeletedEvent per user (Keycloak deferred to AFTER_COMMIT listener)")
+        @DisplayName("OUTBOX — deleteByUUIDs runs SQL bulk delete then co-commits one outbox row + one event per user")
         void deleteByUUIDs_happyPath() {
-            // FIX(SAGA-INCONSISTENCY): the previous implementation called Keycloak inside the
-            // surrounding @Transactional BEFORE the SQL delete — a late SQL rollback would leave
-            // orphan Keycloak deletions for rows still in the DB. We now mirror the singular
-            // deleteByUUID pattern: SQL first, then publish events that the listener drains
-            // under AFTER_COMMIT.
             UUID a = UUID.randomUUID();
             UUID b = UUID.randomUUID();
+            UUID outboxA = UUID.randomUUID();
+            UUID outboxB = UUID.randomUUID();
             UserEntity ua = UserEntityBuilder.aValidUserBuilder().uuid(a).keycloakId("kc-a").build();
             UserEntity ub = UserEntityBuilder.aValidUserBuilder().uuid(b).keycloakId("kc-b").build();
             when(userRepository.findAllByUuidIn(List.of(a, b))).thenReturn(List.of(ua, ub));
+            when(keycloakOutboxService.recordDeletePending("kc-a")).thenReturn(outboxA);
+            when(keycloakOutboxService.recordDeletePending("kc-b")).thenReturn(outboxB);
 
             service.deleteByUUIDs(List.of(a, b));
 
@@ -369,14 +485,14 @@ class UserManagementServiceImpTest {
             InOrder order = inOrder(userRepository, eventPublisher);
             order.verify(userRepository).deleteAllByUuidIn(List.of(a, b));
 
-            // One UserDeletedEvent per resolved user — captured to assert keycloakId fan-out.
+            // One UserDeletedEvent per resolved user — each carrying its co-committed outbox row uuid.
             ArgumentCaptor<UserDeletedEvent> events = ArgumentCaptor.forClass(UserDeletedEvent.class);
             order.verify(eventPublisher, org.mockito.Mockito.times(2)).publishEvent(events.capture());
             assertThat(events.getAllValues())
-                    .extracting(UserDeletedEvent::getKeycloakId)
-                    .containsExactly("kc-a", "kc-b");
+                    .extracting(UserDeletedEvent::getOutboxUuid)
+                    .containsExactly(outboxA, outboxB);
 
-            // The service no longer calls Keycloak directly — that is now the listener's job.
+            // The service no longer calls Keycloak directly — that is now the listener's/job's job.
             verifyNoInteractions(keycloakUserManagementService);
         }
 

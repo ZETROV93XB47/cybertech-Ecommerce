@@ -1,60 +1,100 @@
 package com.novatech.cybertech.events.listener;
 
+import com.novatech.cybertech.entities.KeycloakOutboxEntity;
+import com.novatech.cybertech.entities.enums.OutboxOperationType;
+import com.novatech.cybertech.entities.enums.OutboxStatus;
 import com.novatech.cybertech.events.UserDeletedEvent;
-import com.novatech.cybertech.services.implementation.KeycloakUserManagementService;
+import com.novatech.cybertech.repositories.KeycloakOutboxRepository;
+import com.novatech.cybertech.services.core.KeycloakOutboxService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
- * Mockito unit tests for {@link UserDeletionListener}.
+ * Mockito unit tests for {@link UserDeletionListener} — outbox edition.
  *
- * <p>Bug 4 fix: Keycloak deletion has been moved out of the transactional
- * {@code UserManagementServiceImp.deleteByUUID} flow into an
- * {@link org.springframework.transaction.event.TransactionPhase#AFTER_COMMIT} listener so the
- * external HTTP call only fires once the SQL delete is durable. We pin two contracts here:
+ * <p>The listener is now merely the LOW-LATENCY path of the DELETE saga: the durable intent
+ * lives in the co-committed {@code keycloak_outbox} row; the listener resolves it by uuid and
+ * delegates the idempotent work to {@link KeycloakOutboxService#reconcile}. Pinned contracts:
  * <ul>
- *   <li>the listener delegates to {@link KeycloakUserManagementService#deleteUser} with the
- *       event's keycloakId,</li>
- *   <li>any failure from Keycloak is logged and swallowed — we are running on the publisher's
- *       commit thread post-domain-commit, propagating an exception would not undo the SQL
- *       delete and would only kill the worker, so the listener must not throw.</li>
+ *   <li>resolves the row by the event's outboxUuid and reconciles it with the configured cap;</li>
+ *   <li>a missing row (already drained / purged) is a silent no-op;</li>
+ *   <li>any failure is logged and swallowed (post-commit thread) — the batch job retries.</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
 class UserDeletionListenerTest {
 
-    @Mock KeycloakUserManagementService keycloakUserManagementService;
+    @Mock KeycloakOutboxRepository outboxRepository;
+    @Mock KeycloakOutboxService keycloakOutboxService;
 
     @InjectMocks UserDeletionListener listener;
 
-    @Test
-    @DisplayName("onUserDeleted delegates to keycloakUserManagementService.deleteUser with the event's keycloakId")
-    void onUserDeletedShouldCallKeycloakDelete() {
-        UserDeletedEvent event = new UserDeletedEvent(this, "kc-deleted-123");
+    @BeforeEach
+    void wireMaxAttempts() {
+        ReflectionTestUtils.setField(listener, "maxAttempts", 5);
+    }
 
-        listener.onUserDeleted(event);
-
-        verify(keycloakUserManagementService).deleteUser("kc-deleted-123");
+    private KeycloakOutboxEntity pendingDeleteRow() {
+        return KeycloakOutboxEntity.builder()
+                .operationType(OutboxOperationType.DELETE)
+                .status(OutboxStatus.PENDING)
+                .keycloakId("kc-deleted-123")
+                .attempts(0)
+                .build();
     }
 
     @Test
-    @DisplayName("onUserDeleted swallows Keycloak failures (post-commit thread — operator must reconcile via logs)")
-    void onUserDeletedShouldLogAndSwallowWhenKeycloakFails() {
-        UserDeletedEvent event = new UserDeletedEvent(this, "kc-bad");
-        doThrow(new RuntimeException("kc 500"))
-                .when(keycloakUserManagementService).deleteUser("kc-bad");
+    @DisplayName("onUserDeleted resolves the co-committed row and reconciles it immediately")
+    void onUserDeletedShouldReconcileTheOutboxRow() {
+        UUID outboxUuid = UUID.randomUUID();
+        KeycloakOutboxEntity row = pendingDeleteRow();
+        when(outboxRepository.findByUuid(outboxUuid)).thenReturn(Optional.of(row));
 
-        assertThatCode(() -> listener.onUserDeleted(event))
+        listener.onUserDeleted(new UserDeletedEvent(this, outboxUuid));
+
+        verify(keycloakOutboxService).reconcile(row, 5);
+    }
+
+    @Test
+    @DisplayName("missing outbox row (already drained) is a silent no-op")
+    void onUserDeletedMissingRowIsNoop() {
+        UUID outboxUuid = UUID.randomUUID();
+        when(outboxRepository.findByUuid(outboxUuid)).thenReturn(Optional.empty());
+
+        assertThatCode(() -> listener.onUserDeleted(new UserDeletedEvent(this, outboxUuid)))
                 .doesNotThrowAnyException();
 
-        verify(keycloakUserManagementService).deleteUser("kc-bad");
+        verify(keycloakOutboxService, never()).reconcile(any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("failures are logged and swallowed (post-commit thread) — the batch job is the backstop")
+    void onUserDeletedShouldLogAndSwallowWhenReconcileFails() {
+        UUID outboxUuid = UUID.randomUUID();
+        KeycloakOutboxEntity row = pendingDeleteRow();
+        when(outboxRepository.findByUuid(outboxUuid)).thenReturn(Optional.of(row));
+        doThrow(new RuntimeException("kc 500")).when(keycloakOutboxService).reconcile(row, 5);
+
+        assertThatCode(() -> listener.onUserDeleted(new UserDeletedEvent(this, outboxUuid)))
+                .doesNotThrowAnyException();
+
+        verify(keycloakOutboxService).reconcile(row, 5);
     }
 }

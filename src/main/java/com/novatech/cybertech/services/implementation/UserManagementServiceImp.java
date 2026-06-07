@@ -10,6 +10,7 @@ import com.novatech.cybertech.events.UserDeletedEvent;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.KeycloakOutboxService;
 import com.novatech.cybertech.services.core.UserManagementService;
 import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
@@ -34,18 +35,27 @@ public class UserManagementServiceImp implements UserManagementService {
     private final KeycloakUserManagementService keycloakUserManagementService;
     private final UserPersistenceService userPersistenceService;
     private final ApplicationEventPublisher eventPublisher;
+    private final KeycloakOutboxService keycloakOutboxService;
 
     /**
-     * Create a user across Keycloak and the local DB without coupling them in a single TX.
+     * Create a user across Keycloak and the local DB without coupling them in a single TX —
+     * now crash-safe via a durable outbox breadcrumb (see
+     * {@code docs/superpowers/specs/2026-06-04-keycloak-outbox-design.md}).
      *
-     * <p>Phase 1 (no transaction): create the user in Keycloak. If this throws, abort — there is
-     * nothing to compensate.
+     * <p>Phase 0 (REQUIRES_NEW inside {@link KeycloakOutboxService}): commit a PENDING CREATE
+     * intent keyed by email. If the process crashes anywhere after this point, the
+     * reconciliation job finds the stale row, looks the email up in Keycloak and compensates
+     * any orphan — the breadcrumb is what makes the crash window recoverable.
      *
-     * <p>Phase 2 (REQUIRES_NEW transaction inside {@link UserPersistenceService}): persist the
-     * local entity (and optional bank card). If this throws, the inner TX rolls back the SQL
-     * work cleanly. We then run a compensating Keycloak {@code deleteUser} from OUTSIDE any
-     * transactional context. If compensation itself fails we log loudly so an operator can
-     * reconcile manually — and we still rethrow the original cause to the caller.
+     * <p>Phase 1 (no transaction): create the user in Keycloak. The raw password lives in
+     * memory only for the duration of this call — it is never written to the outbox row.
+     *
+     * <p>Phase 2 (REQUIRES_NEW inside {@link UserPersistenceService}): persist the local entity
+     * (and optional bank card). On failure: in-line compensating {@code deleteUser} + the row is
+     * marked terminal FAILED (clean failure — the caller retries), original cause rethrown.
+     *
+     * <p>Phase 3: mark the row DONE. A crash between Phase 2 and here leaves it PENDING — the
+     * job then sees Keycloak + DB both populated and closes it DONE without compensating.
      */
     @Override
     public UserResponseDto create(final UserCreateRequestDto req) {
@@ -53,23 +63,39 @@ public class UserManagementServiceImp implements UserManagementService {
         // log only the email domain so traffic patterns stay observable without leaking PII into log appenders.
         log.info("user creation request received for email domain '{}'", LogSafetyUtils.extractEmailDomain(req.getEmail()));
 
+        // Phase 0 — durable intent FIRST (own TX): survives a crash so the job can find + compensate an orphan.
+        final UUID outboxUuid = keycloakOutboxService.recordCreatePending(req.getEmail());
+
         // Phase 1 — Keycloak only, NO transaction. A failure here is terminal: no compensation needed.
-        final String keycloakId = keycloakUserManagementService.createUser(
-                req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword(), Role.USER);
+        final String keycloakId;
+        try {
+            keycloakId = keycloakUserManagementService.createUser(
+                    req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword(), Role.USER);
+        } catch (RuntimeException keycloakFailure) {
+            keycloakOutboxService.markFailed(outboxUuid, keycloakFailure.getMessage());
+            throw keycloakFailure;
+        }
         log.info("Keycloak id : {}", keycloakId);
 
         // Phase 2 — DB persistence in its own REQUIRES_NEW transaction; compensate if it fails.
+        final UserResponseDto saved;
         try {
-            return userPersistenceService.saveNewUser(req, keycloakId);
+            saved = userPersistenceService.saveNewUser(req, keycloakId);
         } catch (RuntimeException e) {
             try {
                 keycloakUserManagementService.deleteUser(keycloakId);
             } catch (RuntimeException compensationFailure) {
-                log.error("Compensation failed for keycloakId={} — manual reconciliation required",
+                log.error("Compensation failed for keycloakId={} — outbox job will reconcile",
                         keycloakId, compensationFailure);
             }
+            keycloakOutboxService.markFailed(outboxUuid, e.getMessage());
             throw e;
         }
+
+        // Phase 3 — close the breadcrumb. A crash before this leaves it PENDING; the job's
+        // reconcileCreate then closes it DONE (Keycloak + DB user both exist) WITHOUT compensating.
+        keycloakOutboxService.markDone(outboxUuid, keycloakId);
+        return saved;
     }
 
     @Override
@@ -99,44 +125,74 @@ public class UserManagementServiceImp implements UserManagementService {
 
     /**
      * Update a user's profile across Keycloak and the local DB without coupling them in a single
-     * outer transaction (Bug 3 — Option B: Keycloak FIRST).
+     * outer transaction (Bug 3 — Option B: Keycloak FIRST) — now crash-safe via a durable outbox
+     * breadcrumb carrying the patch payload (forward recovery; no secret involved).
      *
-     * <p>Phase 1 (Keycloak, NO transaction): propagate the change to Keycloak first. Keycloak
-     * rejections (e.g. a duplicate email in the realm or a profile-policy violation) are the
-     * COMMON failure mode for a profile update; calling Keycloak before any DB write means a
-     * rejection aborts here with <i>neither</i> system mutated — no silent desync.
-     *
-     * <p>Phase 2 (DB, REQUIRES_NEW): {@link UserPersistenceService#updateUser} patches the local
-     * entity and saves it under its own transaction. A failure here is rare (a simple update of an
-     * already-loaded row) but would leave Keycloak ahead of the DB — we log loudly and propagate so
-     * the caller knows a manual reconciliation is needed.
+     * <p>See {@link #updateWithOutbox} for the phase choreography.
      */
     @Override
     public UserResponseDto update(final UserUpdateRequestDto userUpdateRequestDto) {
         final UserEntity loadedUser = userRepository.findByUuid(userUpdateRequestDto.getUuid())
                 .orElseThrow(() -> new UserNotFoundException("No user with the UUID: " + userUpdateRequestDto.getUuid() + " found"));
 
-        // Phase 1 — Keycloak first (no transaction). A rejection here aborts before any DB write.
-        keycloakUserManagementService.updateUser(loadedUser.getKeycloakId(), userUpdateRequestDto);
-
-        // Phase 2 — DB write under its own REQUIRES_NEW transaction. Rare failure → Keycloak is
-        // ahead of the DB; log loudly and propagate for manual reconciliation.
-        try {
-            return userPersistenceService.updateUser(userUpdateRequestDto, loadedUser);
-        } catch (RuntimeException dbFailure) {
-            log.error("CRITICAL: Keycloak updated but DB write failed for user {} — manual reconciliation required",
-                    loadedUser.getKeycloakId(), dbFailure);
-            throw dbFailure;
-        }
+        return updateWithOutbox(userUpdateRequestDto, loadedUser);
     }
 
     /**
-     * Delete a user. DB delete runs inside the method's transaction; the Keycloak delete is
-     * deferred to {@link com.novatech.cybertech.events.listener.UserDeletionListener} via a
-     * {@link UserDeletedEvent} that listener consumes under
-     * {@code TransactionPhase.AFTER_COMMIT} (Bug 4). This guarantees Keycloak is only touched
-     * once the SQL row is durably gone — a rollback (e.g. FK constraint) will simply not fire
-     * the listener at all.
+     * Shared UPDATE saga used by {@link #update} and {@link #updateMe}.
+     *
+     * <p>Phase 0 (REQUIRES_NEW inside {@link KeycloakOutboxService}): commit a PENDING UPDATE
+     * intent carrying the JSON-serialized patch. Unlike CREATE, an update is re-applicable
+     * without any secret, so a crash anywhere after this point is recovered FORWARD by the
+     * reconciliation job (payload re-applied idempotently to Keycloak AND the DB).
+     *
+     * <p>Phase 1 (Keycloak, NO transaction): Keycloak first — a rejection (duplicate realm email,
+     * profile-policy violation: the COMMON failure mode) aborts with neither system mutated; the
+     * row is marked terminal FAILED per the synchronous contract (the caller simply retries).
+     *
+     * <p>Phase 2 (DB, REQUIRES_NEW): a failure here leaves Keycloak ahead of the DB. The row
+     * deliberately STAYS PENDING — the job converges the DB side by re-applying the payload,
+     * which is precisely the divergence this outbox exists to close.
+     */
+    private UserResponseDto updateWithOutbox(final UserUpdateRequestDto dto, final UserEntity loadedUser) {
+        final String keycloakId = loadedUser.getKeycloakId();
+
+        // Phase 0 — durable breadcrumb FIRST (own TX).
+        final UUID outboxUuid = keycloakOutboxService.recordUpdatePending(keycloakId, dto);
+
+        // Phase 1 — Keycloak first (no transaction). A clean rejection aborts before any DB write:
+        // neither system mutated → terminal FAILED row, caller retries.
+        try {
+            keycloakUserManagementService.updateUser(keycloakId, dto);
+        } catch (RuntimeException keycloakRejection) {
+            keycloakOutboxService.markFailed(outboxUuid, keycloakRejection.getMessage());
+            throw keycloakRejection;
+        }
+
+        // Phase 2 — DB write under its own REQUIRES_NEW transaction. On failure the row STAYS
+        // PENDING (no markFailed): the reconciliation job re-applies the payload to converge.
+        final UserResponseDto saved;
+        try {
+            saved = userPersistenceService.updateUser(dto, loadedUser);
+        } catch (RuntimeException dbFailure) {
+            log.error("CRITICAL: Keycloak updated but DB write failed for user {} — outbox row {} left PENDING for re-application",
+                    keycloakId, outboxUuid, dbFailure);
+            throw dbFailure;
+        }
+
+        keycloakOutboxService.markDone(outboxUuid, keycloakId);
+        return saved;
+    }
+
+    /**
+     * Delete a user — crash-safe via a DELETE outbox row CO-COMMITTED with the SQL delete.
+     *
+     * <p>The previous design published an in-memory {@link UserDeletedEvent} carrying the
+     * keycloakId; a crash between the DB commit and the AFTER_COMMIT listener lost the intent
+     * forever (Keycloak account left able to authenticate). The outbox row now rides THE SAME
+     * transaction as the delete: either both commit or neither does. The event only carries the
+     * row's uuid so the listener can reconcile it immediately (happy path); if the listener
+     * fails or the process dies, the reconciliation job is the durable backstop.
      */
     @Override
     @Transactional
@@ -146,22 +202,15 @@ public class UserManagementServiceImp implements UserManagementService {
 
         userRepository.deleteByUuid(uuid);
 
-        // AFTER_COMMIT listener picks this up and calls Keycloak.deleteUser only when the
-        // surrounding TX has actually committed.
-        eventPublisher.publishEvent(new UserDeletedEvent(this, keycloakId));
+        // Co-commit a durable DELETE breadcrumb in THIS transaction, then trigger immediate reconcile.
+        final UUID outboxUuid = keycloakOutboxService.recordDeletePending(keycloakId);
+        eventPublisher.publishEvent(new UserDeletedEvent(this, outboxUuid));
     }
 
     /**
-     * Bulk delete that mirrors the {@link #deleteByUUID} AFTER_COMMIT pattern (Bug 4).
-     *
-     * <p>FIX(SAGA-INCONSISTENCY): the previous implementation called Keycloak inside the
-     * surrounding transaction <i>before</i> issuing the SQL delete. A late SQL rollback (FK
-     * violation, unique constraint, ...) therefore left orphan Keycloak deletions for rows that
-     * still existed in the DB — the exact anti-pattern the singular {@code deleteByUUID} path
-     * already fixes via {@link UserDeletedEvent}. We mirror that fix here: publish one event per
-     * resolved entity and let {@code UserDeletionListener} drain them under
-     * {@code TransactionPhase.AFTER_COMMIT} so Keycloak only fires once the SQL bulk delete has
-     * actually committed.
+     * Bulk delete mirroring {@link #deleteByUUID}: one co-committed outbox row + one event per
+     * resolved entity, all riding the surrounding transaction (a rollback drops the rows AND
+     * suppresses the events together).
      */
     @Override
     @Transactional
@@ -169,21 +218,21 @@ public class UserManagementServiceImp implements UserManagementService {
         final List<UserEntity> users = userRepository.findAllByUuidIn(uuids);
 
         userRepository.deleteAllByUuidIn(uuids);
-        users.forEach(user -> eventPublisher.publishEvent(new UserDeletedEvent(this, user.getKeycloakId())));
+        users.forEach(user -> {
+            final UUID outboxUuid = keycloakOutboxService.recordDeletePending(user.getKeycloakId());
+            eventPublisher.publishEvent(new UserDeletedEvent(this, outboxUuid));
+        });
     }
 
     /**
      * Frontend-gap #3 — self-service update path. Resolves the caller's entity via the JWT
-     * subject ({@code keycloakId}), then reuses the same Phase-DB-then-Keycloak choreography
-     * as {@link #update(UserUpdateRequestDto)}: SQL write inside the persistence service's
-     * REQUIRES_NEW TX, Keycloak update outside any TX, with a clean rethrow when the Keycloak
-     * step fails after a durable DB commit.
+     * subject ({@code keycloakId}), then reuses the shared {@link #updateWithOutbox} saga
+     * (breadcrumb → Keycloak → DB → DONE) with a transient {@link UserUpdateRequestDto}
+     * carrying only the fields a user is allowed to mutate on themselves.
      *
-     * <p>The {@link UserSelfUpdateRequestDto} is mapped onto a transient
-     * {@link UserUpdateRequestDto} carrying only the four fields a user is allowed to mutate
-     * on themselves. We deliberately do NOT propagate the Keycloak email change here — the
-     * self DTO has no email field — but we do propagate first/last name to keep Keycloak
-     * profile data in sync with the DB row (mirrors the same fields {@code KeycloakUserManagementService.updateUser}
+     * <p>We deliberately do NOT propagate a Keycloak email change here — the self DTO has no
+     * email field — but we do propagate first/last name to keep Keycloak profile data in sync
+     * with the DB row (mirrors the same fields {@code KeycloakUserManagementService.updateUser}
      * already syncs in the admin path).</p>
      */
     @Override
@@ -197,19 +246,7 @@ public class UserManagementServiceImp implements UserManagementService {
         adapted.setLastName(dto.getLastName());
         adapted.setAddress(dto.getAddress());
 
-        // Phase 1 — Keycloak first (no transaction). Same Option B ordering as #update: a Keycloak
-        // rejection aborts before any DB write so the two systems can't silently diverge.
-        keycloakUserManagementService.updateUser(loadedUser.getKeycloakId(), adapted);
-
-        // Phase 2 — DB write under its own REQUIRES_NEW transaction.
-        final UserResponseDto saved;
-        try {
-            saved = userPersistenceService.updateUser(adapted, loadedUser);
-        } catch (RuntimeException dbFailure) {
-            log.error("CRITICAL: Keycloak updated but DB write failed for user {} — manual reconciliation required",
-                    loadedUser.getKeycloakId(), dbFailure);
-            throw dbFailure;
-        }
+        final UserResponseDto saved = updateWithOutbox(adapted, loadedUser);
 
         // Phone number isn't on UserUpdateRequestDto — patch directly when supplied. No
         // Keycloak side effect: phone is not synced through KeycloakUserManagementService.
