@@ -41,7 +41,7 @@ public class MailServiceImp implements MailService {
      */
     @Override
     public void sendEmail(final EmailDto emailDto) {
-        final Context context = toEmailContext(emailDto.getContext());
+        final Context context = toEmailContext(emailDto.getTemplateVariables());
 
         log.debug("Sending email to={}", emailDto.getTo());
 

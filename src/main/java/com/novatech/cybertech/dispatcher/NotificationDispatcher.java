@@ -43,7 +43,7 @@ public class NotificationDispatcher {
      *                                                the processor strategy cannot be resolved
      *                                                for the requested type/channel pair
      */
-    public void dispatch(final NotificationContext context) throws NoStrategyFoundForProcessingTheRequest {
+    public void dispatch(final NotificationContext<?> context) throws NoStrategyFoundForProcessingTheRequest {
 
         final UserContactDto user = context.getUser();
 

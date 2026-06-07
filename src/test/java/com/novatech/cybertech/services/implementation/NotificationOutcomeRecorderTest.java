@@ -1,7 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
-import com.novatech.cybertech.dto.data.OrderEventDto;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.NotificationEntity;
 import com.novatech.cybertech.entities.enums.CommunicationChanel;
@@ -22,8 +22,6 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,27 +70,21 @@ class NotificationOutcomeRecorderTest {
                 .build();
     }
 
-    private NotificationContext<?> orderConfirmationContext(final UUID orderUuid) {
-        // Mirror the OrderEventListener shape: orderEventDto stashed in data,
-        // no typed payload set.
-        final Map<String, Object> data = new HashMap<>();
-        data.put("orderEventDto", OrderEventDto.builder()
-                .orderUuid(orderUuid)
-                .totalAmount(new BigDecimal("100.00"))
-                .orderStatus(OrderStatus.CREATED)
-                .shippingType(ShippingType.STANDARD)
-                .shippingProvider(ShippingProvider.DHL)
-                .userContactDto(UserContactDto.builder()
-                        .name("Bob").email("bob@example.com")
-                        .defaultCommunicationChanel(CommunicationChanel.EMAIL).build())
-                .paymentAttemptStatus(PaymentAttemptStatus.CREATED)
-                .build());
-        return NotificationContext.builder()
+    private NotificationContext<OrderConfirmationPayload> orderConfirmationContext(final UUID orderUuid) {
+        return NotificationContext.<OrderConfirmationPayload>builder()
                 .notificationType(NotificationType.ORDER_CONFIRMATION)
                 .user(UserContactDto.builder()
                         .name("Bob").email("bob@example.com")
                         .defaultCommunicationChanel(CommunicationChanel.EMAIL).build())
-                .data(data)
+                .payload(OrderConfirmationPayload.builder()
+                        .orderUuid(orderUuid)
+                        .totalAmount(new BigDecimal("100.00"))
+                        .orderStatus(OrderStatus.CREATED)
+                        .paymentAttemptStatus(PaymentAttemptStatus.CREATED)
+                        .userContactDto(UserContactDto.builder()
+                                .name("Bob").email("bob@example.com")
+                                .defaultCommunicationChanel(CommunicationChanel.EMAIL).build())
+                        .build())
                 .build();
     }
 
@@ -133,11 +125,11 @@ class NotificationOutcomeRecorderTest {
     }
 
     @Test
-    @DisplayName("happy: order-confirmation context (no typed payload) extracts orderUuid from the data map")
-    void orderConfirmationContextExtractsOrderUuidFromDataMap() {
+    @DisplayName("happy: order-confirmation context extracts orderUuid from the typed payload")
+    void orderConfirmationContextExtractsOrderUuidFromTypedPayload() {
         final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
         final UUID orderUuid = UUID.randomUUID();
-        final NotificationContext<?> ctx = orderConfirmationContext(orderUuid);
+        final NotificationContext<OrderConfirmationPayload> ctx = orderConfirmationContext(orderUuid);
         when(notificationRepository.save(any(NotificationEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 

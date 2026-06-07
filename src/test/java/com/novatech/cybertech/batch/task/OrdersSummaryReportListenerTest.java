@@ -107,7 +107,7 @@ class OrdersSummaryReportListenerTest {
             assertThat(sent.getFrom()).isEqualTo(EMAIL_SENDER);
             assertThat(sent.getSubject()).isEqualTo(EmailTemplateType.ORDER_CANCELLATION.getNotificationSubject().getSubject());
             assertThat(sent.getTemplatePath()).isEqualTo(EmailTemplateType.ORDER_CANCELLATION.getTemplatePath());
-            assertThat(sent.getContext()).containsEntry("orderId", List.of(u1));
+            assertThat(sent.getTemplateVariables()).containsEntry("orderId", List.of(u1));
         }
 
         @Test

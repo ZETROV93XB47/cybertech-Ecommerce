@@ -19,7 +19,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,20 +48,19 @@ class OrderConfirmationNotificationTest {
                 .name("Jane Doe")
                 .email("jane@example.com")
                 .build();
-        OrderConfirmationPayload p = new OrderConfirmationPayload();
-        p.setOrderUuid(UUID.fromString("00000000-0000-0000-0000-000000000001"));
-        p.setTotalAmount(new BigDecimal("199.99"));
-        p.setOrderStatus(OrderStatus.CREATED);
-        p.setUserContactDto(contact);
-        p.setPaymentAttemptStatus(status);
-        return p;
+        return OrderConfirmationPayload.builder()
+                .orderUuid(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+                .totalAmount(new BigDecimal("199.99"))
+                .orderStatus(OrderStatus.CREATED)
+                .userContactDto(contact)
+                .paymentAttemptStatus(status)
+                .build();
     }
 
     private NotificationContext<OrderConfirmationPayload> contextWith(final OrderConfirmationPayload p) {
-        NotificationContext<OrderConfirmationPayload> ctx = new NotificationContext<>();
-        ctx.setPayload(p);
-        ctx.setData(new HashMap<>());
-        return ctx;
+        return NotificationContext.<OrderConfirmationPayload>builder()
+                .payload(p)
+                .build();
     }
 
     @Test
@@ -75,7 +73,7 @@ class OrderConfirmationNotificationTest {
 
         assertThat(ctx.getSubject()).isEqualTo(NotificationSubject.ORDER_CONFIRMATION.getSubject());
         assertThat(ctx.getTemplatePath()).isEqualTo(EmailTemplateType.ORDER_CONFIRMATION.getTemplatePath());
-        assertThat(ctx.getData())
+        assertThat(ctx.getTemplateVariables())
                 .containsEntry("userName", "Jane Doe")
                 .containsEntry("orderId", p.getOrderUuid())
                 .containsEntry("amount", new BigDecimal("199.99"))
@@ -98,7 +96,7 @@ class OrderConfirmationNotificationTest {
         notification.sendNotification(ctx, notificationProcessor);
 
         assertThat(ctx.getSubject()).isEqualTo("Commande enregistrée - Paiement échoué");
-        assertThat(ctx.getData())
+        assertThat(ctx.getTemplateVariables())
                 .containsEntry("themeColor", "#e74c3c")
                 .containsEntry("themeBackgroundColor", "#fdedec")
                 .containsEntry("themeBorderColor", "#fadbd8")
@@ -114,7 +112,7 @@ class OrderConfirmationNotificationTest {
         notification.sendNotification(ctx, notificationProcessor);
 
         assertThat(ctx.getSubject()).isEqualTo("Commande enregistrée - Paiement échoué");
-        assertThat(ctx.getData()).containsEntry("themeColor", "#e74c3c");
+        assertThat(ctx.getTemplateVariables()).containsEntry("themeColor", "#e74c3c");
     }
 
     @Test
@@ -126,7 +124,7 @@ class OrderConfirmationNotificationTest {
         notification.sendNotification(ctx, notificationProcessor);
 
         assertThat(ctx.getSubject()).isEqualTo("Commande enregistrée - Paiement en attente");
-        assertThat(ctx.getData())
+        assertThat(ctx.getTemplateVariables())
                 .containsEntry("themeColor", "#f39c12")
                 .containsEntry("themeBackgroundColor", "#fef9e7")
                 .containsEntry("themeBorderColor", "#fdebd0")
@@ -148,9 +146,9 @@ class OrderConfirmationNotificationTest {
                 .userName("u")
                 .build();
 
-        NotificationContext<NotificationPayload> ctx = new NotificationContext<>();
-        ctx.setPayload(wrong);
-        ctx.setData(new HashMap<>());
+        NotificationContext<NotificationPayload> ctx = NotificationContext.<NotificationPayload>builder()
+                .payload(wrong)
+                .build();
 
         assertThatThrownBy(() -> notification.sendNotification(ctx, notificationProcessor))
                 .isInstanceOf(ClassCastException.class);

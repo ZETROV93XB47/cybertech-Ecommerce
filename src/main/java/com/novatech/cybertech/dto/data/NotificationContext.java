@@ -22,5 +22,6 @@ public class NotificationContext<T extends NotificationPayload> {
     private String templatePath;
     private NotificationType notificationType;
     private CommunicationChanel communicationChanel;
-    private Map<String, Object> data = new HashMap<>();
+    @Builder.Default
+    private Map<String, Object> templateVariables = new HashMap<>();
 }

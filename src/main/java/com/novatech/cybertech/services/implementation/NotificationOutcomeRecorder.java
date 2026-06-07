@@ -2,7 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.NotificationRedrivePayload;
-import com.novatech.cybertech.dto.data.OrderEventDto;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.NotificationEntity;
 import com.novatech.cybertech.entities.enums.NotificationStatus;
@@ -59,12 +59,10 @@ public class NotificationOutcomeRecorder {
      *
      * <p>Behaviour:
      * <ul>
-     *   <li>{@code orderUuid} is extracted from the typed payload (e.g.
-     *       {@link ShippingConfirmationPayload}) when available; otherwise
-     *       from the {@code OrderEventDto} stashed in
-     *       {@link NotificationContext#getData()} (the order-confirmation /
-     *       order-update path); otherwise {@code null} (the column is now
-     *       nullable — see {@link NotificationEntity}).</li>
+     *   <li>{@code orderUuid} is extracted from the typed payload —
+     *       {@link ShippingConfirmationPayload} or {@link OrderConfirmationPayload}.
+     *       When neither is present the column is {@code null} (nullable — persisting
+     *       a partial audit row is preferable to losing it entirely).</li>
      *   <li>{@code lastAttemptAt} is always set to {@link LocalDateTime#now()}.</li>
      *   <li>{@code sentAt} is set iff {@code status == SENT}.</li>
      *   <li>{@code errorMessage} is set from {@code failure.getMessage()}
@@ -115,25 +113,13 @@ public class NotificationOutcomeRecorder {
         return notificationRepository.save(entity);
     }
 
-    /**
-     * Try the typed payload first (clean source of truth — what
-     * {@link com.novatech.cybertech.listener.NotificationListener} populates),
-     * then fall back to the data-map shape used by the order-event path.
-     */
     private static UUID extractOrderUuid(final NotificationContext<?> context) {
         if (context.getPayload() instanceof ShippingConfirmationPayload shipping) {
             return shipping.getOrderUuid();
         }
-
-        // OrderEventListener stashes the OrderEventDto under this key; see
-        // OrderEventListener.onOrderCreated / onOrderUpdated.
-        if (context.getData() != null) {
-            final Object eventDto = context.getData().get("orderEventDto");
-            if (eventDto instanceof OrderEventDto orderEventDto) {
-                return orderEventDto.getOrderUuid();
-            }
+        if (context.getPayload() instanceof OrderConfirmationPayload order) {
+            return order.getOrderUuid();
         }
-
         return null;
     }
 

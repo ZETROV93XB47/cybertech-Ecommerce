@@ -1,6 +1,8 @@
 package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
+import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.events.OrderUpdatedEvent;
@@ -11,9 +13,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
-
-import java.util.HashMap;
-import java.util.Map;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
 
@@ -59,16 +58,13 @@ public class OrderEventListener {
     @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOrderCreated(final OrderCreatedEvent event) {
-
         log.info("In order created event listener");
 
-        final Map<String, Object> orderEventDto = new HashMap<>();
-        orderEventDto.put("orderEventDto", event.getOrderEventDto());
-
-        final NotificationContext context = NotificationContext.builder()
+        final NotificationContext<OrderConfirmationPayload> context = NotificationContext
+                .<OrderConfirmationPayload>builder()
                 .notificationType(NotificationType.ORDER_CONFIRMATION)
                 .user(event.getOrderEventDto().getUserContactDto())
-                .data(orderEventDto)
+                .payload(toConfirmationPayload(event.getOrderEventDto()))
                 .build();
 
         retryableDelivery.deliver(context);
@@ -85,18 +81,25 @@ public class OrderEventListener {
     @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOrderUpdated(final OrderUpdatedEvent event) {
-
         log.info("In order updated event listener");
 
-        final Map<String, Object> orderEventDto = new HashMap<>();
-        orderEventDto.put("orderEventDto", event.getOrderEventDto());
-
-        final NotificationContext context = NotificationContext.builder()
+        final NotificationContext<OrderConfirmationPayload> context = NotificationContext
+                .<OrderConfirmationPayload>builder()
                 .notificationType(NotificationType.ORDER_UPDATE)
                 .user(event.getOrderEventDto().getUserContactDto())
-                .data(orderEventDto)
+                .payload(toConfirmationPayload(event.getOrderEventDto()))
                 .build();
 
         retryableDelivery.deliver(context);
+    }
+
+    private static OrderConfirmationPayload toConfirmationPayload(final OrderEventDto dto) {
+        return OrderConfirmationPayload.builder()
+                .orderUuid(dto.getOrderUuid())
+                .totalAmount(dto.getTotalAmount())
+                .orderStatus(dto.getOrderStatus())
+                .userContactDto(dto.getUserContactDto())
+                .paymentAttemptStatus(dto.getPaymentAttemptStatus())
+                .build();
     }
 }

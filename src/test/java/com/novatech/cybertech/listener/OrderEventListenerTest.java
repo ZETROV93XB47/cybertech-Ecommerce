@@ -1,6 +1,7 @@
 package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.enums.CommunicationChanel;
@@ -91,7 +92,13 @@ class OrderEventListenerTest {
         NotificationContext ctx = cap.getValue();
         assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.ORDER_CONFIRMATION);
         assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
-        assertThat(ctx.getData()).containsEntry("orderEventDto", dto);
+
+        assertThat(ctx.getPayload()).isInstanceOf(OrderConfirmationPayload.class);
+        OrderConfirmationPayload payload = (OrderConfirmationPayload) ctx.getPayload();
+        assertThat(payload.getOrderUuid()).isEqualTo(dto.getOrderUuid());
+        assertThat(payload.getTotalAmount()).isEqualByComparingTo(dto.getTotalAmount());
+        assertThat(payload.getOrderStatus()).isEqualTo(dto.getOrderStatus());
+        assertThat(payload.getPaymentAttemptStatus()).isEqualTo(dto.getPaymentAttemptStatus());
     }
 
     @Test
@@ -107,6 +114,9 @@ class OrderEventListenerTest {
         NotificationContext ctx = cap.getValue();
         assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.ORDER_UPDATE);
         assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
-        assertThat(ctx.getData()).containsEntry("orderEventDto", dto);
+
+        assertThat(ctx.getPayload()).isInstanceOf(OrderConfirmationPayload.class);
+        OrderConfirmationPayload payload = (OrderConfirmationPayload) ctx.getPayload();
+        assertThat(payload.getOrderUuid()).isEqualTo(dto.getOrderUuid());
     }
 }

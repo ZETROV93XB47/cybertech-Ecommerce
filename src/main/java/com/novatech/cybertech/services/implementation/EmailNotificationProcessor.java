@@ -16,7 +16,6 @@ import org.springframework.stereotype.Component;
 @CommunicationTypeHandler(CommunicationChanel.EMAIL)
 public class EmailNotificationProcessor implements NotificationProcessor {
 
-    private static final String ORDER_CONFIRMATION_DATA_KEY = "OrderConfirmationData";
     private final MailService mailService;
 
     @Override
@@ -26,7 +25,7 @@ public class EmailNotificationProcessor implements NotificationProcessor {
                 .from("abc@mail.com")
                 .to(notificationContext.getUser().getEmail())
                 .subject(notificationContext.getSubject())
-                .context(notificationContext.getData())
+                .templateVariables(notificationContext.getTemplateVariables())
                 .templatePath(notificationContext.getTemplatePath())
                 .build();
 

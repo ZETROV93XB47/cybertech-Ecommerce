@@ -37,8 +37,8 @@ class EmailNotificationProcessorTest {
     private EmailNotificationProcessor processor;
 
     private NotificationContext aContext(final String email, final String subject, final String templatePath) {
-        Map<String, Object> data = new HashMap<>();
-        data.put("orderId", "abc-123");
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("orderId", "abc-123");
         return NotificationContext.builder()
                 .user(UserContactDto.builder()
                         .name("Jane")
@@ -48,7 +48,7 @@ class EmailNotificationProcessorTest {
                         .build())
                 .subject(subject)
                 .templatePath(templatePath)
-                .data(data)
+                .templateVariables(vars)
                 .build();
     }
 
@@ -69,27 +69,27 @@ class EmailNotificationProcessorTest {
         assertThat(sent.getTo()).isEqualTo("user@example.com");
         assertThat(sent.getSubject()).isEqualTo("Order confirmation");
         assertThat(sent.getTemplatePath()).isEqualTo("email/order-confirmation");
-        assertThat(sent.getContext()).containsEntry("orderId", "abc-123");
+        assertThat(sent.getTemplateVariables()).containsEntry("orderId", "abc-123");
     }
 
     @Test
-    @DisplayName("forwards data map by reference into EmailDto.context")
-    void contextMapIsForwardedToEmailDto() {
-        Map<String, Object> data = new HashMap<>();
-        data.put("k1", "v1");
-        data.put("k2", 42);
+    @DisplayName("forwards templateVariables map by reference into EmailDto")
+    void templateVariablesMapIsForwardedToEmailDto() {
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("k1", "v1");
+        vars.put("k2", 42);
         NotificationContext ctx = NotificationContext.builder()
                 .user(UserContactDto.builder().email("x@y.z").build())
                 .subject("subj")
                 .templatePath("tpl")
-                .data(data)
+                .templateVariables(vars)
                 .build();
 
         processor.sendMessage(ctx);
 
         ArgumentCaptor<EmailDto> captor = ArgumentCaptor.forClass(EmailDto.class);
         verify(mailService).sendEmail(captor.capture());
-        assertThat(captor.getValue().getContext()).isSameAs(data);
+        assertThat(captor.getValue().getTemplateVariables()).isSameAs(vars);
     }
 
     @Test

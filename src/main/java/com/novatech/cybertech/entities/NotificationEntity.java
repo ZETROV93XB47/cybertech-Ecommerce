@@ -29,14 +29,10 @@ import java.util.UUID;
 public class NotificationEntity extends BaseEntity<Long> {
 
     /**
-     * Linked order UUID. Made <em>nullable</em> in Phase 1: the {@code ORDER_CONFIRMATION}
-     * and {@code ORDER_UPDATE} paths populate the order UUID through the
-     * {@code OrderEventDto} placed in {@link com.novatech.cybertech.dto.data.NotificationContext#getData()}
-     * rather than via a typed payload, and we want a uniform persistence
-     * contract across all three notification types — including the defensive
-     * fallback where the recorder cannot extract the UUID for whatever reason
-     * (it's better to persist a partial audit row than to lose the trace
-     * entirely and silently mask a bug).
+     * Linked order UUID. Nullable: extracted from the typed payload
+     * ({@link com.novatech.cybertech.dto.data.ShippingConfirmationPayload} or
+     * {@link com.novatech.cybertech.dto.data.OrderConfirmationPayload}) by the recorder.
+     * A partial audit row without an order UUID is preferable to losing the trace entirely.
      */
     @Column(name = "orderUuid")
     private UUID orderUuid;

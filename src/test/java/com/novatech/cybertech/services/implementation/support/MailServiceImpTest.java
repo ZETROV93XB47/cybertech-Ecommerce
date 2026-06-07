@@ -84,7 +84,7 @@ class MailServiceImpTest {
                 .to("user@example.com")
                 .subject("Order confirmation")
                 .templatePath("email/order-confirmation")
-                .context(ctx)
+                .templateVariables(ctx)
                 .build();
     }
 

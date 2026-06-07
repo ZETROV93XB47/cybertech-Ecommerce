@@ -78,7 +78,7 @@ public class OrdersSummaryReportListener implements JobExecutionListener {
                             .from(emailSender)
                             .to(entry.getKey())
                             .subject(emailTemplateType.getNotificationSubject().getSubject())
-                            .context(context)
+                            .templateVariables(context)
                             .templatePath(emailTemplateType.getTemplatePath())
                             .build();
                 })

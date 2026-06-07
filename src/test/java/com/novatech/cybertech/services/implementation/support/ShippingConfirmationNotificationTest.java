@@ -16,7 +16,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.HashMap;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,8 +38,8 @@ class ShippingConfirmationNotificationTest {
     private final ShippingConfirmationNotification notification = new ShippingConfirmationNotification();
 
     @Test
-    @DisplayName("happy: populates user/order/provider/type, sets shipping subject + template, calls processor exactly once")
-    void shouldPopulateContextAndDelegateToProcessor() {
+    @DisplayName("happy: populates user/order/provider/type, calls processor exactly once")
+    void shouldPopulateTemplateVariablesAndDelegateToProcessor() {
         UUID orderId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
         ShippingConfirmationPayload payload = ShippingConfirmationPayload.builder()
                 .orderUuid(orderId)
@@ -49,15 +48,19 @@ class ShippingConfirmationNotificationTest {
                 .shippingType(ShippingType.EXPRESS)
                 .build();
 
-        NotificationContext<ShippingConfirmationPayload> ctx = new NotificationContext<>();
-        ctx.setPayload(payload);
-        ctx.setData(new HashMap<>());
+        // subject and templatePath are set by the listener before dispatch
+        NotificationContext<ShippingConfirmationPayload> ctx = NotificationContext
+                .<ShippingConfirmationPayload>builder()
+                .payload(payload)
+                .subject(NotificationSubject.SHIPPING_CONFIRMATION.getSubject())
+                .templatePath(EmailTemplateType.SHIPPING_CONFIRMATION.getTemplatePath())
+                .build();
 
         notification.sendNotification(ctx, notificationProcessor);
 
         assertThat(ctx.getSubject()).isEqualTo(NotificationSubject.SHIPPING_CONFIRMATION.getSubject());
         assertThat(ctx.getTemplatePath()).isEqualTo(EmailTemplateType.SHIPPING_CONFIRMATION.getTemplatePath());
-        assertThat(ctx.getData())
+        assertThat(ctx.getTemplateVariables())
                 .containsEntry("userName", "Jane Doe")
                 .containsEntry("orderId", orderId)
                 .containsEntry("shippingProvider", ShippingProvider.DHL)
@@ -73,9 +76,9 @@ class ShippingConfirmationNotificationTest {
         OrderConfirmationPayload wrong = new OrderConfirmationPayload();
         wrong.setOrderUuid(UUID.randomUUID());
 
-        NotificationContext<NotificationPayload> ctx = new NotificationContext<>();
-        ctx.setPayload(wrong);
-        ctx.setData(new HashMap<>());
+        NotificationContext<NotificationPayload> ctx = NotificationContext.<NotificationPayload>builder()
+                .payload(wrong)
+                .build();
 
         assertThatThrownBy(() -> notification.sendNotification(ctx, notificationProcessor))
                 .isInstanceOf(ClassCastException.class);
