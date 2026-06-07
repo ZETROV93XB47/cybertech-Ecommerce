@@ -18,6 +18,7 @@ This directory holds the operational runbooks used during incidents and routine 
 |---------|-----------|
 | [`payment-outage.md`](./payment-outage.md) | Stripe down or webhook signature failures spiking; orders stuck in `AWAITING_PAYMENT`. |
 | [`keycloak-outage.md`](./keycloak-outage.md) | Keycloak unreachable; 401 spike; frontend `RefreshTokenError` redirects. |
+| [`keycloak-outbox.md`](./keycloak-outbox.md) | User-saga outbox: triage PENDING backlog / FAILED dead-letter rows, manual re-drive. |
 | [`db-failover.md`](./db-failover.md) | MySQL crashloop, PVC full or corrupt; `/actuator/health` reports DOWN. |
 | [`redis-outage.md`](./redis-outage.md) | Redis pod down or out of memory; cart cache misses spike; rate limiter falls back. |
 | [`webhook-replay.md`](./webhook-replay.md) | Replay missed Stripe events safely via the dedup ledger. |

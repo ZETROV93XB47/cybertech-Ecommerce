@@ -53,6 +53,18 @@ public class UserEntity extends BaseEntity<Long> {
     @Column(unique = true, nullable = false)
     private String keycloakId;
 
+    /**
+     * <b>NON-AUTHORITATIVE — informational copy only.</b> Runtime authorization is decided
+     * exclusively from the JWT realm roles issued by Keycloak (see
+     * {@code KeycloakRoleConverter} + {@code @PreAuthorize("hasRole(...)")}): Keycloak is the
+     * single source of truth for authorization. This column exists for display/reporting and
+     * data-generation purposes only.
+     *
+     * <p><b>Never</b> branch security decisions on this field and <b>never</b> "promote" a user
+     * by flipping it — doing either creates an authorization split-brain with the realm roles.
+     * A role change must go through Keycloak (realm role mapping); this column may then be
+     * refreshed as a cosmetic mirror.
+     */
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)
     private Role role;
