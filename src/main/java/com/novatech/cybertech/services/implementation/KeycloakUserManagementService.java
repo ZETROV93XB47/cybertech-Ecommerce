@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -82,8 +83,31 @@ public class KeycloakUserManagementService {
         return userRepresentation;
     }
 
+    /**
+     * Idempotent (404-tolerant) delete. The outbox reconciliation job may re-issue a delete for a
+     * user already removed by the synchronous path — a 404 from Keycloak therefore counts as
+     * success. Any other non-2xx status is surfaced (it would previously be silently swallowed
+     * because the returned {@link Response} was never inspected).
+     */
     public void deleteUser(String keycloakUserId) {
-        keycloakClient.realm(realm).users().delete(keycloakUserId);
+        try (Response resp = keycloakClient.realm(realm).users().delete(keycloakUserId)) {
+            final int status = resp.getStatus();
+            if (status == Response.Status.NOT_FOUND.getStatusCode()) {
+                log.info("Keycloak user {} already absent on delete — treating as done (idempotent)", keycloakUserId);
+            } else if (status >= 400) {
+                throw new IllegalStateException("Keycloak user delete failed: " + status);
+            }
+        }
+    }
+
+    /**
+     * Reconciliation lookup: resolve a Keycloak user id by exact email, or empty if none.
+     * Used by the outbox job to detect a crash-orphan (Keycloak user with no DB row).
+     */
+    public Optional<String> searchByEmail(final String email) {
+        return keycloakClient.realm(realm).users().searchByEmail(email, true).stream()
+                .findFirst()
+                .map(UserRepresentation::getId);
     }
 
     private String createUserNameFromFirstNameAndLastName(final String firstName, final String lastName, final String email) {

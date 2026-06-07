@@ -401,3 +401,23 @@ CREATE TABLE discount_campaign
     INDEX idx_discount_campaign_enabled (enabled)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4;
+
+CREATE TABLE keycloak_outbox
+(
+    id            BIGINT        NOT NULL AUTO_INCREMENT,
+    uuid          BINARY(16)    NOT NULL UNIQUE,
+    version       BIGINT        NOT NULL,
+    createdAt     DATETIME(6)   NOT NULL,
+    updatedAt     DATETIME(6),
+    operationType VARCHAR(16)   NOT NULL,
+    status        VARCHAR(16)   NOT NULL,
+    keycloakId    VARCHAR(255),
+    email         VARCHAR(255),
+    payload       VARCHAR(2000),
+    attempts      INT           NOT NULL DEFAULT 0,
+    lastError     VARCHAR(1000),
+    PRIMARY KEY (id),
+    INDEX idx_outbox_status (status),
+    INDEX idx_outbox_email (email)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4;

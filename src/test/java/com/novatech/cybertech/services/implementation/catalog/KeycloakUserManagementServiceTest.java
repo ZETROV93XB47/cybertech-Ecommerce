@@ -216,18 +216,82 @@ class KeycloakUserManagementServiceTest {
 
     // -----------------------------------------------------------------
     @Nested
-    @DisplayName("deleteUser")
+    @DisplayName("deleteUser — idempotent (404-tolerant) for outbox reconciliation")
     class DeleteUser {
 
+        private Response deleteResponse(int status) {
+            Response resp = org.mockito.Mockito.mock(Response.class);
+            when(resp.getStatus()).thenReturn(status);
+            return resp;
+        }
+
         @Test
-        @DisplayName("delegates to keycloak.realm(realm).users().delete(id)")
+        @DisplayName("2xx — delegates to keycloak.realm(realm).users().delete(id) and closes the Response")
         void deleteUser_happyPath() {
+            Response resp = deleteResponse(204);
             when(keycloak.realm(REALM)).thenReturn(realmResource);
             when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.delete("abc-123")).thenReturn(resp);
 
             service.deleteUser("abc-123");
 
             verify(usersResource).delete("abc-123");
+            verify(resp).close();
+        }
+
+        @Test
+        @DisplayName("404 — user already gone is treated as success (idempotent re-issue from the outbox job)")
+        void deleteUser_404_isIdempotentNoop() {
+            Response resp = deleteResponse(404);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.delete("gone")).thenReturn(resp);
+
+            org.assertj.core.api.Assertions.assertThatCode(() -> service.deleteUser("gone"))
+                    .doesNotThrowAnyException();
+            verify(resp).close();
+        }
+
+        @Test
+        @DisplayName("other 4xx/5xx — surfaces IllegalStateException (no longer silently swallowed)")
+        void deleteUser_500_throws() {
+            Response resp = deleteResponse(500);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.delete("boom")).thenReturn(resp);
+
+            assertThatThrownBy(() -> service.deleteUser("boom"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("500");
+            verify(resp).close();
+        }
+    }
+
+    // -----------------------------------------------------------------
+    @Nested
+    @DisplayName("searchByEmail — outbox CREATE reconciliation lookup")
+    class SearchByEmail {
+
+        @Test
+        @DisplayName("returns the first matching Keycloak id on an exact-email hit")
+        void searchByEmail_returnsFirstMatchingId() {
+            UserRepresentation rep = new UserRepresentation();
+            rep.setId("kc-123");
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.searchByEmail("a@b.com", true)).thenReturn(List.of(rep));
+
+            assertThat(service.searchByEmail("a@b.com")).contains("kc-123");
+        }
+
+        @Test
+        @DisplayName("returns empty when no Keycloak user carries that email")
+        void searchByEmail_emptyWhenNoMatch() {
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.searchByEmail("none@b.com", true)).thenReturn(List.of());
+
+            assertThat(service.searchByEmail("none@b.com")).isEmpty();
         }
     }
 
