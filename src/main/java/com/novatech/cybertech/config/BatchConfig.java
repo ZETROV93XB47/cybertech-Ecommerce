@@ -15,6 +15,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.CLEAN_UP_EXPIRED_STOCK_JOB;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.KEYCLOAK_OUTBOX_RECONCILIATION_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REDELIVER_FAILED_NOTIFICATIONS_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB;
 
@@ -28,6 +29,7 @@ public class BatchConfig {
     private static final String SHIP_ALL_PAID_ORDERS_TASKLET = "ShipAllAwaitingShippingOrdersTasklet";
     private static final String CLEAN_UP_EXPIRED_STOCK_RESERVATIONS_TASKLET = "CleanUpExpiredStockReservationsTasklet";
     private static final String REDELIVER_FAILED_NOTIFICATIONS_TASKLET = "RedeliverFailedNotificationsTasklet";
+    private static final String KEYCLOAK_OUTBOX_RECONCILIATION_TASKLET = "KeycloakOutboxReconciliationTasklet";
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager platformTransactionManager;
@@ -38,6 +40,7 @@ public class BatchConfig {
     private final ShipAllPaidOrdersTasklet shipAllPaidOrdersTasklet;
     private final CleanUpExpiredStockReservationsTasklet cleanUpExpiredStockReservationsTasklet;
     private final RedeliverFailedNotificationsTasklet redeliverFailedNotificationsTasklet;
+    private final KeycloakOutboxReconciliationTasklet keycloakOutboxReconciliationTasklet;
 
 
     @Primary
@@ -107,6 +110,21 @@ public class BatchConfig {
     public Step redeliverFailedNotificationsStep() {
         return new StepBuilder(REDELIVER_FAILED_NOTIFICATIONS_TASKLET, jobRepository)
                 .tasklet(redeliverFailedNotificationsTasklet, platformTransactionManager)
+                .allowStartIfComplete(true)
+                .build();
+    }
+
+    @Bean(KEYCLOAK_OUTBOX_RECONCILIATION_JOB)
+    public Job keycloakOutboxReconciliationJob() {
+        return new JobBuilder(KEYCLOAK_OUTBOX_RECONCILIATION_JOB, jobRepository)
+                .start(keycloakOutboxReconciliationStep())
+                .build();
+    }
+
+    @Bean(KEYCLOAK_OUTBOX_RECONCILIATION_TASKLET)
+    public Step keycloakOutboxReconciliationStep() {
+        return new StepBuilder(KEYCLOAK_OUTBOX_RECONCILIATION_TASKLET, jobRepository)
+                .tasklet(keycloakOutboxReconciliationTasklet, platformTransactionManager)
                 .allowStartIfComplete(true)
                 .build();
     }
