@@ -22,7 +22,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,7 +38,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.json.JsonCompareMode.LENIENT;
 import static org.springframework.test.json.JsonCompareMode.STRICT;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -72,7 +70,6 @@ class UserManagementAdminControllerTest {
     private static final String CREATE_USER_ENDPOINT = "/api/v1/services/admin/user/create";
     private static final String UPDATE_USER_ENDPOINT = "/api/v1/services/admin/user/update";
     private static final String DELETE_USER_BY_UUID_ENDPOINT = "/api/v1/services/admin/user/delete/{userUuid}";
-    private static final String REGISTER_AUTO_BULK_ENDPOINT = "/api/v1/services/admin/user/register/auto";
 
     private static final String ADMIN_KEYCLOAK_ID = "keycloak-admin";
     private static final String USER_KEYCLOAK_ID = "keycloak-user";
@@ -357,48 +354,5 @@ class UserManagementAdminControllerTest {
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isForbidden())
                 .andExpect(content().json(asJsonString(error), STRICT));
-    }
-
-    // ---------- POST /register/auto (bulk dev seeder) ----------
-
-    @Test
-    void shouldRegisterAutoBulkAsAdminReturning201() throws Exception {
-        // Tech-debt note: this endpoint generates 100 users via DataGenerator.generateUsers(100).
-        // Production endpoint exposing a dev seeder — flag as tech-debt (already documented).
-        final Collection<UserResponseDto> created = List.of(UserDtoFixtures.aSampleUserResponse());
-        when(userManagementServiceImp.createAutomatically(any())).thenReturn(created);
-
-        mockMvc.perform(post(REGISTER_AUTO_BULK_ENDPOINT)
-                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
-                        .with(csrf())
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isCreated())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                // Lenient: comparing a Collection<DTO> via Jackson is shape-stable but timestamps may diff.
-                .andExpect(content().json(asJsonString(created), LENIENT));
-    }
-
-    @Test
-    void shouldRejectRegisterAutoBulkAsRoleUserReturning403() throws Exception {
-        final ErrorResponseDto error = ErrorResponseDto.builder()
-                .message("Access denied")
-                .httpStatusCode(403)
-                .errorCodeType(FUNCTIONAL)
-                .build();
-
-        mockMvc.perform(post(REGISTER_AUTO_BULK_ENDPOINT)
-                        .with(jwtUser(USER_KEYCLOAK_ID))
-                        .with(csrf())
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isForbidden())
-                .andExpect(content().json(asJsonString(error), STRICT));
-    }
-
-    @Test
-    void shouldRejectRegisterAutoBulkWhenAnonymousReturning401() throws Exception {
-        mockMvc.perform(post(REGISTER_AUTO_BULK_ENDPOINT)
-                        .with(csrf())
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isUnauthorized());
     }
 }

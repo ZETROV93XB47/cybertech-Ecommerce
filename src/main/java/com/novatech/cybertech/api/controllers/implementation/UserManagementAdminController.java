@@ -6,7 +6,6 @@ import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.services.core.UserManagementService;
-import com.novatech.cybertech.utils.DataGenerator;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +19,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collection;
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
@@ -65,11 +63,5 @@ public class UserManagementAdminController implements UserManagementAdminApiSpec
     public ResponseEntity<Void> deleteUserByUuid(@PathVariable final UUID userUuid) {
         userManagementServiceImp.deleteByUUID(userUuid);
         return ResponseEntity.noContent().build();
-    }
-
-    @Override
-    @PostMapping(value = "/register/auto", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Collection<UserResponseDto>> createUserAutomatically() {
-        return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.createAutomatically(DataGenerator.generateUsers(100)));
     }
 }

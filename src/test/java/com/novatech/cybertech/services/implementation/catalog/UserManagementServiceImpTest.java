@@ -395,36 +395,6 @@ class UserManagementServiceImpTest {
 
     // -----------------------------------------------------------------
     @Nested
-    @DisplayName("createAutomatically")
-    class CreateAutomatically {
-
-        @Test
-        @DisplayName("saves each user via repository and returns mapped collection")
-        void createAutomatically_happyPath() {
-            UserEntity u1 = UserEntityBuilder.aValidUser();
-            UserEntity u2 = UserEntityBuilder.aValidUser();
-            when(userRepository.save(u1)).thenReturn(u1);
-            when(userRepository.save(u2)).thenReturn(u2);
-            List<UserResponseDto> expected = List.of(UserDtoFixtures.aSampleUserResponse(), UserDtoFixtures.aSampleUserResponse());
-            when(userMapper.mapFromEntityToResponseDto(List.of(u1, u2))).thenReturn(expected);
-
-            assertThat(service.createAutomatically(List.of(u1, u2))).containsExactlyElementsOf(expected);
-
-            verify(userRepository).save(u1);
-            verify(userRepository).save(u2);
-        }
-
-        @Test
-        @DisplayName("empty input results in empty mapping")
-        void createAutomatically_empty() {
-            when(userMapper.mapFromEntityToResponseDto(List.<UserEntity>of())).thenReturn(List.of());
-
-            assertThat(service.createAutomatically(List.of())).isEmpty();
-        }
-    }
-
-    // -----------------------------------------------------------------
-    @Nested
     @DisplayName("updateMe — Frontend-gap #3 self-service profile update")
     class UpdateMe {
 

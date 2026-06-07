@@ -17,12 +17,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 
-import java.util.Collection;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
-@Tag(name = "User Admin", description = "Admin-only endpoints for user CRUD and synthetic user generation")
+@Tag(name = "User Admin", description = "Admin-only endpoints for user CRUD")
 public interface UserManagementAdminApiSpec {
 
     @Operation(summary = "Get all Users (Admin)",
@@ -104,18 +103,4 @@ public interface UserManagementAdminApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<Void> deleteUserByUuid(final UUID userUuid);
-
-    @Operation(summary = "Generate Users Automatically (Admin/Dev)",
-            description = "Generates a batch of users for testing.",
-            security = @SecurityRequirement(name = "keycloak"),
-            responses = {
-                    @ApiResponse(responseCode = "201", description = "Users generated successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = UserResponseDto.class)))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "500", description = "Internal server error",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<Collection<UserResponseDto>> createUserAutomatically();
 }

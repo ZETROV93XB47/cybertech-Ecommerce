@@ -20,7 +20,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -171,12 +170,6 @@ public class UserManagementServiceImp implements UserManagementService {
 
         userRepository.deleteAllByUuidIn(uuids);
         users.forEach(user -> eventPublisher.publishEvent(new UserDeletedEvent(this, user.getKeycloakId())));
-    }
-
-    @Override
-    @Transactional
-    public Collection<UserResponseDto> createAutomatically(Collection<UserEntity> users) {
-        return new ArrayList<>(userMapper.mapFromEntityToResponseDto(users.stream().map(userRepository::save).toList()));
     }
 
     /**
