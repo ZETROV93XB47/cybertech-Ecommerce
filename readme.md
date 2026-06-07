@@ -630,7 +630,7 @@ Pipeline en 11 stages dans `Jenkinsfile` (Checkout → Backend Compile → UTs �
 
 ## Points forts du projet
 
-- **Saga Keycloak ↔ DB** avec compensation propre : DB-first puis Keycloak en `REQUIRES_NEW`, AFTER_COMMIT events pour la suppression, exception remontée si Keycloak échoue après commit DB.
+- **Saga Keycloak ↔ DB crash-safe via outbox** : chaque intention d'effet Keycloak (CREATE/UPDATE/DELETE) est committée en MySQL avant l'opération risquée ; un job Spring Batch réconcilie les lignes qu'un crash a laissées PENDING (CREATE = lookup + compensation d'orphelin — jamais de mot de passe au repos ; UPDATE = ré-application idempotente du payload avec supersede guard ; DELETE = ligne co-commitée avec le delete SQL + re-issue 404-tolérant). Design complet : `docs/architecture/keycloak-outbox-saga.md`.
 - **Cache Redis Lua-CAS** sur l'unlock du panier (raw bytes, jamais de JSON-quoting) avec TTL + jitter pour éviter le thundering herd.
 - **Webhook Stripe blindé** : HMAC-SHA256 + ledger d'idempotency par eventId + guard `livemode` + terminal-state guard + retry 200-ACK pour les non-retryable + 400 sur HMAC fail.
 - **AES-256/GCM** sur les PAN bancaires avec IV unique par enregistrement, validation expiry + Luhn, `applyPciStorageRules` appelé dans tous les chemins (user + admin update, BUG-036 closed).
@@ -658,7 +658,7 @@ Issues du fichier `CLAUDE.md` à la racine — règles non-négociables pour res
 - **Exception handling centralisé** : nouvelle exception → entrée dans `ErrorManagementController` (@ControllerAdvice) avec code dans `ErrorCode.java`.
 - **Pattern `*ApiSpec`** : tout controller a son interface OpenAPI dans `api/controllers/spec/` avec `@Tag` + `@Operation` + `@ApiResponse`.
 - **Events AFTER_COMMIT** : tout side-effect non-transactionnel (email, HTTP externe) passe par un event domaine + `@TransactionalEventListener(AFTER_COMMIT)`.
-- **Saga Keycloak/DB** : passer par `UserPersistenceService` (REQUIRES_NEW), jamais d'appel Keycloak dans `@Transactional`.
+- **Saga Keycloak/DB** : passer par `UserPersistenceService` (REQUIRES_NEW), jamais d'appel Keycloak dans `@Transactional` ; toute nouvelle écriture croisée Keycloak+DB enregistre son intention via `KeycloakOutboxService` (breadcrumb durable) — cf. `docs/architecture/keycloak-outbox-saga.md`.
 - **Streams plutôt que for-loops**.
 - **Nouvelles entités étendent `BaseEntity`** (UUID auto via `@PrePersist`).
 
