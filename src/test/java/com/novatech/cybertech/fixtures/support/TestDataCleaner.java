@@ -30,6 +30,7 @@ public class TestDataCleaner {
             "orderTable",
             "bankCardTable",
             "notificationTable",
+            "keycloak_outbox",
             "productTable",
             "userTable"
     );

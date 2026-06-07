@@ -1,6 +1,9 @@
 # Spec — Outbox Keycloak minimal pour la saga utilisateur
 
 > Date : 2026-06-04 · Statut : validé en design, en attente de relecture spec
+> **Révision 2026-06-08 :** scope élargi à **CREATE + UPDATE + DELETE** (décision utilisateur —
+> l'UPDATE reçoit le breadcrumb à ré-application idempotente initialement décrit en §8).
+> Implémenté sur `dev/develop`.
 
 ## 1. Contexte & motivation
 
@@ -28,9 +31,10 @@ ce qu'un crash a laissé en suspens.
    lignes laissées `PENDING` par un **vrai crash** (au-delà d'une fenêtre de staleness). Pas de
    « 500 puis le compte apparaît plus tard ».
 
-   **Scope : CREATE + DELETE uniquement.** `update` est **laissé tel quel** (Keycloak-first + DB
-   REQUIRES_NEW + log de réconciliation manuelle) — pas d'outbox sur update (décision utilisateur :
-   le gain y est marginal). Il pourra recevoir le même breadcrumb plus tard (cf. §8).
+   **Scope (révisé 2026-06-08) : CREATE + UPDATE + DELETE.** `update` reçoit le breadcrumb à
+   ré-application idempotente (§4) — le payload du patch est persistable sans secret, donc la
+   récupération après crash est **forward** (re-application aux deux systèmes), contrairement au
+   CREATE qui ne peut que compenser.
 
 2. **Le job ne crée JAMAIS d'user Keycloak (contrainte sécurité décisive).** Créer un user Keycloak
    exige le **mot de passe brut**. On ne le **stocke jamais** au repos. Conséquence : le mot de passe
@@ -52,10 +56,11 @@ ce qu'un crash a laissé en suspens.
 
 | colonne | type | rôle |
 |---|---|---|
-| `operation_type` | enum `OutboxOperationType` { CREATE, DELETE } | type d'action Keycloak |
+| `operation_type` | enum `OutboxOperationType` { CREATE, UPDATE, DELETE } | type d'action Keycloak |
 | `status` | enum `OutboxStatus` { PENDING, DONE, FAILED } | cycle de vie |
 | `keycloak_id` | String, nullable | rempli pour DELETE ; pour CREATE au DONE (audit) |
 | `email` | String, nullable, indexé | clé de réconciliation pour CREATE (lookup Keycloak) |
+| `payload` | String (JSON), nullable | UPDATE uniquement : `UserUpdateRequestDto` sérialisé, ré-appliqué par le job |
 | `attempts` | int, default 0 | incrémenté à chaque passage job ; plafond → FAILED |
 | `last_error` | String, nullable, tronqué | dernier message d'échec (debug / lignes FAILED) |
 
@@ -90,10 +95,22 @@ AFTER_COMMIT : Keycloak.deleteUser + status=DONE              (immédiat, happy 
 Remplace `UserDeletedEvent` / `UserDeletionListener` (le cousin non durable) ; `deleteByUUIDs` (bulk)
 écrit une ligne outbox par user supprimé.
 
-### UPDATE — inchangé (hors scope)
-`update` garde sa saga actuelle : Keycloak-first (fail-fast sur rejet de validation) + DB
-`REQUIRES_NEW` + log de réconciliation manuelle sur le cas rare (crash Keycloak→DB). **Aucune ligne
-outbox.** Décision utilisateur : le gain y est marginal. Évolution possible en §8.
+### UPDATE — breadcrumb + ré-application idempotente (révisé 2026-06-08)
+```
+TX1 : INSERT outbox(UPDATE, keycloakId, payloadJson, PENDING)   ── commit (intention durable)
+Keycloak.updateUser(…)                  rejet propre → FAILED terminal + rethrow (rien n'a muté)
+TX2 : DB save (REQUIRES_NEW)            échec → la ligne RESTE PENDING + rethrow
+markDone
+```
+**Job (crash OU divergence Keycloak-ahead)** : ligne `PENDING` UPDATE périmée → ré-application
+idempotente du payload aux **deux** systèmes (Keycloak PUT + patch DB), puis `DONE`. Deux gardes :
+- user disparu → `DONE` (la saga DELETE possède le nettoyage) ;
+- **supersede guard** : si `user.updatedAt > row.createdAt`, une écriture plus récente a gagné —
+  ré-appliquer ressusciterait des données périmées → `DONE` sans toucher aux systèmes.
+
+C'est le seul des trois types réconcilié en **forward recovery** : le patch ne contient aucun
+secret, donc il est rejouable — y compris pour l'échec DB *attrapé* après un Keycloak OK (l'ancien
+log « CRITICAL — manual reconciliation » devient une convergence automatique).
 
 ## 5. Composants
 
@@ -138,8 +155,7 @@ outbox.** Décision utilisateur : le gain y est marginal. Évolution possible en
 
 ## 8. Hors scope / évolutions futures (documentées, non implémentées)
 
-- **Breadcrumb outbox sur `update`** (même pattern que create : ligne pré-appel + ré-application
-  idempotente par le job) — laissé de côté car gain marginal.
+- ~~Breadcrumb outbox sur `update`~~ — **implémenté** (révision 2026-06-08, cf. §4).
 - Vraie **dead-letter box** séparée + alerting.
 - **Outbox transactionnel générique** (CDC/Debezium, broker) pour d'autres effets externes.
 - Réconciliation inverse périodique (scan Keycloak ↔ DB) pour détecter des divergences hors outbox.

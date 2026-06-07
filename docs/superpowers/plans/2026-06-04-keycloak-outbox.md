@@ -1,4 +1,11 @@
-# Keycloak Outbox (CREATE + DELETE) Implementation Plan
+# Keycloak Outbox (CREATE + UPDATE + DELETE) Implementation Plan
+
+> **Révision 2026-06-08 — IMPLÉMENTÉ.** Scope élargi à l'UPDATE (breadcrumb avec payload JSON +
+> ré-application idempotente + supersede guard) sur décision utilisateur. Les tâches 1-6 sont
+> livrées sur `dev/develop` (commits `6b24724`, `504766f`, `35d797d` + IT). Différences notables
+> vs le plan original : pas de `@DataJpaTest` (aucun précédent projet — la derived query est
+> couverte par l'IT), `create()` marque aussi FAILED sur échec Keycloak propre, l'entité porte une
+> colonne `payload` (UPDATE), et `deleteUser` surfaçait silencieusement les erreurs — corrigé.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
