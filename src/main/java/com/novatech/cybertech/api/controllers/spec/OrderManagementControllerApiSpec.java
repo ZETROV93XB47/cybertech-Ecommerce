@@ -159,40 +159,6 @@ public interface OrderManagementControllerApiSpec {
     ResponseEntity<OrderStatusDto> getOrderStatusByUuid(final UUID orderUuid, @Parameter(hidden = true) final Jwt jwt);
 
 
-    @Operation(summary = "Place an auto-generated order (admin debug helper)",
-            description = "Admin-only debug / load-test utility that forges an order from synthetic cart data via the data generator. Restricted to ADMIN to avoid letting any authenticated user spam orders against another's cart state (BUG-IDOR-D4).",
-            security = @SecurityRequirement(name = "keycloak"),
-            responses = {
-                    @ApiResponse(responseCode = "201", description = "Auto-generated order placed successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Underlying resource (e.g., generated user/product) not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<OrderResponseDto> placeOrder2(@Parameter(hidden = true) final Jwt jwt);
-
-
-    @Operation(summary = "Delete a Order by UUID",
-            description = "Deletes a order based on their unique UUID.",
-            security = @SecurityRequirement(name = "keycloak"),
-            parameters = {
-                    @Parameter(name = "uuid", description = "The UUID of the order to delete", required = true, schema = @Schema(implementation = UUID.class))
-            },
-            responses = {
-                    @ApiResponse(responseCode = "204", description = "Order deleted successfully (No Content)"),
-                    @ApiResponse(responseCode = "400", description = "Bad request (e.g., invalid UUID format)",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Order not found",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "500", description = "Internal server error during order deletion",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<Void> deleteOrderByUuid(final UUID orderUuid, final Jwt jwt);
-
-
     @Operation(summary = "List the authenticated user's orders (paginated)",
             description = """
                     Frontend-gap #1 — paginated listing of every order belonging to the authenticated

@@ -29,7 +29,6 @@ import java.util.UUID;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_SORT_FIELD;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.ORDER_MANAGEMENT_CONTROLLER_BASE_PATH;
-import static com.novatech.cybertech.utils.DataGenerator.orderGenerator;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 
@@ -76,17 +75,6 @@ public class OrderManagementController implements OrderManagementControllerApiSp
     }
 
 
-    // BUG-IDOR-D4: data-generator helper restricted to ADMIN. The endpoint forges an order
-    // from synthetic cart data and is solely a debug / load-test utility — exposing it to USER
-    // would let any authenticated caller spam orders against another's cart state.
-    @Override
-    @PreAuthorize("hasRole('ADMIN')")
-    @PostMapping(value = "/place/auto", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<OrderResponseDto> placeOrder2(@AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(orderManagementService.placeOrder(orderGenerator(), jwt));
-    }
-
-
     /**
      * BUG-IDOR-D1: ownership-checked read. Forwards the JWT subject to the service so the
      * service layer can throw {@link com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException}
@@ -116,14 +104,6 @@ public class OrderManagementController implements OrderManagementControllerApiSp
         return ResponseEntity.ok(orderManagementService.getStatusByUUID(orderUuid, jwt.getSubject()));
     }
 
-
-    @Override
-    @PreAuthorize("hasRole('ADMIN')")
-    @DeleteMapping(value = "/delete/{uuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deleteOrderByUuid(@PathVariable("uuid") final UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
-        orderManagementService.deleteByUUID(uuid, jwt);
-        return ResponseEntity.noContent().build();
-    }
 
     /**
      * Frontend-gap #1 — paginated read of the authenticated user's own orders.

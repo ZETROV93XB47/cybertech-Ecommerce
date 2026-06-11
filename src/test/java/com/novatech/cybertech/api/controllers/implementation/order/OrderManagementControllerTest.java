@@ -37,14 +37,11 @@ import static com.novatech.cybertech.utils.TestUtils.asJsonString;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.json.JsonCompareMode.STRICT;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.hamcrest.Matchers.startsWith;
@@ -65,13 +62,11 @@ class OrderManagementControllerTest {
 
     private static final String BASE = "/api/v1/services/management/order";
     private static final String PLACE = BASE + "/place";
-    private static final String PLACE_AUTO = BASE + "/place/auto";
     private static final String CANCEL = BASE + "/cancel";
     private static final String UPDATE = BASE + "/update";
     private static final String RETRY_PAYMENT = BASE + "/retry-payment/{uuid}";
     private static final String GET_BY_UUID = BASE + "/get/{uuid}";
     private static final String STATUS_BY_UUID = BASE + "/status/{uuid}";
-    private static final String DELETE_BY_UUID = BASE + "/delete/{uuid}";
     private static final String GET_MINE = BASE + "/mine";
 
     private static final String KEYCLOAK_ID = "keycloak-subject-id";
@@ -157,41 +152,6 @@ class OrderManagementControllerTest {
                         .accept(APPLICATION_JSON)
                         .content(asJsonString(request)))
                 .andExpect(status().isUnauthorized());
-    }
-
-    // ---------- POST /place/auto ----------
-
-    @Test
-    void shouldPlaceOrderViaAutoEndpointAsAdmin() throws Exception {
-        // BUG-IDOR-D4: /place/auto is now ADMIN-only. Use an admin JWT for the happy path.
-        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponse();
-        when(orderService.placeOrder(any(OrderPlacingRequestDto.class), any(Jwt.class))).thenReturn(response);
-
-        mockMvc.perform(post(PLACE_AUTO)
-                        .with(jwtAdmin("admin-id"))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isCreated())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(response), STRICT));
-
-        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
-        verify(orderService).placeOrder(any(OrderPlacingRequestDto.class), jwtCaptor.capture());
-        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo("admin-id");
-    }
-
-    @Test
-    void shouldRejectPlaceAutoEndpointAsRoleUserReturning403() throws Exception {
-        // BUG-IDOR-D4: the data-generator endpoint must not be reachable by ROLE_USER.
-        mockMvc.perform(post(PLACE_AUTO)
-                        .with(jwtUser(KEYCLOAK_ID))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isForbidden());
     }
 
     // ---------- POST /cancel ----------
@@ -462,75 +422,6 @@ class OrderManagementControllerTest {
         mockMvc.perform(get(GET_BY_UUID, orderUuid)
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
-    }
-
-    // ---------- DELETE /delete/{uuid} ----------
-
-    @Test
-    void shouldDeleteOrderByUuidAsAdmin() throws Exception {
-        UUID orderUuid = UUID.randomUUID();
-        doNothing().when(orderService).deleteByUUID(eq(orderUuid), any(Jwt.class));
-
-        mockMvc.perform(delete(DELETE_BY_UUID, orderUuid)
-                        .with(jwtAdmin("admin-id"))
-                        .with(csrf())
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isNoContent());
-
-        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
-        verify(orderService).deleteByUUID(eq(orderUuid), jwtCaptor.capture());
-        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo("admin-id");
-    }
-
-    @Test
-    void shouldFailDeletingOrderByUuidAsUserCauseForbidden() throws Exception {
-        // BUG-020 update: with W0's @EnableMethodSecurity(proxyTargetClass = true) the @PreAuthorize
-        // is now enforced — ROLE_USER should be rejected with 403 via the AuthorizationDeniedException handler.
-        UUID orderUuid = UUID.randomUUID();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Access denied")
-                .httpStatusCode(403)
-                .errorCodeType(FUNCTIONAL)
-                .build();
-
-        mockMvc.perform(delete(DELETE_BY_UUID, orderUuid)
-                        .with(jwtUser(KEYCLOAK_ID))
-                        .with(csrf())
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isForbidden())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
-    }
-
-    @Test
-    void shouldFailDeletingOrderByUuidWhenAnonymousCauseUnauthorized() throws Exception {
-        UUID orderUuid = UUID.randomUUID();
-
-        mockMvc.perform(delete(DELETE_BY_UUID, orderUuid)
-                        .with(csrf())
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void shouldFailDeletingOrderByUuidWhenOrderNotFound() throws Exception {
-        UUID orderUuid = UUID.randomUUID();
-        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Order not found for delete")
-                .httpStatusCode(404)
-                .errorCodeType(FUNCTIONAL)
-                .build();
-
-        doThrow(new OrderNotFoundException("Order not found for delete"))
-                .when(orderService).deleteByUUID(eq(orderUuid), any(Jwt.class));
-
-        mockMvc.perform(delete(DELETE_BY_UUID, orderUuid)
-                        .with(jwtAdmin("admin-id"))
-                        .with(csrf())
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isNotFound())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
     }
 
     // ---------- GET /status/{uuid} (#5 Option B) ----------
