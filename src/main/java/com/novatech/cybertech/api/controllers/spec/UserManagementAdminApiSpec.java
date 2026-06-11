@@ -17,6 +17,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -103,4 +104,14 @@ public interface UserManagementAdminApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<Void> deleteUserByUuid(final UUID userUuid);
+
+    @Operation(summary = "Register an auto-generated synthetic user (Admin debug helper)",
+            description = "Admin-only developer / load-test utility that mints a synthetic user (Keycloak + DB) from random data via the data generator. Returns a compact map including the generated keycloakId (which UserResponseDto @JsonIgnores) so the admin caller can identify the synthetic user.",
+            security = @SecurityRequirement(name = "keycloak"),
+            responses = {
+                    @ApiResponse(responseCode = "201", description = "Synthetic user created; body = { id, keycloakId, email, username }"),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<Map<String, Object>> registerAuto();
 }

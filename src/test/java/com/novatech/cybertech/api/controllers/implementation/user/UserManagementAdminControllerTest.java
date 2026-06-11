@@ -70,6 +70,7 @@ class UserManagementAdminControllerTest {
     private static final String CREATE_USER_ENDPOINT = "/api/v1/services/admin/user/create";
     private static final String UPDATE_USER_ENDPOINT = "/api/v1/services/admin/user/update";
     private static final String DELETE_USER_BY_UUID_ENDPOINT = "/api/v1/services/admin/user/delete/{userUuid}";
+    private static final String REGISTER_AUTO_SINGLE_ENDPOINT = "/api/v1/services/admin/user/register/auto/single";
 
     private static final String ADMIN_KEYCLOAK_ID = "keycloak-admin";
     private static final String USER_KEYCLOAK_ID = "keycloak-user";
@@ -354,5 +355,53 @@ class UserManagementAdminControllerTest {
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isForbidden())
                 .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    // ---------- POST /register/auto/single ----------
+
+    @Test
+    void shouldRejectRegisterAutoSingleWhenAnonymousAfterBug201Fix() throws Exception {
+        // BUG-201 — CLOSED. registerAuto() is now @PreAuthorize("hasRole('ADMIN')") AND the
+        // SecurityConfig#PUBLIC_URLS whitelist no longer covers /register/auto/** (only the
+        // exact /register path is anonymous). The URL is now `anyRequest().authenticated()`
+        // → CustomAuthenticationEntryPoint translates a missing JWT into 401.
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldRejectRegisterAutoSingleAsRoleUserReturning403() throws Exception {
+        // BUG-201 — even an authenticated non-ADMIN must be rejected (403) by @PreAuthorize.
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldRegisterAutoSingleAsAdminReturning201() throws Exception {
+        // Admin call still works — covers the happy path regardless of BUG-201 wiring.
+        // Wave 3 regression-fix: response body is a Map.of(id, keycloakId, email, username)
+        // (mirrors the /register endpoint) so the synthetic user's keycloakId is exposed —
+        // the @JsonIgnore on UserResponseDto.keycloakId would have suppressed it otherwise.
+        final UserResponseDto created = UserDtoFixtures.aSampleUserResponse();
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
+
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.id").value(created.getUuid().toString()))
+                .andExpect(jsonPath("$.keycloakId").value(created.getKeycloakId()))
+                .andExpect(jsonPath("$.email").value(created.getEmail()))
+                .andExpect(jsonPath("$.username").value(created.getUsername()));
     }
 }

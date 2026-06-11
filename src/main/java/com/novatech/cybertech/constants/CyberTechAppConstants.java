@@ -52,6 +52,14 @@ public class CyberTechAppConstants {
 
     public static final String RESERVATION_KEY_PREFIX = "reservation:order:";
 
+    // Shared JSON response-body keys for the user register / register-auto endpoints (extracted
+    // here so the same semantic literals are not duplicated across UserManagementController and
+    // UserManagementAdminController — see CLAUDE.md "constantes obligatoires").
+    public static final String RESPONSE_KEY_ID = "id";
+    public static final String RESPONSE_KEY_KEYCLOAK_ID = "keycloakId";
+    public static final String RESPONSE_KEY_EMAIL = "email";
+    public static final String RESPONSE_KEY_USERNAME = "username";
+
     // Pagination defaults. Used by @PageableDefault — the global hard cap lives in application.properties
     // (spring.data.web.pageable.max-page-size). Per-endpoint size defaults are per-resource for UX.
     public static final int DEFAULT_PAGE_SIZE_ADMIN = 20;

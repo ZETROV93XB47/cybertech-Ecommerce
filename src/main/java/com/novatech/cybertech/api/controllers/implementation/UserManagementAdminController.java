@@ -19,12 +19,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_ADMIN;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_SORT_FIELD;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESPONSE_KEY_EMAIL;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESPONSE_KEY_ID;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESPONSE_KEY_KEYCLOAK_ID;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESPONSE_KEY_USERNAME;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH;
+import static com.novatech.cybertech.utils.DataGenerator.generateUserCreateRequestDto;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @Slf4j
@@ -63,5 +69,17 @@ public class UserManagementAdminController implements UserManagementAdminApiSpec
     public ResponseEntity<Void> deleteUserByUuid(@PathVariable final UUID userUuid) {
         userManagementServiceImp.deleteByUUID(userUuid);
         return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    @PostMapping(value = "/register/auto/single", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> registerAuto() {
+        final UserResponseDto created = userManagementServiceImp.create(generateUserCreateRequestDto());
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                RESPONSE_KEY_ID, created.getUuid(),
+                RESPONSE_KEY_KEYCLOAK_ID, created.getKeycloakId(),
+                RESPONSE_KEY_EMAIL, created.getEmail(),
+                RESPONSE_KEY_USERNAME, created.getUsername()
+        ));
     }
 }
