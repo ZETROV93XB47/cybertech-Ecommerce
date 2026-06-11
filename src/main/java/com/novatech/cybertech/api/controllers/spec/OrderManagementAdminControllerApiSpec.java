@@ -80,5 +80,5 @@ public interface OrderManagementAdminControllerApiSpec {
                     @ApiResponse(responseCode = "404", description = "Order not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error during order deletion", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Void> deleteOrderByUuid(final UUID orderUuid, final Jwt jwt);
+    ResponseEntity<Void> deleteOrderByUuid(final UUID uuid, final Jwt jwt);
 }
