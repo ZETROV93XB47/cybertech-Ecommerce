@@ -83,7 +83,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class UserRegistrationFlowIT {
 
     private static final String REGISTER_ENDPOINT = "/api/v1/services/user/register";
-    private static final String REGISTER_AUTO_SINGLE_ENDPOINT = "/api/v1/services/user/register/auto/single";
+    private static final String REGISTER_AUTO_SINGLE_ENDPOINT = "/api/v1/services/admin/user/register/auto/single";
     private static final String ADMIN_GET_ALL_USERS_ENDPOINT = "/api/v1/services/admin/user/get/all";
     private static final String ACTUATOR_HEALTH_ENDPOINT = "/actuator/health";
 

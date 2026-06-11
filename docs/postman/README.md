@@ -66,7 +66,7 @@ Public (no token):
 ADMIN-only (caller must have `ROLE_ADMIN`):
 
 - Everything under `/api/v1/services/admin/**` (user admin, product admin, discount admin)
-- `POST /api/v1/services/user/register/auto/single`
+- `POST /api/v1/services/admin/user/register/auto/single`
 - `POST /api/v1/services/admin/management/order/place/auto`
 - `DELETE /api/v1/services/admin/management/order/delete/{uuid}`
 - Everything under `/api/v1/services/admin/bank-card/**` (paged list, get-by-uuid, create, update, delete)
