@@ -11,19 +11,27 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Set;
+import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_ADMIN;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_SORT_FIELD;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.ORDER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH;
+import static com.novatech.cybertech.utils.DataGenerator.orderGenerator;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 /**
@@ -52,5 +60,18 @@ public class OrderManagementAdminController implements OrderManagementAdminContr
             @RequestParam(value = "userKeycloakId", required = false) final String userKeycloakId,
             @PageableDefault(size = DEFAULT_PAGE_SIZE_ADMIN, sort = DEFAULT_SORT_FIELD, direction = Sort.Direction.DESC) final Pageable pageable) {
         return ResponseEntity.ok(orderManagementService.findAllPaged(status, userKeycloakId, pageable));
+    }
+
+    @Override
+    @PostMapping(value = "/place/auto", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<OrderResponseDto> placeOrder2(@AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(orderManagementService.placeOrder(orderGenerator(), jwt));
+    }
+
+    @Override
+    @DeleteMapping(value = "/delete/{uuid}", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> deleteOrderByUuid(@PathVariable("uuid") final UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
+        orderManagementService.deleteByUUID(uuid, jwt);
+        return ResponseEntity.noContent().build();
     }
 }

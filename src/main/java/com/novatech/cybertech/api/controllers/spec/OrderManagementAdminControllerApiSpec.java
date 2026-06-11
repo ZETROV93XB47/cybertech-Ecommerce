@@ -13,8 +13,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.Set;
+import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -52,4 +54,31 @@ public interface OrderManagementAdminControllerApiSpec {
             @Parameter(description = "Optional user keycloakId to filter by") final String userKeycloakId,
             @Parameter(hidden = true) final Pageable pageable
     );
+
+    @Operation(summary = "Place an auto-generated order (admin debug helper)",
+            description = "Admin-only debug / load-test utility that forges an order from synthetic cart data via the data generator. Restricted to ADMIN to avoid letting any authenticated user spam orders against another's cart state (BUG-IDOR-D4).",
+            security = @SecurityRequirement(name = "keycloak"),
+            responses = {
+                    @ApiResponse(responseCode = "201", description = "Auto-generated order placed successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "Underlying resource (e.g., generated user/product) not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<OrderResponseDto> placeOrder2(@Parameter(hidden = true) final Jwt jwt);
+
+    @Operation(summary = "Delete an Order by UUID (Admin)",
+            description = "Deletes an order based on its unique UUID.",
+            security = @SecurityRequirement(name = "keycloak"),
+            parameters = {
+                    @Parameter(name = "uuid", description = "The UUID of the order to delete", required = true, schema = @Schema(implementation = UUID.class))
+            },
+            responses = {
+                    @ApiResponse(responseCode = "204", description = "Order deleted successfully (No Content)"),
+                    @ApiResponse(responseCode = "400", description = "Bad request (e.g., invalid UUID format)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "Order not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "500", description = "Internal server error during order deletion", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<Void> deleteOrderByUuid(final UUID orderUuid, final Jwt jwt);
 }
