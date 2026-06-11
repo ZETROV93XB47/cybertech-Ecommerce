@@ -67,9 +67,9 @@ ADMIN-only (caller must have `ROLE_ADMIN`):
 
 - Everything under `/api/v1/services/admin/**` (user admin, product admin, discount admin)
 - `POST /api/v1/services/user/register/auto/single`
-- `POST /api/v1/services/management/order/place/auto`
-- `DELETE /api/v1/services/management/order/delete/{uuid}`
-- All admin routes in `Bank Card` (paged list, get-by-uuid without `/default`, raw POST/PUT/DELETE on the base path)
+- `POST /api/v1/services/admin/management/order/place/auto`
+- `DELETE /api/v1/services/admin/management/order/delete/{uuid}`
+- Everything under `/api/v1/services/admin/bank-card/**` (paged list, get-by-uuid, create, update, delete)
 
 Everything else is `USER` or `ADMIN` and ownership-checked at the service layer (BUG-IDOR-D1, BUG-IDOR-D2, BUG-161).
 

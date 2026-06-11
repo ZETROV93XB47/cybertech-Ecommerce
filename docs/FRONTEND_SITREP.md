@@ -199,8 +199,8 @@ All paths below are absolute. Default base is `http://localhost:8081`.
 | POST | `/api/v1/services/management/order/update` | USER | `OrderUpdateRequestDto` | `OrderResponseDto` |
 | POST | `/api/v1/services/management/order/retry-payment/{uuid}` | USER | — | `OrderResponseDto` |
 | GET | `/api/v1/services/management/order/get/{uuid}` | USER | — | `OrderResponseDto` |
-| DELETE | `/api/v1/services/management/order/delete/{uuid}` | ADMIN | — | 204 |
-| POST | `/api/v1/services/management/order/place/auto` | USER | — | `OrderResponseDto` (synthetic, dev-only) |
+| DELETE | `/api/v1/services/admin/management/order/delete/{uuid}` | ADMIN | — | 204 |
+| POST | `/api/v1/services/admin/management/order/place/auto` | ADMIN | — | `OrderResponseDto` (synthetic, dev-only) |
 | GET | `/api/v1/services/management/order/status/{uuid}` | USER | — | `OrderStatusDto` `{uuid, status}` — lightweight, ownership-checked, for the order-confirmation polling loop |
 
 ### 6.4 Bank cards
