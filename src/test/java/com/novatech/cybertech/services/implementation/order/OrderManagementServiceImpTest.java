@@ -1116,11 +1116,21 @@ class OrderManagementServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("getAll / getByUUID / getByUUIDs (admin reads)")
+    @DisplayName("getAll / getByUUID / getByUUIDs (ownership-checked reads, admin bypass)")
     class Reads {
 
+        /** Matches the principal name installed by {@link #setAuthenticatedRole(String)}. */
+        private static final String CALLER = "test-user";
+        private static final String FOREIGNER = "someone-else";
+
+        private OrderEntity ownedBy(final String kc) {
+            return OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(kc).build())
+                    .build();
+        }
+
         @Test
-        @DisplayName("getAll returns all orders mapped to response DTOs")
+        @DisplayName("getAll returns all orders mapped to response DTOs (admin-only, unchanged)")
         void getAll_happy() {
             final OrderEntity o1 = OrderEntityBuilder.aValidOrder();
             final OrderEntity o2 = OrderEntityBuilder.aValidOrder();
@@ -1131,21 +1141,46 @@ class OrderManagementServiceImpTest {
             verify(orderMapper, times(2)).mapFromEntityToResponseDto(any(OrderEntity.class));
         }
 
+        // ---- getByUUID(UUID) — now ownership-checked with admin bypass ----
+
         @Test
-        @DisplayName("getByUUID happy path")
-        void getByUUID_happy() {
-            final OrderEntity o = OrderEntityBuilder.aValidOrder();
+        @DisplayName("getByUUID: owning USER gets the order")
+        void getByUUID_ownerOk() {
+            setAuthenticatedRole("ROLE_USER");
+            final OrderEntity o = ownedBy(CALLER);
             when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
 
-            final OrderResponseDto resp = service.getByUUID(o.getUuid());
-
-            assertThat(resp).isNotNull();
+            assertThat(service.getByUUID(o.getUuid())).isNotNull();
             verify(orderMapper).mapFromEntityToResponseDto(o);
         }
 
         @Test
-        @DisplayName("getByUUID throws when not found")
+        @DisplayName("getByUUID: non-owner USER -> OrderDoesntBelongsToUserException (IDOR guard)")
+        void getByUUID_nonOwnerThrows() {
+            setAuthenticatedRole("ROLE_USER");
+            final OrderEntity o = ownedBy(FOREIGNER);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            assertThatThrownBy(() -> service.getByUUID(o.getUuid()))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+            verify(orderMapper, never()).mapFromEntityToResponseDto(any());
+        }
+
+        @Test
+        @DisplayName("getByUUID: ADMIN bypasses the ownership check")
+        void getByUUID_adminBypass() {
+            setAuthenticatedRole("ROLE_ADMIN");
+            final OrderEntity o = ownedBy(FOREIGNER);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            assertThat(service.getByUUID(o.getUuid())).isNotNull();
+            verify(orderMapper).mapFromEntityToResponseDto(o);
+        }
+
+        @Test
+        @DisplayName("getByUUID throws when not found (before ownership check)")
         void getByUUID_notFound() {
+            setAuthenticatedRole("ROLE_USER");
             final UUID missing = UUID.randomUUID();
             when(orderRepository.findByUuid(missing)).thenReturn(Optional.empty());
 
@@ -1153,15 +1188,40 @@ class OrderManagementServiceImpTest {
                     .isInstanceOf(OrderNotFoundException.class);
         }
 
+        // ---- getByUUIDs(Collection) — throws 403 on the whole batch if any UUID is foreign ----
+
         @Test
-        @DisplayName("getByUUIDs returns mapped collection")
-        void getByUUIDs_happy() {
-            final OrderEntity o = OrderEntityBuilder.aValidOrder();
-            when(orderRepository.findAllByUuidIn(any())).thenReturn(List.of(o));
+        @DisplayName("getByUUIDs: USER owning every order -> all returned")
+        void getByUUIDs_allOwned() {
+            setAuthenticatedRole("ROLE_USER");
+            final OrderEntity o1 = ownedBy(CALLER);
+            final OrderEntity o2 = ownedBy(CALLER);
+            when(orderRepository.findAllByUuidIn(any())).thenReturn(List.of(o1, o2));
 
-            final Collection<OrderResponseDto> resp = service.getByUUIDs(List.of(o.getUuid()));
+            assertThat(service.getByUUIDs(List.of(o1.getUuid(), o2.getUuid()))).hasSize(2);
+        }
 
-            assertThat(resp).hasSize(1);
+        @Test
+        @DisplayName("getByUUIDs: any foreign UUID -> 403 on the whole batch (USER)")
+        void getByUUIDs_foreignThrows() {
+            setAuthenticatedRole("ROLE_USER");
+            final OrderEntity mine = ownedBy(CALLER);
+            final OrderEntity foreign = ownedBy(FOREIGNER);
+            when(orderRepository.findAllByUuidIn(any())).thenReturn(List.of(mine, foreign));
+
+            assertThatThrownBy(() -> service.getByUUIDs(List.of(mine.getUuid(), foreign.getUuid())))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+            verify(orderMapper, never()).mapFromEntityToResponseDto(any());
+        }
+
+        @Test
+        @DisplayName("getByUUIDs: ADMIN bypasses ownership")
+        void getByUUIDs_adminBypass() {
+            setAuthenticatedRole("ROLE_ADMIN");
+            final OrderEntity foreign = ownedBy(FOREIGNER);
+            when(orderRepository.findAllByUuidIn(any())).thenReturn(List.of(foreign));
+
+            assertThat(service.getByUUIDs(List.of(foreign.getUuid()))).hasSize(1);
         }
     }
 

@@ -108,10 +108,17 @@ public class OrderManagementServiceImp implements OrderManagementService {
         return orderRepository.findAll().stream().map(orderMapper::mapFromEntityToResponseDto).toList();
     }
 
-    //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
+    /**
+     * No-identity-arg overload kept for the {@link CrudBaseService}-style surface. It carries no IDOR
+     * risk because it resolves the caller from the {@link org.springframework.security.core.context.SecurityContextHolder}
+     * (via {@link ControllerSecurityUtils#currentCallerName()}) and delegates to the ownership-checked
+     * {@link #getByUUID(UUID, String)} — so a regular USER only ever reads their own order, while a
+     * {@code ROLE_ADMIN} caller bypasses the check. Not exposed on the {@link OrderManagementService}
+     * interface; this guard is defence-in-depth should a future caller wire it up.
+     */
     @Transactional(readOnly = true)
-    public OrderResponseDto getByUUID(UUID uuid) {
-        return orderMapper.mapFromEntityToResponseDto(orderRepository.findByUuid(uuid).orElseThrow(() -> new OrderNotFoundException("No product with the UUID : " + uuid + " found")));
+    public OrderResponseDto getByUUID(final UUID uuid) {
+        return getByUUID(uuid, ControllerSecurityUtils.currentCallerName());
     }
 
     /**
@@ -139,14 +146,27 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final OrderEntity order = orderRepository.findByUuid(uuid)
                 .orElseThrow(() -> new OrderNotFoundException("No product with the UUID : " + uuid + " found"));
 
+        assertCallerOwnsOrIsAdmin(order, keycloakId, uuid);
+
+        return orderMapper.mapFromEntityToResponseDto(order);
+    }
+
+    /**
+     * IDOR guard shared by the single-read, bulk-read and status-read paths: a non-admin caller must own
+     * {@code order} (its initiator's {@code keycloakId} equals {@code keycloakId}); a {@code ROLE_ADMIN}
+     * caller bypasses the check entirely. Centralised here so the ownership predicate lives in exactly one
+     * place (was previously copy-pasted across {@link #getByUUID(UUID, String)} and
+     * {@link #getStatusByUUID(UUID, String)}).
+     *
+     * @throws OrderDoesntBelongsToUserException when a non-admin caller is not the order's initiator.
+     */
+    private void assertCallerOwnsOrIsAdmin(final OrderEntity order, final String keycloakId, final UUID uuid) {
         if (!ControllerSecurityUtils.isCurrentCallerAdmin()
                 && (order.getUserEntity() == null
                     || order.getUserEntity().getKeycloakId() == null
                     || !order.getUserEntity().getKeycloakId().equals(keycloakId))) {
             throw new OrderDoesntBelongsToUserException("Order " + uuid + " does not belong to the current user");
         }
-
-        return orderMapper.mapFromEntityToResponseDto(order);
     }
 
     /**
@@ -163,12 +183,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final OrderEntity order = orderRepository.findByUuid(orderUuid)
                 .orElseThrow(() -> new OrderNotFoundException("No order with the UUID : " + orderUuid + " found"));
 
-        if (!ControllerSecurityUtils.isCurrentCallerAdmin()
-                && (order.getUserEntity() == null
-                    || order.getUserEntity().getKeycloakId() == null
-                    || !order.getUserEntity().getKeycloakId().equals(keycloakId))) {
-            throw new OrderDoesntBelongsToUserException("Order " + orderUuid + " does not belong to the current user");
-        }
+        assertCallerOwnsOrIsAdmin(order, keycloakId, orderUuid);
 
         return OrderStatusDto.builder()
                 .uuid(order.getUuid())
@@ -176,13 +191,20 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .build();
     }
 
-    //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
+    /**
+     * Bulk counterpart of {@link #getByUUID(UUID)} with the same defence-in-depth IDOR guard: a regular
+     * USER may only read orders they own — if <em>any</em> requested UUID resolves to another user's order
+     * the whole batch is rejected with {@link OrderDoesntBelongsToUserException} (fail-closed, consistent
+     * with the single-read contract). A {@code ROLE_ADMIN} caller bypasses the check. Not exposed on the
+     * {@link OrderManagementService} interface.
+     */
     @Transactional(readOnly = true)
-    public Collection<OrderResponseDto> getByUUIDs(Collection<UUID> uuids) {
-        return orderRepository.findAllByUuidIn(uuids).stream().map(orderMapper::mapFromEntityToResponseDto).toList();
+    public Collection<OrderResponseDto> getByUUIDs(final Collection<UUID> uuids) {
+        final String keycloakId = ControllerSecurityUtils.currentCallerName();
+        final List<OrderEntity> orders = orderRepository.findAllByUuidIn(uuids);
+        orders.forEach(order -> assertCallerOwnsOrIsAdmin(order, keycloakId, order.getUuid()));
+        return orders.stream().map(orderMapper::mapFromEntityToResponseDto).toList();
     }
-
-    //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
 
     /**
      * Hard-delete an order after verifying ownership and state eligibility.
