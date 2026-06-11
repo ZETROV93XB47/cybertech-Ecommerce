@@ -5,10 +5,8 @@ import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.services.core.BankCardManagementService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -41,12 +39,10 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  *
  * <p>OpenAPI documentation lives on {@link BankCardAdminControllerApiSpec}.
  */
-@Slf4j
 @RestController
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 @RequestMapping(version = APP_API_VERSION, value = BANK_CARD_ADMIN_CONTROLLER_BASE_PATH)
-@Tag(name = "BankCardAdminController", description = "API for Bank Card management (Admin)")
 public class BankCardAdminController implements BankCardAdminControllerApiSpec {
 
     private final BankCardManagementService bankCardService;

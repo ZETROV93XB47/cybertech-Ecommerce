@@ -9,7 +9,6 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,10 +39,12 @@ public interface BankCardAdminControllerApiSpec {
     @Operation(summary = "Get bank card by UUID (Admin)",
             description = "Retrieves a specific bank card by its UUID.",
             security = @SecurityRequirement(name = "keycloak"),
-            parameters = {@Parameter(name = "uuid", description = "UUID of the bank card")},
+            parameters = {@Parameter(name = "uuid", description = "UUID of the bank card", required = true, schema = @Schema(implementation = UUID.class))},
             responses = {
                     @ApiResponse(responseCode = "200", description = "Bank card found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Bank card not found",
@@ -54,7 +55,7 @@ public interface BankCardAdminControllerApiSpec {
     @Operation(summary = "Create a bank card (Admin)",
             description = "Creates a bank card directly linked to a user UUID.",
             security = @SecurityRequirement(name = "keycloak"),
-            requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardCreationRequestDto.class))),
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardCreationRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "201", description = "Bank card created",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
@@ -68,10 +69,12 @@ public interface BankCardAdminControllerApiSpec {
     @Operation(summary = "Update a bank card (Admin)",
             description = "Updates a bank card by UUID (UUID carried in the request body).",
             security = @SecurityRequirement(name = "keycloak"),
-            requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardUpdateRequestDto.class))),
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardUpdateRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Bank card updated",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Bank card not found",
@@ -82,9 +85,11 @@ public interface BankCardAdminControllerApiSpec {
     @Operation(summary = "Delete a bank card by UUID (Admin)",
             description = "Deletes a bank card by its UUID.",
             security = @SecurityRequirement(name = "keycloak"),
-            parameters = {@Parameter(name = "uuid", description = "UUID of the bank card")},
+            parameters = {@Parameter(name = "uuid", description = "UUID of the bank card", required = true, schema = @Schema(implementation = UUID.class))},
             responses = {
                     @ApiResponse(responseCode = "204", description = "Bank card deleted"),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Bank card not found",

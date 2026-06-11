@@ -9,7 +9,6 @@ import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import com.novatech.cybertech.services.core.BankCardManagementService;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -51,7 +50,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @PreAuthorize), anonymous is unauthorized, and the F2 exception handlers still map domain
  * exceptions to the proper 4xx codes. Ported from BankCardManagementControllerTest's admin section.
  */
-@Slf4j
 @Import({TestSecurityConfig.class})
 @WebMvcTest(value = BankCardAdminController.class)
 class BankCardAdminControllerTest {
@@ -207,6 +205,15 @@ class BankCardAdminControllerTest {
     }
 
     @Test
+    void shouldFailCreatingBankCardAdminWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(post(CREATE)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void shouldFailCreatingBankCardAdminAsNonAdminCauseForbidden() throws Exception {
         BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
         mockMvc.perform(post(CREATE)
@@ -236,6 +243,15 @@ class BankCardAdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailUpdatingBankCardAdminWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(patch(UPDATE)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
