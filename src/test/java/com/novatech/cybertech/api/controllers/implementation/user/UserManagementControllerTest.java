@@ -52,13 +52,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       {@code ErrorManagementController}). Asserted live by
  *       {@link #shouldFailRegisterUserAlreadyExistsAs409}.</li>
  *   <li>BUG-201 — <b>CLOSED</b> (SA-Fix-4, 2026-04-23): {@code POST /register/auto/single}
- *       now requires ADMIN. The method is annotated {@code @PreAuthorize("hasRole('ADMIN')")}
- *       on {@link UserManagementController#registerAuto()} and the URL pattern in
- *       {@code SecurityConfig#PUBLIC_URLS} is narrowed to the exact {@code /register} path
- *       (no wildcard), so anonymous calls fall through to {@code anyRequest().authenticated()}.
- *       Asserted by {@link #shouldRejectRegisterAutoSingleWhenAnonymousAfterBug201Fix} and
- *       {@link #shouldRejectRegisterAutoSingleAsRoleUserReturning403}; happy-path stays
- *       covered by {@link #shouldRegisterAutoSingleAsAdminReturning201}.</li>
+ *       has been moved to {@code UserManagementAdminController} (ADMIN-gated at class level).
+ *       Security and happy-path tests now live in {@code UserManagementAdminControllerTest}.</li>
  * </ul>
  */
 @Import({TestSecurityConfig.class, ErrorManagementController.class})
@@ -67,7 +62,6 @@ class UserManagementControllerTest {
 
     private static final String GET_USER_BY_UUID_ENDPOINT = "/api/v1/services/user/get/{userUuid}";
     private static final String REGISTER_ENDPOINT = "/api/v1/services/user/register";
-    private static final String REGISTER_AUTO_SINGLE_ENDPOINT = "/api/v1/services/user/register/auto/single";
     private static final String HEALTH_CHECK_ENDPOINT = "/api/v1/services/user/ok";
     private static final String UPDATE_ME_ENDPOINT = "/api/v1/services/user/me";
 
@@ -256,54 +250,6 @@ class UserManagementControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(error), STRICT));
-    }
-
-    // ---------- POST /register/auto/single ----------
-
-    @Test
-    void shouldRejectRegisterAutoSingleWhenAnonymousAfterBug201Fix() throws Exception {
-        // BUG-201 — CLOSED. registerAuto() is now @PreAuthorize("hasRole('ADMIN')") AND the
-        // SecurityConfig#PUBLIC_URLS whitelist no longer covers /register/auto/** (only the
-        // exact /register path is anonymous). The URL is now `anyRequest().authenticated()`
-        // → CustomAuthenticationEntryPoint translates a missing JWT into 401.
-        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
-                        .with(csrf())
-                        .accept(APPLICATION_JSON)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void shouldRejectRegisterAutoSingleAsRoleUserReturning403() throws Exception {
-        // BUG-201 — even an authenticated non-ADMIN must be rejected (403) by @PreAuthorize.
-        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
-                        .with(jwtUser(KEYCLOAK_ID))
-                        .with(csrf())
-                        .accept(APPLICATION_JSON)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void shouldRegisterAutoSingleAsAdminReturning201() throws Exception {
-        // Admin call still works — covers the happy path regardless of BUG-201 wiring.
-        // Wave 3 regression-fix: response body is a Map.of(id, keycloakId, email, username)
-        // (mirrors the /register endpoint) so the synthetic user's keycloakId is exposed —
-        // the @JsonIgnore on UserResponseDto.keycloakId would have suppressed it otherwise.
-        final UserResponseDto created = UserDtoFixtures.aSampleUserResponse();
-        when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
-
-        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
-                        .with(jwtAdmin(KEYCLOAK_ID))
-                        .with(csrf())
-                        .accept(APPLICATION_JSON)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isCreated())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(jsonPath("$.id").value(created.getUuid().toString()))
-                .andExpect(jsonPath("$.keycloakId").value(created.getKeycloakId()))
-                .andExpect(jsonPath("$.email").value(created.getEmail()))
-                .andExpect(jsonPath("$.username").value(created.getUsername()));
     }
 
     // ---------- GET /ok (health) ----------
