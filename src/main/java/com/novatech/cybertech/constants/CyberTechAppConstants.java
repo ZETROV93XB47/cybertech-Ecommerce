@@ -16,6 +16,8 @@ public class CyberTechAppConstants {
     public static final String ORDER_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/order";
     public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/review";
     public static final String BANK_CARD_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/bank-card";
+    /** Admin-only bank-card back-office. Mirrors the USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH convention. */
+    public static final String BANK_CARD_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/bank-card";
     public static final String USER_WISHLIST_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/wishlist";
     public static final String USER_EVENT_INGESTION_BASE_PATH = API_BASE_PATH + "/events";
     public static final String STRIPE_WEBHOOKS_BASE_PATH = API_BASE_PATH + "/webhooks/stripe";
