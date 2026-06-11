@@ -13,8 +13,6 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
@@ -23,7 +21,7 @@ import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
-@Tag(name = "Bank Card", description = "Endpoints to manage the authenticated user's bank card and admin CRUD")
+@Tag(name = "Bank Card", description = "Endpoints to manage the authenticated user's bank card")
 public interface BankCardControllerApiSpec {
 
     // --- Endpoints Sécurisés (User Context) ---
@@ -60,48 +58,6 @@ public interface BankCardControllerApiSpec {
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<BankCardResponseDto> updateBankCard(BankCardUpdateRequestDto dto, Jwt jwt);
-
-    // --- Endpoints CRUD Basiques (Non sécurisés comme demandé, ou Admin) ---
-
-    @Operation(summary = "Get all bank cards",
-            description = "Retrieves all bank cards in the system.",
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "List of bank cards", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = BankCardResponseDto.class))))
-            })
-    ResponseEntity<Page<BankCardResponseDto>> getAllBankCards(final Pageable pageable);
-
-    @Operation(summary = "Get bank card by UUID",
-            description = "Retrieves a specific bank card by its UUID.",
-            parameters = {@Parameter(name = "uuid", description = "UUID of the bank card")},
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Bank card found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Bank card not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<BankCardResponseDto> getBankCardByUuid(UUID uuid);
-
-    @Operation(summary = "Create a bank card (Admin)",
-            description = "Creates a bank card directly linked to a user UUID.",
-            requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardCreationRequestDto.class))),
-            responses = {
-                    @ApiResponse(responseCode = "201", description = "Bank card created", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class)))
-            })
-    ResponseEntity<BankCardResponseDto> createBankCard(BankCardCreationRequestDto dto);
-
-    @Operation(summary = "Update a bank card (Admin)",
-            description = "Updates a bank card by UUID.",
-            requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardUpdateRequestDto.class))),
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Bank card updated", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class)))
-            })
-    ResponseEntity<BankCardResponseDto> updateBankCardAdmin(BankCardUpdateRequestDto dto);
-
-    @Operation(summary = "Delete a bank card by UUID",
-            description = "Deletes a bank card by its UUID.",
-            parameters = {@Parameter(name = "uuid", description = "UUID of the bank card")},
-            responses = {
-                    @ApiResponse(responseCode = "204", description = "Bank card deleted")
-            })
-    ResponseEntity<Void> deleteBankCardByUuid(UUID uuid);
 
     // --- BUG-038 — default-card surface -----------------------------------------------
 
