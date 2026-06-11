@@ -212,11 +212,11 @@ All paths below are absolute. Default base is `http://localhost:8081`.
 | DELETE | `/api/v1/services/bank-card/delete` | USER | 204 |
 | PATCH | `/api/v1/services/bank-card/set-default/{cardUuid}` | USER | 204 |
 | GET | `/api/v1/services/bank-card/default` | USER | `BankCardResponseDto` |
-| GET | `/api/v1/services/bank-card` | ADMIN | `Page<BankCardResponseDto>` (default size 10) |
-| GET | `/api/v1/services/bank-card/{uuid}` | ADMIN | `BankCardResponseDto` |
-| POST | `/api/v1/services/bank-card` | ADMIN | Create as admin |
-| PUT | `/api/v1/services/bank-card` | ADMIN | Update as admin |
-| DELETE | `/api/v1/services/bank-card/{uuid}` | ADMIN | 204 |
+| GET | `/api/v1/services/admin/bank-card/get/all` | ADMIN | `Page<BankCardResponseDto>` (default size 10) |
+| GET | `/api/v1/services/admin/bank-card/get/{uuid}` | ADMIN | `BankCardResponseDto` |
+| POST | `/api/v1/services/admin/bank-card/create` | ADMIN | Create as admin → `BankCardResponseDto` (201) |
+| PATCH | `/api/v1/services/admin/bank-card/update` | ADMIN | Update as admin → `BankCardResponseDto` |
+| DELETE | `/api/v1/services/admin/bank-card/delete/{uuid}` | ADMIN | 204 |
 
 PCI: `BankCardResponseDto` exposes only `maskedNumber` (e.g. "•••• 4242"). Never display `cardNumber` even if non-null on legacy rows.
 
