@@ -121,6 +121,15 @@ public class KeycloakOutboxServiceImp implements KeycloakOutboxService {
         }
     }
 
+    // SAFETY MARGIN — DO NOT ADD @Retry HERE WITHOUT READING THIS: the orphan-delete below assumes
+    // a Keycloak user with no DB row is a crash leftover. That's only true because the outbox
+    // staleness window (cybertech.keycloak.outbox.staleness-minutes, 5 min by default) is far
+    // larger than the worst-case latency of the Keycloak call in UserManagementServiceImp.create()
+    // — currently capped at connectTimeout(5s) + readTimeout(10s) = 15s, see ApiClientConfig. If a
+    // @Retry/backoff is ever added around that call, a still-in-flight create() can cross the
+    // staleness window before its DB write commits, and this method will delete the Keycloak user
+    // it just created. Bump staleness-minutes to comfortably exceed the new worst-case latency
+    // before adding any retry there.
     private void reconcileCreate(final KeycloakOutboxEntity row) {
         final var kcId = keycloakUserManagementService.searchByEmail(row.getEmail());
         if (kcId.isEmpty()) {
