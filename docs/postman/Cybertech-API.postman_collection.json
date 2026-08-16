@@ -221,6 +221,38 @@
           "response": []
         },
         {
+          "name": "Update my profile (self-service)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/user/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "user", "me"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"phoneNumber\": \"+33611111111\",\n  \"address\": \"42 rue Selfservice\"\n}"
+            },
+            "description": "Self-service profile patch (Frontend-gap #3). Only firstName/lastName/phoneNumber/address are mutable here — email, role and status are Keycloak/admin-owned and off-limits by design (see UserSelfUpdateRequestDto). Caller identity is resolved from the JWT subject, not the body.\n\n- Roles: USER or ADMIN\n- Success: 200 with the refreshed `UserResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
           "name": "List all users (ADMIN, paged)",
           "request": {
             "method": "GET",
@@ -340,33 +372,6 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Auto-register 100 synthetic users (ADMIN)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/admin/user/register/auto",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "admin", "user", "register", "auto"]
-            },
-            "description": "Mints 100 synthetic users via `DataGenerator`. Use only in test environments.\n\n- Role: ADMIN\n- Success: 201 with a `Collection<UserResponseDto>`."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
                 ]
               }
             }
@@ -1163,6 +1168,39 @@
           "response": []
         },
         {
+          "name": "Get my orders (paged, optional status filter)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/mine?page=0&size=20&sort=createdAt,DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "management", "order", "mine"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "createdAt,DESC" },
+                { "key": "status", "value": "PAID", "disabled": true }
+              ]
+            },
+            "description": "Frontend-gap #1 — paginated listing of the caller's own orders. Optional repeatable `status` query param filters by OrderStatus (CREATED, AWAITING_PAYMENT, PAID, SHIPPED, DELIVERED, CANCELED...) — omit for all statuses.\n\n- Roles: USER or ADMIN\n- Success: 200 OK with Spring Data `Page<OrderResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
           "name": "Delete order (ADMIN)",
           "request": {
             "method": "DELETE",
@@ -1186,6 +1224,40 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: list all orders (paged, filterable)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/management/order/get/all?page=0&size=20&sort=createdAt,DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "management", "order", "get", "all"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "createdAt,DESC" },
+                { "key": "status", "value": "PAID", "disabled": true },
+                { "key": "userKeycloakId", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Frontend-gap #2 — admin-side paginated order listing across every user, with optional `status` (repeatable OrderStatus) and `userKeycloakId` filters.\n\n- Role: ADMIN (controller-level `@PreAuthorize`)\n- Success: 200 OK with Spring Data `Page<OrderResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
                 ]
               }
             }
@@ -1492,6 +1564,33 @@
               "path": ["api", "v1", "services", "bank-card", "default"]
             },
             "description": "Return the caller's default card (masked).\n\n- Roles: USER or ADMIN\n- Success: 200 with `BankCardResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get all my bank cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/bank-card/all-mine",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "bank-card", "all-mine"]
+            },
+            "description": "Frontend-gap #4 — lists every bank card owned by the caller. Returns at most one today (one-card-per-user, `@OneToOne UserEntity.bankCardEntity`); kept as a list for forward-compatibility.\n\n- Roles: USER or ADMIN\n- Success: 200 with `List<BankCardResponseDto>`."
           },
           "event": [
             {
