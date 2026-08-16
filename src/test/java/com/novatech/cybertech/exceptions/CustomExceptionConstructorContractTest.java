@@ -84,7 +84,7 @@ class CustomExceptionConstructorContractTest {
         final Stream<Class<? extends Throwable>> mapped = scanner.findCandidateComponents(EXCEPTIONS_PACKAGE).stream()
                 .map(BeanDefinition::getBeanClassName)
                 .map(CustomExceptionConstructorContractTest::loadClass)
-                .filter(clazz -> Throwable.class.isAssignableFrom(clazz))
+                .filter(Throwable.class::isAssignableFrom)
                 .filter(clazz -> !Modifier.isAbstract(clazz.getModifiers()))
                 .filter(clazz -> !clazz.isInterface())
                 .map(CustomExceptionConstructorContractTest::asThrowableClass);

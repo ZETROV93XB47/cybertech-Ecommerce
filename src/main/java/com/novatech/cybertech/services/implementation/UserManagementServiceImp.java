@@ -69,8 +69,7 @@ public class UserManagementServiceImp implements UserManagementService {
         // Phase 1 — Keycloak only, NO transaction. A failure here is terminal: no compensation needed.
         final String keycloakId;
         try {
-            keycloakId = keycloakUserManagementService.createUser(
-                    req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword(), Role.USER);
+            keycloakId = keycloakUserManagementService.createUser(req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword(), Role.USER);
         } catch (RuntimeException keycloakFailure) {
             keycloakOutboxService.markFailed(outboxUuid, keycloakFailure.getMessage());
             throw keycloakFailure;

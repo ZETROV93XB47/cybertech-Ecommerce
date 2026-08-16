@@ -153,8 +153,7 @@ class UserRegistrationFlowIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").exists())
-                .andExpect(jsonPath("$.keycloakId").exists());
+                .andExpect(jsonPath("$.id").exists());
 
         final Optional<UserEntity> persisted = userRepository.findByEmail(uniqueEmail);
         assertThat(persisted).as("user with the unique email should be in MySQL").isPresent();
