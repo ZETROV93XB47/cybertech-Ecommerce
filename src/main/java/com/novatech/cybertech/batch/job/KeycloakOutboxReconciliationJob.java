@@ -2,6 +2,7 @@ package com.novatech.cybertech.batch.job;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
@@ -43,7 +44,11 @@ public class KeycloakOutboxReconciliationJob {
 
     private final JobLauncher jobLauncher;
 
+    // Guards against two pods running this tick at once if we ever scale past replicas=1 — see
+    // RedisConfig#lockProvider. lockAtLeastFor keeps a sub-second run from being retriggered by
+    // clock skew between nodes; lockAtMostFor is a safety net if a node dies mid-run.
     @Scheduled(cron = "${cybertech.keycloak.outbox.job.cron:0 */15 * * * *}", zone = "UTC")
+    @SchedulerLock(name = "keycloakOutboxReconciliationJob", lockAtMostFor = "PT10M", lockAtLeastFor = "PT1M")
     public void startJob() {
         if (!activated) {
             return;

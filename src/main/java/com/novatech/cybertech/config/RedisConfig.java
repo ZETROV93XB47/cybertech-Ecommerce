@@ -2,6 +2,9 @@ package com.novatech.cybertech.config;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.provider.redis.spring.RedisLockProvider;
+import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -28,10 +31,23 @@ import java.util.Map;
 
 @Configuration
 @EnableRedisRepositories
+@EnableSchedulerLock(defaultLockAtMostFor = "PT10M")
 public class RedisConfig {
 
     private static final String CART_CACHE = "cart";
     private static final String USER_EXISTENCE_CACHE = "userExistence";
+    private static final String SHEDLOCK_ENVIRONMENT = "cybertech";
+
+    /**
+     * Backs {@code @SchedulerLock} on {@code @Scheduled} jobs — keeps a job from double-running
+     * if the app is ever scaled past a single replica (today: cybertech-app-chart replicas=1, so
+     * this is a no-op in practice, but it's the pattern to reuse for the next scheduled job that
+     * needs it rather than hand-rolling another Redis SET NX like {@code CartCacheHelperImp} does.
+     */
+    @Bean
+    public LockProvider lockProvider(final RedisConnectionFactory connectionFactory) {
+        return new RedisLockProvider(connectionFactory, SHEDLOCK_ENVIRONMENT);
+    }
 
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory, @Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper) {
