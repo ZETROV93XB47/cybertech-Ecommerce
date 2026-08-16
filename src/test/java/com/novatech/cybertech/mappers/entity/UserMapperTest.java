@@ -134,6 +134,35 @@ class UserMapperTest {
         }
 
         @Test
+        void shouldNotEraseEmailSexOrBirthDateWhenDtoFieldsNull() {
+            // Bug fix: a partial update (e.g. updateMe(), which never sets email/sex/birthDate on
+            // the adapted DTO) must NOT wipe these NOT-NULL columns to null — null on the DTO means
+            // "not modified", not "clear the field".
+            UserEntity entity = UserEntityBuilder.aValidUserBuilder()
+                    .email("original@example.com")
+                    .sex(Sex.F)
+                    .birthDate(LocalDateTime.now().minusYears(25))
+                    .build();
+            String originalEmail = entity.getEmail();
+            Sex originalSex = entity.getSex();
+            LocalDateTime originalBirthDate = entity.getBirthDate();
+
+            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+            dto.setEmail(null);
+            dto.setSex(null);
+            dto.setBirthDate(null);
+
+            mapper.updateEntityFromDto(dto, entity);
+
+            assertThat(entity.getEmail()).isEqualTo(originalEmail);
+            assertThat(entity.getSex()).isEqualTo(originalSex);
+            assertThat(entity.getBirthDate()).isEqualTo(originalBirthDate);
+            // Non-null fields on the DTO must still overwrite as before.
+            assertThat(entity.getFirstName()).isEqualTo(dto.getFirstName());
+            assertThat(entity.getLastName()).isEqualTo(dto.getLastName());
+        }
+
+        @Test
         void shouldNotEraseAddressWhenDtoAddressNull() {
             // BUG-019 verification (F2 wave): the address ternary expression preserves
             // entity.address when dto.address is null.
