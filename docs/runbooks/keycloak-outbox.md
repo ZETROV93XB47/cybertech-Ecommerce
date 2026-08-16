@@ -80,7 +80,33 @@ SELECT COUNT(*) FROM keycloak_outbox WHERE status='PENDING' AND updatedAt < NOW(
 Et pour un DELETE re-drivé : l'utilisateur ne doit plus apparaître dans la console Keycloak ni
 pouvoir obtenir un token.
 
-## 6. Postmortem checklist
+## 6. Verrou ShedLock (multi-replica, cf. architecture D12)
+
+Depuis 2026-08-16, `startJob()` est protégé par `@SchedulerLock` (backend Redis). En
+`replicas: 1` (config actuelle) ce verrou n'a jamais de raison d'être disputé — s'il l'est,
+c'est le signe que **deux pods tournent en même temps** (scale-up, ou deux versions en
+transition lors d'un rolling deploy).
+
+```bash
+# Le verrou est-il actuellement tenu, et pour combien de temps encore (secondes) ?
+redis-cli GET job-lock:cybertech:keycloakOutboxReconciliationJob
+redis-cli TTL job-lock:cybertech:keycloakOutboxReconciliationJob
+```
+
+- **Clé absente** : aucun tick en cours — normal la majorité du temps (le job clôt son tick en
+  quelques secondes, le TTL de 10 min ne traîne jamais longtemps derrière une exécution saine).
+- **Clé présente avec un TTL qui redescend normalement** : un tick est en cours ailleurs — rien
+  à faire, c'est le fonctionnement voulu si plusieurs pods tournent.
+- **Rien à « débloquer » à la main** : contrairement à un verrou DB sans expiration, celui-ci
+  s'auto-libère via le TTL Redis — même si le pod qui le détenait meurt en plein run, le
+  prochain tick (ou un autre pod) récupère le verrou au plus tard `lockAtMostFor` (10 min) après
+  sa pose. Un `DEL` manuel n'est utile que pour forcer un run immédiat en debug — jamais requis
+  en fonctionnement normal.
+- **Si le backlog `PENDING` grossit alors que le verrou tourne bien** (clé présente, TTL sain,
+  logs de tick réguliers) : ce n'est pas un problème ShedLock — retourner à la §3 (root cause
+  options) de ce runbook.
+
+## 7. Postmortem checklist
 
 - Durée de l'outage Keycloak vs fenêtre d'absorption (5 × 15 min) — faut-il monter `max-attempts` ?
 - Nombre de lignes passées `FAILED` et leur type — un pattern (toutes UPDATE ?) indique un bug, pas un outage.

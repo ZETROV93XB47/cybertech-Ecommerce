@@ -5,6 +5,11 @@
 > **Plan d'exécution :** [`docs/superpowers/plans/2026-06-04-keycloak-outbox.md`](../superpowers/plans/2026-06-04-keycloak-outbox.md)
 > **Runbook ops :** [`docs/runbooks/keycloak-outbox.md`](../runbooks/keycloak-outbox.md)
 > **Vérification :** 1855/1855 tests unitaires verts · `KeycloakOutboxFlowIT` 3/3 PASS (Testcontainers réels)
+> **Révision 2026-08-16 :** durcissement post-review (code-review skill, backend, level high) —
+> D5 **corrigée** (la justification « Spring Batch verrouille déjà par JobInstance » était fausse,
+> voir note dans D5) et **D10/D11/D12 ajoutées** : fix mapper `updateMe()`, garde-fou documentaire
+> sur `reconcileCreate`, et `@SchedulerLock` (ShedLock) sur le job de réconciliation.
+> Commits `bac9217`, `9f92369`, `1f5898d`.
 
 Ce document est la référence complète des choix de design, de leur justification, des
 chorégraphies de saga et de la matrice de pannes. Il est volontairement exhaustif — pour le
@@ -126,6 +131,18 @@ zéro mécanique ajoutée.
 déjà par JobInstance (un seul run par paramètre date), et le single-node minikube ne justifie
 pas la complexité.
 
+> **Correction 2026-08-16 :** ce dernier argument est **faux** et a été identifié par le code
+> review du 2026-08-16. `KeycloakOutboxReconciliationJob.startJob()` construit ses
+> `JobParameters` avec `LocalDateTime.now()` à **chaque tick** — donc chaque exécution reçoit un
+> paramètre `date` différent, et Spring Batch ne voit jamais deux runs comme la **même**
+> `JobInstance`. Son verrou anti-doublon ne protège donc rien ici : il empêche de relancer une
+> `JobInstance` déjà complétée avec des paramètres **identiques**, pas deux `JobInstance`
+> différentes de lancer la même logique métier en parallèle. Concrètement, si
+> `cybertech-app-chart` scale un jour au-delà de `replicas: 1`, chaque pod déclenche son propre
+> tick indépendant toutes les 15 min, et rien ne les empêche de traiter les mêmes lignes
+> `PENDING` en même temps. Voir **D12** pour le fix retenu (ShedLock) et les alternatives
+> comparées.
+
 ### D6 — UPDATE : supersede guard plutôt que versionnage du payload
 À la ré-application d'un UPDATE, si `user.updatedAt > row.createdAt`, une écriture **plus
 récente** a déjà gagné → le payload périmé n'est **pas** rejoué (ligne close `DONE`,
@@ -166,6 +183,95 @@ totalement** : un delete Keycloak en échec (500, 403...) passait pour un succè
 Le nouveau code inspecte le statut : `404` = succès idempotent (la ré-émission par le job d'un
 delete déjà fait est un no-op), tout autre ≥ 400 = `IllegalStateException` surfacée. La
 `Response` est fermée en try-with-resources (même pattern que `createUser`, pin BUG-085).
+
+### D10 — `updateEntityFromDto` : un null de patch partiel n'est plus un ordre d'effacement
+Bug trouvé par le code review du 2026-08-16 : `UserMapper.updateEntityFromDto` (MapStruct)
+écrasait `email`/`sex`/`birthDate` par la valeur du DTO **y compris `null`**. Or `updateMe()`
+(self-service) construit toujours un DTO où ces trois champs sont `null` — l'intention est
+« non modifié », pas « à effacer ». `email` et `sex` sont `NOT NULL` en base : le patch le plus
+anodin (changer juste le prénom) faisait planter le flush Hibernate. Pire, comme
+`reconcileUpdate` (§5.2) rejoue le **même** mapper sur le payload persisté, un patch partiel
+laissé `PENDING` par un crash rejouait aussi le bug au tick suivant.
+
+*Fix :* `@BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)`
+sur `updateEntityFromDto`, scopé à cette seule méthode — un champ `null` sur le DTO laisse
+l'entité inchangée, exactement comme le traitement déjà en place pour `address` (BUG-019).
+Commit `bac9217`.
+
+### D11 — `reconcileCreate` : marge de sécurité documentée plutôt que verrouillée
+Le même review a identifié une seconde course théorique : `reconcileCreate` (§5.1) traite tout
+utilisateur Keycloak sans ligne DB comme un orphelin de crash et le **supprime**. Cette
+hypothèse ne tient que parce que la fenêtre de staleness (5 min, D5) est très supérieure au
+pire cas de latence de l'appel Keycloak dans `create()` — actuellement plafonné à
+`connectTimeout(5s) + readTimeout(10s) = 15s` (`ApiClientConfig`), sans aucun `@Retry` autour.
+Marge ×20 aujourd'hui ; un futur `@Retry` ajouté sans revisiter `staleness-minutes` l'éroderait
+silencieusement, avec un scénario catastrophe concret : `reconcileCreate` supprime un utilisateur
+Keycloak fraîchement créé par une requête `create()` encore en vol.
+
+*Décision : pas de code, un commentaire.* Contrairement à D12 (où le risque multi-replica
+concerne 4 jobs et justifie une lib), ce risque est mono-fichier, mono-scénario, et sa
+probabilité réelle est déjà négligeable (marge ×20). Ajouter un mécanisme de double-vérification
+ou un claim serait de l'overengineering pour un projet portfolio. Le commentaire (sur
+`reconcileCreate`, commit `9f92369`) documente l'invariant pour que quiconque ajoute un `@Retry`
+plus tard sache qu'il doit revisiter `staleness-minutes` en même temps.
+
+### D12 — ShedLock pour empêcher deux pods de lancer le même tick en parallèle
+**Contexte :** `KeycloakOutboxReconciliationJob` tourne sur `@Scheduled(cron)`, sans aucune
+coordination entre instances applicatives. `cybertech-app-chart` est aujourd'hui figé à
+`replicas: 1` (risque nul en pratique), mais rien dans le code ne l'empêchait si le déploiement
+scale un jour — et la justification qui couvrait ce cas (D5) était fausse (cf. correction
+ci-dessus). C'est le seul des 4 jobs `@Scheduled` du projet (avec `StockCleanupJob`,
+`RedeliverFailedNotificationsJob`, `CybertechOrdersUpdateJob`) à avoir été audité sur ce point ;
+les trois autres partagent la même lacune, non traitée ici (cf. §10).
+
+**Décision :** `@SchedulerLock` (lib [ShedLock](https://github.com/lukas-krecan/ShedLock)
+6.6.0) sur `startJob()`, backé par Redis via `shedlock-provider-redis-spring` — réutilise le
+`RedisConnectionFactory` déjà configuré (`RedisConfig`), aucune infra nouvelle.
+
+**Mécanisme :** avant chaque tick, `RedisLockProvider` pose un verrou Redis
+(`SET <key> NX PX <lockAtMostFor>`) sur la clé `job-lock:cybertech:keycloakOutboxReconciliationJob`
+(préfixe par défaut de la lib + `environment="cybertech"` configuré dans `RedisConfig` +
+`name` de l'annotation). Le pod qui échoue l'acquisition **skip silencieusement** ce tick (log
+ShedLock, aucune erreur applicative, aucun impact sur le kill-switch `job.activated`). Le verrou
+expire tout seul via le TTL Redis — **pas de libération explicite ni de risque de verrou
+bloqué à vie** si un pod meurt en plein run, contrairement à un flag DB sans expiration.
+
+```java
+@SchedulerLock(name = "keycloakOutboxReconciliationJob", lockAtMostFor = "PT10M", lockAtLeastFor = "PT1M")
+```
+`lockAtMostFor=10min` < cron 15min (un tick ne peut jamais se heurter à un verrou du tick
+précédent mal expiré) ; `lockAtLeastFor=1min` empêche un re-trigger immédiat en cas de clock
+skew entre pods. Valeurs codées en dur (pas de propriété `application.properties`) — choix
+délibéré de simplicité, ce projet est un portfolio et ces valeurs n'ont pas besoin d'être
+tunables sans recompiler.
+
+**Alternatives comparées** (de la plus simple à la plus lourde) :
+
+| # | Solution | Fichiers touchés | Nouvelle dépendance | Protège quoi |
+|---|---|---|---|---|
+| 1 | Commentaire seul (documente le risque, aucun code) | 0 | non | rien — juste la connaissance du risque |
+| 2 | Verrou Redis fait main, pattern déjà codé dans `CartCacheHelperImp` (`SET NX EX` + script Lua d'unlock CAS-safe) | 1 (`KeycloakOutboxReconciliationJob.java`) | non | job vs job (multi-replica) |
+| 3 | Claim atomique par ligne DB (`UPDATE ... SET status='PROCESSING' WHERE status='PENDING'`, nouveau statut outbox) | 4-5 (nouvel enum, requête repo, `reconcile()`, tasklet élargi) | non | job vs job **et** listener AFTER_COMMIT vs job |
+| 4 | **ShedLock (retenue)** | 3 (`pom.xml`, `RedisConfig.java`, `KeycloakOutboxReconciliationJob.java`) | oui | job vs job (multi-replica) |
+
+*Pourquoi (4) malgré un fichier de plus et une dépendance en plus vs (2), qui protège
+exactement le même risque pour ce job précis :* objectif explicitement pédagogique (apprendre
+la lib de référence pour ce problème) **et** ShedLock scale mieux que (2) si les 3 autres jobs
+`@Scheduled` du projet doivent un jour être protégés — leur coût marginal tombe à une ligne
+d'annotation chacun, contre un copier-coller du pattern Redis fait main à chaque fois (que
+CLAUDE.md proscrit explicitement : « pas de duplication cross-classes »).
+
+*Pourquoi pas (3) :* c'est la seule option qui couvre **aussi** la course lister/job du DELETE
+(§5.3, "Double exécution" dans la matrice de pannes) — plus complète, mais 4-5 fichiers pour un
+gain nul tant que `replicas: 1`. Overengineering assumé à écarter pour un portfolio ; documentée
+ici comme option de repli si ce projet devait un jour tourner en prod multi-nœuds avec un vrai
+trafic de suppression concurrente.
+
+**Effet actuel : nul.** `replicas: 1` ⇒ jamais de contention ⇒ le verrou s'acquiert et s'expire
+sans jamais bloquer un run légitime. Le code est en place, dormant, pour le jour où le chart
+scale — vérifié par le démarrage du contexte Spring complet (`CybertechApplicationTests`, bean
+`LockProvider` résolu sans erreur) ; **pas** de test dédié à la contention réelle (nécessiterait
+deux JVM concurrentes, disproportionné ici — cf. §9).
 
 ---
 
@@ -274,7 +380,9 @@ seeder) : une ligne + un event **par utilisateur résolu**, tous portés par la 
   par tick — pas de balayage illimité ; le backlog résiduel est pris au tick suivant.
 - **`KeycloakOutboxReconciliationJob`** (`batch/job/`) : `@Scheduled(cron)` (défaut `0 */15 * * * *`
   UTC), flag `activated`, `JobLauncher` + paramètre date — réplique structurelle exacte de
-  `RedeliverFailedNotificationsJob` (cohérence d'architecture, CLAUDE.md).
+  `RedeliverFailedNotificationsJob` (cohérence d'architecture, CLAUDE.md). Depuis D12,
+  `startJob()` porte aussi `@SchedulerLock` (ShedLock, backend Redis via `RedisConfig`) pour
+  qu'un seul pod exécute un tick donné si l'app scale un jour au-delà de `replicas: 1`.
 - **`reconcile()`** est `REQUIRES_NEW` et **avale ses propres échecs** : un throw incrémente
   `attempts` + écrit `lastError` ; sous le plafond la ligne reste `PENDING` (retry au tick
   suivant), au plafond elle bascule `FAILED` + log error « manual reconciliation required ».
@@ -310,9 +418,11 @@ absorbée sans intervention ; au-delà, lignes `FAILED` à re-driver à la main 
 | `services/implementation/KeycloakUserManagementService.java` | `searchByEmail` (lookup CREATE) + `deleteUser` 404-tolérant (D9) |
 | `events/UserDeletedEvent.java` + `events/listener/UserDeletionListener.java` | chemin basse-latence du DELETE (porte l'`outboxUuid`, plus le `keycloakId`) |
 | `batch/task/KeycloakOutboxReconciliationTasklet.java` + `batch/job/KeycloakOutboxReconciliationJob.java` + `config/BatchConfig.java` | crash recovery périodique |
+| `config/RedisConfig.java` | bean `LockProvider` (`RedisLockProvider`) + `@EnableSchedulerLock` — backend ShedLock (D12) |
+| `mappers/entity/UserMapper.java` | `updateEntityFromDto` — null d'un champ patch ≠ effacement (D10) |
 | `sql/databaseSchemaInitFile.sql` | DDL `keycloak_outbox` |
 
-## 8. Couverture de test (38 tests dédiés)
+## 8. Couverture de test (38 tests dédiés + 1)
 
 | Classe | Pins principaux |
 |---|---|
@@ -322,6 +432,9 @@ absorbée sans intervention ; au-delà, lignes `FAILED` à re-driver à la main 
 | `KeycloakUserManagementServiceTest` (+5) | 404 idempotent ; 4xx/5xx surfacés ; Response fermée ; searchByEmail hit/miss |
 | `KeycloakOutboxReconciliationTaskletTest` (4) | délégation avec plafond ; threshold = now − staleness ; page bornée ; no-op propre |
 | `KeycloakOutboxFlowIT` (3, Testcontainers réels) | register → ligne `DONE` keycloakId backfillé ; orphelin compensé par le **vrai** tasklet ; delete → co-commit réconcilié `DONE` par le vrai listener AFTER_COMMIT |
+| `UserMapperTest` (+1, D10) | `updateEntityFromDto` avec `email`/`sex`/`birthDate` `null` sur le DTO ⇒ entité inchangée (jumeau du test `address` déjà existant, BUG-019) |
+
+D12 (ShedLock) n'a **pas** de test dédié — voir limite 5 ci-dessous.
 
 ## 9. Limites connues (assumées)
 
@@ -339,6 +452,20 @@ absorbée sans intervention ; au-delà, lignes `FAILED` à re-driver à la main 
    avant le mark laisse une ligne `PENDING` qui sera re-réconciliée — c'est précisément pour ça
    que chaque branche de `reconcile` est idempotente. Aucune incohérence possible, juste un
    passage de job « pour rien ».
+5. **ShedLock (D12) n'est vérifié qu'au niveau du chargement du contexte Spring**, pas par un
+   test de contention réelle : `CybertechApplicationTests` confirme que le bean `LockProvider`
+   se résout et que `@EnableSchedulerLock` ne casse rien au démarrage, mais aucun test ne
+   lance deux JVM concurrentes pour prouver qu'une seule acquiert effectivement le verrou.
+   Écarté comme disproportionné pour un projet portfolio à `replicas: 1` (le risque qu'il
+   couvre est actuellement nul, cf. D12) ; à ajouter si le chart scale un jour pour de vrai.
+6. **`reconcileCreate` reste théoriquement exposé à une course avec un `create()` en vol**
+   (D11) : la fenêtre de sécurité (staleness 5 min vs timeout Keycloak 15s, marge ×20) est
+   documentée par un commentaire, pas verrouillée par du code. Un futur `@Retry` sur l'appel
+   Keycloak sans revisiter `staleness-minutes` réintroduirait le risque silencieusement.
+7. **3 des 4 jobs `@Scheduled` du projet n'ont pas de `@SchedulerLock`** (`StockCleanupJob`,
+   `RedeliverFailedNotificationsJob`, `CybertechOrdersUpdateJob`) — même lacune multi-replica
+   que celle corrigée par D12 pour `KeycloakOutboxReconciliationJob`, non traitée ici (hors
+   scope de cette saga).
 
 ## 10. Évolutions futures (documentées, non implémentées)
 
@@ -348,3 +475,9 @@ absorbée sans intervention ; au-delà, lignes `FAILED` à re-driver à la main 
 - Outbox transactionnel générique (CDC/Debezium) si d'autres effets externes rejoignent le
   pattern.
 - Purge/archivage des lignes `DONE` anciennes (volume négligeable à l'échelle portfolio).
+- Étendre `@SchedulerLock` (D12) aux 3 autres jobs `@Scheduled` du projet si `replicas` passe
+  un jour au-delà de 1 — le `LockProvider` Redis est déjà configuré dans `RedisConfig`, il ne
+  reste qu'une annotation par job à ajouter.
+- Si le volume de suppressions concurrentes devient réel, remonter l'option (3) de D12 (claim
+  atomique par ligne, statut `PROCESSING`) : c'est la seule qui couvre aussi la course
+  listener/job, que ShedLock ne traite pas.
