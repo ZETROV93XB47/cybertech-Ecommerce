@@ -14,8 +14,10 @@ import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.PaymentService;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,9 +29,23 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class PaymentServiceImp implements PaymentService {
 
+    private static final String SUCCESS_OUTCOME = "success";
+    private static final String FAILURE_OUTCOME = "failure";
+
     private final PaymentStrategyFactory paymentStrategyFactory;
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
+
+    /**
+     * Field-injected (not added to the {@code @RequiredArgsConstructor} constructor) so the
+     * existing {@code @InjectMocks}-based {@code PaymentServiceImpTest} doesn't need to mock a
+     * {@link MeterRegistry} — same pattern as {@code OrderManagementServiceImp#transactionManager}.
+     * Backs {@code cybertech_payments_total{outcome=...}}, already queried by
+     * {@code cybertech-overview.json} (Grafana) and the payment-success-rate alert rule
+     * (prometheus-chart), but never actually emitted until now.
+     */
+    @Autowired(required = false)
+    private MeterRegistry meterRegistry;
 
     @Transactional
     public PaymentEntity processPayment(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
@@ -69,6 +85,11 @@ public class PaymentServiceImp implements PaymentService {
         attempt.setStatus(result.status());
         attempt.setStripePaymentID(result.stripePaymentID());
         log.info("saved Payment id : {}", result.stripePaymentID());
+
+        if (meterRegistry != null) {
+            final String outcome = result.status() == PaymentAttemptStatus.SUCCESS ? SUCCESS_OUTCOME : FAILURE_OUTCOME;
+            meterRegistry.counter("cybertech.payments.total", "outcome", outcome).increment();
+        }
 
         // Webhook-only side-effects: this method persists the attempt outcome and
         // returns — it does NOT publish any domain event. Stock commit / order PAID /

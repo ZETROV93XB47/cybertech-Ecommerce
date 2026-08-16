@@ -32,6 +32,7 @@ import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.utils.ControllerSecurityUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -91,6 +92,17 @@ public class OrderManagementServiceImp implements OrderManagementService {
      */
     @Autowired(required = false)
     private PlatformTransactionManager transactionManager;
+
+    /**
+     * Field-injected for the same reason as {@link #transactionManager}: adding it to the
+     * {@code @RequiredArgsConstructor} constructor would break every {@code @InjectMocks}-based
+     * unit test in {@code OrderManagementServiceImpTest} that doesn't mock a {@link MeterRegistry}.
+     * Backs the {@code cybertech_orders_total} counter that {@code cybertech-overview.json}
+     * (Grafana) already queries — {@code null} in unit tests and any context that doesn't wire
+     * Micrometer, so every call site guards on it before incrementing.
+     */
+    @Autowired(required = false)
+    private MeterRegistry meterRegistry;
 
     private TransactionTemplate transactionTemplate;
 
@@ -580,6 +592,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
         }
 
         sendOrderCreationEvent(savedOrder, user, totalAmount, attempt.getStatus());
+
+        if (meterRegistry != null) {
+            meterRegistry.counter("cybertech.orders.total").increment();
+        }
 
         return orderMapper.mapFromEntityToResponseDto(savedOrder);
     }
