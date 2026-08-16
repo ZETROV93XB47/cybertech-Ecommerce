@@ -56,9 +56,9 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link StockServiceImp}.
  *
- * <p>Subagent SA-W3.3 — services/stock. See progress.md for the full coverage matrix and
- * bug pinning conventions. Production code is read-only: when bugs are confirmed they are pinned
- * to their original BUG-### numbers (BUG-060..BUG-064) via {@code @Disabled}.
+ * <p>Subagent SA-W3.3 — services/stock. BUG-060..BUG-064 are now closed; the previously
+ * {@code @Disabled} pinning tests are re-enabled and verify the fixed contract (no test in
+ * this class is currently disabled).
  */
 @ExtendWith(MockitoExtension.class)
 class StockServiceImpTest {
