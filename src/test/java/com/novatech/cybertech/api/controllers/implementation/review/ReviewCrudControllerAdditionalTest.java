@@ -12,7 +12,6 @@ import com.novatech.cybertech.exceptions.UserNotAuthorOfReviewException;
 import com.novatech.cybertech.fixtures.dto.ReviewDtoFixtures;
 import com.novatech.cybertech.services.implementation.ReviewManagementServiceImp;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -374,24 +373,5 @@ class ReviewCrudControllerAdditionalTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
-    }
-
-    // ----- Disabled placeholder for BUG-372: missing @Valid on PathVariable rating types ----
-    // Currently no path/query rating exists in this controller; left only as a marker if the
-    // contract grows.
-
-    @Test
-    @Disabled("BUG-373 — admin moderation contract not yet defined; pin enabled when the product " +
-            "decision lands. Today admins follow the same author-only path as users.")
-    void shouldAllowAdminToDeleteAnotherUsersReview_BUG_373_desiredBehaviour() throws Exception {
-        UUID reviewUuid = UUID.randomUUID();
-        doNothing().when(reviewService).deleteByUUID(any(UUID.class), anyString());
-
-        mockMvc.perform(delete(DELETE_REVIEW_BY_UUID_ENDPOINT, reviewUuid)
-                        .with(jwtAdmin("admin-keycloak-id"))
-                        .with(csrf())
-                        .accept(APPLICATION_JSON)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isNoContent());
     }
 }
