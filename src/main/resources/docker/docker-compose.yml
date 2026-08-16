@@ -121,7 +121,10 @@ services:
       KC_HOSTNAME: localhost:8080
       KC_PROXY_HEADERS: xforwarded
       KC_PROXY: edge
-    command: start-dev
+    # --import-realm scans /opt/keycloak/data/import on every boot and seeds any realm found
+    # there that doesn't already exist (IGNORE_EXISTING strategy) — safe to leave on permanently:
+    # a no-op once the realm is already in the keycloakDB volume, auto-provisioning on a fresh one.
+    command: ["start-dev", "--import-realm"]
     ports:
       - "8080:8080"
     volumes:
@@ -129,6 +132,10 @@ services:
       # with the Material 3 design tokens used by the Next.js front-end).
       # Activate it from the admin UI: Realm settings -> Themes -> Login theme.
       - ./../keycloak/themes/cybertech:/opt/keycloak/themes/cybertech:ro
+      # Realm/client/roles seed (cybertech realm, cybertech-user-management-client with its
+      # service-account roles) — without this, a fresh Keycloak boots empty and every backend
+      # call to the admin API fails until someone recreates the realm by hand.
+      - ./../keycloak/import:/opt/keycloak/data/import:ro
     depends_on:
       mysql:
         condition: service_healthy

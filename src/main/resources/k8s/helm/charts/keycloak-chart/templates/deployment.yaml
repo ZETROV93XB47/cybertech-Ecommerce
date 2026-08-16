@@ -37,8 +37,12 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # `start-dev` skips the optimised build step (no need to bake hostname
           # / HTTPS into an image) — appropriate for the portfolio runbook.
+          # --import-realm seeds the cybertech realm from the mounted ConfigMap on every boot;
+          # safe to leave on permanently (IGNORE_EXISTING strategy — a no-op once the realm
+          # already exists in the keycloakDB volume). See realm-import-configmap.yaml.
           args:
             - "start-dev"
+            - "--import-realm"
           ports:
             - name: http
               containerPort: 8080
@@ -84,6 +88,10 @@ spec:
               value: "true"
             - name: KC_METRICS_ENABLED
               value: "true"
+          volumeMounts:
+            - name: realm-import
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
           startupProbe:
             httpGet:
               path: /health/started
@@ -115,3 +123,7 @@ spec:
             limits:
               cpu: {{ .Values.resources.limits.cpu | quote }}
               memory: {{ .Values.resources.limits.memory | quote }}
+      volumes:
+        - name: realm-import
+          configMap:
+            name: {{ include "keycloak.fullname" . }}-realm-import

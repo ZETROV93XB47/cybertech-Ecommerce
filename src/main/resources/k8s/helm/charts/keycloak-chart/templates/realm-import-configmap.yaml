@@ -1,0 +1,21 @@
+{{/*
+Seeds the cybertech realm (roles, cybertech-user-management-client + its service-account
+roles) on first boot via Keycloak's native --import-realm mechanism (see deployment.yaml).
+Without this, a fresh Keycloak boots with only the default "master" realm, and every backend
+call to the admin API (register/login/user CRUD) fails until someone recreates the realm and
+client by hand — see docs/architecture/keycloak-outbox-saga.md and the 2026-08-16 code review.
+
+files/cybertech-realm.json is a copy of src/main/resources/keycloak/import/cybertech-realm.json
+(same file used by the local docker-compose setup) — duplicated rather than referenced because
+a Helm chart can only load files from within its own directory via .Files.Get. Keep both in
+sync if the realm export is ever refreshed.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "keycloak.fullname" . }}-realm-import
+  labels:
+    {{- include "keycloak.labels" . | nindent 4 }}
+data:
+  cybertech-realm.json: |-
+{{ .Files.Get "files/cybertech-realm.json" | indent 4 }}
