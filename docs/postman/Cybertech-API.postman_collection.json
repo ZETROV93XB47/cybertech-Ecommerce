@@ -130,34 +130,6 @@
           ]
         },
         {
-          "name": "Register synthetic user (ADMIN)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/user/register/auto/single",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "user", "register", "auto", "single"]
-            },
-            "description": "Developer / load-test utility — mints one synthetic user via `DataGenerator`. ADMIN-only (BUG-201).\n\n- Role: ADMIN\n- Success: 201 with `{ id, keycloakId, email, username }`\n- Errors: 403 if caller is not ADMIN."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
           "name": "Health check",
           "request": {
             "method": "GET",
@@ -372,6 +344,33 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Register synthetic user (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/user/register/auto/single",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "user", "register", "auto", "single"]
+            },
+            "description": "Developer / load-test utility — mints one synthetic user via `DataGenerator`. Moved from the user-facing controller onto `UserManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `{ id, keycloakId, email, username }`\n- Errors: 403 if caller is not ADMIN."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
                 ]
               }
             }
@@ -1087,12 +1086,12 @@
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/management/order/place/auto",
+              "raw": "{{base_url}}/api/v1/services/admin/management/order/place/auto",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "management", "order", "place", "auto"]
+              "path": ["api", "v1", "services", "admin", "management", "order", "place", "auto"]
             },
             "body": { "mode": "raw", "raw": "{}" },
-            "description": "BUG-IDOR-D4 — debug/load helper. Builds a synthetic order via `DataGenerator.orderGenerator()`.\n\n- Role: ADMIN\n- Success: 201 with `OrderResponseDto`."
+            "description": "BUG-IDOR-D4 — debug/load helper. Builds a synthetic order via `DataGenerator.orderGenerator()`. Lives on `OrderManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `OrderResponseDto`."
           },
           "event": [
             {
@@ -1208,14 +1207,14 @@
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/management/order/delete/:uuid",
+              "raw": "{{base_url}}/api/v1/services/admin/management/order/delete/:uuid",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "management", "order", "delete", ":uuid"],
+              "path": ["api", "v1", "services", "admin", "management", "order", "delete", ":uuid"],
               "variable": [
                 { "key": "uuid", "value": "99999999-aaaa-bbbb-cccc-dddddddddddd" }
               ]
             },
-            "description": "Hard-delete an order.\n\n- Role: ADMIN\n- Success: 204 No Content."
+            "description": "Hard-delete an order. Lives on `OrderManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 204 No Content."
           },
           "event": [
             {
@@ -1613,16 +1612,16 @@
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card?page=0&size=20&sort=createdAt,DESC",
+              "raw": "{{base_url}}/api/v1/services/admin/bank-card/get/all?page=0&size=20&sort=createdAt,DESC",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "bank-card"],
+              "path": ["api", "v1", "services", "admin", "bank-card", "get", "all"],
               "query": [
                 { "key": "page", "value": "0" },
                 { "key": "size", "value": "20" },
                 { "key": "sort", "value": "createdAt,DESC" }
               ]
             },
-            "description": "Admin paged listing of every card.\n\n- Role: ADMIN\n- Success: 200 with `Page<BankCardResponseDto>`."
+            "description": "Admin paged listing of every card. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 200 with `Page<BankCardResponseDto>`."
           },
           "event": [
             {
@@ -1645,14 +1644,14 @@
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card/:uuid",
+              "raw": "{{base_url}}/api/v1/services/admin/bank-card/get/:uuid",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "bank-card", ":uuid"],
+              "path": ["api", "v1", "services", "admin", "bank-card", "get", ":uuid"],
               "variable": [
                 { "key": "uuid", "value": "55555555-6666-7777-8888-999999999999" }
               ]
             },
-            "description": "ADMIN-only fetch of any card by UUID.\n\n- Role: ADMIN\n- Success: 200 with `BankCardResponseDto`."
+            "description": "ADMIN-only fetch of any card by UUID. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 200 with `BankCardResponseDto`."
           },
           "event": [
             {
@@ -1676,15 +1675,15 @@
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card",
+              "raw": "{{base_url}}/api/v1/services/admin/bank-card/create",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "bank-card"]
+              "path": ["api", "v1", "services", "admin", "bank-card", "create"]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"cardHolderName\": \"Admin Created\",\n  \"cardNumber\": \"5555555555554444\",\n  \"expiryDate\": \"08/2029\",\n  \"cardType\": \"MASTERCARD\",\n  \"userUuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\"\n}"
             },
-            "description": "ADMIN: create a card directly on a user UUID.\n\n- Role: ADMIN\n- Success: 201 with `BankCardResponseDto`."
+            "description": "ADMIN: create a card directly on a user UUID. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `BankCardResponseDto`."
           },
           "event": [
             {
@@ -1702,21 +1701,21 @@
         {
           "name": "Admin: update card",
           "request": {
-            "method": "PUT",
+            "method": "PATCH",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card",
+              "raw": "{{base_url}}/api/v1/services/admin/bank-card/update",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "bank-card"]
+              "path": ["api", "v1", "services", "admin", "bank-card", "update"]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"uuid\": \"55555555-6666-7777-8888-999999999999\",\n  \"cardHolderName\": \"Admin Edit\",\n  \"cardNumber\": \"5555555555554444\",\n  \"expiryDate\": \"09/2030\",\n  \"cardType\": \"MASTERCARD\"\n}"
             },
-            "description": "ADMIN: edit any card.\n\n- Role: ADMIN\n- Success: 200 with `BankCardResponseDto`."
+            "description": "ADMIN: edit any card. Lives on `BankCardAdminController` — method changed PUT→PATCH in the admin-split refactor.\n\n- Role: ADMIN\n- Success: 200 with `BankCardResponseDto`."
           },
           "event": [
             {
@@ -1739,14 +1738,14 @@
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card/:uuid",
+              "raw": "{{base_url}}/api/v1/services/admin/bank-card/delete/:uuid",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "bank-card", ":uuid"],
+              "path": ["api", "v1", "services", "admin", "bank-card", "delete", ":uuid"],
               "variable": [
                 { "key": "uuid", "value": "55555555-6666-7777-8888-999999999999" }
               ]
             },
-            "description": "ADMIN: hard-delete a card.\n\n- Role: ADMIN\n- Success: 204 No Content."
+            "description": "ADMIN: hard-delete a card. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 204 No Content."
           },
           "event": [
             {
