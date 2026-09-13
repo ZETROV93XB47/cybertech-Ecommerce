@@ -1,5 +1,6 @@
-package com.novatech.cybertech.batch.job;
+package com.novatech.cybertech.batch.job.implementation;
 
+import com.novatech.cybertech.batch.job.core.KeycloakOutboxReconciliationJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -27,14 +28,16 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.KEYCLOAK_OU
  * {@code docs/superpowers/specs/2026-06-04-keycloak-outbox-design.md}). A slow tick is therefore
  * fine: the goal is convergence, not latency.
  *
- * <p>Mirrors {@link RedeliverFailedNotificationsJob} structurally: one {@code @Scheduled}
- * dispatcher, one {@code activated} flag, one {@link Job} qualifier-injected by name, single
- * launcher exception barrier.
+ * <p>Mirrors {@link com.novatech.cybertech.batch.job.implementation.RedeliverFailedNotificationsJobImp}
+ * structurally: one {@code @Scheduled} dispatcher, one {@code activated} flag, one {@link Job}
+ * qualifier-injected by name, single launcher exception barrier.
+ *
+ * <p>See {@link KeycloakOutboxReconciliationJob} for the contract's intent.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class KeycloakOutboxReconciliationJob {
+public class KeycloakOutboxReconciliationJobImp implements KeycloakOutboxReconciliationJob {
 
     @Value("${cybertech.keycloak.outbox.job.activated:true}")
     private boolean activated;
@@ -47,6 +50,7 @@ public class KeycloakOutboxReconciliationJob {
     // Guards against two pods running this tick at once if we ever scale past replicas=1 — see
     // RedisConfig#lockProvider. lockAtLeastFor keeps a sub-second run from being retriggered by
     // clock skew between nodes; lockAtMostFor is a safety net if a node dies mid-run.
+    @Override
     @Scheduled(cron = "${cybertech.keycloak.outbox.job.cron:0 */15 * * * *}", zone = "UTC")
     @SchedulerLock(name = "keycloakOutboxReconciliationJob", lockAtMostFor = "PT10M", lockAtLeastFor = "PT1M")
     public void startJob() {

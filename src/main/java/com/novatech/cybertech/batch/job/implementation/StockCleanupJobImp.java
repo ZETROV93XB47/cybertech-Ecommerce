@@ -1,5 +1,6 @@
-package com.novatech.cybertech.batch.job;
+package com.novatech.cybertech.batch.job.implementation;
 
+import com.novatech.cybertech.batch.job.core.StockCleanupJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.job.Job;
@@ -18,19 +19,23 @@ import java.time.LocalDateTime;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.CLEAN_UP_EXPIRED_STOCK_JOB;
 
+/**
+ * See {@link StockCleanupJob} for the contract's intent.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class StockCleanupJob {
+public class StockCleanupJobImp implements StockCleanupJob {
 
     @Value("${cybertech.stock.cleanup.job.activated:true}")
     private boolean activated;
 
     @Qualifier(CLEAN_UP_EXPIRED_STOCK_JOB)
     private final Job job;
-    
+
     private final JobLauncher jobLauncher;
 
+    @Override
     @Scheduled(cron = "${cybertech.stock.cleanup.job.cron:0 */30 * * * *}", zone = "UTC")
     public void startJob() {
         if (!activated) {

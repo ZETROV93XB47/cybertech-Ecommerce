@@ -8,6 +8,7 @@ import com.novatech.cybertech.entities.enums.OutboxStatus;
 import com.novatech.cybertech.repositories.KeycloakOutboxRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.KeycloakOutboxService;
+import com.novatech.cybertech.services.core.UserPersistenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -111,11 +112,9 @@ public class KeycloakOutboxServiceImp implements KeycloakOutboxService {
             row.setLastError(truncate(e.getMessage()));
             if (row.getAttempts() >= maxAttempts) {
                 row.setStatus(OutboxStatus.FAILED);
-                log.error("Outbox row {} ({}) gave up after {} attempts — manual reconciliation required",
-                        row.getUuid(), row.getOperationType(), row.getAttempts(), e);
+                log.error("Outbox row {} ({}) gave up after {} attempts — manual reconciliation required", row.getUuid(), row.getOperationType(), row.getAttempts(), e);
             } else {
-                log.warn("Outbox row {} ({}) transient failure, attempt {} — will retry",
-                        row.getUuid(), row.getOperationType(), row.getAttempts(), e);
+                log.warn("Outbox row {} ({}) transient failure, attempt {} — will retry", row.getUuid(), row.getOperationType(), row.getAttempts(), e);
             }
             outboxRepository.save(row);
         }

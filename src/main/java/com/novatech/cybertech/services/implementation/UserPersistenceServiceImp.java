@@ -9,6 +9,7 @@ import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.BankCardManagementService;
+import com.novatech.cybertech.services.core.UserPersistenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,10 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
  * the local persistence fails — fixing the orphaned-Keycloak-user inconsistency that the previous
  * single-{@code @Transactional} flow could not avoid.
  */
+/**
+ * See {@link UserPersistenceService} for the contract's intent.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class UserPersistenceService {
+public class UserPersistenceServiceImp implements UserPersistenceService {
 
     private final UserMapper userMapper;
     private final UserRepository userRepository;
@@ -43,6 +47,7 @@ public class UserPersistenceService {
      * Keycloak {@code deleteUser} after we throw without those operations being swept into a
      * rolling-back transactional context.
      */
+    @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public UserResponseDto saveNewUser(final UserCreateRequestDto req, final String keycloakId) {
         final UserEntity user = UserEntity.builder()
@@ -91,6 +96,7 @@ public class UserPersistenceService {
      *                   context only for the duration of this REQUIRES_NEW TX.
      * @return mapped {@link UserResponseDto} reflecting the saved state.
      */
+    @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public UserResponseDto updateUser(final UserUpdateRequestDto dto, final UserEntity loadedUser) {
         userMapper.updateEntityFromDto(dto, loadedUser);

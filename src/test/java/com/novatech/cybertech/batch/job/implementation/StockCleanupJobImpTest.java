@@ -1,4 +1,4 @@
-package com.novatech.cybertech.batch.job;
+package com.novatech.cybertech.batch.job.implementation;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,11 +34,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for StockCleanupJob. Per progress.md the job already uses the fixed
+ * Unit tests for {@link StockCleanupJobImp}. Per progress.md the job already uses the fixed
  * key "date"; we lock that in.
  */
 @ExtendWith(MockitoExtension.class)
-class StockCleanupJobTest {
+class StockCleanupJobImpTest {
 
     @Mock
     private Job job;
@@ -47,7 +47,7 @@ class StockCleanupJobTest {
     private JobLauncher jobLauncher;
 
     @InjectMocks
-    private StockCleanupJob scheduler;
+    private StockCleanupJobImp scheduler;
 
     @BeforeEach
     void setUp() {

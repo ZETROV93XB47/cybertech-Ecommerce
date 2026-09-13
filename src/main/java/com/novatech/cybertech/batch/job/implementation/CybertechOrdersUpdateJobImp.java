@@ -1,6 +1,6 @@
-package com.novatech.cybertech.batch.job;
+package com.novatech.cybertech.batch.job.implementation;
 
-
+import com.novatech.cybertech.batch.job.core.CybertechOrdersUpdateJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.job.Job;
@@ -20,10 +20,13 @@ import java.time.LocalDateTime;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB;
 
+/**
+ * See {@link CybertechOrdersUpdateJob} for the contract's intent.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class CybertechOrdersUpdateJob {
+public class CybertechOrdersUpdateJobImp implements CybertechOrdersUpdateJob {
 
     @Value("${cybertech.orders.update.job.activated}")
     private boolean activated;
@@ -34,6 +37,7 @@ public class CybertechOrdersUpdateJob {
     private final JobLauncher jobLauncher;
 
 
+    @Override
     @Scheduled(cron = "${cybertech.orders.update.job.cron}", zone = "UTC")
     public JobExecution startJob() {
         log.debug("Starting " + REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB + " Job with parameters: ");

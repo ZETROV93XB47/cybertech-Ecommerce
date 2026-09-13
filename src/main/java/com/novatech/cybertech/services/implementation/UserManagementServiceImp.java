@@ -12,6 +12,7 @@ import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.KeycloakOutboxService;
 import com.novatech.cybertech.services.core.UserManagementService;
+import com.novatech.cybertech.services.core.UserPersistenceService;
 import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -59,14 +60,10 @@ public class UserManagementServiceImp implements UserManagementService {
      */
     @Override
     public UserResponseDto create(final UserCreateRequestDto req) {
-        // FIX(PII-LEAK): the full request DTO contains the raw password, bank-card details and email —
-        // log only the email domain so traffic patterns stay observable without leaking PII into log appenders.
         log.info("user creation request received for email domain '{}'", LogSafetyUtils.extractEmailDomain(req.getEmail()));
 
-        // Phase 0 — durable intent FIRST (own TX): survives a crash so the job can find + compensate an orphan.
         final UUID outboxUuid = keycloakOutboxService.recordCreatePending(req.getEmail());
 
-        // Phase 1 — Keycloak only, NO transaction. A failure here is terminal: no compensation needed.
         final String keycloakId;
         try {
             keycloakId = keycloakUserManagementService.createUser(req.getEmail(), req.getFirstName(), req.getLastName(), req.getPassword(), Role.USER);

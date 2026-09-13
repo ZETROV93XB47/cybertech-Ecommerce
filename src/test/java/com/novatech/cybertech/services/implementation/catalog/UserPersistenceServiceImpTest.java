@@ -11,7 +11,7 @@ import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.BankCardManagementService;
-import com.novatech.cybertech.services.implementation.UserPersistenceService;
+import com.novatech.cybertech.services.implementation.UserPersistenceServiceImp;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +29,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Mockito unit tests for {@link UserPersistenceService}.
+ * Mockito unit tests for {@link UserPersistenceServiceImp}.
  *
  * <p>Pins the H1 fix contract: this collaborator owns the SQL portion of user creation and runs
  * under {@code @Transactional(REQUIRES_NEW)}. Behaviours pinned here:
@@ -44,13 +44,13 @@ import static org.mockito.Mockito.when;
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
-class UserPersistenceServiceTest {
+class UserPersistenceServiceImpTest {
 
     @Mock UserRepository userRepository;
     @Mock UserMapper userMapper;
     @Mock BankCardManagementService bankCardManagementService;
 
-    @InjectMocks UserPersistenceService service;
+    @InjectMocks UserPersistenceServiceImp service;
 
     @Test
     @DisplayName("happy path — saves entity, delegates bank-card, returns mapped DTO")

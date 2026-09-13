@@ -1,5 +1,6 @@
-package com.novatech.cybertech.batch.job;
+package com.novatech.cybertech.batch.job.implementation;
 
+import com.novatech.cybertech.batch.job.core.RedeliverFailedNotificationsJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.job.Job;
@@ -30,14 +31,16 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.REDELIVER_F
  * after the in-process budget was spent — typical cause is an outage longer
  * than the in-process backoff window (mail server down, DNS hiccup, etc.).
  *
- * <p>Mirrors {@link StockCleanupJob} structurally: one {@code @Scheduled}
- * dispatcher, one {@code activated} flag, one {@link Job} qualifier-injected
+ * <p>Mirrors {@link com.novatech.cybertech.batch.job.implementation.StockCleanupJobImp} structurally:
+ * one {@code @Scheduled} dispatcher, one {@code activated} flag, one {@link Job} qualifier-injected
  * by name, single launcher exception barrier.
+ *
+ * <p>See {@link RedeliverFailedNotificationsJob} for the contract's intent.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RedeliverFailedNotificationsJob {
+public class RedeliverFailedNotificationsJobImp implements RedeliverFailedNotificationsJob {
 
     @Value("${cybertech.notification.redelivery.job.activated:true}")
     private boolean activated;
@@ -53,6 +56,7 @@ public class RedeliverFailedNotificationsJob {
      * to drain a backlog accumulated over a longer outage, not to react in
      * real time.
      */
+    @Override
     @Scheduled(cron = "${cybertech.notification.redelivery.job.cron:0 */15 * * * *}", zone = "UTC")
     public void startJob() {
         if (!activated) {
