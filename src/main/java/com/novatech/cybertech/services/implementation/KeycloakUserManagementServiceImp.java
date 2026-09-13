@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.entities.enums.Role;
+import com.novatech.cybertech.services.core.KeycloakUserManagementService;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,16 +19,20 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * See {@link KeycloakUserManagementService} for the contract's intent.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class KeycloakUserManagementService {
+public class KeycloakUserManagementServiceImp implements KeycloakUserManagementService {
 
     @Value("${keycloak.client.user.management.realm}")
     private String realm;
     private final Keycloak keycloakClient;
 
 
+    @Override
     public String createUser(String email, String firstName, String lastName, String rawPassword, Role role) {
 
         final UsersResource users = keycloakClient.realm(realm).users();
@@ -89,6 +94,7 @@ public class KeycloakUserManagementService {
      * success. Any other non-2xx status is surfaced (it would previously be silently swallowed
      * because the returned {@link Response} was never inspected).
      */
+    @Override
     public void deleteUser(String keycloakUserId) {
         try (Response resp = keycloakClient.realm(realm).users().delete(keycloakUserId)) {
             final int status = resp.getStatus();
@@ -104,6 +110,7 @@ public class KeycloakUserManagementService {
      * Reconciliation lookup: resolve a Keycloak user id by exact email, or empty if none.
      * Used by the outbox job to detect a crash-orphan (Keycloak user with no DB row).
      */
+    @Override
     public Optional<String> searchByEmail(final String email) {
         return keycloakClient.realm(realm).users().searchByEmail(email, true).stream()
                 .findFirst()
@@ -117,6 +124,7 @@ public class KeycloakUserManagementService {
         return email.split("@")[0];
     }
 
+    @Override
     public void updateUser(String keycloakId, UserUpdateRequestDto userUpdateRequestDto) {
         UserResource userResource = keycloakClient.realm(realm).users().get(keycloakId);
         UserRepresentation userRep = userResource.toRepresentation();

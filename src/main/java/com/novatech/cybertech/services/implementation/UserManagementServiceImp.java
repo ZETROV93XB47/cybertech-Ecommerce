@@ -11,6 +11,7 @@ import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.KeycloakOutboxService;
+import com.novatech.cybertech.services.core.KeycloakUserManagementService;
 import com.novatech.cybertech.services.core.UserManagementService;
 import com.novatech.cybertech.services.core.UserPersistenceService;
 import com.novatech.cybertech.utils.LogSafetyUtils;

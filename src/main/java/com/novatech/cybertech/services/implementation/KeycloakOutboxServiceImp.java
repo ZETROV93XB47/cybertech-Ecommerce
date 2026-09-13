@@ -8,6 +8,7 @@ import com.novatech.cybertech.entities.enums.OutboxStatus;
 import com.novatech.cybertech.repositories.KeycloakOutboxRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.KeycloakOutboxService;
+import com.novatech.cybertech.services.core.KeycloakUserManagementService;
 import com.novatech.cybertech.services.core.UserPersistenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

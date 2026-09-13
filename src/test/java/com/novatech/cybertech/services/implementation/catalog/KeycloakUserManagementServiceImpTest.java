@@ -3,7 +3,7 @@ package com.novatech.cybertech.services.implementation.catalog;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.entities.enums.Role;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
-import com.novatech.cybertech.services.implementation.KeycloakUserManagementService;
+import com.novatech.cybertech.services.implementation.KeycloakUserManagementServiceImp;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -36,14 +36,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Mockito unit tests for {@link KeycloakUserManagementService}.
+ * Mockito unit tests for {@link KeycloakUserManagementServiceImp}.
  *
  * <p>SA-W3.5 wave — services/catalog. Pins BUG-085 (Keycloak admin client never closed).
  * Uses the Keycloak chain: {@code keycloak.realm(realm).users().create(...)} +
  * {@code .roles().get(role).toRepresentation()} + {@code .users().get(id).roles().realmLevel().add(...)}.
  */
 @org.junit.jupiter.api.extension.ExtendWith(MockitoExtension.class)
-class KeycloakUserManagementServiceTest {
+class KeycloakUserManagementServiceImpTest {
 
     private static final String REALM = "cybertech";
 
@@ -56,11 +56,11 @@ class KeycloakUserManagementServiceTest {
     @Mock RoleMappingResource roleMappingResource;
     @Mock RoleScopeResource roleScopeResource;
 
-    private KeycloakUserManagementService service;
+    private KeycloakUserManagementServiceImp service;
 
     @BeforeEach
     void setUp() {
-        service = new KeycloakUserManagementService(keycloak);
+        service = new KeycloakUserManagementServiceImp(keycloak);
         ReflectionTestUtils.setField(service, "realm", REALM);
     }
 

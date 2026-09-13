@@ -10,7 +10,7 @@ import com.novatech.cybertech.fixtures.support.TestDataCleaner;
 import com.novatech.cybertech.fixtures.support.stubs.KeycloakAdminStub;
 import com.novatech.cybertech.entities.enums.Role;
 import com.novatech.cybertech.repositories.UserRepository;
-import com.novatech.cybertech.services.implementation.KeycloakUserManagementService;
+import com.novatech.cybertech.services.core.KeycloakUserManagementService;
 import com.novatech.cybertech.services.implementation.UserManagementServiceImp;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;

@@ -16,7 +16,7 @@ import com.novatech.cybertech.fixtures.support.stubs.KeycloakAdminStub;
 import com.novatech.cybertech.repositories.KeycloakOutboxRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.UserManagementService;
-import com.novatech.cybertech.services.implementation.KeycloakUserManagementService;
+import com.novatech.cybertech.services.core.KeycloakUserManagementService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
