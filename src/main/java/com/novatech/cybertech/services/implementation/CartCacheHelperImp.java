@@ -4,48 +4,42 @@ import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.connection.ReturnType;
-import org.springframework.data.redis.connection.RedisStringCommands;
-import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.data.redis.core.types.Expiration;
-import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Redis-backed implementation of {@link CartCacheHelper}.
  * <p>
- * Lock keys: {@code lock:cart:&lt;keycloakId&gt;} with a 5s TTL — short enough that
- * a crashed worker cannot starve other workers, long enough that the typical
- * read-modify-write of {@code addItemsToCart} (one user lookup + one product
- * lookup + one save + one cache write) completes well within the budget.
+ * <b>Locking</b> delegates entirely to Redisson's {@link RLock} on key
+ * {@code cart:lock:<keycloakId>}: {@code tryLock(waitTime, unit)} (no explicit lease
+ * time) hands the lock a "watchdog" that keeps extending its TTL in the background for
+ * as long as the owning client is alive, instead of a fixed TTL that could expire mid
+ * read-modify-write on a slow request. Ownership is tracked by Redisson internally
+ * (thread id), so unlocking never needs a token to be threaded through the call —
+ * {@link #releaseLock} just needs to run on the same thread that acquired the lock,
+ * which is guaranteed by {@code CartServiceImp}'s try/finally usage.
  * <p>
- * Cache keys: {@code cart::&lt;keycloakId&gt;} with a TTL of
- * {@code baseTtlSeconds ± jitterMaxSeconds} to avoid stampede expirations.
+ * <b>Cache</b> reads/writes stay on the plain {@link RedisTemplate} at
+ * {@code cart::<keycloakId>} with a TTL of {@code baseTtlSeconds ± jitterMaxSeconds} to
+ * avoid stampede expirations — this part never needed the lock's complexity and is
+ * unchanged.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class CartCacheHelperImp implements CartCacheHelper {
 
-    private static final int LOCK_DURATION_IN_SECONDS = 5;
-    /** Initial back-off between blocking-acquire retries (BUG-160). */
-    private static final long BLOCKING_RETRY_INITIAL_MS = 5L;
-    /** Cap on the back-off — keeps tail latency bounded. */
-    private static final long BLOCKING_RETRY_MAX_MS = 50L;
-    private static final String CART_LOCKING_PREFFIX = "cart:lock:";
-    private static final String UNLOCK_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
-    private static final DefaultRedisScript<Long> UNLOCK_REDIS_SCRIPT = new DefaultRedisScript<>(UNLOCK_SCRIPT, Long.class);
-    private static final StringRedisSerializer STRING_SERIALIZER = new StringRedisSerializer();
+    private static final String CART_LOCK_PREFIX = "cart:lock:";
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final RedissonClient redissonClient;
 
     @Value("${app.cache.max.ttl.jitter.time.seconds}")
     private int jitterMaxSeconds;
@@ -53,110 +47,36 @@ public class CartCacheHelperImp implements CartCacheHelper {
     @Value("${app.cache.default.ttl.expiration.time.seconds}")
     private int baseTtlSeconds;
 
-
-    /**
-     * Atomic non-blocking lock acquisition via {@code SET ... NX EX 5}.
-     * <p>
-     * Returns a freshly-minted token (UUID) on success or {@code null} if the
-     * lock is already held by another worker. The token must be supplied to
-     * {@link #releaseLock(String, String)} so the unlock Lua script can CAS-check
-     * ownership before deleting the key — preventing the classic "release someone
-     * else's lock after my TTL expired" race.
-     * <p>
-     * BUG-160 (PRE-2) — The lock value is written as RAW STRING BYTES via the
-     * connection callback rather than through {@code redisTemplate.opsForValue()}.
-     * The template's value serializer is {@code GenericJacksonJsonRedisSerializer},
-     * which would JSON-encode the token (wrapping it in {@code "..."}). The unlock
-     * Lua script reads the raw bytes via {@code GET KEYS[1]} and compares to
-     * {@code ARGV[1]} which we serialise with {@link StringRedisSerializer} (no
-     * quotes). The two encodings would never match, so the unlock would silently
-     * no-op and the lock would only be released by its TTL — starving any waiting
-     * thread for a full {@link #LOCK_DURATION_IN_SECONDS} seconds and breaking the
-     * concurrent-add test. Using raw bytes on both write and compare is the fix.
-     */
     @Override
-    public String acquireLock(final String userId) {
-        final String lockKey = lockKey(userId);
-        final String token = UUID.randomUUID().toString();
-
-        log.info("Acquiring lock for user: {} with token: {}", userId, token);
-
-        Boolean success = redisTemplate.execute((RedisCallback<Boolean>) connection -> {
-            byte[] keyBytes = STRING_SERIALIZER.serialize(lockKey);
-            byte[] tokenBytes = STRING_SERIALIZER.serialize(token);
-            return connection.stringCommands().set(
-                    keyBytes,
-                    tokenBytes,
-                    Expiration.seconds(LOCK_DURATION_IN_SECONDS),
-                    RedisStringCommands.SetOption.SET_IF_ABSENT
-            );
-        });
-
-        return Boolean.TRUE.equals(success) ? token : null;
+    public boolean acquireLock(final String userId) {
+        return tryLock(userId, 0L);
     }
 
-
-    /**
-     * BUG-160 — Bounded-wait blocking acquisition. Spins with exponential
-     * back-off (5ms → 50ms cap) on top of the existing non-blocking
-     * {@link #acquireLock(String)}, returning the lock token on success or
-     * {@code null} when {@code timeoutMillis} elapses without success.
-     * <p>
-     * Used by every cart write path so the entire DB load → mutate → save → cache
-     * write happens inside the lock (otherwise concurrent {@code POST /cart/add}
-     * requests can lose items via read-modify-write race).
-     */
     @Override
-    public String acquireLockBlocking(final String userId, final long timeoutMillis) {
-        final long deadline = System.currentTimeMillis() + timeoutMillis;
-        long backoff = BLOCKING_RETRY_INITIAL_MS;
+    public boolean acquireLockBlocking(final String userId, final long timeoutMillis) {
+        return tryLock(userId, timeoutMillis);
+    }
 
-        while (true) {
-            final String token = acquireLock(userId);
-            if (token != null) {
-                return token;
+    private boolean tryLock(final String userId, final long waitMillis) {
+        final RLock lock = redissonClient.getLock(lockKey(userId));
+        try {
+            final boolean acquired = lock.tryLock(waitMillis, TimeUnit.MILLISECONDS);
+            if (!acquired) {
+                log.warn("Could not acquire cart lock for user {} within {}ms", userId, waitMillis);
             }
-
-            if (System.currentTimeMillis() >= deadline) {
-                log.warn("Timed out acquiring cart lock for user {} after {}ms", userId, timeoutMillis);
-                return null;
-            }
-
-            try {
-                Thread.sleep(backoff);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                return null;
-            }
-            backoff = Math.min(BLOCKING_RETRY_MAX_MS, backoff * 2);
+            return acquired;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 
-
-    /**
-     * Token-checked unlock implemented as an atomic Lua script
-     * ({@code GET == token ? DEL : noop}). Safe to call with a stale token —
-     * the script will just be a no-op when the lock has already been re-acquired
-     * by someone else after a TTL expiry.
-     */
     @Override
-    public void releaseLock(final String userId, final String token) {
-        log.info("Releasing lock for user: {} with token: {}", userId, token);
-
-        final String lockKey = lockKey(userId);
-
-        redisTemplate.execute((RedisCallback<Long>) connection -> {
-            byte[] keyBytes = STRING_SERIALIZER.serialize(lockKey);
-            byte[] tokenBytes = STRING_SERIALIZER.serialize(token);
-
-            return connection.eval(
-                    UNLOCK_REDIS_SCRIPT.getScriptAsString().getBytes(StandardCharsets.UTF_8),
-                    ReturnType.INTEGER,
-                    1,
-                    keyBytes,
-                    tokenBytes
-            );
-        });
+    public void releaseLock(final String userId) {
+        final RLock lock = redissonClient.getLock(lockKey(userId));
+        if (lock.isHeldByCurrentThread()) {
+            lock.unlock();
+        }
     }
 
     /**
@@ -199,7 +119,7 @@ public class CartCacheHelperImp implements CartCacheHelper {
     }
 
     private static String lockKey(final String userId) {
-        return CART_LOCKING_PREFFIX + userId;
+        return CART_LOCK_PREFIX + userId;
     }
 
     // Symmetric jitter around baseTtlSeconds so writes at the same instant don't all expire together.

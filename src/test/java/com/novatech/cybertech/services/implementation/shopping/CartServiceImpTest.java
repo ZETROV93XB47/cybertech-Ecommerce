@@ -100,7 +100,7 @@ class CartServiceImpTest {
         // Use lenient so tests which never exercise addItemsToCart (e.g. getCart, remove,
         // decreaseQuantity, CRUD paths) don't fail with Mockito strict-stubbing.
         lenient().when(cartCacheHelper.acquireLockBlocking(anyString(), anyLong()))
-                .thenReturn("test-lock-token");
+                .thenReturn(true);
     }
 
     // ---- helpers ---------------------------------------------------
@@ -145,13 +145,13 @@ class CartServiceImpTest {
             final InOrder inOrder = inOrder(cartCacheHelper, cartWriteTransactionalDelegate);
             inOrder.verify(cartCacheHelper).acquireLockBlocking(eq(keycloakId), anyLong());
             inOrder.verify(cartWriteTransactionalDelegate).addItemsWithinTransaction(req, keycloakId);
-            inOrder.verify(cartCacheHelper).releaseLock(eq(keycloakId), anyString());
+            inOrder.verify(cartCacheHelper).releaseLock(eq(keycloakId));
         }
 
         @Test
         @DisplayName("lock not acquired within budget -> IllegalStateException, delegate never called, no release")
         void lockTimeout_throws_delegateNotCalled() {
-            when(cartCacheHelper.acquireLockBlocking(anyString(), anyLong())).thenReturn(null);
+            when(cartCacheHelper.acquireLockBlocking(anyString(), anyLong())).thenReturn(false);
             final CartCreateRequestDto req = requestFor(UUID.randomUUID(), 1);
 
             assertThatThrownBy(() -> service.addItemsToCart(req, keycloakId))
@@ -159,7 +159,7 @@ class CartServiceImpTest {
                     .hasMessageContaining("temporarily locked");
 
             verifyNoInteractions(cartWriteTransactionalDelegate);
-            verify(cartCacheHelper, never()).releaseLock(anyString(), anyString());
+            verify(cartCacheHelper, never()).releaseLock(anyString());
         }
 
         @Test
@@ -173,7 +173,7 @@ class CartServiceImpTest {
                     .isInstanceOf(UserNotFoundException.class);
 
             // The Redis lock must never leak, even when the transactional delegate fails.
-            verify(cartCacheHelper).releaseLock(eq(keycloakId), anyString());
+            verify(cartCacheHelper).releaseLock(eq(keycloakId));
         }
 
         @Test
@@ -240,7 +240,7 @@ class CartServiceImpTest {
 
             final CartResponseDto mapped = stubMappedResponse();
             when(cartCacheHelper.getRaw(keycloakId)).thenReturn(null);
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn("lock-token");
+            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(true);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
             when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(mapped);
 
@@ -248,7 +248,7 @@ class CartServiceImpTest {
 
             assertThat(result).isSameAs(mapped);
             verify(cartCacheHelper).putWithJitter(keycloakId, mapped);
-            verify(cartCacheHelper).releaseLock(keycloakId, "lock-token");
+            verify(cartCacheHelper).releaseLock(keycloakId);
         }
 
         @Test
@@ -256,7 +256,7 @@ class CartServiceImpTest {
         void cacheMiss_noCartOnUser_returnsEmpty() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).cartEntity(null).build();
             when(cartCacheHelper.getRaw(keycloakId)).thenReturn(null);
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn("tok");
+            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(true);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             final CartResponseDto result = service.getCart(keycloakId);
@@ -265,7 +265,7 @@ class CartServiceImpTest {
             assertThat(result.getCartUuid()).isNull();
             // putWithJitter still called with the empty DTO
             verify(cartCacheHelper).putWithJitter(eq(keycloakId), any(CartResponseDto.class));
-            verify(cartCacheHelper).releaseLock(keycloakId, "tok");
+            verify(cartCacheHelper).releaseLock(keycloakId);
         }
 
         @Test
@@ -275,13 +275,13 @@ class CartServiceImpTest {
             when(cartCacheHelper.getRaw(keycloakId))
                     .thenReturn(null)   // first probe miss
                     .thenReturn(retried); // retry hit
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(null);
+            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(false);
 
             final CartResponseDto result = service.getCart(keycloakId);
 
             assertThat(result).isSameAs(retried);
             verifyNoInteractions(userRepository, cartRepository, cartMapper);
-            verify(cartCacheHelper, never()).releaseLock(anyString(), anyString());
+            verify(cartCacheHelper, never()).releaseLock(anyString());
         }
 
         @Test
@@ -290,7 +290,7 @@ class CartServiceImpTest {
             when(cartCacheHelper.getRaw(keycloakId))
                     .thenReturn(null)
                     .thenReturn(null);
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(null);
+            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(false);
 
             final CartResponseDto result = service.getCart(keycloakId);
 
@@ -303,13 +303,13 @@ class CartServiceImpTest {
         @DisplayName("user missing during DB rebuild -> exception bubbles, lock STILL released")
         void userMissingDuringRebuild_releasesLock() {
             when(cartCacheHelper.getRaw(keycloakId)).thenReturn(null);
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn("tok");
+            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(true);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.getCart(keycloakId))
                     .isInstanceOf(UserNotFoundException.class);
 
-            verify(cartCacheHelper).releaseLock(keycloakId, "tok");
+            verify(cartCacheHelper).releaseLock(keycloakId);
         }
     }
 

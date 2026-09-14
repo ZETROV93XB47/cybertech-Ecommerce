@@ -10,16 +10,20 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -39,6 +43,8 @@ class CartCacheHelperImpTest {
 
     @Mock RedisTemplate<String, Object> redisTemplate;
     @Mock ValueOperations<String, Object> valueOperations;
+    @Mock RedissonClient redissonClient;
+    @Mock RLock rLock;
 
     private CartCacheHelperImp helper;
 
@@ -47,7 +53,7 @@ class CartCacheHelperImpTest {
 
     @BeforeEach
     void setUp() {
-        helper = new CartCacheHelperImp(redisTemplate);
+        helper = new CartCacheHelperImp(redisTemplate, redissonClient);
         ReflectionTestUtils.setField(helper, "baseTtlSeconds", BASE_TTL);
         ReflectionTestUtils.setField(helper, "jitterMaxSeconds", JITTER_MAX);
     }
@@ -219,54 +225,87 @@ class CartCacheHelperImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("acquireLock / releaseLock")
+    @DisplayName("acquireLock / acquireLockBlocking / releaseLock (Redisson RLock)")
     class Locking {
 
         @Test
-        @DisplayName("acquireLock returns token when SET NX succeeds via raw connection callback")
-        void acquireLock_success_returnsToken() {
-            // BUG-160 (PRE-2) — acquireLock now goes through redisTemplate.execute(RedisCallback)
-            // so the value bytes match what the unlock Lua script reads (raw token bytes, not the
-            // JSON-serialized template-default form). The unit test stubs the callback path.
-            when(redisTemplate.execute(any(org.springframework.data.redis.core.RedisCallback.class)))
-                    .thenReturn(Boolean.TRUE);
+        @DisplayName("acquireLock (non-blocking) returns true and does not wait when RLock.tryLock succeeds")
+        void acquireLock_success_returnsTrue() throws InterruptedException {
+            when(redissonClient.getLock("cart:lock:user-A")).thenReturn(rLock);
+            when(rLock.tryLock(0L, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-            final String token = helper.acquireLock("user-A");
+            final boolean acquired = helper.acquireLock("user-A");
 
-            assertThat(token).isNotNull();
-            // Token should be a valid UUID string
-            assertThat(UUID.fromString(token)).isNotNull();
+            assertThat(acquired).isTrue();
+            verify(rLock).tryLock(0L, TimeUnit.MILLISECONDS);
         }
 
         @Test
-        @DisplayName("acquireLock returns null when SET NX returns false (key already held)")
-        void acquireLock_failure_returnsNull() {
-            when(redisTemplate.execute(any(org.springframework.data.redis.core.RedisCallback.class)))
-                    .thenReturn(Boolean.FALSE);
+        @DisplayName("acquireLock (non-blocking) returns false when the lock is already held")
+        void acquireLock_failure_returnsFalse() throws InterruptedException {
+            when(redissonClient.getLock("cart:lock:user-B")).thenReturn(rLock);
+            when(rLock.tryLock(0L, TimeUnit.MILLISECONDS)).thenReturn(false);
 
-            final String token = helper.acquireLock("user-B");
+            final boolean acquired = helper.acquireLock("user-B");
 
-            assertThat(token).isNull();
+            assertThat(acquired).isFalse();
         }
 
         @Test
-        @DisplayName("acquireLock returns null when SET NX returns null (no Boolean from connection)")
-        void acquireLock_nullResponse_returnsNull() {
-            when(redisTemplate.execute(any(org.springframework.data.redis.core.RedisCallback.class)))
-                    .thenReturn(null);
+        @DisplayName("acquireLockBlocking waits up to the given budget before giving up")
+        void acquireLockBlocking_passesTimeoutThrough() throws InterruptedException {
+            when(redissonClient.getLock("cart:lock:user-C")).thenReturn(rLock);
+            when(rLock.tryLock(4000L, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-            final String token = helper.acquireLock("user-C");
+            final boolean acquired = helper.acquireLockBlocking("user-C", 4000L);
 
-            assertThat(token).isNull();
+            assertThat(acquired).isTrue();
+            verify(rLock).tryLock(4000L, TimeUnit.MILLISECONDS);
         }
 
         @Test
-        @DisplayName("releaseLock executes the unlock Lua script callback against Redis")
-        void releaseLock_executesScript() {
-            // Just ensure invocation reaches redisTemplate.execute(...)
-            helper.releaseLock("user-D", "tok-D");
+        @DisplayName("acquireLockBlocking returns false on timeout")
+        void acquireLockBlocking_timeout_returnsFalse() throws InterruptedException {
+            when(redissonClient.getLock(anyString())).thenReturn(rLock);
+            when(rLock.tryLock(anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(false);
 
-            verify(redisTemplate).execute(any(org.springframework.data.redis.core.RedisCallback.class));
+            final boolean acquired = helper.acquireLockBlocking("user-D", 4000L);
+
+            assertThat(acquired).isFalse();
+        }
+
+        @Test
+        @DisplayName("acquireLockBlocking swallows InterruptedException, re-flags the thread, and returns false")
+        void acquireLockBlocking_interrupted_returnsFalse() throws InterruptedException {
+            when(redissonClient.getLock("cart:lock:user-E")).thenReturn(rLock);
+            when(rLock.tryLock(anyLong(), eq(TimeUnit.MILLISECONDS))).thenThrow(new InterruptedException());
+
+            final boolean acquired = helper.acquireLockBlocking("user-E", 1000L);
+
+            assertThat(acquired).isFalse();
+            assertThat(Thread.interrupted()).isTrue(); // also clears the flag for subsequent tests
+        }
+
+        @Test
+        @DisplayName("releaseLock unlocks when the current thread holds the lock")
+        void releaseLock_heldByCurrentThread_unlocks() {
+            when(redissonClient.getLock("cart:lock:user-F")).thenReturn(rLock);
+            when(rLock.isHeldByCurrentThread()).thenReturn(true);
+
+            helper.releaseLock("user-F");
+
+            verify(rLock).unlock();
+        }
+
+        @Test
+        @DisplayName("releaseLock is a no-op when the current thread does not hold the lock")
+        void releaseLock_notHeldByCurrentThread_noOp() {
+            when(redissonClient.getLock("cart:lock:user-G")).thenReturn(rLock);
+            when(rLock.isHeldByCurrentThread()).thenReturn(false);
+
+            helper.releaseLock("user-G");
+
+            verify(rLock, never()).unlock();
         }
     }
 }

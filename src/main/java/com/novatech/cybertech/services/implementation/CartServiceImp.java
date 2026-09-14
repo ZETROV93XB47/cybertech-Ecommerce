@@ -47,15 +47,18 @@ public class CartServiceImp implements CartService {
 
     /**
      * Maximum time {@link #addItemsToCart(CartCreateRequestDto, String)} will
-     * wait for the per-user lock before giving up. Kept just under the 5s TTL
-     * on the lock key itself (see {@link CartCacheHelperImp#LOCK_DURATION_IN_SECONDS})
-     * so a stuck worker releases its slot well before we stop retrying.
+     * wait to acquire the per-user lock before giving up and asking the caller
+     * to retry. The lock's own hold time isn't capped by a fixed TTL — Redisson's
+     * watchdog (see {@link CartCacheHelperImp}) keeps extending it for as long as
+     * the holder is genuinely still working, so this budget is purely about how
+     * long a caller is willing to queue behind a concurrent write.
      */
     private static final long CART_ADD_LOCK_WAIT_MS = 4_000L;
 
     /**
      * BUG-160 — Add items to the authenticated user's cart, serialising concurrent writes for the
-     * same user with a per-user <b>Redis distributed lock</b> (a single-node Redlock).
+     * same user with a per-user <b>Redis distributed lock</b> ({@link CartCacheHelper}, backed by
+     * Redisson's {@code RLock}).
      *
      * <h2>The race being defended against</h2>
      * Adding items is a read-modify-write: {@code load cart → merge quantities → save}. Two
@@ -70,14 +73,9 @@ public class CartServiceImp implements CartService {
      *
      * <h2>The two surviving layers (and the one removed)</h2>
      * <ol>
-     *   <li><b>Layer 1 — Redis lock (Redlock).</b> {@link CartCacheHelper#acquireLockBlocking}
-     *       atomically writes {@code SET lock:cart:<userId> <token> NX EX 5} (set-if-absent +
-     *       5s TTL) and spins with back-off until it wins or {@link #CART_ADD_LOCK_WAIT_MS}
-     *       elapses. The matching {@link CartCacheHelper#releaseLock} runs a token-checked Lua
-     *       compare-and-delete ({@code GET == token ? DEL : noop}) so a worker can never delete a
-     *       lock that a TTL expiry already handed to someone else. The token and the key are
-     *       written as raw string bytes so they match what the Lua script compares against — see
-     *       {@link CartCacheHelperImp} for that serialisation subtlety (BUG-160). This is the
+     *   <li><b>Layer 1 — Redis lock.</b> {@link CartCacheHelper#acquireLockBlocking} waits up to
+     *       {@link #CART_ADD_LOCK_WAIT_MS} to acquire the per-user lock; {@link CartCacheHelperImp}
+     *       delegates the acquire/release/TTL-extension mechanics to Redisson. This is the
      *       application-level mutual exclusion, and it works across pods (a JVM {@code synchronized}
      *       would not).</li>
      *   <li><b>Layer 2 — commit-before-unlock, via the two-method split.</b> A Redis lock is a
@@ -89,7 +87,9 @@ public class CartServiceImp implements CartService {
      *       {@link CartWriteTransactionalDelegate#addItemsWithinTransaction}: crossing the bean
      *       boundary makes Spring's transaction proxy fire, and the delegate's {@code @Transactional}
      *       method commits when it returns — i.e. INSIDE the locked region. Lifecycle:
-     *       {@code acquire-lock → delegate (tx-begin → mutate → tx-commit) → release-lock}.</li>
+     *       {@code acquire-lock → delegate (tx-begin → mutate → tx-commit) → release-lock}.
+     *       Swapping the lock mechanics for Redisson doesn't change this: no lock library can know
+     *       where our transaction boundary is, so the two-bean split stays regardless.</li>
      * </ol>
      *
      * <h3>Why the old DB pessimistic lock (layer 3) was removed</h3>
@@ -132,8 +132,8 @@ public class CartServiceImp implements CartService {
         });
 
         // Layer 1 — acquire the per-user Redis lock (bounded wait).
-        final String lockToken = cartCacheHelper.acquireLockBlocking(keycloakId, CART_ADD_LOCK_WAIT_MS);
-        if (lockToken == null) {
+        final boolean acquired = cartCacheHelper.acquireLockBlocking(keycloakId, CART_ADD_LOCK_WAIT_MS);
+        if (!acquired) {
             // Couldn't get the lock in time — surface a retryable error rather than racing.
             log.warn("Could not acquire cart lock for user {} within {}ms — aborting addItemsToCart", keycloakId, CART_ADD_LOCK_WAIT_MS);
             throw new IllegalStateException("Cart is temporarily locked by a concurrent operation, please retry.");
@@ -146,8 +146,9 @@ public class CartServiceImp implements CartService {
             // would silently run without a transaction and reopen the lost-update race.
             return cartWriteTransactionalDelegate.addItemsWithinTransaction(cartCreateRequestDto, keycloakId);
         } finally {
-            // Always release the lock — the token-checked Lua CAS makes a stale-token release a no-op.
-            cartCacheHelper.releaseLock(keycloakId, lockToken);
+            // Always release the lock — Redisson tracks ownership per-thread, so this is a no-op
+            // if the lock already expired and was reacquired by someone else.
+            cartCacheHelper.releaseLock(keycloakId);
         }
     }
 
@@ -163,9 +164,9 @@ public class CartServiceImp implements CartService {
         }
 
         // 2) Cache miss → try to acquire the rebuild lock
-        final String token = cartCacheHelper.acquireLock(keycloakId);
+        final boolean acquired = cartCacheHelper.acquireLock(keycloakId);
 
-        if (token == null) {
+        if (!acquired) {
             // Another thread holds the lock and is already rebuilding.
             // Re-read: if they just populated the cache, return it; otherwise return empty.
             final CartResponseDto retry = cartCacheHelper.getRaw(keycloakId);
@@ -187,8 +188,8 @@ public class CartServiceImp implements CartService {
 
         } finally {
             // 5) Always release the lock
-            log.info("Releasing lock for user {} with token : {}", keycloakId, token);
-            cartCacheHelper.releaseLock(keycloakId, token);
+            log.info("Releasing rebuild lock for user {}", keycloakId);
+            cartCacheHelper.releaseLock(keycloakId);
         }
     }
 

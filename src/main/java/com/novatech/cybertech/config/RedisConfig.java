@@ -5,6 +5,9 @@ import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.provider.redis.spring.RedisLockProvider;
 import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
+import org.redisson.Redisson;
+import org.redisson.api.RedissonClient;
+import org.redisson.config.Config;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +15,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.repository.configuration.EnableRedisRepositories;
 import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
@@ -41,12 +46,29 @@ public class RedisConfig {
     /**
      * Backs {@code @SchedulerLock} on {@code @Scheduled} jobs — keeps a job from double-running
      * if the app is ever scaled past a single replica (today: cybertech-app-chart replicas=1, so
-     * this is a no-op in practice, but it's the pattern to reuse for the next scheduled job that
-     * needs it rather than hand-rolling another Redis SET NX like {@code CartCacheHelperImp} does.
+     * this is a no-op in practice).
      */
     @Bean
     public LockProvider lockProvider(final RedisConnectionFactory connectionFactory) {
         return new RedisLockProvider(connectionFactory, SHEDLOCK_ENVIRONMENT);
+    }
+
+    /**
+     * Backs the per-user cart write/rebuild lock in {@code CartCacheHelperImp} — see that class
+     * for the "why a distributed lock at all" rationale. Built from the same
+     * {@link RedisConnectionFactory} every other bean here uses (rather than re-reading
+     * {@code spring.data.redis.host}/{@code port} directly) so it always points at the same Redis
+     * instance as {@code redisTemplate}, including under Testcontainers: the {@code @ServiceConnection}
+     * used by ITs populates the connection factory directly and does NOT set those properties in the
+     * environment, so reading them independently here would silently point Redisson at the wrong
+     * (or a nonexistent) host during ITs.
+     */
+    @Bean(destroyMethod = "shutdown")
+    public RedissonClient redissonClient(final RedisConnectionFactory connectionFactory) {
+        final RedisStandaloneConfiguration standalone = ((LettuceConnectionFactory) connectionFactory).getStandaloneConfiguration();
+        final Config config = new Config();
+        config.useSingleServer().setAddress("redis://" + standalone.getHostName() + ":" + standalone.getPort());
+        return Redisson.create(config);
     }
 
     @Bean

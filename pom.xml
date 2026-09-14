@@ -31,6 +31,7 @@
         <spring-restdocs.version>4.0.0</spring-restdocs.version>
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <shedlock.version>6.6.0</shedlock.version>
+        <redisson.version>3.50.0</redisson.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!--
             JaCoCo BUNDLE coverage gate is only meaningful when integration tests have run, since
@@ -105,6 +106,20 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Redisson: backs the cart per-user distributed lock (RLock) in CartCacheHelperImp.
+             Replaces a hand-rolled SET NX EX + Lua CAS-unlock script with a battle-tested client
+             that also auto-extends the lock TTL (watchdog) while the holder is still working, and
+             tracks ownership per-thread internally so we don't have to pass a token around. Using
+             the plain "redisson" artifact (not "redisson-spring-boot-starter") because the
+             RedissonClient bean is defined explicitly in RedisConfig from the existing
+             RedisConnectionFactory (see the comment there for why), so the starter's own
+             autoconfiguration isn't needed. -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>${redisson.version}</version>
         </dependency>
 
         <!-- ShedLock: prevents @Scheduled jobs from double-running across pods once we scale
