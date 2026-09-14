@@ -526,9 +526,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Dell XPS 15\",\n  \"price\": 2499.99,\n  \"brand\": \"DELL\",\n  \"category\": \"COMPUTER\",\n  \"photo\": \"https://images.cybertech.local/xps15.jpg\",\n  \"stock\": 50,\n  \"description\": \"15-inch OLED, 32GB RAM, 1TB SSD, RTX 4070\",\n  \"attributes\": {\n    \"ram\": \"32GB\",\n    \"ssd\": \"1TB\",\n    \"gpu\": \"NVIDIA RTX 4070\",\n    \"screen\": \"15.6 inch OLED\"\n  }\n}"
+              "raw": "{\n  \"name\": \"Dell XPS 15\",\n  \"price\": 2499.99,\n  \"brand\": \"DELL\",\n  \"category\": \"COMPUTER\",\n  \"photo\": \"https://images.cybertech.local/xps15.jpg\",\n  \"stock\": 50,\n  \"description\": \"15-inch OLED, 32GB RAM, 1TB SSD, RTX 4070\",\n  \"attributes\": {\n    \"cpu\": \"Intel Core i9-13900H\",\n    \"gpu\": \"NVIDIA RTX 4070\",\n    \"ram\": 32,\n    \"os\": \"Windows 11\",\n    \"connectivity\": \"WiFi 6E/Bluetooth 5.3\",\n    \"displayType\": \"OLED\",\n    \"memory\": 1024\n  }\n}"
             },
-            "description": "Create a new product. Indexed in Elasticsearch on commit.\n\n- Role: ADMIN\n- Success: 201 with `ProductResponseDto`."
+            "description": "Create a new product. `attributes` is validated against the `COMPUTER` category's JSON Schema (see the Product Category Schemas folder) — indexed in Elasticsearch on commit.\n\n- Role: ADMIN\n- Success: 201 with `ProductResponseDto`.\n- Errors: 400 if `attributes` fails the category's schema (`ProductConstraintsViolationException`)."
           },
           "event": [
             {
@@ -2085,6 +2085,197 @@
               "body": ""
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "Product Category Schemas",
+      "description": "Admin-managed registry of product-category JSON Schemas. Registering a new category (or changing an existing one's validation rules) here takes effect immediately for product create/update — no code change or redeploy.",
+      "item": [
+        {
+          "name": "Get category schema by key (public)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product-category-schemas/:categoryKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "product-category-schemas", ":categoryKey"],
+              "variable": [
+                { "key": "categoryKey", "value": "COMPUTER" }
+              ]
+            },
+            "description": "Public read of one category's JSON Schema. Whitelisted under `/api/v1/services/product-category-schemas/**`.\n\n- Roles: none (public).\n- Success: 200 with `ProductCategorySchemaResponseDto`.\n- Errors: 400 if categoryKey is unregistered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List all category schemas (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/get/all",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "get", "all"]
+            },
+            "description": "Lists every registered category schema, including disabled ones.\n\n- Role: ADMIN\n- Success: 200 with an array of `ProductCategorySchemaResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get category schema by key (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/get/:categoryKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "get", ":categoryKey"],
+              "variable": [
+                { "key": "categoryKey", "value": "COMPUTER" }
+              ]
+            },
+            "description": "- Role: ADMIN\n- Success: 200 with `ProductCategorySchemaResponseDto`.\n- Errors: 400 if categoryKey is unregistered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Create category schema (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "create"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryKey\": \"TABLET\",\n  \"label\": \"Tablets\",\n  \"jsonSchema\": \"{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"screenSize\\\":{\\\"type\\\":\\\"number\\\",\\\"minimum\\\":4},\\\"storage\\\":{\\\"type\\\":\\\"integer\\\",\\\"minimum\\\":16}},\\\"required\\\":[\\\"screenSize\\\",\\\"storage\\\"]}\"\n}"
+            },
+            "description": "Registers a brand-new product category. The schema is compiled before saving — a malformed schema is rejected with 400 and nothing is persisted. Once saved, product create/update validates against it immediately.\n\n- Role: ADMIN\n- Success: 201 with `ProductCategorySchemaResponseDto`.\n- Errors: 400 if the schema is malformed or categoryKey is already registered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update category schema (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/update/:categoryKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "update", ":categoryKey"],
+              "variable": [
+                { "key": "categoryKey", "value": "TABLET" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Tablets & E-readers\"\n}"
+            },
+            "description": "PATCH — only supplied fields are updated. A new `jsonSchema` is re-compiled before saving.\n\n- Role: ADMIN\n- Success: 200 with `ProductCategorySchemaResponseDto`.\n- Errors: 400 if the schema is malformed or categoryKey is unregistered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Delete category schema (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/delete/:categoryKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "delete", ":categoryKey"],
+              "variable": [
+                { "key": "categoryKey", "value": "TABLET" }
+              ]
+            },
+            "description": "- Role: ADMIN\n- Success: 204 No Content.\n- Errors: 400 if categoryKey is unregistered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
       ]
     }

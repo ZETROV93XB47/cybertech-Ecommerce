@@ -48,6 +48,13 @@ tags:
     description: Public catalog endpoints - read products, search and best-sellers
   - name: Product Admin
     description: Admin-only endpoints for product CRUD and image upload
+  - name: Product Category Schemas Admin
+    description: |
+      Admin management of the product-category JSON Schema registry. Registering
+      a new category (or changing an existing one's validation rules) here takes
+      effect immediately for product create/update - no code change or redeploy.
+  - name: Product Category Schemas Public
+    description: Public read access to a category's JSON Schema (e.g. for a dynamic product-creation form)
   - name: Review
     description: Endpoints for product review CRUD operations
   - name: Wishlist
@@ -69,7 +76,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Keycloak-issued JWT access token. Pass as `Authorization: Bearer <token>`.
+      description: "Keycloak-issued JWT access token. Pass as `Authorization: Bearer <token>`."
 
   schemas:
     ErrorResponseDto:
@@ -178,6 +185,34 @@ components:
         attributes:
           type: object
           additionalProperties: true
+
+    ProductCategorySchemaCreateRequestDto:
+      type: object
+      required: [categoryKey, label, jsonSchema]
+      properties:
+        categoryKey: { type: string, example: "TABLET" }
+        label: { type: string, example: "Tablets" }
+        jsonSchema:
+          type: string
+          description: Raw JSON Schema text validating this category's `attributes` payload. Compiled before saving - a malformed schema is rejected with 400.
+          example: '{"type":"object","properties":{"screenSize":{"type":"number","minimum":4}},"required":["screenSize"]}'
+
+    ProductCategorySchemaUpdateRequestDto:
+      type: object
+      description: PATCH payload - null/omitted fields are left unchanged.
+      properties:
+        label: { type: string }
+        jsonSchema: { type: string }
+        active: { type: boolean }
+
+    ProductCategorySchemaResponseDto:
+      type: object
+      properties:
+        uuid: { $ref: '#/components/schemas/UUID' }
+        categoryKey: { type: string }
+        label: { type: string }
+        jsonSchema: { type: string }
+        active: { type: boolean }
 
     PageOfProductResponseDto:
       type: object
@@ -765,6 +800,131 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # =================== PRODUCT CATEGORY SCHEMAS ===================
+  /api/v1/services/admin/product-category-schemas/get/all:
+    get:
+      tags: [Product Category Schemas Admin]
+      summary: List all product category schemas (Admin)
+      responses:
+        '200':
+          description: All registered category schemas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProductCategorySchemaResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/product-category-schemas/get/{categoryKey}:
+    get:
+      tags: [Product Category Schemas Admin]
+      summary: Get a product category schema by key (Admin)
+      parameters:
+        - name: categoryKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Category schema
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductCategorySchemaResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/product-category-schemas/create:
+    post:
+      tags: [Product Category Schemas Admin]
+      summary: Register a new product category (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCategorySchemaCreateRequestDto' }
+      responses:
+        '201':
+          description: Category schema registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductCategorySchemaResponseDto' }
+        '400':
+          description: Invalid input, malformed JSON Schema, or categoryKey already registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/product-category-schemas/update/{categoryKey}:
+    patch:
+      tags: [Product Category Schemas Admin]
+      summary: Update a product category schema (Admin)
+      parameters:
+        - name: categoryKey
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCategorySchemaUpdateRequestDto' }
+      responses:
+        '200':
+          description: Category schema updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductCategorySchemaResponseDto' }
+        '400':
+          description: Invalid input, malformed JSON Schema, or unknown categoryKey
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponseDto' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/admin/product-category-schemas/delete/{categoryKey}:
+    delete:
+      tags: [Product Category Schemas Admin]
+      summary: Delete a product category schema (Admin)
+      parameters:
+        - name: categoryKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Category schema deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/services/product-category-schemas/{categoryKey}:
+    get:
+      tags: [Product Category Schemas Public]
+      summary: Get a product category's JSON Schema (public)
+      security: []
+      parameters:
+        - name: categoryKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Category schema
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductCategorySchemaResponseDto' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   # =================== CART ===================
