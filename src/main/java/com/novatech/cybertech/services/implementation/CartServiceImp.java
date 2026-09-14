@@ -107,13 +107,14 @@ public class CartServiceImp implements CartService {
      * become a no-op and a concurrent first-insert could surface a raw DIVE — acceptable for this
      * project, where Redis is a hard dependency of the cart path anyway.
      *
-     * <p>Input validation that throws (negative/zero/null quantity) is done <em>before</em> the lock
-     * so obviously-bogus payloads fail fast without taking it.
+     * <p>Quantity validation (non-null, {@code >= 1}) is not repeated here: it lives on
+     * {@link CartItemAddRequestDto#getQuantity()} (bean validation) and is already enforced by
+     * {@code @Valid} on the sole caller, {@code CartManagementController#addToCart}, before this
+     * method is ever reached.
      *
      * @param cartCreateRequestDto items to add; each quantity must be {@code >= 1}.
      * @param keycloakId           Keycloak subject of the caller.
      * @return the updated cart DTO.
-     * @throws NegativeQuantityException when any requested quantity is null or below 1.
      * @throws IllegalStateException     when the per-user lock cannot be acquired within the budget.
      * @throws UserNotFoundException     when no user matches {@code keycloakId}.
      * @throws ProductNotFoundException  when a requested product UUID has no product.
@@ -123,13 +124,6 @@ public class CartServiceImp implements CartService {
     public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
 
         log.info("cart request dto : {}", cartCreateRequestDto);
-
-        // Fast-fail before taking the lock — saves contention on obviously-bogus input.
-        cartCreateRequestDto.getCartItemAddRequestDtos().forEach(item -> {
-            if (item.getQuantity() == null || item.getQuantity() < 1) {
-                throw new NegativeQuantityException("Quantity must be >= 1 (got " + item.getQuantity() + ") for product " + item.getProductUuid());
-            }
-        });
 
         // Layer 1 — acquire the per-user Redis lock (bounded wait).
         final boolean acquired = cartCacheHelper.acquireLockBlocking(keycloakId, CART_ADD_LOCK_WAIT_MS);

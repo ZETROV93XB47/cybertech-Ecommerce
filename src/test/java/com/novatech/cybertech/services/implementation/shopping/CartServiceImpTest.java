@@ -13,7 +13,6 @@ import com.novatech.cybertech.exceptions.CannotRemoveItemFromEmptyCartException;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
 import com.novatech.cybertech.exceptions.CartItemNotFoundException;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
-import com.novatech.cybertech.exceptions.NegativeQuantityException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.UnauthorizedCartAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
@@ -76,7 +75,9 @@ import static org.mockito.Mockito.when;
  *       {@code getByUUID(UUID, String)} / {@code deleteByUUID(UUID, String)} throw
  *       {@link UnauthorizedCartAccessException} when the caller's Keycloak subject
  *       does not match the cart's owner.</li>
- *   <li><b>BUG-039</b>: remains CLOSED (negative/null quantity rejected).</li>
+ *   <li><b>BUG-039</b>: remains CLOSED (negative/null quantity rejected) — enforced by
+     *       {@code @Valid} bean validation at the controller boundary, covered in
+     *       {@code CartManagementControllerTest}; no longer duplicated at the service level.</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -176,37 +177,11 @@ class CartServiceImpTest {
             verify(cartCacheHelper).releaseLock(eq(keycloakId));
         }
 
-        @Test
-        @DisplayName("BUG-039 (F2 verified CLOSED): negative quantity fails fast BEFORE taking the lock")
-        void negativeQuantity_throws_BUG039_closed() {
-            final UUID productUuid = UUID.randomUUID();
-            final CartCreateRequestDto req = requestFor(productUuid, -1);
-
-            assertThatThrownBy(() -> service.addItemsToCart(req, keycloakId))
-                    .isInstanceOf(NegativeQuantityException.class)
-                    .hasMessageContaining("Quantity must be >= 1");
-
-            // Fast-fail happens before the lock is ever taken and before any delegation.
-            verifyNoInteractions(userRepository, productRepository, cartRepository, cartCacheHelper,
-                    cartWriteTransactionalDelegate);
-        }
-
-        @Test
-        @DisplayName("BUG-039: zero quantity also rejected before the lock")
-        void zeroQuantity_throws_BUG039_closed() {
-            assertThatThrownBy(() -> service.addItemsToCart(requestFor(UUID.randomUUID(), 0), keycloakId))
-                    .isInstanceOf(NegativeQuantityException.class);
-            verifyNoInteractions(userRepository, productRepository, cartRepository, cartCacheHelper,
-                    cartWriteTransactionalDelegate);
-        }
-
-        @Test
-        @DisplayName("BUG-039: null quantity also rejected")
-        void nullQuantity_throws_BUG039_closed() {
-            assertThatThrownBy(() -> service.addItemsToCart(requestFor(UUID.randomUUID(), null), keycloakId))
-                    .isInstanceOf(NegativeQuantityException.class);
-            verifyNoInteractions(cartWriteTransactionalDelegate);
-        }
+        // BUG-039's negative/zero/null quantity coverage moved to
+        // CartManagementControllerTest#failAddToCart_whenNegativeQuantity_thenBadRequest: quantity
+        // validation lives on CartItemAddRequestDto (@NotNull @Min(1)) and is enforced by @Valid at
+        // the controller boundary, so CartServiceImp no longer re-checks it — there was nothing left
+        // for this Mockito-level test to exercise.
     }
 
     // =================================================================
