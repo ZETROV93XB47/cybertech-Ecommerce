@@ -2,6 +2,7 @@ package com.novatech.cybertech.config;
 
 import com.novatech.cybertech.annotation.*;
 import com.novatech.cybertech.entities.enums.*;
+import com.novatech.cybertech.listener.ProductCategorySchemaCacheInvalidationListener;
 import com.novatech.cybertech.listener.RedisExpirationListener;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
@@ -28,6 +29,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -36,6 +38,7 @@ import java.util.*;
 import java.util.concurrent.Executor;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL;
 
 @Slf4j
 @Configuration
@@ -135,11 +138,14 @@ public class AppConfig {
     }
 
     @Bean
-    public RedisMessageListenerContainer redisContainer(RedisConnectionFactory connectionFactory, StockRepository reservationRepository, ProductRepository productRepository) {
+    public RedisMessageListenerContainer redisContainer(RedisConnectionFactory connectionFactory, StockRepository reservationRepository, ProductRepository productRepository,
+                                                          ProductCategorySchemaCacheInvalidationListener productCategorySchemaCacheInvalidationListener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
         // Listen to EXPIRED events
         container.addMessageListener(new RedisExpirationListener(container, reservationRepository, productRepository), new PatternTopic("__keyevent@*__:expired"));
+        // Cross-instance product-category-schema cache invalidation (see ProductCategorySchemaServiceImp, the publisher)
+        container.addMessageListener(productCategorySchemaCacheInvalidationListener, new ChannelTopic(PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL));
 
         return container;
     }

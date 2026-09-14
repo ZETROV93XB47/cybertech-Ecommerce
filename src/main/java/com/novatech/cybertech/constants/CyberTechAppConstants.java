@@ -33,6 +33,9 @@ public class CyberTechAppConstants {
     public static final String DISCOUNT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/discounts";
     public static final String DISCOUNT_PUBLIC_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/discounts";
 
+    public static final String PRODUCT_CATEGORY_SCHEMA_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/product-category-schemas";
+    public static final String PRODUCT_CATEGORY_SCHEMA_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/product-category-schemas";
+
     public static final String ORDER_SUMMARY_REPORT_JOB = "ORDER_SUMMARY_REPORT_JOB";
 
     public static final String NO_ORDERS_TO_CANCEL = "NO_ORDERS_TO_CANCEL";
@@ -51,6 +54,12 @@ public class CyberTechAppConstants {
     public static final String APPLICATION_ASYNC_TASK_EXECUTOR = "applicationAsyncTaskExecutor";
 
     public static final String RESERVATION_KEY_PREFIX = "reservation:order:";
+
+    /** Redis Pub/Sub channel used to fan out cache invalidation across instances when an admin
+     *  writes a {@code ProductCategorySchemaEntity} row — both the publisher (admin service) and
+     *  every subscriber instance ({@code ProductCategorySchemaCacheInvalidationListener}) must
+     *  use this exact string. */
+    public static final String PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL = "schema:category:changed";
 
     // Shared JSON response-body keys for the user register / register-auto endpoints (extracted
     // here so the same semantic literals are not duplicated across UserManagementController and

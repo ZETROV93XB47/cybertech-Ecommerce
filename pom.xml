@@ -332,6 +332,23 @@
             <version>3.2.0</version>
             <scope>compile</scope>
         </dependency>
+        <!--
+             networknt json-schema-validator: interprets the admin-authored JSON Schema
+             stored per product category (ProductCategorySchemaEntity) against incoming
+             product `attributes` payloads. Ships its own Jackson 2 (com.fasterxml.jackson)
+             JsonNode API, independent from this project's Jackson 3
+             (tools.jackson.databind) starter — the two coexist on the classpath under
+             different artifact coordinates; ProductValidationService bridges between them
+             (serialize with the project's Jackson 3 ObjectMapper, re-parse with the
+             Jackson 2 one this library brings in transitively) before calling
+             JsonSchema#validate.
+        -->
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>1.5.4</version>
+            <scope>compile</scope>
+        </dependency>
         <dependency>
             <groupId>net.datafaker</groupId>
             <artifactId>datafaker</artifactId>

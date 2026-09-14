@@ -53,7 +53,11 @@ public enum ErrorCode {
     /** BUG-161 — Authenticated user tried to read/update/delete a cart they do not own (IDOR). */
     UNAUTHORIZED_CART_ACCESS(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     /** Order is not in a status that allows reviewing (only PAID/SHIPPED/DELIVERED are reviewable). */
-    ORDER_NOT_REVIEWABLE(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL);
+    ORDER_NOT_REVIEWABLE(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
+    /** A product/search request references a categoryKey with no registered schema. */
+    UNKNOWN_PRODUCT_CATEGORY(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
+    /** Admin submitted a categoryKey/jsonSchema pair that fails to compile as a JSON Schema. */
+    INVALID_PRODUCT_CATEGORY_SCHEMA(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;

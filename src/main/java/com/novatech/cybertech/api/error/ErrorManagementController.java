@@ -333,4 +333,16 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_NOT_REVIEWABLE.getResponseStatus().value(), ORDER_NOT_REVIEWABLE.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, ORDER_NOT_REVIEWABLE.getResponseStatus());
     }
+
+    @ExceptionHandler(UnknownProductCategoryException.class)
+    public ResponseEntity<ErrorResponseDto> handleUnknownProductCategoryException(UnknownProductCategoryException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), UNKNOWN_PRODUCT_CATEGORY.getResponseStatus().value(), UNKNOWN_PRODUCT_CATEGORY.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, UNKNOWN_PRODUCT_CATEGORY.getResponseStatus());
+    }
+
+    @ExceptionHandler(InvalidProductCategorySchemaException.class)
+    public ResponseEntity<ErrorResponseDto> handleInvalidProductCategorySchemaException(InvalidProductCategorySchemaException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), INVALID_PRODUCT_CATEGORY_SCHEMA.getResponseStatus().value(), INVALID_PRODUCT_CATEGORY_SCHEMA.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, INVALID_PRODUCT_CATEGORY_SCHEMA.getResponseStatus());
+    }
 }

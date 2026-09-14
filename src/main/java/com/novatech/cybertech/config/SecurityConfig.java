@@ -20,6 +20,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
@@ -88,6 +89,7 @@ public class SecurityConfig {
             "/test/upload-image/**",
             "/api/v1/services/product/**",
             "/api/v1/services/discounts/**",
+            "/api/v1/services/product-category-schemas/**",
             "/api/v1/webhooks/**",
             // BUG-PRE-3: kubelet probes + Spring Boot health groups (liveness/readiness).
             "/actuator/health",
@@ -175,7 +177,7 @@ public class SecurityConfig {
                 .headers(headers -> {
                     // Always-on hardening headers.
                     headers.contentTypeOptions(Customizer.withDefaults());
-                    headers.frameOptions(frame -> frame.disable())
+                    headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable)
                             .addHeaderWriter(new XFrameOptionsHeaderWriter(
                                     XFrameOptionsHeaderWriter.XFrameOptionsMode.DENY));
                     headers.referrerPolicy(rp -> rp.policy(
@@ -200,7 +202,7 @@ public class SecurityConfig {
                                 .preload(true)
                                 .maxAgeInSeconds(63072000L));
                     } else {
-                        headers.httpStrictTransportSecurity(hsts -> hsts.disable());
+                        headers.httpStrictTransportSecurity(HeadersConfigurer.HstsConfig::disable);
                     }
                 })
                 .addFilterBefore(stripeWebhookIpAllowlistFilter, UsernamePasswordAuthenticationFilter.class)
