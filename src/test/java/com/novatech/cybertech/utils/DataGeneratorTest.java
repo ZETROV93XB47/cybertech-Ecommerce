@@ -10,7 +10,6 @@ import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.ReviewEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
@@ -125,7 +124,7 @@ class DataGeneratorTest {
             assertThat(product.getName()).isNotBlank();
             assertThat(product.getDescription()).isNotBlank();
             assertThat(product.getPrice()).isEqualByComparingTo(new BigDecimal(2300));
-            assertThat(product.getCategory()).isEqualTo(Category.COMPUTER);
+            assertThat(product.getCategory()).isEqualTo("COMPUTER");
             assertThat(product.getBrand()).isEqualTo(Brand.ASUS);
             assertThat(product.getStock()).isEqualTo(1000);
             assertThat(product.getReservedStock()).isEqualTo(3);
@@ -159,7 +158,7 @@ class DataGeneratorTest {
             assertThat(dto.getStock()).isNotNegative();
             assertThat(dto.getDescription()).isNotBlank();
             assertThat(dto.getAttributes()).isNotNull().isNotEmpty();
-            assertThat(dto.getCategory()).isEqualTo(Category.COMPUTER);
+            assertThat(dto.getCategory()).isEqualTo("COMPUTER");
             assertThat(dto.getBrand()).isNotNull();
 
             Set<ConstraintViolation<ProductCreateRequestDto>> violations = validator.validate(dto);

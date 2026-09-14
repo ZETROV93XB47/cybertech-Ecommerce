@@ -102,7 +102,7 @@ public class ErrorManagementController {
 
     @ExceptionHandler(ProductConstraintsViolationException.class)
     public ResponseEntity<ErrorResponseDto> handleProductConstraintsViolationException(ProductConstraintsViolationException exception) {
-        final ErrorResponseDto errorResponseDto = new ErrorResponseDto("The product you're trying to save's attributes aren't matching the constraints criterias, please check your product category and attributes fields to make sure that they're matching together", INVALID_REQUEST.getResponseStatus().value(), INVALID_REQUEST.getErrorCodeType());
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), INVALID_REQUEST.getResponseStatus().value(), INVALID_REQUEST.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
     }
 

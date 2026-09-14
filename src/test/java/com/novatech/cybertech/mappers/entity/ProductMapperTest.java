@@ -7,7 +7,6 @@ import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.ReviewEntity;
 import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.ReviewEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
@@ -46,7 +45,7 @@ class ProductMapperTest {
                     .name("Laptop X")
                     .price(new BigDecimal("1299.99"))
                     .brand(Brand.HP)
-                    .category(Category.COMPUTER)
+                    .category("COMPUTER")
                     .photo("https://cdn/x.jpg")
                     .stock(20)
                     .description("desc")
@@ -59,7 +58,7 @@ class ProductMapperTest {
             assertThat(entity.getName()).isEqualTo("Laptop X");
             assertThat(entity.getPrice()).isEqualByComparingTo("1299.99");
             assertThat(entity.getBrand()).isEqualTo(Brand.HP);
-            assertThat(entity.getCategory()).isEqualTo(Category.COMPUTER);
+            assertThat(entity.getCategory()).isEqualTo("COMPUTER");
             assertThat(entity.getPhoto()).isEqualTo("https://cdn/x.jpg");
             assertThat(entity.getStock()).isEqualTo(20);
             assertThat(entity.getReservedStock()).isZero();
@@ -126,7 +125,7 @@ class ProductMapperTest {
                     .name("Sample")
                     .price(new BigDecimal("42.00"))
                     .brand(Brand.ASUS)
-                    .category(Category.COMPUTER)
+                    .category("COMPUTER")
                     .photo("https://cdn/p.jpg")
                     .description("d")
                     .build();
@@ -138,7 +137,7 @@ class ProductMapperTest {
             assertThat(dto.getName()).isEqualTo("Sample");
             assertThat(dto.getPrice()).isEqualByComparingTo("42.00");
             assertThat(dto.getBrand()).isEqualTo(Brand.ASUS.name());
-            assertThat(dto.getCategory()).isEqualTo(Category.COMPUTER.name());
+            assertThat(dto.getCategory()).isEqualTo("COMPUTER");
             assertThat(dto.getPhotoUrl()).isEqualTo("https://cdn/p.jpg");
             assertThat(dto.getDescription()).isEqualTo("d");
         }
@@ -203,7 +202,7 @@ class ProductMapperTest {
                     .name("Doc product")
                     .description("doc desc")
                     .brand(Brand.DELL.name())
-                    .category(Category.COMPUTER.name())
+                    .category("COMPUTER")
                     .price(new BigDecimal("199.00"))
                     .photoUrl("https://cdn/doc.jpg")
                     .build();
@@ -214,7 +213,7 @@ class ProductMapperTest {
             assertThat(dto.getUuid()).isEqualTo(uuid.toString());
             assertThat(dto.getName()).isEqualTo("Doc product");
             assertThat(dto.getBrand()).isEqualTo(Brand.DELL.name());
-            assertThat(dto.getCategory()).isEqualTo(Category.COMPUTER.name());
+            assertThat(dto.getCategory()).isEqualTo("COMPUTER");
             assertThat(dto.getPhotoUrl()).isEqualTo("https://cdn/doc.jpg");
             assertThat(dto.getPrice()).isEqualByComparingTo("199.00");
         }
@@ -246,7 +245,7 @@ class ProductMapperTest {
             assertThat(doc.getUuid()).isEqualTo(uuid);
             assertThat(doc.getName()).isEqualTo("Sample");
             assertThat(doc.getBrand()).isEqualTo(entity.getBrand().name());
-            assertThat(doc.getCategory()).isEqualTo(entity.getCategory().name());
+            assertThat(doc.getCategory()).isEqualTo(entity.getCategory());
             assertThat(doc.getPrice()).isEqualByComparingTo("9.99");
             assertThat(doc.getPhotoUrl()).isEqualTo("https://cdn/img.jpg");
             // attributes is annotated @Mapping(target = "attributes", ignore = true).

@@ -45,7 +45,7 @@ public class ProductSearchServiceImp implements ProductSearchService {
         // Category filter
         if (req.getCategory() != null) {
             filters.add(new Query.Builder()
-                    .term(t -> t.field(CATEGORY).value(req.getCategory().name()))
+                    .term(t -> t.field(CATEGORY).value(req.getCategory()))
                     .build());
         }
 
@@ -89,7 +89,7 @@ public class ProductSearchServiceImp implements ProductSearchService {
 
         // Category-specific attributes filter
         if (req.getAttributes() != null && req.getCategory() != null) {
-            String categoryPrefix = "attributes." + req.getCategory().name() + ".";
+            String categoryPrefix = "attributes." + req.getCategory() + ".";
 
             req.getAttributes().forEach((key, values) -> {
                 if (values != null && !values.isEmpty()) {
@@ -112,7 +112,7 @@ public class ProductSearchServiceImp implements ProductSearchService {
 
         // Numeric ranges filter
         if (req.getNumericRanges() != null && req.getCategory() != null) {
-            String categoryPrefix = "attributes." + req.getCategory().name() + ".";
+            String categoryPrefix = "attributes." + req.getCategory() + ".";
 
             req.getNumericRanges().forEach((key, range) -> {
                 String field = categoryPrefix + key;

@@ -1,7 +1,6 @@
 package com.novatech.cybertech.dto.request.search;
 
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.AllArgsConstructor;
@@ -28,7 +27,7 @@ public class ProductSearchRequestDto {
 
     // Category is now optional: a null value means "no category filter"
     // (keyword-only or cross-category search). The search service guards on null.
-    private Category category; // Ton Enum
+    private String category;
 
     private List<Brand> brands;     // Ton Enum
 

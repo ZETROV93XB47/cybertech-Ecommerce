@@ -5,7 +5,6 @@ import com.novatech.cybertech.api.controllers.implementation.ProductSearchContro
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
-import com.novatech.cybertech.entities.enums.Category;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
 import com.novatech.cybertech.services.core.ProductManagementService;
@@ -143,7 +142,7 @@ class ProductSearchControllerTest {
         // BUG-032 (closed by W0): /api/v1/services/product/** is whitelisted; anonymous POST allowed.
         ProductSearchRequestDto searchRequestDto = ProductSearchRequestDto.builder()
                 .keyword("laptop")
-                .category(Category.COMPUTER)
+                .category("COMPUTER")
                 .priceMin(150.0)
                 .priceMax(50000.0)
                 .page(0)
@@ -196,7 +195,7 @@ class ProductSearchControllerTest {
         // priceMin must be >= 100 per ProductSearchRequestDto @Min(100).
         ProductSearchRequestDto invalidDto = ProductSearchRequestDto.builder()
                 .keyword("laptop")
-                .category(Category.COMPUTER)
+                .category("COMPUTER")
                 .priceMin(50.0) // below 100 threshold
                 .build();
 
@@ -217,7 +216,7 @@ class ProductSearchControllerTest {
     void shouldSearchProductsAsAuthenticatedUserSuccessfully() throws Exception {
         ProductSearchRequestDto searchRequestDto = ProductSearchRequestDto.builder()
                 .keyword("laptop")
-                .category(Category.COMPUTER)
+                .category("COMPUTER")
                 .priceMin(150.0)
                 .priceMax(50000.0)
                 .page(0)

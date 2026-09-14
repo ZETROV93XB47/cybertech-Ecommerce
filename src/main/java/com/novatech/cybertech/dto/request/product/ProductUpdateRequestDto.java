@@ -1,7 +1,6 @@
 package com.novatech.cybertech.dto.request.product;
 
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -11,6 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.UUID;
 
 @Data
@@ -30,8 +30,9 @@ public class ProductUpdateRequestDto {
     @NotNull(message = "Brand cannot be null")
     private Brand brand;
 
-    @NotNull(message = "Category cannot be null")
-    private Category category;
+    // PATCH semantics: null means "do not change" — no longer @NotNull (was previously
+    // required on every update call regardless, contradicting the partial-update contract).
+    private String category;
 
     @Size(max = 255, message = "Photo URL/path must be at most 255 characters")
     private String photo;
@@ -41,4 +42,7 @@ public class ProductUpdateRequestDto {
 
     @NotNull(message = "description cannot be null")
     private String description;
+
+    /** Optional — when supplied, re-validated against the product's category schema before saving. */
+    private Map<String, Object> attributes;
 }

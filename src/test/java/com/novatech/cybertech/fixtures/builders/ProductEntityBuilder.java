@@ -2,7 +2,6 @@ package com.novatech.cybertech.fixtures.builders;
 
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -27,7 +26,7 @@ public final class ProductEntityBuilder {
                 .name("Sample Product")
                 .price(new BigDecimal("99.99"))
                 .brand(Brand.ASUS)
-                .category(Category.COMPUTER)
+                .category("COMPUTER")
                 .photo("https://cdn.example.com/sample.jpg")
                 .stock(10)
                 .reservedStock(0)

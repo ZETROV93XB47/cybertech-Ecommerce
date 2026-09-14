@@ -1,6 +1,5 @@
 package com.novatech.cybertech.services.implementation;
 
-import com.novatech.cybertech.entities.enums.Category;
 import com.novatech.cybertech.mappers.document.ComputerProductAttributes;
 import com.novatech.cybertech.mappers.document.SpecificProductAttributes;
 import com.novatech.cybertech.services.core.AttributesFactory;
@@ -20,16 +19,15 @@ public class ProductAttributesFactoryImp implements AttributesFactory {
     public static final String DISPLAY_TYPE_COMPUTER_ATTRIBUTE = "displayType";
     public static final String CONNECTIVITY_COMPUTER_ATTRIBUTE = "connectivity";
 
-    public Map<String, SpecificProductAttributes> create(final Category category, final Map<String, Object> raw) {
+    public Map<String, SpecificProductAttributes> create(final String category, final Map<String, Object> raw) {
 
         return switch (category) {
-            case COMPUTER, MONITOR, SMARTPHONE, KEYBOARD ->
-                    buildComputerAttributes(raw, category); //I'll implement later the other categories but this part is mostly to show that based on the productCategory, we can create the corresponding sub document object
+            case "COMPUTER", "MONITOR", "SMARTPHONE", "KEYBOARD" -> buildComputerAttributes(raw, category); //I'll implement later the other categories but this part is mostly to show that based on the productCategory, we can create the corresponding sub document object
             default -> null;
         };
     }
 
-    private static Map<String, SpecificProductAttributes> buildComputerAttributes(final Map<String, Object> raw, final Category category) {
+    private static Map<String, SpecificProductAttributes> buildComputerAttributes(final Map<String, Object> raw, final String category) {
 
         final ComputerProductAttributes computerAttributesMap = ComputerProductAttributes.builder()
                 .ram((Integer) raw.get(RAM_COMPUTER_ATTRIBUTE))
@@ -41,6 +39,6 @@ public class ProductAttributesFactoryImp implements AttributesFactory {
                 .connectivity((String) raw.get(CONNECTIVITY_COMPUTER_ATTRIBUTE))
                 .build();
 
-        return Map.of(category.toString(), computerAttributesMap);
+        return Map.of(category, computerAttributesMap);
     }
 }

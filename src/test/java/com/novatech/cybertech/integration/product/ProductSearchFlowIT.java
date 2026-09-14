@@ -8,7 +8,6 @@ import com.novatech.cybertech.dto.request.search.RangeFilter;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import com.novatech.cybertech.fixtures.support.JwtTestUtils;
 import com.novatech.cybertech.fixtures.support.TestDataCleaner;
 import com.novatech.cybertech.repositories.ProductRepository;
@@ -174,7 +173,7 @@ class ProductSearchFlowIT {
     @Test
     @DisplayName("search by brand DELL → exactly 1 hit (the DELL XPS)")
     void searchByBrandDell_returnsOneHit() throws Exception {
-        ProductSearchRequestDto req = baseRequest(Category.COMPUTER)
+        ProductSearchRequestDto req = baseRequest("COMPUTER")
                 .brands(List.of(Brand.DELL))
                 .build();
 
@@ -194,7 +193,7 @@ class ProductSearchFlowIT {
     @Test
     @DisplayName("search by category COMPUTER → 2 hits (DELL + HP)")
     void searchByCategoryComputer_returnsTwoHits() throws Exception {
-        ProductSearchRequestDto req = baseRequest(Category.COMPUTER).build();
+        ProductSearchRequestDto req = baseRequest("COMPUTER").build();
 
         await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() -> {
             MvcResult res = performSearch(req).andExpect(status().isOk()).andReturn();
@@ -208,7 +207,7 @@ class ProductSearchFlowIT {
     @Test
     @DisplayName("search by price range 500..1500 → 1 hit (DELL only)")
     void searchByPriceRange_returnsDellOnly() throws Exception {
-        ProductSearchRequestDto req = baseRequest(Category.COMPUTER)
+        ProductSearchRequestDto req = baseRequest("COMPUTER")
                 .priceMin(500.0)
                 .priceMax(1500.0)
                 .build();
@@ -228,7 +227,7 @@ class ProductSearchFlowIT {
     void searchByRamRange_returnsHpOnly() throws Exception {
         Map<String, RangeFilter> ranges = new HashMap<>();
         ranges.put("ram", new RangeFilter(32.0, null));
-        ProductSearchRequestDto req = baseRequest(Category.COMPUTER)
+        ProductSearchRequestDto req = baseRequest("COMPUTER")
                 .numericRanges(ranges)
                 .build();
 
@@ -246,9 +245,9 @@ class ProductSearchFlowIT {
     @DisplayName("category-only across COMPUTER + MONITOR sums to 3")
     void categoryOnly_sumsToThreeAcrossComputerAndMonitor() throws Exception {
         await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() -> {
-            int computers = readTotalElements(performSearch(baseRequest(Category.COMPUTER).build())
+            int computers = readTotalElements(performSearch(baseRequest("COMPUTER").build())
                     .andExpect(status().isOk()).andReturn());
-            int monitors = readTotalElements(performSearch(baseRequest(Category.MONITOR).build())
+            int monitors = readTotalElements(performSearch(baseRequest("MONITOR").build())
                     .andExpect(status().isOk()).andReturn());
 
             assertThat(computers).isEqualTo(2);
@@ -320,7 +319,7 @@ class ProductSearchFlowIT {
             assertThat(productRepository.findByUuid(dellUuid)).isEmpty();
 
             // ES state via /search?brand=DELL → must return 0
-            ProductSearchRequestDto req = baseRequest(Category.COMPUTER)
+            ProductSearchRequestDto req = baseRequest("COMPUTER")
                     .brands(List.of(Brand.DELL))
                     .build();
             MvcResult res = performSearch(req).andExpect(status().isOk()).andReturn();
@@ -336,7 +335,7 @@ class ProductSearchFlowIT {
     @DisplayName("reserved chars in keyword (*, \") return bounded results, never unbounded match-all")
     void reservedCharsInKeyword_returnBoundedResults() throws Exception {
         for (String injected : List.of("*", "\"")) {
-            ProductSearchRequestDto req = baseRequest(Category.COMPUTER)
+            ProductSearchRequestDto req = baseRequest("COMPUTER")
                     .keyword(injected)
                     .build();
 
@@ -356,7 +355,7 @@ class ProductSearchFlowIT {
     @Test
     @DisplayName("BUG-181: search ignores Sort — two identical calls have identical totals")
     void sortSmokeTest_pinsBug181DeterministicCardinality() throws Exception {
-        ProductSearchRequestDto req = baseRequest(Category.COMPUTER).build();
+        ProductSearchRequestDto req = baseRequest("COMPUTER").build();
 
         await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() -> {
             MvcResult first = performSearch(req).andExpect(status().isOk()).andReturn();
@@ -390,7 +389,7 @@ class ProductSearchFlowIT {
             patch.setName("DELL XPS 16 (refreshed)");
             patch.setPrice(new BigDecimal("1100.00"));
             patch.setBrand(Brand.DELL);
-            patch.setCategory(Category.COMPUTER);
+            patch.setCategory("COMPUTER");
             patch.setDescription("Patched description");
 
             mockMvc.perform(patch(UPDATE_ENDPOINT, dellUuid)
@@ -419,7 +418,7 @@ class ProductSearchFlowIT {
                 assertThat(esCount).as("ES doc count unchanged at 3 (no orphan from re-index)").isEqualTo(3L);
 
                 // Search by brand DELL → 1 hit, with the refreshed name.
-                ProductSearchRequestDto req = baseRequest(Category.COMPUTER)
+                ProductSearchRequestDto req = baseRequest("COMPUTER")
                         .brands(List.of(Brand.DELL))
                         .build();
                 MvcResult res = performSearch(req).andExpect(status().isOk()).andReturn();
@@ -439,7 +438,7 @@ class ProductSearchFlowIT {
             patch.setProductUuid(hpUuid);
             patch.setName("HP Omen 32 v2");
             patch.setBrand(Brand.HP);
-            patch.setCategory(Category.COMPUTER);
+            patch.setCategory("COMPUTER");
             patch.setDescription("v2");
 
             mockMvc.perform(patch(UPDATE_ENDPOINT, hpUuid)
@@ -491,7 +490,7 @@ class ProductSearchFlowIT {
                 .name(name)
                 .price(price)
                 .brand(brand)
-                .category(Category.COMPUTER)
+                .category("COMPUTER")
                 .photo("https://cdn.example.com/" + brand.name().toLowerCase() + ".jpg")
                 .stock(10)
                 .description(name + " — high-end laptop")
@@ -508,7 +507,7 @@ class ProductSearchFlowIT {
                 .name(name)
                 .price(price)
                 .brand(brand)
-                .category(Category.MONITOR)
+                .category("MONITOR")
                 .photo("https://cdn.example.com/monitor-" + brand.name().toLowerCase() + ".jpg")
                 .stock(5)
                 .description(name + " — 27\" 4K monitor")
@@ -516,7 +515,7 @@ class ProductSearchFlowIT {
                 .build();
     }
 
-    private ProductSearchRequestDto.ProductSearchRequestDtoBuilder baseRequest(final Category category) {
+    private ProductSearchRequestDto.ProductSearchRequestDtoBuilder baseRequest(final String category) {
         return ProductSearchRequestDto.builder()
                 .category(category)
                 .page(0)

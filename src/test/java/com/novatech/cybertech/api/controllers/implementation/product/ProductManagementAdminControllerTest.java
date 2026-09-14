@@ -157,7 +157,7 @@ class ProductManagementAdminControllerTest {
     void shouldFailCreateProductCauseConstraintsViolation() throws Exception {
         ProductCreateRequestDto createRequestDto = ProductDtoFixtures.aValidCreateRequest();
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("The product you're trying to save's attributes aren't matching the constraints criterias, please check your product category and attributes fields to make sure that they're matching together")
+                .message("attributes invalid")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
                 .build();

@@ -119,7 +119,7 @@ class ErrorManagementControllerBranchTest {
         final ResponseEntity<ErrorResponseDto> response =
                 controller.handleProductConstraintsViolationException(new ProductConstraintsViolationException("ignored"));
 
-        assertEnvelope(response, HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL, "constraints");
+        assertEnvelope(response, HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL, "ignored");
     }
 
     @Test

@@ -6,7 +6,6 @@ import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.request.search.RangeFilter;
 import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import com.novatech.cybertech.services.implementation.ProductSearchServiceImp;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -102,7 +101,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("category filter alone produces one filter, zero musts")
         void categoryOnly_oneFilter() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).page(0).size(10).build();
+                    .category("COMPUTER").page(0).size(10).build();
             stubEmptyHits();
 
             Page<ProductDocument> result = service.search(req);
@@ -126,7 +125,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("single brand emits a terms filter")
         void singleBrand_termsFilter() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).brands(List.of(Brand.DELL)).page(0).size(10).build();
+                    .category("COMPUTER").brands(List.of(Brand.DELL)).page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -142,7 +141,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("multiple brands collapsed into single terms filter")
         void multipleBrands_oneTermsFilter() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).brands(List.of(Brand.DELL, Brand.HP, Brand.ASUS)).page(0).size(10).build();
+                    .category("COMPUTER").brands(List.of(Brand.DELL, Brand.HP, Brand.ASUS)).page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -156,7 +155,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("empty brand list produces no brand filter")
         void emptyBrand_noFilter() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).brands(List.of()).page(0).size(10).build();
+                    .category("COMPUTER").brands(List.of()).page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -175,7 +174,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("priceMin only emits a range filter on price")
         void priceMinOnly_rangeFilter() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).priceMin(100.0).page(0).size(10).build();
+                    .category("COMPUTER").priceMin(100.0).page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -188,7 +187,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("priceMax only emits a range filter on price")
         void priceMaxOnly_rangeFilter() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).priceMax(500.0).page(0).size(10).build();
+                    .category("COMPUTER").priceMax(500.0).page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -201,7 +200,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("priceMin + priceMax both folded into one range filter")
         void priceRange_both_oneRange() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).priceMin(100.0).priceMax(500.0).page(0).size(10).build();
+                    .category("COMPUTER").priceMin(100.0).priceMax(500.0).page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -220,7 +219,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("attribute key with values emits a terms filter under attributes.<CAT>.key.keyword")
         void attribute_termsFilter() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER)
+                    .category("COMPUTER")
                     .attributes(Map.of("ram", List.of("16GB", "32GB")))
                     .page(0).size(10).build();
             stubEmptyHits();
@@ -236,7 +235,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("attribute with empty value list is skipped")
         void attribute_emptyValues_skipped() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER)
+                    .category("COMPUTER")
                     .attributes(Map.of("ram", List.of()))
                     .page(0).size(10).build();
             stubEmptyHits();
@@ -269,7 +268,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("numeric ram range >=32 emits a range filter under attributes.<CAT>.ram")
         void numericRange_emitsRangeFilter() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER)
+                    .category("COMPUTER")
                     .numericRanges(Map.of("ram", new RangeFilter(32.0, null)))
                     .page(0).size(10).build();
             stubEmptyHits();
@@ -284,7 +283,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("numeric range with both bounds emits a single range filter")
         void numericRange_bothBounds() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER)
+                    .category("COMPUTER")
                     .numericRanges(Map.of("storage", new RangeFilter(256.0, 1024.0)))
                     .page(0).size(10).build();
             stubEmptyHits();
@@ -318,7 +317,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("keyword text becomes a multi_match must clause on name + description")
         void keyword_multiMatchMust() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .keyword("gaming laptop").category(Category.COMPUTER).page(0).size(10).build();
+                    .keyword("gaming laptop").category("COMPUTER").page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -334,7 +333,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("blank keyword produces no must clause")
         void blankKeyword_noMust() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .keyword("   ").category(Category.COMPUTER).page(0).size(10).build();
+                    .keyword("   ").category("COMPUTER").page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -346,7 +345,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("null keyword produces no must clause")
         void nullKeyword_noMust() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .keyword(null).category(Category.COMPUTER).page(0).size(10).build();
+                    .keyword(null).category("COMPUTER").page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -364,7 +363,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("page + size from DTO are forwarded to the NativeQuery pageable")
         void paging_forwarded() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).page(2).size(7).build();
+                    .category("COMPUTER").page(2).size(7).build();
             stubEmptyHits();
 
             service.search(req);
@@ -378,7 +377,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("BUG-181: PageRequest is built with no Sort — Sort silently dropped (pin)")
         void bug181_sortIsAlwaysUnsorted() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).page(0).size(10).build();
+                    .category("COMPUTER").page(0).size(10).build();
             stubEmptyHits();
 
             service.search(req);
@@ -396,7 +395,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("hits are mapped to PageImpl with totalHits as totalElements")
         void mapsToPageImpl() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).page(0).size(10).build();
+                    .category("COMPUTER").page(0).size(10).build();
             ProductDocument d1 = ProductDocument.builder().id("1").uuid(UUID.randomUUID()).name("X").build();
             ProductDocument d2 = ProductDocument.builder().id("2").uuid(UUID.randomUUID()).name("Y").build();
             stubHits(List.of(d1, d2), 42L);
@@ -411,7 +410,7 @@ class ProductSearchServiceImpTest {
         @DisplayName("empty results yield empty page")
         void emptyHits_emptyPage() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
-                    .category(Category.COMPUTER).page(0).size(10).build();
+                    .category("COMPUTER").page(0).size(10).build();
             stubEmptyHits();
 
             Page<ProductDocument> page = service.search(req);

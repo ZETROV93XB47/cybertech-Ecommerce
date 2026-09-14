@@ -6,7 +6,6 @@ import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import com.novatech.cybertech.entities.validator.ProductValidationService;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
@@ -247,7 +246,7 @@ class ProductManagementServiceImpTest {
                     .name("Old Name")
                     .price(new BigDecimal("11.11"))
                     .brand(Brand.HP)
-                    .category(Category.MONITOR)
+                    .category("MONITOR")
                     .photo("old-photo")
                     .stock(7)
                     .description("old desc")
@@ -263,7 +262,7 @@ class ProductManagementServiceImpTest {
             assertThat(existing.getName()).isEqualTo("New Name");
             assertThat(existing.getPrice()).isEqualByComparingTo(new BigDecimal("11.11"));
             assertThat(existing.getBrand()).isEqualTo(Brand.HP);
-            assertThat(existing.getCategory()).isEqualTo(Category.MONITOR);
+            assertThat(existing.getCategory()).isEqualTo("MONITOR");
             assertThat(existing.getPhoto()).isEqualTo("old-photo");
             assertThat(existing.getStock()).isEqualTo(7);
             assertThat(existing.getDescription()).isEqualTo("old desc");
@@ -442,7 +441,7 @@ class ProductManagementServiceImpTest {
         void searchProducts_delegates() {
             com.novatech.cybertech.dto.request.search.ProductSearchRequestDto req =
                     com.novatech.cybertech.dto.request.search.ProductSearchRequestDto.builder()
-                            .category(Category.COMPUTER).page(0).size(10).build();
+                            .category("COMPUTER").page(0).size(10).build();
             ProductDocument doc = ProductDocument.builder().uuid(UUID.randomUUID()).name("X").build();
             ProductResponseDto resp = ProductDtoFixtures.aSampleProductResponse();
             org.springframework.data.domain.Page<ProductDocument> page =

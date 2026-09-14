@@ -1,13 +1,10 @@
 package com.novatech.cybertech.mappers.document;
 
-import com.novatech.cybertech.entities.enums.Category;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
-
-import static com.novatech.cybertech.entities.enums.Category.COMPUTER;
 
 @Data
 @Builder
@@ -35,7 +32,7 @@ public class ComputerProductAttributes implements SpecificProductAttributes {
     private String connectivity;
 
     @Override
-    public Category getProductCategory() {
-        return COMPUTER;
+    public String getProductCategory() {
+        return "COMPUTER";
     }
 }

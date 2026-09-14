@@ -1,7 +1,6 @@
 package com.novatech.cybertech.exceptions;
 
 import com.stripe.exception.StripeException;
-import jakarta.validation.ConstraintViolation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -193,13 +192,14 @@ class CustomExceptionsConstructorTest {
         }
 
         @Test
-        @DisplayName("ProductConstraintsViolationException — second ctor accepts a Set<ConstraintViolation<Object>>")
+        @DisplayName("ProductConstraintsViolationException — second ctor accepts a Set<ValidationMessage>")
         void productConstraintsViolationException() {
-            final Set<ConstraintViolation<Object>> violations = Set.of();
+            final Set<com.networknt.schema.ValidationMessage> violations = Set.of();
             final ProductConstraintsViolationException ex =
                     new ProductConstraintsViolationException("bad", violations);
 
             assertThat(ex.getMessage()).isEqualTo("bad");
+            assertThat(ex.getViolations()).isEmpty();
             assertThat(ex).isInstanceOf(RuntimeException.class);
         }
     }

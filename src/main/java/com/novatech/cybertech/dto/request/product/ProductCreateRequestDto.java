@@ -1,9 +1,9 @@
 package com.novatech.cybertech.dto.request.product;
 
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -32,8 +32,8 @@ public class ProductCreateRequestDto {
     @NotNull(message = "Brand cannot be null")
     private Brand brand;
 
-    @NotNull(message = "Category cannot be null")
-    private Category category;
+    @NotBlank(message = "Category cannot be blank")
+    private String category;
 
     @NotNull(message = "Connectivity cannot be null")
     @Size(max = 255, message = "Photo URL/path must be at most 255 characters")

@@ -105,6 +105,12 @@ public class ProductManagementServiceImp implements ProductManagementService {
         if (productUpdateRequestDto.getPhoto() != null) existing.setPhoto(productUpdateRequestDto.getPhoto());
         if (productUpdateRequestDto.getStock() != null) existing.setStock(productUpdateRequestDto.getStock());
         if (productUpdateRequestDto.getDescription() != null) existing.setDescription(productUpdateRequestDto.getDescription());
+        if (productUpdateRequestDto.getAttributes() != null) {
+            // Re-validate against the (possibly just-changed) category so attributes and
+            // category can never diverge — attributes were previously write-once at creation.
+            productValidationService.validateAttributes(existing.getCategory(), productUpdateRequestDto.getAttributes());
+            existing.setAttributes(productUpdateRequestDto.getAttributes());
+        }
 
         final ProductEntity saved = productRepository.save(existing);
 

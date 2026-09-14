@@ -4,7 +4,6 @@ import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -31,7 +30,7 @@ public final class ProductDtoFixtures {
                 .name("Sample Product")
                 .price(new BigDecimal("99.99"))
                 .brand(Brand.ASUS)
-                .category(Category.COMPUTER)
+                .category("COMPUTER")
                 .photo("https://cdn.example.com/sample.jpg")
                 .stock(10)
                 .description("A sample product for tests")
@@ -44,7 +43,7 @@ public final class ProductDtoFixtures {
         dto.setName("Updated Product");
         dto.setPrice(new BigDecimal("149.99"));
         dto.setBrand(Brand.HP);
-        dto.setCategory(Category.COMPUTER);
+        dto.setCategory("COMPUTER");
         dto.setPhoto("https://cdn.example.com/updated.jpg");
         dto.setStock(5);
         dto.setDescription("Updated description");
@@ -61,7 +60,7 @@ public final class ProductDtoFixtures {
                 .name("Sample Product")
                 .price(new BigDecimal("99.99"))
                 .brand(Brand.ASUS.name())
-                .category(Category.COMPUTER.name())
+                .category("COMPUTER")
                 .photoUrl("https://cdn.example.com/sample.jpg")
                 .description("A sample product for tests")
                 .attributes(new HashMap<>());

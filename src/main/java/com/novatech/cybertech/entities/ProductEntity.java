@@ -1,7 +1,6 @@
 package com.novatech.cybertech.entities;
 
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
 import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -32,9 +31,11 @@ public class ProductEntity extends BaseEntity<Long> {
     @Column(name = "brand", nullable = false)
     private Brand brand;
 
-    @Enumerated(EnumType.STRING)
+    /** Free-form key validated against the {@code ProductCategorySchemaEntity} registry — see
+     *  {@code ProductValidationService}. No longer a Java enum, so a new category is an admin
+     *  API call, not a redeploy. */
     @Column(name = "category", nullable = false)
-    private Category category;
+    private String category;
 
     @Column(name = "photo")
     private String photo;
