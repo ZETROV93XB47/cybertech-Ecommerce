@@ -227,7 +227,7 @@ class ProductSearchServiceImpTest {
             service.search(req);
             BoolQuery bool = extractBool(captureQuery());
             boolean hasRam = bool.filter().stream().anyMatch(f ->
-                    f.isTerms() && "attributes.COMPUTER.ram.keyword".equals(f.terms().field()));
+                    f.isTerms() && "attributes.ram.keyword".equals(f.terms().field()));
             assertThat(hasRam).isTrue();
         }
 

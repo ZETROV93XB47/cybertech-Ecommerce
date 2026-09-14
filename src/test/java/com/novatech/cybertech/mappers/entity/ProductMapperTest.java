@@ -248,8 +248,8 @@ class ProductMapperTest {
             assertThat(doc.getCategory()).isEqualTo(entity.getCategory());
             assertThat(doc.getPrice()).isEqualByComparingTo("9.99");
             assertThat(doc.getPhotoUrl()).isEqualTo("https://cdn/img.jpg");
-            // attributes is annotated @Mapping(target = "attributes", ignore = true).
-            assertThat(doc.getAttributes()).isNull();
+            // attributes now auto-maps (no more per-category Elasticsearch attribute factory).
+            assertThat(doc.getAttributes()).isEqualTo(entity.getAttributes());
         }
 
         @Test

@@ -13,7 +13,6 @@ import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ProductSearchRepository;
-import com.novatech.cybertech.services.core.AttributesFactory;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import com.novatech.cybertech.services.core.S3Service;
 import com.novatech.cybertech.services.implementation.ProductManagementServiceImp;
@@ -28,7 +27,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -58,7 +56,6 @@ class ProductManagementServiceImpTest {
 
     @Mock S3Service s3Service;
     @Mock ProductMapper productMapper;
-    @Mock AttributesFactory attributesFactory;
     @Mock ProductRepository productRepository;
     @Mock ProductSearchService productSearchService;
     @Mock ProductSearchRepository productSearchRepository;
@@ -82,7 +79,6 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromCreationRequestToEntity(req)).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
-            when(attributesFactory.create(eq(req.getCategory()), eq(req.getAttributes()))).thenReturn(new HashMap<>());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(expected);
 
             ProductResponseDto result = service.create(req);
@@ -92,7 +88,6 @@ class ProductManagementServiceImpTest {
             inOrder.verify(productValidationService).validateAttributes(req.getCategory(), req.getAttributes());
             inOrder.verify(productRepository).save(mapped);
             inOrder.verify(productSearchRepository).save(doc);
-            assertThat(doc.getAttributes()).isNotNull();
         }
 
         @Test
@@ -119,7 +114,6 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromCreationRequestToEntity(req)).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
-            when(attributesFactory.create(any(), any())).thenReturn(new HashMap<>());
             when(productSearchRepository.save(doc)).thenThrow(new RuntimeException("ES down"));
 
             assertThatThrownBy(() -> service.create(req))
@@ -145,7 +139,6 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
-            when(attributesFactory.create(any(), any())).thenReturn(new HashMap<>());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.createWithImage(req, file);
@@ -164,7 +157,6 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
-            when(attributesFactory.create(any(), any())).thenReturn(new HashMap<>());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.createWithImage(req, null);
@@ -183,7 +175,6 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
-            when(attributesFactory.create(any(), any())).thenReturn(new HashMap<>());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.createWithImage(req, empty);

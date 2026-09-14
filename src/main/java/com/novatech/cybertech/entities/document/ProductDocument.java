@@ -1,6 +1,5 @@
 package com.novatech.cybertech.entities.document;
 
-import com.novatech.cybertech.mappers.document.SpecificProductAttributes;
 import jakarta.persistence.Id;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -44,7 +43,7 @@ public class ProductDocument {
     private String category;
 
     @Field(type = FieldType.Object)
-    private Map<String, SpecificProductAttributes> attributes;
+    private Map<String, Object> attributes;
 
     // --- Champs numériques pour les filtres de plage et le tri ---
     @Field(type = FieldType.Double, name = "price")

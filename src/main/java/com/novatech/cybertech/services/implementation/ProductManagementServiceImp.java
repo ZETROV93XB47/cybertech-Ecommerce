@@ -11,7 +11,6 @@ import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ProductSearchRepository;
-import com.novatech.cybertech.services.core.AttributesFactory;
 import com.novatech.cybertech.services.core.ProductManagementService;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import com.novatech.cybertech.services.core.S3Service;
@@ -36,7 +35,6 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
     private final S3Service s3Service;
     private final ProductMapper productMapper;
-    private final AttributesFactory attributesFactory;
     private final ProductRepository productRepository;
     private final ProductSearchService productSearchService;
     private final ProductSearchRepository productSearchRepository;
@@ -74,8 +72,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
         final ProductEntity savedProductEntity = productRepository.save(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
 
-        ProductDocument productDocument = productMapper.mapFromProductEntityToProductDocument(savedProductEntity);
-        productDocument.setAttributes(attributesFactory.create(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes()));
+        final ProductDocument productDocument = productMapper.mapFromProductEntityToProductDocument(savedProductEntity);
         productSearchRepository.save(productDocument);
 
         return productMapper.mapFromEntityToResponseDto(savedProductEntity);
@@ -115,8 +112,6 @@ public class ProductManagementServiceImp implements ProductManagementService {
         final ProductEntity saved = productRepository.save(existing);
 
         final ProductDocument document = productMapper.mapFromProductEntityToProductDocument(saved);
-        // FIX(ES-SYNC): mirror the create() flow — attributes must be re-applied via the factory so Elasticsearch reflects updated category-specific typed fields (CPU, RAM, screen size, etc.)
-        document.setAttributes(attributesFactory.create(saved.getCategory(), saved.getAttributes()));
         productSearchRepository.save(document);
 
         return productMapper.mapFromEntityToResponseDto(saved);
