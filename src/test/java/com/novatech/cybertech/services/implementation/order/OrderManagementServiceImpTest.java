@@ -51,6 +51,7 @@ import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
+import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
 import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
@@ -123,6 +124,7 @@ class OrderManagementServiceImpTest {
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock IdempotencyKeyServiceGenerator idempotencyKeyService;
     @Mock OrderPriceCalculationService orderPriceCalculationService;
+    @Mock OrderCancellationTransactionalDelegate orderCancellationTransactionalDelegate;
 
     @InjectMocks OrderManagementServiceImp service;
 
@@ -518,187 +520,37 @@ class OrderManagementServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("cancelOrder")
+    @DisplayName("cancelOrder — delegation to OrderCancellationTransactionalDelegate")
     class CancelOrder {
+        // The cancellation read-modify-write (ownership/status guards, refund, stock release,
+        // idempotency) now lives in OrderCancellationTransactionalDelegateImp — see
+        // OrderCancellationTransactionalDelegateTest for that coverage. @Retryable is inert under
+        // plain Mockito (no Spring AOP proxy), so these tests only verify the delegation wiring;
+        // the actual retry-on-OptimisticLockingFailureException behavior is exercised by
+        // OrderFlowIT.cancelOrderRestoresStockAndMovesStatusToCanceled against a real Spring context.
 
         @Test
-        @DisplayName("happy path: status flipped to CANCELED and refunds only SUCCESS+PAYMENT attempts")
-        void happy_refundsOnlySuccessPayment_ignoresFailedAndRefund() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final PaymentEntity successPayment = paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT,
-                    PaymentType.VISA, new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now());
-            final PaymentEntity failedPayment = paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT,
-                    PaymentType.VISA, new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now());
-            final PaymentEntity refundEntry = paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND,
-                    PaymentType.VISA, new Money(new BigDecimal("20.00"), CurrencyCode.EUR), LocalDateTime.now());
-            final List<PaymentEntity> attempts = new ArrayList<>(List.of(successPayment, failedPayment, refundEntry));
+        @DisplayName("delegates to cancelWithinTransaction and returns its result")
+        void delegates_returnsResult() {
+            final UUID uuid = UUID.randomUUID();
+            final OrderResponseDto expected = OrderDtoFixtures.aSampleOrderResponse();
+            when(orderCancellationTransactionalDelegate.cancelWithinTransaction(uuid, jwt)).thenReturn(expected);
 
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(user)
-                    .status(OrderStatus.PAID)
-                    .paymentAttempts(attempts)
-                    .build();
-            final UUID uuid = order.getUuid();
-            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            final OrderResponseDto result = service.cancelOrder(uuid, jwt);
 
-            service.cancelOrder(uuid, jwt);
-
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
-            // Only one refund call (the SUCCESS+PAYMENT one).
-            verify(paymentService, times(1)).refund(eq(order), eq(PaymentType.VISA),
-                    eq(successPayment.getAmount()), eq(successPayment.getIdempotencyKey()));
-            verify(paymentService, times(1)).refund(any(), any(), any(), anyString());
+            assertThat(result).isSameAs(expected);
+            verify(orderCancellationTransactionalDelegate).cancelWithinTransaction(uuid, jwt);
         }
 
         @Test
-        @DisplayName("already-shipped order throws CannotCancelOrderException")
-        void alreadyShipped_throws() {
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build())
-                    .status(OrderStatus.SHIPPED)
-                    .build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+        @DisplayName("propagates exceptions thrown by the delegate")
+        void delegates_propagatesException() {
+            final UUID uuid = UUID.randomUUID();
+            when(orderCancellationTransactionalDelegate.cancelWithinTransaction(uuid, jwt))
+                    .thenThrow(new CannotCancelOrderException("Order is already shipped and can't be cancelled, please consider initiating Return process"));
 
-            assertThatThrownBy(() -> service.cancelOrder(order.getUuid(), jwt))
+            assertThatThrownBy(() -> service.cancelOrder(uuid, jwt))
                     .isInstanceOf(CannotCancelOrderException.class);
-
-            verifyNoInteractions(paymentService);
-        }
-
-        @Test
-        @DisplayName("delivered order also throws CannotCancelOrderException")
-        void delivered_throws() {
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build())
-                    .status(OrderStatus.DELIVERED)
-                    .build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-
-            assertThatThrownBy(() -> service.cancelOrder(order.getUuid(), jwt))
-                    .isInstanceOf(CannotCancelOrderException.class);
-        }
-
-        @Test
-        @DisplayName("order not found throws OrderNotFoundException")
-        void notFound_throws() {
-            final UUID missing = UUID.randomUUID();
-            when(orderRepository.findByUuid(missing)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.cancelOrder(missing, jwt))
-                    .isInstanceOf(OrderNotFoundException.class);
-        }
-
-        @Test
-        @DisplayName("wrong user throws OrderDoesntBelongsToUserException")
-        void wrongUser_throws() {
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId("someone-else").build();
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(owner).status(OrderStatus.PAID).build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-
-            assertThatThrownBy(() -> service.cancelOrder(order.getUuid(), jwt))
-                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
-
-            verifyNoInteractions(paymentService);
-        }
-
-        @Test
-        @DisplayName("no successful payments: cancellation succeeds, no refund issued")
-        void noSuccessfulPayments_noRefund() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final List<PaymentEntity> noneSuccess = new ArrayList<>(List.of(
-                    paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT, PaymentType.VISA,
-                            new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now())));
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(user).status(OrderStatus.AWAITING_PAYMENT).paymentAttempts(noneSuccess).build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            service.cancelOrder(order.getUuid(), jwt);
-
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
-            verifyNoInteractions(paymentService);
-        }
-
-        /**
-         * BUG-1 FIX: AWAITING_SHIPPING used to satisfy {@code isOrderAlreadyShipped}'s
-         * {@code >= SHIPPED} check by returning {@code false}, so cancellation went through, the
-         * Stripe refund fired, but {@code stockService.releaseStock(uuid)} ran AFTER the async
-         * commitStock listener — i.e. it was a no-op and the stock never came back. The fix
-         * introduces {@code isCancellationLockedDueToShipping} which kicks in at AWAITING_SHIPPING
-         * (code 5), refusing cancel before any refund/release work runs.
-         */
-        @Test
-        @DisplayName("BUG-1 FIX: AWAITING_SHIPPING is now locked for cancel — CannotCancelOrderException, no refund")
-        void cancelOrderShouldThrowWhenStatusIsAwaitingShipping() {
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build())
-                    .status(OrderStatus.AWAITING_SHIPPING)
-                    .paymentAttempts(new ArrayList<>(List.of(
-                            paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
-                                    new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now()))))
-                    .build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-
-            assertThatThrownBy(() -> service.cancelOrder(order.getUuid(), jwt))
-                    .isInstanceOf(CannotCancelOrderException.class);
-
-            // Critical: the lock fires BEFORE any refund issues / stock release / save runs.
-            verifyNoInteractions(paymentService);
-            verify(stockService, never()).releaseStock(any(UUID.class));
-            verify(orderRepository, never()).save(any());
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_SHIPPING); // unchanged
-        }
-
-        @Test
-        @DisplayName("regression: SHIPPED still throws CannotCancelOrderException")
-        void cancelOrderShouldThrowWhenStatusIsShipped() {
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build())
-                    .status(OrderStatus.SHIPPED)
-                    .build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-
-            assertThatThrownBy(() -> service.cancelOrder(order.getUuid(), jwt))
-                    .isInstanceOf(CannotCancelOrderException.class);
-
-            verifyNoInteractions(paymentService);
-        }
-
-        @Test
-        @DisplayName("regression: PAID still cancels successfully (refunds the success payment)")
-        void cancelOrderShouldSucceedWhenStatusIsPaid() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final PaymentEntity successPayment = paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT,
-                    PaymentType.VISA, new Money(new BigDecimal("75.00"), CurrencyCode.EUR), LocalDateTime.now());
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(user).status(OrderStatus.PAID)
-                    .paymentAttempts(new ArrayList<>(List.of(successPayment))).build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            service.cancelOrder(order.getUuid(), jwt);
-
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
-            verify(paymentService).refund(eq(order), eq(PaymentType.VISA), eq(successPayment.getAmount()), anyString());
-        }
-
-        @Test
-        @DisplayName("regression: CREATED still cancels successfully (no payment yet, no refund issued)")
-        void cancelOrderShouldSucceedWhenStatusIsCreated() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
-                    .userEntity(user).status(OrderStatus.CREATED)
-                    .paymentAttempts(new ArrayList<>())
-                    .build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            service.cancelOrder(order.getUuid(), jwt);
-
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
-            verifyNoInteractions(paymentService);
         }
     }
 

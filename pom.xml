@@ -122,6 +122,15 @@
             <version>${redisson.version}</version>
         </dependency>
 
+        <!-- Spring Retry: backs @Retryable on OrderManagementServiceImp#cancelOrder, replacing a
+             hand-rolled TransactionTemplate + for-loop retry around an OptimisticLockingFailureException
+             race against the async payment-confirmation listener. Needs no explicit version, managed
+             by the spring-boot-starter-parent BOM. -->
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+        </dependency>
+
         <!-- ShedLock: prevents @Scheduled jobs from double-running across pods once we scale
              past a single replica (currently cybertech-app-chart replicas=1, so this is inert
              today but wired up as the intended pattern for the next scheduled job that needs it). -->

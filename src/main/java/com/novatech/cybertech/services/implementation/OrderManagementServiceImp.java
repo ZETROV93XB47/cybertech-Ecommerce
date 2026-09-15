@@ -26,6 +26,7 @@ import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
+import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
 import com.novatech.cybertech.services.core.OrderManagementService;
 import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.PaymentService;
@@ -33,7 +34,6 @@ import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.utils.ControllerSecurityUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import io.micrometer.core.instrument.MeterRegistry;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,13 +41,11 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -81,37 +79,17 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final ApplicationEventPublisher eventPublisher;
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
     private final OrderPriceCalculationService orderPriceCalculationService;
+    private final OrderCancellationTransactionalDelegate orderCancellationTransactionalDelegate;
 
     /**
-     * Built lazily from {@link PlatformTransactionManager} so {@link #cancelOrder(UUID, Jwt)}
-     * can run its work in a fresh transaction per retry attempt, recovering from
-     * {@link ObjectOptimisticLockingFailureException} thrown when the async
-     * {@code PaymentSucceededEvent} listener bumps the order version mid-flight.
-     * Field-injected (rather than added to {@code @RequiredArgsConstructor}) to avoid
-     * breaking the existing {@code @InjectMocks}-based unit tests.
-     */
-    @Autowired(required = false)
-    private PlatformTransactionManager transactionManager;
-
-    /**
-     * Field-injected for the same reason as {@link #transactionManager}: adding it to the
-     * {@code @RequiredArgsConstructor} constructor would break every {@code @InjectMocks}-based
-     * unit test in {@code OrderManagementServiceImpTest} that doesn't mock a {@link MeterRegistry}.
-     * Backs the {@code cybertech_orders_total} counter that {@code cybertech-overview.json}
-     * (Grafana) already queries — {@code null} in unit tests and any context that doesn't wire
-     * Micrometer, so every call site guards on it before incrementing.
+     * Field-injected rather than added to {@code @RequiredArgsConstructor} to avoid breaking the
+     * existing {@code @InjectMocks}-based unit tests. Backs the {@code cybertech_orders_total}
+     * counter that {@code cybertech-overview.json} (Grafana) already queries — {@code null} in
+     * unit tests and any context that doesn't wire Micrometer, so every call site guards on it
+     * before incrementing.
      */
     @Autowired(required = false)
     private MeterRegistry meterRegistry;
-
-    private TransactionTemplate transactionTemplate;
-
-    @PostConstruct
-    void initTransactionTemplate() {
-        if (transactionManager != null) {
-            this.transactionTemplate = new TransactionTemplate(transactionManager);
-        }
-    }
 
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
@@ -611,92 +589,27 @@ public class OrderManagementServiceImp implements OrderManagementService {
      *
      * <p><b>Race-fix (full-suite IT regression):</b> the async {@code PaymentSucceededEvent}
      * listener ({@link com.novatech.cybertech.listener.OrderPaymentConfirmationEventListener#handlePaymentSuccess})
-     * runs on a separate thread {@link Propagation#REQUIRES_NEW} after the placeOrder TX
-     * commits, flipping the order to {@link OrderStatus#PAID} and bumping the JPA
-     * {@code @Version}. If a user fires {@code POST /cancel} fast enough, the cancel TX
-     * collided with the listener's update and the optimistic-lock failure surfaced as HTTP
-     * 500. We now bound the work in a retry loop with a fresh fetch on
-     * {@link OptimisticLockingFailureException} (re-loaded entity reflects the listener's
-     * write), and short-circuit when a concurrent caller already moved the order to a
-     * terminal state.
+     * runs on a separate thread after the placeOrder TX commits, flipping the order to
+     * {@link OrderStatus#PAID} and bumping the JPA {@code @Version}. If a user fires
+     * {@code POST /cancel} fast enough, the cancel TX can collide with the listener's update and
+     * the optimistic-lock failure would surface as HTTP 500. {@code @Retryable} bounds the work
+     * to 3 attempts on {@link OptimisticLockingFailureException}; each attempt re-invokes
+     * {@link OrderCancellationTransactionalDelegate#cancelWithinTransaction}, a SEPARATE bean —
+     * crossing that bean boundary is what makes both the {@code @Transactional} and
+     * {@code @Retryable} proxies fire on every attempt, so a retry re-fetches the order and sees
+     * the listener's write instead of replaying a stale in-memory entity. The delegate's own
+     * idempotency short-circuit (already-{@code CANCELED} → return as-is) covers the case where
+     * the listener's write and the cancel actually land in the opposite order.
      *
      * @param orderUUID order to cancel
      * @param jwt       caller identity (subject must match the order's owner)
      * @return the cancelled order DTO
      */
     @Override
+    @Retryable(retryFor = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     public OrderResponseDto cancelOrder(final UUID orderUUID, final Jwt jwt) {
         log.info("Order UUD : {}", orderUUID);
-
-        // Unit-test fallback: when no PlatformTransactionManager is wired (Mockito-only tests),
-        // call through directly. Production / IT always has a real transactionTemplate.
-        if (transactionTemplate == null) {
-            return doCancelOrder(orderUUID, jwt);
-        }
-
-        final int maxAttempts = 3;
-        // Catch the Spring superclass OptimisticLockingFailureException, NOT only its
-        // ObjectOptimisticLockingFailureException subtype: depending on the underlying cause
-        // (Hibernate StaleObjectStateException vs a plain row-version mismatch) Spring Data may
-        // surface either type. Catching only the subtype let the generic superclass escape the
-        // retry loop and surface as an HTTP 500 — the exact place-order/webhook race the retry
-        // was meant to absorb.
-        OptimisticLockingFailureException lastLockFailure = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                // Run the cancel work in its own TX via TransactionTemplate so a retry after
-                // an OptimisticLockingFailureException starts a fresh transaction with a fresh
-                // entity snapshot. (Calling a self @Transactional method would bypass the
-                // Spring proxy and lose transactional semantics.)
-                return transactionTemplate.execute(status -> doCancelOrder(orderUUID, jwt));
-            } catch (OptimisticLockingFailureException ex) {
-                lastLockFailure = ex;
-                log.warn("Optimistic lock failure cancelling order {} (attempt {}/{}). Retrying with fresh state.", orderUUID, attempt, maxAttempts);
-            }
-        }
-        // Exhausted retries — bubble the last failure so the caller sees a real error rather than a stale view.
-        throw lastLockFailure;
-    }
-
-    /**
-     * Transactional body of {@link #cancelOrder(UUID, Jwt)}, executed inside a
-     * {@link TransactionTemplate} block. Each invocation re-fetches the order so a retry after
-     * an {@link OptimisticLockingFailureException} sees the latest version (e.g. the async
-     * {@code PaymentSucceededEvent} listener's flip to {@link OrderStatus#PAID}).
-     */
-    private OrderResponseDto doCancelOrder(final UUID orderUUID, final Jwt jwt) {
-        final OrderEntity orderEntity = orderRepository.findByUuid(orderUUID).orElseThrow(() -> new OrderNotFoundException("Order with UUID " + orderUUID + " not found"));
-
-        if (isCancellationLockedDueToShipping(orderEntity)) {
-            log.info("User tried to cancel an order whose status is at or beyond AWAITING_SHIPPING");
-            throw new CannotCancelOrderException("Order is already shipped and can't be cancelled, please consider initiating Return process");
-        }
-
-        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
-        if (!isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
-            log.info("User tried to cancel and order not linked to his account");
-            throw new OrderDoesntBelongsToUserException("Order with UUID " + orderUUID + " not found for this user account");
-        }
-
-        // Idempotency: if a concurrent caller (or a previous retry) already cancelled the order,
-        // return the current snapshot rather than double-refunding.
-        if (orderEntity.getStatus() == OrderStatus.CANCELED) {
-            log.info("Order {} already CANCELED — returning current state.", orderUUID);
-            return orderMapper.mapFromEntityToResponseDto(orderEntity);
-        }
-
-        orderEntity.setStatus(OrderStatus.CANCELED);
-
-        orderEntity.getPaymentAttempts().stream()
-                .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS)
-                .filter(p -> p.getTransactionType() == TransactionType.PAYMENT)
-                .forEach(paymentAttemptEntity -> paymentService.refund(orderEntity, paymentAttemptEntity.getPaymentType(), paymentAttemptEntity.getAmount(), paymentAttemptEntity.getIdempotencyKey()));
-
-        // Release any reserved stock for the cancelled order — mirrors deleteByUUID().
-        // Idempotent: a no-op if the async PAID listener already committed the reservation.
-        stockService.releaseStock(orderUUID);
-
-        return orderMapper.mapFromEntityToResponseDto(orderRepository.save(orderEntity));
+        return orderCancellationTransactionalDelegate.cancelWithinTransaction(orderUUID, jwt);
     }
 
 
@@ -845,21 +758,11 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     /**
-     * {@code true} when the order's status is at or beyond {@link OrderStatus#AWAITING_SHIPPING}.
-     *
-     * <p>Cancellation lock is stricter than the {@code updateOrder} shipping guard: by the time
-     * an order reaches {@code AWAITING_SHIPPING}, the async {@code OrderPaymentConfirmationEventListener}
-     * has already called {@code stockService.commitStock()} which decrements
-     * {@code productEntity.stock} and removes the reservation. A subsequent cancel would refund the
-     * customer but {@code stockService.releaseStock(orderUUID)} is then a no-op — the stock would
-     * never come back. Block cancel here so the merchant can keep the inventory until shipping
-     * actually leaves the warehouse, or until a return process is initiated post-delivery.</p>
+     * Package-private (not {@code private}): also called by
+     * {@link OrderCancellationTransactionalDelegateImp}, the separate bean
+     * {@link #cancelOrder(UUID, Jwt)} delegates to.
      */
-    private static boolean isCancellationLockedDueToShipping(final OrderEntity orderEntity) {
-        return orderEntity.getStatus().getCode() >= AWAITING_SHIPPING.getCode();
-    }
-
-    private static boolean isCurrentUserOrderInitiator(OrderEntity orderEntity, String keycloakId) {
+    static boolean isCurrentUserOrderInitiator(OrderEntity orderEntity, String keycloakId) {
         return orderEntity.getUserEntity().getKeycloakId().equals(keycloakId);
     }
 
@@ -897,7 +800,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * @return the non-null Keycloak subject.
      * @throws UserNotFoundException when the JWT is null or has a null {@code sub} claim.
      */
-    private static String resolveKeycloakIdFromJwt(final Jwt jwt) {
+    static String resolveKeycloakIdFromJwt(final Jwt jwt) {
         return Optional.ofNullable(jwt)
                 .map(Jwt::getSubject)
                 .orElseThrow(() -> new UserNotFoundException("JWT subject missing — cannot resolve user"));
