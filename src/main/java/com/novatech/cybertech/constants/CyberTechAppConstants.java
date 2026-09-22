@@ -20,6 +20,7 @@ public class CyberTechAppConstants {
     public static final String BANK_CARD_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/bank-card";
     public static final String USER_WISHLIST_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/wishlist";
     public static final String USER_EVENT_INGESTION_BASE_PATH = API_BASE_PATH + "/events";
+    public static final String RECOMMENDATION_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/recommendations";
     public static final String STRIPE_WEBHOOKS_BASE_PATH = API_BASE_PATH + "/webhooks/stripe";
 
     public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/management/order";
@@ -47,6 +48,7 @@ public class CyberTechAppConstants {
     public static final String CLEAN_UP_EXPIRED_STOCK_JOB = "CLEAN_UP_EXPIRED_STOCK_JOB";
     public static final String REDELIVER_FAILED_NOTIFICATIONS_JOB = "REDELIVER_FAILED_NOTIFICATIONS_JOB";
     public static final String KEYCLOAK_OUTBOX_RECONCILIATION_JOB = "KEYCLOAK_OUTBOX_RECONCILIATION_JOB";
+    public static final String GORSE_SYNC_JOB = "GORSE_SYNC_JOB";
 
 
     public static final String APP_API_VERSION = "1.0";
@@ -75,5 +77,6 @@ public class CyberTechAppConstants {
     public static final int DEFAULT_PAGE_SIZE_BANK_CARD = 10;
     public static final int DEFAULT_PAGE_SIZE_WISHLIST = 20;
     public static final int DEFAULT_PAGE_SIZE_BEST_SELLERS = 15;
+    public static final int DEFAULT_RECOMMENDATION_COUNT = 10;
     public static final String DEFAULT_SORT_FIELD = "createdAt";
 }

@@ -15,6 +15,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.CLEAN_UP_EXPIRED_STOCK_JOB;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.GORSE_SYNC_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.KEYCLOAK_OUTBOX_RECONCILIATION_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REDELIVER_FAILED_NOTIFICATIONS_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB;
@@ -30,6 +31,7 @@ public class BatchConfig {
     private static final String CLEAN_UP_EXPIRED_STOCK_RESERVATIONS_TASKLET = "CleanUpExpiredStockReservationsTasklet";
     private static final String REDELIVER_FAILED_NOTIFICATIONS_TASKLET = "RedeliverFailedNotificationsTasklet";
     private static final String KEYCLOAK_OUTBOX_RECONCILIATION_TASKLET = "KeycloakOutboxReconciliationTasklet";
+    private static final String GORSE_SYNC_TASKLET = "GorseSyncTasklet";
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager platformTransactionManager;
@@ -41,6 +43,7 @@ public class BatchConfig {
     private final CleanUpExpiredStockReservationsTasklet cleanUpExpiredStockReservationsTasklet;
     private final RedeliverFailedNotificationsTasklet redeliverFailedNotificationsTasklet;
     private final KeycloakOutboxReconciliationTasklet keycloakOutboxReconciliationTasklet;
+    private final GorseSyncTasklet gorseSyncTasklet;
 
 
     @Primary
@@ -125,6 +128,21 @@ public class BatchConfig {
     public Step keycloakOutboxReconciliationStep() {
         return new StepBuilder(KEYCLOAK_OUTBOX_RECONCILIATION_TASKLET, jobRepository)
                 .tasklet(keycloakOutboxReconciliationTasklet, platformTransactionManager)
+                .allowStartIfComplete(true)
+                .build();
+    }
+
+    @Bean(GORSE_SYNC_JOB)
+    public Job gorseSyncJob() {
+        return new JobBuilder(GORSE_SYNC_JOB, jobRepository)
+                .start(gorseSyncStep())
+                .build();
+    }
+
+    @Bean(GORSE_SYNC_TASKLET)
+    public Step gorseSyncStep() {
+        return new StepBuilder(GORSE_SYNC_TASKLET, jobRepository)
+                .tasklet(gorseSyncTasklet, platformTransactionManager)
                 .allowStartIfComplete(true)
                 .build();
     }
