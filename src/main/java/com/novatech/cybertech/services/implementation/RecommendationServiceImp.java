@@ -68,6 +68,7 @@ public class RecommendationServiceImp implements RecommendationService {
     }
 
     private Optional<List<ProductResponseDto>> fromGorseRecommend(final String userId, final int n) {
+        log.info("Calling Gorse recommend for user {} (n={})", userId, n);
         try {
             final List<String> itemIds = gorseClient.getRecommendations(userId, n);
             return itemIds.isEmpty() ? Optional.empty() : Optional.of(resolveProducts(itemIds));
@@ -78,6 +79,7 @@ public class RecommendationServiceImp implements RecommendationService {
     }
 
     private Optional<List<ProductResponseDto>> fromGorseLatest(final int n) {
+        log.info("Calling Gorse latest-items (n={})", n);
         try {
             final List<String> itemIds = gorseClient.getLatestItems(n).stream()
                     .map(GorseScoredItemDto::getId)
@@ -90,6 +92,7 @@ public class RecommendationServiceImp implements RecommendationService {
     }
 
     private List<ProductResponseDto> fromBestSellers(final int n) {
+        log.info("Falling back to best sellers (n={})", n);
         return productRepository.findBestSellers(PageRequest.of(0, n)).stream()
                 .map(productMapper::mapFromEntityToResponseDto)
                 .toList();
