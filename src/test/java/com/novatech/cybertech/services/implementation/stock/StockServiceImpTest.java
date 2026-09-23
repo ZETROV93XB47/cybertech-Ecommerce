@@ -416,6 +416,36 @@ class StockServiceImpTest {
     }
 
     @Test
+    @DisplayName("releaseStock: skips a reservation already RELEASED — no double-decrement of reservedStock")
+    void releaseStock_skipsAlreadyReleasedReservation_noDoubleDecrement() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        StockEntity active = reservation(orderUuid, p1, 2);
+        StockEntity alreadyReleased = StockEntityBuilder.aValidStockBuilder()
+                .orderUuid(orderUuid)
+                .productUuid(p2)
+                .quantity(5)
+                .reservationStatus(ReservationStatus.RELEASED)
+                .build();
+        ProductEntity prod1 = productWithStock(p1, 10, 2);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(active, alreadyReleased));
+        when(productRepository.lockByUuid(p1)).thenReturn(Optional.of(prod1));
+
+        service.releaseStock(orderUuid);
+
+        // Only the ACTIVE row is processed — the already-RELEASED one is skipped entirely,
+        // so its product is never locked/saved and its reservedStock is not touched again.
+        verify(productRepository, never()).lockByUuid(p2);
+        verify(productRepository, times(1)).save(any(ProductEntity.class));
+        assertThat(prod1.getReservedStock()).isZero();
+
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+        verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
     @DisplayName("releaseStock with missing product throws domain ProductNotFoundException (verify F2 fix)")
     void releaseStock_missingProduct_throwsDomainException_bug063Verify() {
         UUID orderUuid = UUID.randomUUID();

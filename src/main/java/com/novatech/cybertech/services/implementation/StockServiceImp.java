@@ -22,6 +22,7 @@ import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.RESERVATION_KEY_PREFIX;
 import static com.novatech.cybertech.entities.enums.ReservationStatus.ACTIVE;
+import static com.novatech.cybertech.entities.enums.ReservationStatus.RELEASED;
 
 
 /**
@@ -131,6 +132,16 @@ public class StockServiceImp implements StockService {
      *
      * <p>Idempotent: empty reservation set short-circuits before any DB or Redis writes — the
      * cleanup batch and the Redis-expiration listener can both call this safely.
+     *
+     * <p>Each row is also skipped individually unless it's still {@code ACTIVE} — mirrors the
+     * same guard {@link com.novatech.cybertech.listener.RedisExpirationListener} already has, for
+     * the same reason: {@code releaseStock} is called from three independent paths (the cleanup
+     * batch, the payment-confirmation listener, order cancellation) that can race the Redis
+     * listener on the same order. Without this guard, two callers both reading a row as
+     * {@code ACTIVE} before either commits would both decrement {@code reservedStock} for the
+     * same reservation, corrupting the stock accounting. Rows are flipped to {@code RELEASED}
+     * (not deleted individually) before the final bulk delete, so a same-transaction re-read
+     * would see the terminal state.
      */
     @Override
     @Transactional
@@ -142,7 +153,9 @@ public class StockServiceImp implements StockService {
 
         if (reservations.isEmpty()) return;
 
-        reservations.forEach(this::updateStockForRelease);
+        reservations.stream()
+                .filter(r -> r.getReservationStatus() == ACTIVE)
+                .forEach(this::updateStockForRelease);
 
         stockRepository.deleteByOrderUuid(orderUuid);
         redisTemplate.delete(reservationKey(orderUuid));
@@ -161,15 +174,18 @@ public class StockServiceImp implements StockService {
 
 
     /**
-     * Reverts the reserved-stock counter for a single reservation row. Called from
-     * {@link #releaseStock(UUID)}; takes the per-product DB row lock to serialize against
-     * concurrent reservations on the same product.
+     * Reverts the reserved-stock counter for a single reservation row and flips it to
+     * {@link com.novatech.cybertech.entities.enums.ReservationStatus#RELEASED}. Called from
+     * {@link #releaseStock(UUID)} only for rows already filtered to {@code ACTIVE}; takes the
+     * per-product DB row lock to serialize against concurrent reservations on the same product.
      */
     private void updateStockForRelease(StockEntity r) {
         final ProductEntity product = productRepository.lockByUuid(r.getProductUuid())
                 .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + r.getProductUuid() + " found"));
         product.setReservedStock(product.getReservedStock() - r.getQuantity());
         productRepository.save(product);
+        r.setReservationStatus(RELEASED);
+        stockRepository.save(r);
     }
 
     /**
