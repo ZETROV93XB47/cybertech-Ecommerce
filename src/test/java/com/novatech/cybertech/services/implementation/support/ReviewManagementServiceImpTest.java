@@ -178,7 +178,7 @@ class ReviewManagementServiceImpTest {
             when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
             when(moderationService.checkIfIsHateful("Excellent"))
-                    .thenReturn(ModerationResponseDto.builder().label("OK").score(0.1).build());
+                    .thenReturn(ModerationResponseDto.builder().label("not_toxic").score(0.95).isHateful(false).build());
             when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
             when(reviewMapper.mapFromEntityToResponseDto(reviewEntity)).thenReturn(responseDto);
 
@@ -271,7 +271,7 @@ class ReviewManagementServiceImpTest {
             when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
             when(moderationService.checkIfIsHateful("Excellent"))
-                    .thenReturn(ModerationResponseDto.builder().score(0.1).build());
+                    .thenReturn(ModerationResponseDto.builder().label("not_toxic").score(0.1).isHateful(false).build());
             when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
             when(reviewMapper.mapFromEntityToResponseDto(reviewEntity))
                     .thenReturn(ReviewResponseDto.builder().build());
@@ -339,7 +339,7 @@ class ReviewManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("moderation score above 0.7 threshold -> CommentPostNotAllowedException; nothing persisted")
+        @DisplayName("moderation verdict isHateful=true -> CommentPostNotAllowedException; nothing persisted")
         void hatefulCommentIsBlocked() {
             ReviewCreateRequestDto dto = createDto();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
@@ -352,7 +352,51 @@ class ReviewManagementServiceImpTest {
             when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
             when(moderationService.checkIfIsHateful("hateful text"))
-                    .thenReturn(ModerationResponseDto.builder().score(0.95).build());
+                    .thenReturn(ModerationResponseDto.builder().label("toxic").score(0.95).isHateful(true).build());
+
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
+                    .isInstanceOf(CommentPostNotAllowedException.class);
+
+            verify(reviewRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("moderation verdict isHateful=true even with a LOW confidence score still blocks (decision is label-based, not score-based)")
+        void hatefulCommentIsBlockedRegardlessOfLowScore() {
+            ReviewCreateRequestDto dto = createDto();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            OrderEntity order = callerOrderContainingProduct(productUuid);
+            ProductEntity product = productWith(productUuid);
+            ReviewEntity reviewEntity = ReviewEntity.builder().comment("borderline toxic").build();
+
+            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
+            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+            when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
+            when(moderationService.checkIfIsHateful("borderline toxic"))
+                    .thenReturn(ModerationResponseDto.builder().label("toxic").score(0.1).isHateful(true).build());
+
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
+                    .isInstanceOf(CommentPostNotAllowedException.class);
+
+            verify(reviewRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("moderation verdict isHateful=null (malformed response) fails closed -> CommentPostNotAllowedException")
+        void nullIsHatefulVerdictFailsClosed() {
+            ReviewCreateRequestDto dto = createDto();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            OrderEntity order = callerOrderContainingProduct(productUuid);
+            ProductEntity product = productWith(productUuid);
+            ReviewEntity reviewEntity = ReviewEntity.builder().comment("text").build();
+
+            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
+            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+            when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
+            when(moderationService.checkIfIsHateful("text"))
+                    .thenReturn(ModerationResponseDto.builder().label("toxic").score(0.4).build());
 
             assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(CommentPostNotAllowedException.class);
@@ -439,37 +483,13 @@ class ReviewManagementServiceImpTest {
             when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
             when(moderationService.checkIfIsHateful("Excellent"))
-                    .thenReturn(ModerationResponseDto.builder().score(0.1).build());
+                    .thenReturn(ModerationResponseDto.builder().label("not_toxic").score(0.1).isHateful(false).build());
             when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
             when(reviewMapper.mapFromEntityToResponseDto(reviewEntity)).thenReturn(responseDto);
 
             final ReviewResponseDto result = service.create(dto, keycloakId);
 
             assertThat(result).isSameAs(responseDto);
-            verify(reviewRepository).save(reviewEntity);
-        }
-
-        @Test
-        @DisplayName("threshold boundary: score < 0.7 (strictly) is allowed; > 0.7 strictly is blocked")
-        void thresholdIsStrictlyGreaterThan0_7() {
-            ReviewCreateRequestDto dto = createDto();
-            UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            OrderEntity order = callerOrderContainingProduct(productUuid);
-            ProductEntity product = productWith(productUuid);
-            ReviewEntity reviewEntity = ReviewEntity.builder().comment("borderline").build();
-
-            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
-            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
-            when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
-            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
-            // 0.69 is strictly below 0.7f promoted-to-double (~0.6999999880790710)
-            when(moderationService.checkIfIsHateful("borderline"))
-                    .thenReturn(ModerationResponseDto.builder().score(0.69d).build());
-            when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
-            when(reviewMapper.mapFromEntityToResponseDto(reviewEntity))
-                    .thenReturn(ReviewResponseDto.builder().build());
-
-            assertThat(service.create(dto, keycloakId)).isNotNull();
             verify(reviewRepository).save(reviewEntity);
         }
     }

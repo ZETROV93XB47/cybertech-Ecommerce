@@ -36,8 +36,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReviewManagementServiceImp implements ReviewManagementService {
 
-    private static final float HATEFUL_COMMENT_SCORE_THRESHOLD = 0.7f;
-
     /**
      * Orders are considered "reviewable" once the customer has actually paid for them. We
      * accept PAID / SHIPPED / DELIVERED so users can leave a review as soon as the payment
@@ -85,13 +83,15 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         final ProductEntity product = productRepository.findByUuid(reviewCreateRequestDto.getProductUuid()).orElseThrow(() -> new ProductNotFoundException("Product related to this review doesn't exists"));
 
-        //I ned to recompile the moderation api module cause made some changes in it
-
         ModerationResponseDto moderationResponseDto = moderationService.checkIfIsHateful(reviewEntity.getComment());
-        // Fail closed on a missing / malformed moderation verdict: a null response or null score
+        // Fail closed on a missing / malformed moderation verdict: a null response or null verdict
         // means we could NOT confirm the comment is clean, so we reject rather than publish blind.
-        if (moderationResponseDto == null || moderationResponseDto.getScore() == null
-                || moderationResponseDto.getScore() > HATEFUL_COMMENT_SCORE_THRESHOLD)
+        // NOTE: isHateful (not the raw score) is the classifier's verdict — the score alone is just
+        // the confidence for whichever label ("toxic" or its opposite) won, so a clean comment
+        // classified with high confidence would otherwise be rejected, and a toxic comment
+        // classified with low confidence would otherwise slip through.
+        if (moderationResponseDto == null || moderationResponseDto.getIsHateful() == null
+                || moderationResponseDto.getIsHateful())
             throw new CommentPostNotAllowedException("Your comment looks similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.");
 
         reviewEntity.setIsHateful(false);

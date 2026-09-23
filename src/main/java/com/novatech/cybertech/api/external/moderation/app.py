@@ -23,9 +23,8 @@ def analyze_comment():
     result = classifier(comment)[0]
     return jsonify({
         "label": result['label'],
-        "score": result['score']
-
-        #"is_hateful": result['label'] == "toxic" and result['score'] > 0.8
+        "score": result['score'],
+        "isHateful": result['label'] == "toxic" and result['score'] > 0.8
     })
 
 if __name__ == "__main__":

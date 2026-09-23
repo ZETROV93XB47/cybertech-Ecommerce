@@ -14,5 +14,5 @@ import java.io.Serializable;
 public class ModerationResponseDto implements Serializable {
     private String label;
     private Double score;
-    //private boolean isHateful;
+    private Boolean isHateful;
 }

@@ -12,7 +12,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * Test configuration that exposes a Mockito-based {@link CommentModerationClient} returning a
- * configurable verdict. Default verdict is "non-hateful" (label="OK", score=0.99). Subclasses
+ * configurable verdict. Default verdict is "non-hateful" (label="OK", score=0.99,
+ * isHateful=false) — the decision is carried by {@code isHateful}, not the raw score. Subclasses
  * can re-stub the bean before each test.
  */
 @TestConfiguration
@@ -26,6 +27,7 @@ public class ModerationStub {
                 ModerationResponseDto.builder()
                         .label("OK")
                         .score(0.99)
+                        .isHateful(false)
                         .build()
         );
         return client;
