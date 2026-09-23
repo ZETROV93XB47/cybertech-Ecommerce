@@ -192,11 +192,11 @@ class CancelAllPendingOrdersByTimeTaskletTest {
     }
 
     @Nested
-    @DisplayName("Failure paths — BUG-111 fix verification")
+    @DisplayName("Failure paths")
     class FailurePaths {
 
         @Test
-        @DisplayName("BUG-111 (FIXED in F2): single releaseStock failure is isolated; subsequent orders are still cancelled")
+        @DisplayName("single releaseStock failure is isolated; subsequent orders are still cancelled")
         void singleReleaseStockFailure_doesNotAbortRemaining() throws Exception {
             final OrderEntity o1 = orderForUser("a@example.com");
             final OrderEntity o2 = orderForUser("b@example.com");
@@ -225,7 +225,7 @@ class CancelAllPendingOrdersByTimeTaskletTest {
 
         @SuppressWarnings("unchecked")
         @Test
-        @DisplayName("BUG-111 (FIXED): the failed order is excluded from the user→uuid map written to context")
+        @DisplayName("the failed order is excluded from the user→uuid map written to context")
         void failedOrderIsNotInExecutionContextMap() throws Exception {
             final OrderEntity o1 = orderForUser("a@example.com");
             final OrderEntity o2 = orderForUser("a@example.com");
@@ -246,7 +246,7 @@ class CancelAllPendingOrdersByTimeTaskletTest {
         }
 
         @Test
-        @DisplayName("BUG-111 (FIXED): every order causes releaseStock to throw → no exception bubbles, FINISHED returned, no order cancelled")
+        @DisplayName("every order causes releaseStock to throw → no exception bubbles, FINISHED returned, no order cancelled")
         void everyReleaseStockFails_returnsFinishedAndNoCancellations() throws Exception {
             final OrderEntity o1 = orderForUser("a@example.com");
             final OrderEntity o2 = orderForUser("b@example.com");
@@ -262,7 +262,7 @@ class CancelAllPendingOrdersByTimeTaskletTest {
         }
 
         @Test
-        @DisplayName("BUG-111 (FIXED): when all orders fail, the resulting empty map is still written to the JobExecutionContext")
+        @DisplayName("when all orders fail, the resulting empty map is still written to the JobExecutionContext")
         void allFailures_writesEmptyMap() throws Exception {
             final OrderEntity o1 = orderForUser("a@example.com");
             when(orderRepository.findByStatusAndOrderDateBefore(eq(OrderStatus.PAYMENT_FAILED), any(LocalDateTime.class)))

@@ -374,7 +374,7 @@ class ProductSearchServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-181: PageRequest is built with no Sort — Sort silently dropped (pin)")
+        @DisplayName("PageRequest is built with no Sort — Sort silently dropped (pin)")
         void bug181_sortIsAlwaysUnsorted() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
                     .category("COMPUTER").page(0).size(10).build();

@@ -247,7 +247,7 @@ class CartFlowIT {
     // 4. Out-of-stock batch (3rd item OOS). The handler maps this to 409.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("batch with OOS third item — F2 BUG-008 handler returns 409")
+    @DisplayName("batch with OOS third item — handler returns 409")
     void outOfStockThirdItemReturns409() throws Exception {
         // 2 already-stocked products + 1 OOS product
         ProductEntity p2 = productRepository.save(
@@ -276,7 +276,7 @@ class CartFlowIT {
     // 5. Nested @Valid propagation: items.quantity = -1 → 400
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("nested negative quantity — F2 BUG-028 nested @Valid returns 400")
+    @DisplayName("nested negative quantity — nested @Valid returns 400")
     void nestedNegativeQuantityReturns400() throws Exception {
         CartCreateRequestDto request = CartCreateRequestDto.builder()
                 .cartItemAddRequestDtos(List.of(
@@ -300,7 +300,7 @@ class CartFlowIT {
     //    A prior test run refuted the earlier claim that this was fixed; pin via @Disabled if it surfaces again.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("BUG-160 (CLOSED): concurrent /cart/add — final qty MUST sum (no race)")
+    @DisplayName("concurrent /cart/add — final qty MUST sum (no race)")
     void concurrentAddsFromTwoThreadsShouldSumNotRace() throws Exception {
         final int threads = 2;
         final int qtyPerThread = 2;
@@ -351,7 +351,7 @@ class CartFlowIT {
             assertThat(cart).isNotNull();
             assertThat(cart.getCartItems()).hasSize(1);
             assertThat(cart.getCartItems().get(0).getQuantity())
-                    .as("final qty must equal sum of concurrent additions (BUG-160)")
+                    .as("final qty must equal sum of concurrent additions")
                     .isEqualTo(threads * qtyPerThread);
         });
     }
@@ -362,7 +362,7 @@ class CartFlowIT {
     //     lock (layer 3) was removed — proving the Redis lock alone serialises the RMW.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("BUG-160 (CLOSED): 5 concurrent /cart/add — final qty MUST sum to 10 (Redis lock only)")
+    @DisplayName("5 concurrent /cart/add — final qty MUST sum to 10 (Redis lock only)")
     void concurrentAddsFromFiveThreadsShouldSumNotRace() throws Exception {
         final int threads = 5;
         final int qtyPerThread = 2;
@@ -424,7 +424,7 @@ class CartFlowIT {
     // 7. Delete-by-uuid endpoint audit — verifies path binds correctly.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("DELETE /cart/delete/{cartUuid} binds path variable post-F2 BUG-027 fix")
+    @DisplayName("DELETE /cart/delete/{cartUuid} binds path variable")
     void deleteByCartUuidBindsPathVariable() throws Exception {
         addItems(seededProduct.getUuid(), 1);
         UUID cartUuid = transactionTemplate.execute(tx -> {
@@ -466,7 +466,7 @@ class CartFlowIT {
     // 9a. GET /cart/get/{cartUuid} now rejects non-owners with 403.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("BUG-161 (CLOSED) — GET /cart/get/{cartUuid} returns 403 for non-owner")
+    @DisplayName("GET /cart/get/{cartUuid} returns 403 for non-owner")
     void idorOnGetByCartUuid_returns403() throws Exception {
         // Seed user A's cart
         addItems(seededProduct.getUuid(), 1);
@@ -495,7 +495,7 @@ class CartFlowIT {
     // 9b. DELETE /cart/delete/{cartUuid} returns 403 for non-owner.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("BUG-161 (CLOSED) — DELETE /cart/delete/{cartUuid} returns 403 for non-owner")
+    @DisplayName("DELETE /cart/delete/{cartUuid} returns 403 for non-owner")
     void idorOnDeleteByCartUuidReturnsForbidden() throws Exception {
         addItems(seededProduct.getUuid(), 1);
         UUID userACartUuid = transactionTemplate.execute(tx -> {

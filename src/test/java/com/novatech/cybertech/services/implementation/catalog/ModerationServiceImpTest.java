@@ -53,7 +53,7 @@ class ModerationServiceImpTest {
     }
 
     @Test
-    @DisplayName("BUG-086: no caching — two identical calls invoke the client twice")
+    @DisplayName("no caching — two identical calls invoke the client twice")
     void bug086_noCaching_twoCallsTwoInvocations() {
         ModerationResponseDto resp = ModerationResponseDto.builder().label("hate").score(0.91).build();
         when(client.moderate("repeat me")).thenReturn(resp);
@@ -65,7 +65,7 @@ class ModerationServiceImpTest {
     }
 
     @Test
-    @DisplayName("BUG-086: distinct comments each round-trip")
+    @DisplayName("distinct comments each round-trip")
     void bug086_distinctCommentsRoundTrip() {
         when(client.moderate("a")).thenReturn(ModerationResponseDto.builder().label("ok").score(0.0).build());
         when(client.moderate("b")).thenReturn(ModerationResponseDto.builder().label("ok").score(0.0).build());

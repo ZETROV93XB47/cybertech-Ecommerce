@@ -11,7 +11,14 @@ import java.time.LocalDateTime;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "wishlistTable")
+// Closes the check-then-insert race in WishlistServiceImp#addProductToMyWishlist: unlike the
+// cart (where a Redis lock already serialises adds and this same kind of constraint is just a
+// cheap declarative backstop), there is no lock here — two concurrent adds for the same
+// (user, product) both pass the pre-check before either commits, so this constraint is the only
+// thing actually preventing the duplicate. The service catches the resulting
+// DataIntegrityViolationException and turns it into the same ProductAlreadyInWishlist the
+// pre-check throws.
+@Table(name = "wishlistTable", uniqueConstraints = @UniqueConstraint(name = "uk_wishlist_user_product", columnNames = {"userId", "productId"}))
 @ToString(callSuper = true, exclude = {"user","product"})
 @EqualsAndHashCode(callSuper = true, exclude = {"user","product"})
 public class WishlistEntity extends BaseEntity<Long> {

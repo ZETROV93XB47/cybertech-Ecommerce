@@ -350,10 +350,10 @@ class PaymentWebhookFlowIT {
         // Service short-circuits → payment row untouched, no domain event published.
         final PaymentEntity reloaded = paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow();
         assertThat(reloaded.getStatus())
-                .as("BUG-522: livemode mismatch must NOT mutate the payment row")
+                .as("livemode mismatch must NOT mutate the payment row")
                 .isEqualTo(PaymentAttemptStatus.PROCESSING);
         assertThat(applicationEvents.stream(PaymentSucceededEvent.class).count())
-                .as("BUG-522: livemode mismatch must NOT publish PaymentSucceededEvent")
+                .as("livemode mismatch must NOT publish PaymentSucceededEvent")
                 .isZero();
     }
 
@@ -389,7 +389,7 @@ class PaymentWebhookFlowIT {
         Awaitility.await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(200)).untilAsserted(() -> {
             final OrderEntity reloaded = orderRepository.findByUuid(orderUuid).orElseThrow();
             assertThat(reloaded.getStatus())
-                    .as("BUG-172: with metadata.order_uuid the listener flips the order to PAID")
+                    .as("with metadata.order_uuid the listener flips the order to PAID")
                     .isEqualTo(OrderStatus.PAID);
         });
     }

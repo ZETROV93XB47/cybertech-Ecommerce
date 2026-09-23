@@ -206,7 +206,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
                 .orElseThrow(() -> new PaymentNotFoundException("Payment attempt not found for stripePaymentID: " + stripePaymentID));
 
         if (existing.getStatus() == PaymentAttemptStatus.SUCCESS) {
-            log.warn("BUG-521 guard: ignoring out-of-order failure for already-succeeded payment stripePaymentID={}", stripePaymentID);
+            log.warn("ignoring out-of-order failure for already-succeeded payment stripePaymentID={}", stripePaymentID);
             return;
         }
 

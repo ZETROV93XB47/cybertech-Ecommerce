@@ -183,11 +183,11 @@ class ProductManagementServiceImpTest {
     }
 
     @Nested
-    @DisplayName("update — BUG-080 / BUG-180-product fix verification")
+    @DisplayName("update product fix verification")
     class Update {
 
         @Test
-        @DisplayName("uses lockByUuid (BUG-080 fix) and re-indexes into ES (BUG-180-product fix)")
+        @DisplayName("uses lockByUuid and re-indexes into ES")
         void update_happyPath_locksAndReindexes() {
             ProductUpdateRequestDto req = ProductDtoFixtures.aValidUpdateRequest();
             ProductEntity existing = ProductEntityBuilder.aValidProductBuilder().uuid(req.getProductUuid()).build();
@@ -309,11 +309,11 @@ class ProductManagementServiceImpTest {
     }
 
     @Nested
-    @DisplayName("deleteByUUIDs — BUG-081 fix verification (per-UUID ES cleanup)")
+    @DisplayName("deleteByUUIDs fix verification (per-UUID ES cleanup)")
     class DeleteByUUIDs {
 
         @Test
-        @DisplayName("bulk delete also removes each ProductDocument from ES (BUG-081 fixed)")
+        @DisplayName("bulk delete also removes each ProductDocument from ES")
         void deleteByUUIDs_cleansEsPerUuid() {
             UUID a = UUID.randomUUID();
             UUID b = UUID.randomUUID();

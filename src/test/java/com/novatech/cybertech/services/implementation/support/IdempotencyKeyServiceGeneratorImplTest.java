@@ -63,32 +63,32 @@ class IdempotencyKeyServiceGeneratorImplTest {
     }
 
     @Test
-    @DisplayName("BUG-2505: null orderUuid -> random non-idempotent key (pin)")
+    @DisplayName("null orderUuid -> random non-idempotent key (pin)")
     void nullOrderUuidProducesRandomNonIdempotentKey() {
         String k1 = generator.generateKey(null, List.of("PLACE"));
         String k2 = generator.generateKey(null, List.of("PLACE"));
 
-        assertThat(k1).as("BUG-2505: null inputs lose idempotency").isNotEqualTo(k2);
+        assertThat(k1).as("null inputs lose idempotency").isNotEqualTo(k2);
         // The random fallback returns a UUID string, not a SHA-256 hex.
         assertThat(k1).containsPattern("[0-9a-f-]+");
     }
 
     @Test
-    @DisplayName("BUG-2505: null context -> random non-idempotent key (pin)")
+    @DisplayName("null context -> random non-idempotent key (pin)")
     void nullContextProducesRandomNonIdempotentKey() {
         String k1 = generator.generateKey(ORDER_UUID, (List<String>) null);
         String k2 = generator.generateKey(ORDER_UUID, (List<String>) null);
 
-        assertThat(k1).as("BUG-2505: null context loses idempotency").isNotEqualTo(k2);
+        assertThat(k1).as("null context loses idempotency").isNotEqualTo(k2);
     }
 
     @Test
-    @DisplayName("BUG-2505: empty context -> random non-idempotent key (pin)")
+    @DisplayName("empty context -> random non-idempotent key (pin)")
     void emptyContextProducesRandomNonIdempotentKey() {
         String k1 = generator.generateKey(ORDER_UUID, Collections.emptyList());
         String k2 = generator.generateKey(ORDER_UUID, Collections.emptyList());
 
-        assertThat(k1).as("BUG-2505: empty context loses idempotency").isNotEqualTo(k2);
+        assertThat(k1).as("empty context loses idempotency").isNotEqualTo(k2);
     }
 
     // ---------------- (String, String) default overload ----------------

@@ -104,7 +104,7 @@ class NotificationStrategyFactoryTest {
     class Registration {
 
         @Test
-        @DisplayName("Duplicate registration last-write-wins (BUG-095 shape pin)")
+        @DisplayName("Duplicate registration last-write-wins (shape pin)")
         void duplicateRegistrationLastWriteWins() {
             final AbstractNotification first = Mockito.mock(AbstractNotification.class, "first");
             final AbstractNotification second = Mockito.mock(AbstractNotification.class, "second");

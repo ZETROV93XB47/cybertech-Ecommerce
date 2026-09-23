@@ -365,7 +365,7 @@ class OrderManagementServiceImpTest {
          * it FAILS loudly.
          */
         @Test
-        @DisplayName("BUG-050 fix: payment FAILED path releases stock reservation")
+        @DisplayName("payment FAILED path releases stock reservation")
         void paymentFailure_releasesStockReservation() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
             final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
@@ -456,7 +456,7 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-054 FIX: null JWT subject throws UserNotFoundException without NPE and never queries repo")
+        @DisplayName("null JWT subject throws UserNotFoundException without NPE and never queries repo")
         void placeOrder_nullJwtSubject_shouldThrowUserNotFound() {
             // resolveKeycloakIdFromJwt surfaces a missing sub claim as
             // UserNotFoundException before any repo call — no NPE, no findByKeycloakId(null).
@@ -971,7 +971,7 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-052 FIX: retryPayment forwards stored discount-adjusted total verbatim — no double-discount")
+        @DisplayName("retryPayment forwards stored discount-adjusted total verbatim — no double-discount")
         void retryPayment_shouldNotDoubleApplyDiscount() {
             // order.totalAmount is the POST-discount final amount written
             // once at placeOrder time. retryPayment forwards it verbatim to processPayment — never
@@ -1303,7 +1303,7 @@ class OrderManagementServiceImpTest {
          * {@code getByUUID}'s admin escape-hatch.
          */
         @Test
-        @DisplayName("BUG-5 FIX: ADMIN caller bypasses ownership check, status returned for foreign user's order")
+        @DisplayName("ADMIN caller bypasses ownership check, status returned for foreign user's order")
         void getStatusByUuidAsAdminShouldReturnAnyOrderStatus() {
             setAuthenticatedRole("ROLE_ADMIN");
             final UUID uuid = UUID.randomUUID();

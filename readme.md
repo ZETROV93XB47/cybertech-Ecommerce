@@ -441,7 +441,7 @@ sequenceDiagram
 
     C->>API: POST /api/v1/services/review (Bearer JWT)
     API->>SVC: createReview(dto, jwtSub)
-    SVC->>OR: order ownership check (BUG-2506)
+    SVC->>OR: order ownership check
     OR-->>SVC: order belongs to user OK
     SVC->>MD: analyze(content)
     MD->>PY: POST /analyze {text}
@@ -633,9 +633,9 @@ Pipeline en 11 stages dans `Jenkinsfile` (Checkout → Backend Compile → UTs �
 - **Saga Keycloak ↔ DB crash-safe via outbox** : chaque intention d'effet Keycloak (CREATE/UPDATE/DELETE) est committée en MySQL avant l'opération risquée ; un job Spring Batch réconcilie les lignes qu'un crash a laissées PENDING (CREATE = lookup + compensation d'orphelin — jamais de mot de passe au repos ; UPDATE = ré-application idempotente du payload avec supersede guard ; DELETE = ligne co-commitée avec le delete SQL + re-issue 404-tolérant). Design complet : `docs/architecture/keycloak-outbox-saga.md`.
 - **Cache Redis Lua-CAS** sur l'unlock du panier (raw bytes, jamais de JSON-quoting) avec TTL + jitter pour éviter le thundering herd.
 - **Webhook Stripe blindé** : HMAC-SHA256 + ledger d'idempotency par eventId + guard `livemode` + terminal-state guard + retry 200-ACK pour les non-retryable + 400 sur HMAC fail.
-- **AES-256/GCM** sur les PAN bancaires avec IV unique par enregistrement, validation expiry + Luhn, `applyPciStorageRules` appelé dans tous les chemins (user + admin update, BUG-036 closed).
+- **AES-256/GCM** sur les PAN bancaires avec IV unique par enregistrement, validation expiry + Luhn, `applyPciStorageRules` appelé dans tous les chemins (user + admin update).
 - **Lock ordering canonique** sur la réservation de stock multi-produits (`TreeMap<UUID>` avec comparator par `toString()`) — interdit les deadlocks circulaires.
-- **IDOR ownership checks** systématiques (cart, order, review) tracés `BUG-IDOR-D1..D4` + `BUG-2506`.
+- **IDOR ownership checks** systématiques (cart, order, review) tracés.
 - **Resilience4j Retry + CircuitBreaker** sur Stripe API + retry 3x exponential-backoff sur le dispatch des notifications, avec fallback vers `notificationTable` PENDING_RETRY + batch de redélivrance.
 - **Strategy / Factory** : discounts (Percentage / Fixed / BOGO), shipping providers (DHL / FedEx) injectés via Maps `@Qualifier`-annotated.
 - **Spring Batch** : `StockCleanupJob` (réservations expirées), `CybertechOrdersUpdateJob` (cancel + ship via `ShipOrderTransactionalDelegate` REQUIRES_NEW), `RedeliverFailedNotificationsJob`.

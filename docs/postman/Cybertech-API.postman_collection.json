@@ -177,7 +177,7 @@
                 { "key": "userUuid", "value": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e" }
               ]
             },
-            "description": "Loads a user by UUID.\n\n- Roles: USER (own profile only) or ADMIN (any).\n- Success: 200 OK with `UserResponseDto`.\n- Errors: 403 (BUG-IDOR-D2) if a USER requests another user's UUID, 404 if not found."
+            "description": "Loads a user by UUID.\n\n- Roles: USER (own profile only) or ADMIN (any).\n- Success: 200 OK with `UserResponseDto`.\n- Errors: 403 if a USER requests another user's UUID, 404 if not found."
           },
           "event": [
             {
@@ -699,7 +699,7 @@
                 { "key": "cartUuid", "value": "33333333-4444-5555-6666-777777777777" }
               ]
             },
-            "description": "BUG-161 — ownership-checked. Forwards JWT subject so the service rejects IDOR attempts.\n\n- Roles: USER or ADMIN\n- Success: 200 with `CartResponseDto`.\n- Errors: 403 if cart belongs to a different user, 404 if not found."
+            "description": "ownership-checked. Forwards JWT subject so the service rejects IDOR attempts.\n\n- Roles: USER or ADMIN\n- Success: 200 with `CartResponseDto`.\n- Errors: 403 if cart belongs to a different user, 404 if not found."
           },
           "event": [
             {
@@ -798,7 +798,7 @@
               "mode": "raw",
               "raw": "{\n  \"cartItemAddRequestDtos\": [\n    { \"productUuid\": \"11111111-2222-3333-4444-555555555555\", \"quantity\": 3 }\n  ]\n}"
             },
-            "description": "BUG-026/BUG-161 — replace the cart's item list. Ownership-checked.\n\n- Roles: USER or ADMIN\n- Success: 200 with `CartResponseDto`.\n- Errors: 403 IDOR, 404 cart not found."
+            "description": "Replace the cart's item list. Ownership-checked.\n\n- Roles: USER or ADMIN\n- Success: 200 with `CartResponseDto`.\n- Errors: 403 IDOR, 404 cart not found."
           },
           "event": [
             {
@@ -917,7 +917,7 @@
                 { "key": "cartUuid", "value": "33333333-4444-5555-6666-777777777777" }
               ]
             },
-            "description": "Hard-delete a cart by UUID. Ownership-checked (BUG-161).\n\n- Roles: USER or ADMIN\n- Success: 204 No Content.\n- Errors: 403 IDOR, 404 not found."
+            "description": "Hard-delete a cart by UUID. Ownership-checked.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content.\n- Errors: 403 IDOR, 404 not found."
           },
           "event": [
             {
@@ -1091,7 +1091,7 @@
               "path": ["api", "v1", "services", "admin", "management", "order", "place", "auto"]
             },
             "body": { "mode": "raw", "raw": "{}" },
-            "description": "BUG-IDOR-D4 — debug/load helper. Builds a synthetic order via `DataGenerator.orderGenerator()`. Lives on `OrderManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `OrderResponseDto`."
+            "description": "debug/load helper. Builds a synthetic order via `DataGenerator.orderGenerator()`. Lives on `OrderManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `OrderResponseDto`."
           },
           "event": [
             {
@@ -1121,7 +1121,7 @@
                 { "key": "uuid", "value": "99999999-aaaa-bbbb-cccc-dddddddddddd" }
               ]
             },
-            "description": "BUG-IDOR-D1 — ownership-checked at the service layer.\n\n- Roles: USER (own) or ADMIN\n- Success: 200 with `OrderResponseDto`.\n- Errors: 403 if order belongs to a different user."
+            "description": "ownership-checked at the service layer.\n\n- Roles: USER (own) or ADMIN\n- Success: 200 with `OrderResponseDto`.\n- Errors: 403 if order belongs to a different user."
           },
           "event": [
             {
@@ -1521,7 +1521,7 @@
           "response": []
         },
         {
-          "name": "Set default card (BUG-038)",
+          "name": "Set default card",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2007,7 +2007,7 @@
               "mode": "raw",
               "raw": "{\n  \"eventType\": \"VIEW\",\n  \"productId\": \"11111111-2222-3333-4444-555555555555\",\n  \"sessionId\": \"sess-9b3c1c2a-fa70-4f29\",\n  \"metadata\": { \"page\": \"product-detail\", \"referrer\": \"home\" }\n}"
             },
-            "description": "Persist a behavioural event in MongoDB. The server overwrites any client-supplied `userId` with the JWT subject (BUG-SPOOF-D5).\n\n- Role: USER\n- Success: 201 with the persisted `UserEvent` document.\n- Allowed `eventType` values: PURCHASE, ADD_TO_CART, WISHLIST_ADD, RATING_POSITIVE, RATING_NEGATIVE, REVIEW_POSITIVE, REVIEW_NEGATIVE, VIEW, CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, SEARCH_RESULT_CLICK, REMOVE_FROM_CART, IGNORE_RECOMMENDATION, BOUNCE."
+            "description": "Persist a behavioural event in MongoDB. The server overwrites any client-supplied `userId` with the JWT subject.\n\n- Role: USER\n- Success: 201 with the persisted `UserEvent` document.\n- Allowed `eventType` values: PURCHASE, ADD_TO_CART, WISHLIST_ADD, RATING_POSITIVE, RATING_NEGATIVE, REVIEW_POSITIVE, REVIEW_NEGATIVE, VIEW, CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, SEARCH_RESULT_CLICK, REMOVE_FROM_CART, IGNORE_RECOMMENDATION, BOUNCE."
           },
           "event": [
             {

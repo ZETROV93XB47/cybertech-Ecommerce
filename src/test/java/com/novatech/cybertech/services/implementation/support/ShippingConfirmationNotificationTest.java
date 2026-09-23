@@ -71,7 +71,7 @@ class ShippingConfirmationNotificationTest {
     }
 
     @Test
-    @DisplayName("BUG-2517: passing an OrderConfirmationPayload (wrong type) raises ClassCastException")
+    @DisplayName("passing an OrderConfirmationPayload (wrong type) raises ClassCastException")
     void wrongPayloadTypeThrowsClassCastException() {
         OrderConfirmationPayload wrong = new OrderConfirmationPayload();
         wrong.setOrderUuid(UUID.randomUUID());

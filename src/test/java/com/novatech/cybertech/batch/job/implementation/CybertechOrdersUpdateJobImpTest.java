@@ -84,11 +84,11 @@ class CybertechOrdersUpdateJobImpTest {
     }
 
     @Nested
-    @DisplayName("BUG-114 fixed scheduler parameter key")
+    @DisplayName("scheduler parameter key")
     class Bug114KeyFix {
 
         @Test
-        @DisplayName("BUG-114 (FIXED in F2): job is launched with key runDate not a timestamp string")
+        @DisplayName("job is launched with key runDate not a timestamp string")
         void launchesWithRunDateKey() throws Exception {
             final JobExecution exec = new JobExecution(1L, new JobInstance(1L, "JOB"), new JobParameters());
             when(jobLauncher.run(eq(job), any(JobParameters.class))).thenReturn(exec);
@@ -106,7 +106,7 @@ class CybertechOrdersUpdateJobImpTest {
         }
 
         @Test
-        @DisplayName("BUG-114 (FIXED): the launched parameter key is the literal runDate")
+        @DisplayName("The launched parameter key is the literal runDate")
         void keyIsNotATimestampString() throws Exception {
             final JobExecution exec = new JobExecution(1L, new JobInstance(1L, "JOB"), new JobParameters());
             when(jobLauncher.run(eq(job), any(JobParameters.class))).thenReturn(exec);

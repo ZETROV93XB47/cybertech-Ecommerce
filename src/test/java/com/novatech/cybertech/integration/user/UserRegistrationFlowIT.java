@@ -172,7 +172,7 @@ class UserRegistrationFlowIT {
     //    filter-chain interception bugs).
     // -----------------------------------------------------------------------------------
     @Test
-    @DisplayName("POST /register on duplicate email — 409 CONFLICT (BUG-015 fix CONFIRMED)")
+    @DisplayName("POST /register on duplicate email — 409 CONFLICT")
     void duplicateRegisterReturns409PerBug015() throws Exception {
         final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequestBuilder()
                 .email("dup-it+" + UUID.randomUUID() + "@example.com")
@@ -195,7 +195,7 @@ class UserRegistrationFlowIT {
     // 3. GET /admin/user/get/all as ROLE_USER → 403 (was 500).
     // -----------------------------------------------------------------------------------
     @Test
-    @DisplayName("GET /admin/user/get/all as ROLE_USER — 403 FORBIDDEN (BUG-031 fix CONFIRMED)")
+    @DisplayName("GET /admin/user/get/all as ROLE_USER — 403 FORBIDDEN")
     void adminGetAllAsRoleUserReturns403PerBug031() throws Exception {
         final String keycloakId = "kc-it-user-" + UUID.randomUUID();
 
@@ -229,7 +229,7 @@ class UserRegistrationFlowIT {
     //    `anyRequest().authenticated()` and return 401 via CustomAuthenticationEntryPoint.
     // -----------------------------------------------------------------------------------
     @Test
-    @DisplayName("BUG-201 fix — POST /register/auto/single rejects anonymous (401)")
+    @DisplayName("fix — POST /register/auto/single rejects anonymous (401)")
     void registerAutoSingleRejectsAnonymousAfterBug201Fix() throws Exception {
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
                         .with(csrf())
@@ -242,7 +242,7 @@ class UserRegistrationFlowIT {
     }
 
     @Test
-    @DisplayName("BUG-201 fix — POST /register/auto/single as ROLE_USER returns 403")
+    @DisplayName("fix — POST /register/auto/single as ROLE_USER returns 403")
     void registerAutoSingleAsRoleUserReturns403AfterBug201Fix() throws Exception {
         final String keycloakId = "kc-it-user-" + UUID.randomUUID();
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
@@ -254,7 +254,7 @@ class UserRegistrationFlowIT {
     }
 
     @Test
-    @DisplayName("BUG-201 fix — POST /register/auto/single as ROLE_ADMIN returns 201")
+    @DisplayName("fix — POST /register/auto/single as ROLE_ADMIN returns 201")
     void registerAutoSingleAsRoleAdminReturns201AfterBug201Fix() throws Exception {
         final String adminKeycloakId = "kc-it-admin-" + UUID.randomUUID();
         // Commit 44fb0b9 changed registerAuto's body from UserResponseDto to a

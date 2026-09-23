@@ -353,7 +353,7 @@ class PaymentWebhookServiceImpTest {
     class HandleEventDispatch {
 
         @Test
-        @DisplayName("dedup hit: existing ledger row short-circuits before any side-effect (BUG-170)")
+        @DisplayName("dedup hit: existing ledger row short-circuits before any side-effect")
         void dedupHitShortCircuitsBeforeAnySideEffect() {
             final String stripePaymentId = "pi_dedup";
             final UUID orderUuid = UUID.randomUUID();
@@ -370,7 +370,7 @@ class PaymentWebhookServiceImpTest {
         }
 
         @Test
-        @DisplayName("livemode=true on a test deployment is silently dropped (BUG-522)")
+        @DisplayName("livemode=true on a test deployment is silently dropped")
         void livemodeTrueOnTestDeploymentIsDropped() {
             // expectedLivemode is false (set in @BeforeEach)
             final String paymentIntentId = "pi_livemode_mismatch";
@@ -389,7 +389,7 @@ class PaymentWebhookServiceImpTest {
         }
 
         @Test
-        @DisplayName("livemode=false on a prod deployment (expectedLivemode=true) is dropped (BUG-522 reverse)")
+        @DisplayName("livemode=false on a prod deployment (expectedLivemode=true) is dropped")
         void livemodeFalseOnProdDeploymentIsDropped() {
             ReflectionTestUtils.setField(service, "expectedLivemode", true);
             final String paymentIntentId = "pi_livemode_reverse_mismatch";
@@ -596,7 +596,7 @@ class PaymentWebhookServiceImpTest {
     class HandlePaymentFailed {
 
         @Test
-        @DisplayName("happy path: flips payment to FAILED and publishes PaymentFailedEvent (BUG-520)")
+        @DisplayName("happy path: flips payment to FAILED and publishes PaymentFailedEvent")
         void happyPathFlipsToFailedAndPublishes() {
             final String stripePaymentId = "pi_failed_happy";
             final OrderEntity order = OrderEntityBuilder.aValidOrder();
@@ -618,7 +618,7 @@ class PaymentWebhookServiceImpTest {
         }
 
         @Test
-        @DisplayName("terminal SUCCESS guard drops out-of-order failure (BUG-521): no save, no event")
+        @DisplayName("terminal SUCCESS guard drops out-of-order failure: no save, no event")
         void terminalSuccessGuardDropsFailure() {
             final String stripePaymentId = "pi_already_success";
             final OrderEntity order = OrderEntityBuilder.aValidOrder();

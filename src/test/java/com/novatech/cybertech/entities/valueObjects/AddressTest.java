@@ -99,7 +99,7 @@ class AddressTest {
     }
 
     @Nested
-    @DisplayName("Immutability (BUG-132 fixed)")
+    @DisplayName("Immutability")
     class Immutability {
 
         @Test

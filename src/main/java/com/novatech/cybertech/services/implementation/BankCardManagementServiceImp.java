@@ -334,7 +334,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         if (card.getUserEntity() == null
                 || card.getUserEntity().getKeycloakId() == null
                 || !card.getUserEntity().getKeycloakId().equals(keycloakId)) {
-            log.warn("BUG-161 — Unauthorized bank card access attempt: caller {} on card {}", keycloakId, cardUuid);
+            log.warn("Unauthorized bank card access attempt: caller {} on card {}", keycloakId, cardUuid);
             throw new UnauthorizedBankCardAccessException(
                     "Caller does not own the bank card: " + cardUuid);
         }
@@ -353,7 +353,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
      */
     private void applyPciStorageRules(final BankCardEntity entity, final String rawPan) {
         if (rawPan == null || rawPan.length() < 4) {
-            throw new IllegalArgumentException("BUG-036: PAN must be at least 4 digits long");
+            throw new IllegalArgumentException("PAN must be at least 4 digits long");
         }
         entity.setEncryptedNumber(cardEncryptionService.encrypt(rawPan));
         entity.setLastFourDigits(rawPan.substring(rawPan.length() - 4));

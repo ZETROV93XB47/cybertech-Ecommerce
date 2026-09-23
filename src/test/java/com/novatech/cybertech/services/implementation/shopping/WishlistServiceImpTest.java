@@ -139,6 +139,25 @@ class WishlistServiceImpTest {
 
             verify(wishlistRepository, never()).save(any());
         }
+
+        @Test
+        @DisplayName("regression: concurrent add racing past the pre-check is caught by the DB constraint, not a raw 500")
+        void concurrentRace_dbConstraintViolation_mappedToProductAlreadyInWishlist() {
+            // Simulates two requests both passing the exists() pre-check (neither has committed
+            // yet) — the second save() hits the uk_wishlist_user_product unique constraint.
+            final UUID productUuid = UUID.randomUUID();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().uuid(productUuid).build();
+            when(wishlistRepository.existsByUser_KeycloakIdAndProduct_Uuid(keycloakId, productUuid)).thenReturn(false);
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
+            when(wishlistRepository.save(any(WishlistEntity.class)))
+                    .thenThrow(new org.springframework.dao.DataIntegrityViolationException("uk_wishlist_user_product"));
+
+            assertThatThrownBy(() -> service.addProductToMyWishlist(keycloakId, productUuid))
+                    .isInstanceOf(ProductAlreadyInWishlist.class)
+                    .hasMessageContaining("already");
+        }
     }
 
     // =================================================================
@@ -160,7 +179,7 @@ class WishlistServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-430 (PIN): removing a non-existent entry throws WishlistNotFoundException — not idempotent")
+        @DisplayName("removing a non-existent entry throws WishlistNotFoundException — not idempotent")
         void notFound_throwsInsteadOfNoOp_BUG430() {
             final UUID productUuid = UUID.randomUUID();
             when(wishlistRepository.findByUser_KeycloakIdAndProduct_Uuid(keycloakId, productUuid))

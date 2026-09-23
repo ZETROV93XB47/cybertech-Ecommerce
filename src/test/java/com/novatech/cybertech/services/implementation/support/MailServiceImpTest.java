@@ -52,7 +52,7 @@ import static org.mockito.Mockito.when;
  * {@link com.novatech.cybertech.services.implementation.NotificationOutcomeRecorder}
  * called from the listeners, not from this service.
  *
- * <p>FIX-2508 still applies: PII (recipient address) is logged at DEBUG only.
+ * <p>
  */
 @ExtendWith(MockitoExtension.class)
 class MailServiceImpTest {
@@ -168,7 +168,7 @@ class MailServiceImpTest {
     }
 
     @Test
-    @DisplayName("FIX BUG-2508: recipient is logged at DEBUG only — no INFO log, no PII leaked")
+    @DisplayName("recipient is logged at DEBUG only — no INFO log, no PII leaked")
     void doesNotLogPiiAtInfo() {
         final Logger logger = (Logger) LoggerFactory.getLogger(MailServiceImp.class);
         final Level originalLevel = logger.getLevel();

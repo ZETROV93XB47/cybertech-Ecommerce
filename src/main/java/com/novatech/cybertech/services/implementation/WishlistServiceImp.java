@@ -15,6 +15,7 @@ import com.novatech.cybertech.repositories.WishlistRepository;
 import com.novatech.cybertech.services.core.WishlistService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -49,7 +50,17 @@ public class WishlistServiceImp implements WishlistService {
                 .addedAt(LocalDateTime.now())
                 .build();
 
-        return wishlistMapper.toResponseDto(wishlistRepository.save(wishlistEntity));
+        try {
+            return wishlistMapper.toResponseDto(wishlistRepository.save(wishlistEntity));
+        } catch (DataIntegrityViolationException e) {
+            // The pre-check above is a plain SELECT with no lock — a concurrent request (double
+            // click, two tabs) can pass it for the same (user, product) before either insert
+            // commits. The uk_wishlist_user_product DB constraint is what actually prevents the
+            // duplicate in that case; surface it as the same domain exception the pre-check
+            // throws instead of leaking a raw DataIntegrityViolationException as a 500.
+            log.info("Concurrent add-to-wishlist race for user {} / product {} — caught by the DB constraint", userKeycloakId, productUuid);
+            throw new ProductAlreadyInWishlist("Product already in wishlist");
+        }
     }
 
     @Override

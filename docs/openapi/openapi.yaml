@@ -391,7 +391,7 @@ components:
       type: object
       required: [eventType]
       properties:
-        userId: { type: string, description: "Server-overwritten with JWT subject (BUG-SPOOF-D5)" }
+        userId: { type: string, description: "Server-overwritten with JWT subject" }
         eventType:
           type: string
           enum: [CLICK, VIEW, PURCHASE]
@@ -500,7 +500,7 @@ paths:
     post:
       tags: [User Admin]
       summary: Generate a synthetic user (Admin only - dev/load-test utility)
-      description: ADMIN-only (BUG-201). Mints a synthetic user via DataGenerator.
+      description: ADMIN-only. Mints a synthetic user via DataGenerator.
       responses:
         '201':
           description: Synthetic user created
@@ -520,7 +520,7 @@ paths:
   /api/v1/services/user/get/{userUuid}:
     get:
       tags: [User]
-      summary: Get a user by UUID (BUG-IDOR-D2 ownership-checked for non-admins)
+      summary: Get a user by UUID (ownership-checked for non-admins)
       parameters:
         - name: userUuid
           in: path
@@ -931,7 +931,7 @@ paths:
   /api/v1/services/cart/get/{cartUuid}:
     get:
       tags: [Cart]
-      summary: Get cart by UUID (ownership-checked - BUG-161)
+      summary: Get cart by UUID (ownership-checked)
       parameters:
         - name: cartUuid
           in: path
@@ -1697,7 +1697,7 @@ paths:
       description: |
         Accepts click / view / purchase events for the recommendation engine.
         The server overwrites the supplied `userId` with the JWT subject
-        (BUG-SPOOF-D5) so events are always attributed to the calling user.
+        So events are always attributed to the calling user.
       requestBody:
         required: true
         content:
@@ -1725,9 +1725,8 @@ paths:
         `stripe.webhook.secret`.
 
         Response codes are calibrated to Stripe's retry semantics:
-        - 200: event accepted OR non-retriable downstream failure (BUG-2501).
-        - 400: invalid signature (BUG-2501 carve-out) OR malformed JSON
-          (BUG-2502).
+        - 200: event accepted OR non-retriable downstream failure.
+        - 400: invalid signature (carve-out) OR malformed JSON.
       security: []
       parameters:
         - name: Stripe-Signature

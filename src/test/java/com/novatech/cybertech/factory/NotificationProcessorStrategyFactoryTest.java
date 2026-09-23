@@ -92,7 +92,7 @@ class NotificationProcessorStrategyFactoryTest {
     class Registration {
 
         @Test
-        @DisplayName("Duplicate registration last-write-wins (BUG-095 shape pin)")
+        @DisplayName("Duplicate registration last-write-wins (shape pin)")
         void duplicateRegistrationLastWriteWins() {
             final NotificationProcessor first = Mockito.mock(NotificationProcessor.class, "first");
             final NotificationProcessor second = Mockito.mock(NotificationProcessor.class, "second");

@@ -23,7 +23,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 public interface CartManagementControllerApiSpec {
 
     @Operation(summary = "Request a Cart by UUID",
-            description = "Fetches a Cart's details based on their unique UUID. Caller must own the cart (BUG-161 IDOR fix).",
+            description = "Fetches a Cart's details based on their unique UUID. Caller must own the cart.",
             security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "cartUuid", description = "UUID for searching a Cart", required = true, schema = @Schema(implementation = UUID.class))
@@ -63,7 +63,7 @@ public interface CartManagementControllerApiSpec {
 
 
     @Operation(summary = "Update an existing Cart by UUID",
-            description = "Updates an existing cart's items based on its unique UUID. Caller must own the cart (BUG-161 IDOR fix).",
+            description = "Updates an existing cart's items based on its unique UUID. Caller must own the cart.",
             security = @SecurityRequirement(name = "keycloak"),
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Cart data for update. Provide the new list of items.", required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartUpdateRequestDto.class))),
             responses = {
@@ -84,7 +84,7 @@ public interface CartManagementControllerApiSpec {
 
 
     @Operation(summary = "Delete a Cart by UUID",
-            description = "Deletes a cart based on their unique UUID. Caller must own the cart (BUG-161 IDOR fix).",
+            description = "Deletes a cart based on their unique UUID. Caller must own the cart.",
             security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "cartUuid", description = "The UUID of the cart to delete", required = true, schema = @Schema(implementation = UUID.class))

@@ -157,7 +157,7 @@ class CustomExceptionsConstructorTest {
     }
 
     @Nested
-    @DisplayName("Special-shape ctor classes (BUG-136 / BUG-137 surfaces)")
+    @DisplayName("Special-shape ctor classes")
     class SpecialCtorClasses {
 
         @Test
@@ -170,7 +170,7 @@ class CustomExceptionsConstructorTest {
             assertThat(ex.getMessage()).isEqualTo("could not hash");
             // The existing ctor passes message-only to super, so cause is dropped.
             assertThat(ex.getCause())
-                    .as("BUG-136 — cause is currently dropped because super(message) is called instead of super(message, cause)")
+                    .as("cause is currently dropped because super(message) is called instead of super(message, cause)")
                     .isNull();
             assertThat(ex).isInstanceOf(RuntimeException.class);
         }
@@ -186,7 +186,7 @@ class CustomExceptionsConstructorTest {
             assertThat(ex.getMessage()).isEqualTo("payment failed");
             // The existing ctor passes message-only to super, so cause is dropped.
             assertThat(ex.getCause())
-                    .as("BUG-136 — cause is currently dropped because super(message) is called instead of super(message, cause)")
+                    .as("cause is currently dropped because super(message) is called instead of super(message, cause)")
                     .isNull();
             assertThat(ex).isInstanceOf(RuntimeException.class);
         }
@@ -205,7 +205,7 @@ class CustomExceptionsConstructorTest {
     }
 
     @Nested
-    @DisplayName("NotEnoughStockException — domain semantics (BUG-061 reference)")
+    @DisplayName("NotEnoughStockException — domain semantics")
     class NotEnoughStockSemantics {
 
         @Test
@@ -217,7 +217,7 @@ class CustomExceptionsConstructorTest {
             assertThat(ex.getMessage()).isEqualTo("Not enough stock");
             assertThat(Arrays.stream(ex.getClass().getDeclaredMethods())
                     .map(java.lang.reflect.Method::getName))
-                    .as("no extra getters yet (BUG-061 — fix would add productUuid/requested/available)")
+                    .as("no extra getters yet (fix would add productUuid/requested/available)")
                     .doesNotContain("getProductUuid", "getRequested", "getAvailable");
         }
     }
@@ -308,18 +308,18 @@ class CustomExceptionsConstructorTest {
         }
 
         @Test
-        @DisplayName("PaymentFailedException — single (String) ctor (BUG-136 documented)")
+        @DisplayName("PaymentFailedException — single (String) ctor")
         void paymentFailedExceptionSingleCtor() {
             final PaymentFailedException ex = new PaymentFailedException("declined");
             assertThat(ex.getMessage()).isEqualTo("declined");
             assertThat(ex.getCause()).isNull();
             assertThat(hasCtor(PaymentFailedException.class, String.class, Throwable.class))
-                    .as("BUG-136 — PaymentFailedException is missing (String, Throwable) ctor")
+                    .as("PaymentFailedException is missing (String, Throwable) ctor")
                     .isFalse();
         }
 
         @Test
-        @DisplayName("UserAlreadyExistsException — single (String) ctor (BUG-136 documented)")
+        @DisplayName("UserAlreadyExistsException — single (String) ctor")
         void userAlreadyExistsExceptionSingleCtor() {
             final UserAlreadyExistsException ex = new UserAlreadyExistsException("dup");
             assertThat(ex.getMessage()).isEqualTo("dup");
@@ -335,7 +335,7 @@ class CustomExceptionsConstructorTest {
         }
 
         @Test
-        @DisplayName("NegativeQuantityException carries BUG-039 javadoc context (round-trip)")
+        @DisplayName("NegativeQuantityException carries javadoc context (round-trip)")
         void negativeQuantityException() {
             final NegativeQuantityException ex = new NegativeQuantityException("qty=-3");
             assertThat(ex.getMessage()).isEqualTo("qty=-3");
@@ -347,7 +347,7 @@ class CustomExceptionsConstructorTest {
         }
 
         @Test
-        @DisplayName("UnauthorizedBankCardAccessException carries BUG-038 javadoc context (round-trip)")
+        @DisplayName("UnauthorizedBankCardAccessException carries javadoc context (round-trip)")
         void unauthorizedBankCardAccessException() {
             final UnauthorizedBankCardAccessException ex =
                     new UnauthorizedBankCardAccessException("card=xyz user=u1");

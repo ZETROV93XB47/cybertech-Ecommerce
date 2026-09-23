@@ -26,7 +26,7 @@ class SmsNotificationProcessorTest {
     private final SmsNotificationProcessor processor = new SmsNotificationProcessor();
 
     @Test
-    @DisplayName("BUG-2510: sendMessage is a stub — succeeds on null context with zero side-effects (pin)")
+    @DisplayName("sendMessage is a stub — succeeds on null context with zero side-effects (pin)")
     void sendMessageIsStub() {
         NotificationContext ctx = NotificationContext.builder()
                 .user(UserContactDto.builder().phoneNumber("+33600000000").build())

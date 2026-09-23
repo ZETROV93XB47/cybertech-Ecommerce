@@ -58,7 +58,7 @@ class ErrorCodeTest {
     }
 
     @Test
-    @DisplayName("F2-added entries are present (verifying F2 fix claim for BUG-001..016)")
+    @DisplayName("F2-added entries are present")
     void f2AddedEntriesArePresent() {
         // These gaps were closed by adding both the ErrorCode entries and the handlers.
         // This test confirms the ErrorCode side; the controller branch test confirms the handler side.

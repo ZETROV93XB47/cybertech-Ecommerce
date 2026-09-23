@@ -212,7 +212,7 @@ class StripePaymentAttemptProcessorTest {
         }
 
         @Test
-        @DisplayName("BUG-075: when stripe.payment-method is configured, it is forwarded as paymentMethod")
+        @DisplayName("when stripe.payment-method is configured, it is forwarded as paymentMethod")
         void forwardsConfiguredPaymentMethodWhenPresent() {
             ReflectionTestUtils.setField(processor, "defaultPaymentMethod", "pm_card_visa");
 
@@ -233,7 +233,7 @@ class StripePaymentAttemptProcessorTest {
         }
 
         @Test
-        @DisplayName("BUG-075: blank stripe.payment-method does NOT set paymentMethod on the params")
+        @DisplayName("blank stripe.payment-method does NOT set paymentMethod on the params")
         void doesNotSetPaymentMethodWhenBlank() {
             ReflectionTestUtils.setField(processor, "defaultPaymentMethod", "   ");
 
@@ -349,7 +349,7 @@ class StripePaymentAttemptProcessorTest {
         }
 
         @Test
-        @DisplayName("BUG-077: refund forwards paymentIntent + amount in minor units + orderUuid metadata")
+        @DisplayName("refund forwards paymentIntent + amount in minor units + orderUuid metadata")
         void buildsRefundParamsCorrectly() {
             try (MockedStatic<Refund> refundMock = Mockito.mockStatic(Refund.class)) {
                 ArgumentCaptor<RefundCreateParams> captor =

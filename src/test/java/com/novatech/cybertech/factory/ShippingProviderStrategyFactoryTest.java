@@ -105,7 +105,7 @@ class ShippingProviderStrategyFactoryTest {
     class Registration {
 
         @Test
-        @DisplayName("Duplicate registration last-write-wins (BUG-095 shape pin)")
+        @DisplayName("Duplicate registration last-write-wins (shape pin)")
         void duplicateRegistrationLastWriteWins() {
             final ShippingProviderService first = Mockito.mock(ShippingProviderService.class, "first");
             final ShippingProviderService second = Mockito.mock(ShippingProviderService.class, "second");

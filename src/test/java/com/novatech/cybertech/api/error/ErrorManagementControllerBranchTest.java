@@ -445,7 +445,7 @@ class ErrorManagementControllerBranchTest {
     // --- HttpMessageNotReadableException ---------------------------------------
 
     @Nested
-    @DisplayName("HttpMessageNotReadableException — BUG-2503 (F2 wave fixed)")
+    @DisplayName("HttpMessageNotReadableException")
     class HttpMessageNotReadable {
 
         @Test
@@ -473,7 +473,7 @@ class ErrorManagementControllerBranchTest {
     // --- MethodArgumentTypeMismatchException -----------------------------------
 
     @Nested
-    @DisplayName("MethodArgumentTypeMismatchException — BUG-029 (F2 wave fixed)")
+    @DisplayName("MethodArgumentTypeMismatchException")
     class MethodArgumentTypeMismatch {
 
         @Test
@@ -492,7 +492,7 @@ class ErrorManagementControllerBranchTest {
     // --- AccessDeniedException + AuthorizationDeniedException ------------------
 
     @Nested
-    @DisplayName("AccessDenied / AuthorizationDenied — BUG-031 (F2 wave fixed)")
+    @DisplayName("AccessDenied / AuthorizationDenied")
     class AccessDeniedHandling {
 
         @Test
@@ -519,11 +519,11 @@ class ErrorManagementControllerBranchTest {
     // --- handleMethodArgumentNotValidException ----------------------------------
 
     @Nested
-    @DisplayName("MethodArgumentNotValidException — BUG-138 (fixed)")
+    @DisplayName("MethodArgumentNotValidException")
     class MethodArgumentNotValid {
 
         @Test
-        @DisplayName("FIX BUG-138: field errors are surfaced in the response message")
+        @DisplayName("Field errors are surfaced in the response message")
         void fieldErrorsAreSurfacedInMessage() throws Exception {
             final MethodArgumentNotValidException ex = buildMethodArgumentNotValidExceptionWithFieldErrors();
 
@@ -536,7 +536,7 @@ class ErrorManagementControllerBranchTest {
         }
 
         @Test
-        @DisplayName("FIX BUG-138: fallback to canned message when no field errors present")
+        @DisplayName("Fallback to canned message when no field errors present")
         void fallbackToCannedMessageWhenNoFieldErrors() throws Exception {
             final BindingResult emptyResult = new BeanPropertyBindingResult(new SyntheticTarget(), "syntheticTarget");
             final Method m = ErrorManagementControllerBranchTest.class.getDeclaredMethod("syntheticMethodForMethodParameter", String.class);
@@ -565,7 +565,7 @@ class ErrorManagementControllerBranchTest {
     // --- handleUnrecognizedPropertyException ------------------------------------
 
     @Nested
-    @DisplayName("UnrecognizedPropertyException — BUG-139 (F2 wave fixed)")
+    @DisplayName("UnrecognizedPropertyException")
     class UnrecognizedProperty {
 
         @Test
@@ -596,11 +596,11 @@ class ErrorManagementControllerBranchTest {
     // --- catch-all RuntimeException leaks ex.getMessage() ----------------------
 
     @Nested
-    @DisplayName("RuntimeException catch-all — BUG-140 (fixed)")
+    @DisplayName("RuntimeException catch-all")
     class CatchAll {
 
         @Test
-        @DisplayName("FIX BUG-140: catch-all returns generic message, never leaks exception text")
+        @DisplayName("catch-all returns generic message, never leaks exception text")
         void catchAllShouldNotLeakExceptionMessage() {
             final String sensitive = "sk_live_DEADBEEF_secret";
             final ResponseEntity<ErrorResponseDto> response =
@@ -613,7 +613,7 @@ class ErrorManagementControllerBranchTest {
         }
 
         @Test
-        @DisplayName("FIX BUG-140: SQL-fragment style messages also scrubbed")
+        @DisplayName("SQL-fragment style messages also scrubbed")
         void catchAllScrubsSqlFragments() {
             final String sqlFragment = "could not extract column [user_password_hash]";
             final ResponseEntity<ErrorResponseDto> response =

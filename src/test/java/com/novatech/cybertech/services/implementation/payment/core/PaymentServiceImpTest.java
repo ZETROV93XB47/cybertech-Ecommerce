@@ -278,7 +278,7 @@ class PaymentServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-071: null idempotencyKey is not guarded — passes null to repository (PIN current behavior)")
+        @DisplayName("null idempotencyKey is not guarded — passes null to repository (PIN current behavior)")
         void processPayment_nullIdempotencyKey_notGuarded_pin() {
             // PIN: still open. Service should reject null idempotencyKey at entry; instead it
             // calls repository.findByIdempotencyKey(null) and propagates null further.
@@ -297,7 +297,7 @@ class PaymentServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-072: null order causes NPE on order.getUuid (PIN current behavior)")
+        @DisplayName("null order causes NPE on order.getUuid (PIN current behavior)")
         void processPayment_nullOrder_npe_pin() {
             // PIN: still open. Service does not validate order != null at entry.
             // The NPE surfaces from inside the entity-builder / processor call rather than as a

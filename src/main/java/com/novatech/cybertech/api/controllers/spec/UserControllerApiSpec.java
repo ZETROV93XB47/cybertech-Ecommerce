@@ -23,7 +23,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 public interface UserControllerApiSpec {
 
     @Operation(summary = "Request a User by UUID",
-            description = "Fetches a user's details based on their unique UUID. Non-admin callers may only read their own profile (BUG-IDOR-D2).",
+            description = "Fetches a user's details based on their unique UUID. Non-admin callers may only read their own profile.",
             security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "userUuid", description = "UUID for searching a user", required = true, schema = @Schema(implementation = UUID.class))

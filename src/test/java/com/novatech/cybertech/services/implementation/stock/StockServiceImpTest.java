@@ -136,7 +136,7 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("reserveStock: shortfall raises NotEnoughStockException — message must be actionable (BUG-061 verify)")
+    @DisplayName("reserveStock: shortfall raises NotEnoughStockException — message must be actionable (verify)")
     void reserveStock_notEnough_messageIsActionable_bug061Verify() {
         UUID orderUuid = UUID.randomUUID();
         UUID productUuid = UUID.randomUUID();
@@ -250,7 +250,7 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("BUG-062: qty=-5 rejected with IllegalArgumentException (verify F2 fix)")
+    @DisplayName("qty=-5 rejected with IllegalArgumentException (verify F2 fix)")
     void reserveStock_negativeQty_rejected_bug062Verify() {
         UUID orderUuid = UUID.randomUUID();
         UUID productUuid = UUID.randomUUID();
@@ -271,7 +271,7 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("BUG-062: qty=0 rejected with IllegalArgumentException (verify F2 fix)")
+    @DisplayName("qty=0 rejected with IllegalArgumentException (verify F2 fix)")
     void reserveStock_zeroQty_rejected_bug062Verify() {
         UUID orderUuid = UUID.randomUUID();
         UUID productUuid = UUID.randomUUID();
@@ -344,7 +344,7 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("BUG-064 FIX: commitStock with no reservation logs a WARN (signal for upstream double-commit)")
+    @DisplayName("commitStock with no reservation logs a WARN (signal for upstream double-commit)")
     void commitStock_emptyReservations_logsWarn_bug064() {
         // Behaviour preserved (no throw), but a WARN is emitted naming the orderUuid
         // so a double-commit / replayed webhook is observable in logs.
@@ -416,7 +416,7 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("BUG-063: releaseStock with missing product throws domain ProductNotFoundException (verify F2 fix)")
+    @DisplayName("releaseStock with missing product throws domain ProductNotFoundException (verify F2 fix)")
     void releaseStock_missingProduct_throwsDomainException_bug063Verify() {
         UUID orderUuid = UUID.randomUUID();
         UUID productUuid = UUID.randomUUID();
@@ -436,7 +436,7 @@ class StockServiceImpTest {
     // ---------------------------------------------------------------------
 
     @Test
-    @DisplayName("BUG-060 verify: HashMap input — productRepository.lockByUuid called in canonical (sorted) UUID order")
+    @DisplayName("HashMap input — productRepository.lockByUuid called in canonical (sorted) UUID order")
     void reserveStock_multiProduct_canonicalLockOrder_bug060Verify() {
         UUID orderUuid = UUID.randomUUID();
         // Two UUIDs whose toString() ordering is unambiguous and stable.

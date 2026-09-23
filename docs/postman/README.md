@@ -71,7 +71,7 @@ ADMIN-only (caller must have `ROLE_ADMIN`):
 - `DELETE /api/v1/services/admin/management/order/delete/{uuid}`
 - Everything under `/api/v1/services/admin/bank-card/**` (paged list, get-by-uuid, create, update, delete)
 
-Everything else is `USER` or `ADMIN` and ownership-checked at the service layer (BUG-IDOR-D1, BUG-IDOR-D2, BUG-161).
+Everything else is `USER` or `ADMIN` and ownership-checked at the service layer.
 
 ## Notes on the Stripe webhook
 
@@ -87,7 +87,7 @@ Then trigger a test event:
 stripe trigger payment_intent.succeeded
 ```
 
-See `StripeWebhookController` for the full retry / signature semantics (BUG-2501, BUG-2502).
+See `StripeWebhookController` for the full retry / signature semantics.
 
 ## API versioning
 

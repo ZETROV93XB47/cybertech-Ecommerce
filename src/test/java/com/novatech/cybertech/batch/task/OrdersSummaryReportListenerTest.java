@@ -202,7 +202,7 @@ class OrdersSummaryReportListenerTest {
          * documented current behaviour; pinned green.
          */
         @Test
-        @DisplayName("BUG-112 (LOW): STOPPED status still triggers emails because isUnsuccessful() is false for STOPPED")
+        @DisplayName("STOPPED status still triggers emails because isUnsuccessful() is false for STOPPED")
         void stoppedJob_stillSendsEmails_documentsBatchStatusContract() {
             jobExecution.setStatus(BatchStatus.STOPPED);
             putCancelled(Map.of("a@example.com", List.of(UUID.randomUUID())));
@@ -214,11 +214,11 @@ class OrdersSummaryReportListenerTest {
     }
 
     @Nested
-    @DisplayName("BUG-112 — unchecked raw casts on execution-context entries")
+    @DisplayName("unchecked raw casts on execution-context entries")
     class UncheckedCasts {
 
         @Test
-        @DisplayName("BUG-112 (LOW): a non-Map value under PENDING_ORDERS_MAP_BY_USER_EMAIL surfaces a ClassCastException at email-composition time")
+        @DisplayName("a non-Map value under PENDING_ORDERS_MAP_BY_USER_EMAIL surfaces a ClassCastException at email-composition time")
         void wrongTypeUnderCancelledKey_classCast() {
             jobExecution.setStatus(BatchStatus.COMPLETED);
             jobExecution.getExecutionContext().put(PENDING_ORDERS_MAP_BY_USER_EMAIL, "not-a-map");
@@ -228,7 +228,7 @@ class OrdersSummaryReportListenerTest {
         }
 
         @Test
-        @DisplayName("BUG-112 (LOW): a non-Map value under FAILED_PAYMENT_ORDERS_MAP_BY_USERS surfaces a ClassCastException")
+        @DisplayName("a non-Map value under FAILED_PAYMENT_ORDERS_MAP_BY_USERS surfaces a ClassCastException")
         void wrongTypeUnderPendingKey_classCast() {
             jobExecution.setStatus(BatchStatus.COMPLETED);
             jobExecution.getExecutionContext().put(FAILED_PAYMENT_ORDERS_MAP_BY_USERS, 42);
@@ -239,11 +239,11 @@ class OrdersSummaryReportListenerTest {
     }
 
     @Nested
-    @DisplayName("BUG-113 — no per-recipient try/catch around mailService.sendEmail")
+    @DisplayName("no per-recipient try/catch around mailService.sendEmail")
     class FailurePropagation {
 
         @Test
-        @DisplayName("BUG-113 (LOW): the first SMTP failure aborts remaining recipients AND propagates out of afterJob")
+        @DisplayName("the first SMTP failure aborts remaining recipients AND propagates out of afterJob")
         void mailServiceThrows_bubblesUp_abortsFurtherRecipients() {
             putCancelled(Map.of(
                     "a@example.com", List.of(UUID.randomUUID()),

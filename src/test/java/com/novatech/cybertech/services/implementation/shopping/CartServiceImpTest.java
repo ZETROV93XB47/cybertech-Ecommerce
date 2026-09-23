@@ -619,7 +619,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-026 (CLOSED): updateCart(UUID, CartUpdateRequestDto, keycloakId) " +
+        @DisplayName("updateCart(UUID, CartUpdateRequestDto, keycloakId) " +
                 "replaces the cart's items and returns the updated DTO")
         void updateCart_shouldReplaceItems_BUG026_closed() {
             final UUID cartUuid = UUID.randomUUID();
@@ -650,7 +650,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-7: updateCart rejects when requested qty exceeds available stock")
+        @DisplayName("updateCart rejects when requested qty exceeds available stock")
         void updateCartShouldFailWhenRequestedQtyExceedsAvailableStock() {
             final UUID cartUuid = UUID.randomUUID();
             final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
@@ -674,7 +674,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-7: updateCart rejects when requested qty exceeds (stock - reservedStock)")
+        @DisplayName("updateCart rejects when requested qty exceeds (stock - reservedStock)")
         void updateCartShouldFailWhenRequestedQtyExceedsStockMinusReservedStock() {
             // stock=10, reservedStock=8, requested=5 -> 8+5=13 > 10 -> must throw.
             final UUID cartUuid = UUID.randomUUID();
@@ -698,7 +698,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-7: updateCart succeeds when requested qty equals available stock (boundary)")
+        @DisplayName("updateCart succeeds when requested qty equals available stock (boundary)")
         void updateCartShouldSucceedWhenRequestedQtyEqualsAvailableStock() {
             // stock=5, reserved=2, requested=3 -> 2+3=5 == stock -> ok.
             final UUID cartUuid = UUID.randomUUID();
@@ -726,7 +726,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-7: updateCart fail-fast — when one line fails stock check, cart NOT mutated at all")
+        @DisplayName("UpdateCart fail-fast — when one line fails stock check, cart NOT mutated at all")
         void updateCartShouldNotMutateOtherItemsWhenOneFails() {
             // Two lines: line 1 ok, line 2 over stock. Existing cart has a pre-existing
             // item that must remain in place because the validation must happen BEFORE
@@ -767,7 +767,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-026 + BUG-161: updateCart rejects caller that doesn't own the cart")
+        @DisplayName("UpdateCart rejects caller that doesn't own the cart")
         void updateCart_rejectsNonOwner_BUG026_BUG161_closed() {
             final UUID cartUuid = UUID.randomUUID();
             final UserEntity otherOwner = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER_USER").build();
@@ -784,7 +784,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-026 PIN: legacy update(CartItemRemoveRequestDto) preserved for base CRUD contract")
+        @DisplayName("Legacy update(CartItemRemoveRequestDto) preserved for base CRUD contract")
         void update_currentBehavior_PIN() {
             // Intentionally kept: the generic CrudBaseService contract still points at
             // update(CartItemRemoveRequestDto). The correct fix surface is the new
@@ -804,7 +804,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-160 (CLOSED): getByUUID(UUID, keycloakId) rejects non-owner with " +
+        @DisplayName("getByUUID(UUID, keycloakId) rejects non-owner with " +
                 "UnauthorizedCartAccessException")
         void getByUuid_shouldEnforceOwnership_BUG160_closed() {
             final UUID uuid = UUID.randomUUID();
@@ -818,7 +818,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-160 (CLOSED): getByUUID(UUID, keycloakId) returns mapped DTO for owner")
+        @DisplayName("getByUUID(UUID, keycloakId) returns mapped DTO for owner")
         void getByUuid_owner_returnsMapped_BUG160_closed() {
             final UUID uuid = UUID.randomUUID();
             final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
@@ -832,7 +832,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-160 PIN: legacy getByUUID(UUID) still honored for CrudBaseService contract")
+        @DisplayName("Legacy getByUUID(UUID) still honored for CrudBaseService contract")
         void getByUuid_noOwnershipCheck_PIN() {
             // The single-arg getByUUID is intentionally preserved to keep the
             // CrudBaseService generic contract. External code wanting ownership
@@ -848,7 +848,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-161 (CLOSED): deleteByUUID(UUID, keycloakId) rejects non-owner")
+        @DisplayName("deleteByUUID(UUID, keycloakId) rejects non-owner")
         void deleteByUuid_shouldEnforceOwnership_BUG161_closed() {
             final UUID uuid = UUID.randomUUID();
             final UserEntity otherUser = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER").build();
@@ -863,7 +863,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-161 (CLOSED): deleteByUUID(UUID, keycloakId) deletes when caller is owner")
+        @DisplayName("deleteByUUID(UUID, keycloakId) deletes when caller is owner")
         void deleteByUuid_owner_deletes_BUG161_closed() {
             final UUID uuid = UUID.randomUUID();
             final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
@@ -877,7 +877,7 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-161 PIN: deleteByUUID(UUID) takes no caller identity -> trivial IDOR shape pinned")
+        @DisplayName("DeleteByUUID(UUID) takes no caller identity -> trivial IDOR shape pinned")
         void deleteByUuid_noCallerArg_PIN() {
             final UUID uuid = UUID.randomUUID();
             service.deleteByUUID(uuid);

@@ -206,7 +206,7 @@ class OrderCancellationTransactionalDelegateTest {
      * (code 5), refusing cancel before any refund/release work runs.
      */
     @Test
-    @DisplayName("BUG-1 FIX: AWAITING_SHIPPING is now locked for cancel — CannotCancelOrderException, no refund")
+    @DisplayName("AWAITING_SHIPPING is now locked for cancel — CannotCancelOrderException, no refund")
     void cancelOrderShouldThrowWhenStatusIsAwaitingShipping() {
         final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
                 .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build())

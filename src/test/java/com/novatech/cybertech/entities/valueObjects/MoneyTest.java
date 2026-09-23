@@ -152,7 +152,7 @@ class MoneyTest {
     }
 
     @Nested
-    @DisplayName("Arithmetic API (BUG-131 fixed)")
+    @DisplayName("Arithmetic API")
     class ArithmeticApi {
 
         /**
@@ -216,7 +216,7 @@ class MoneyTest {
     }
 
     @Nested
-    @DisplayName("Mutability gap (BUG-132 sibling)")
+    @DisplayName("Mutability gap")
     class MutabilityGap {
 
         @Test

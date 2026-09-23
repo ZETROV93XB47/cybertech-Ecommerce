@@ -174,7 +174,7 @@ class KeycloakUserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-085: createUser does NOT close the injected Keycloak admin client (leak risk pin)")
+        @DisplayName("createUser does NOT close the injected Keycloak admin client (leak risk pin)")
         void bug085_keycloakClientNeverClosed() {
             String userId = "abc-123";
             Response resp = create201(userId);

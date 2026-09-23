@@ -454,7 +454,7 @@ public class CartServiceImp implements CartService {
     private void assertCallerOwnsCart(final CartEntity cart, final UUID cartUuid, final String keycloakId) {
         final UserEntity owner = cart.getUserEntity();
         if (owner == null || owner.getKeycloakId() == null || !owner.getKeycloakId().equals(keycloakId)) {
-            log.warn("BUG-161 — Unauthorized cart access attempt: caller {} on cart {}", keycloakId, cartUuid);
+            log.warn("Unauthorized cart access attempt: caller {} on cart {}", keycloakId, cartUuid);
             throw new UnauthorizedCartAccessException("Caller does not own cart " + cartUuid);
         }
     }

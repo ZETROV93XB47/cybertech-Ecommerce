@@ -81,11 +81,11 @@ class CleanUpExpiredStockReservationsTaskletTest {
     }
 
     @Nested
-    @DisplayName("Repository query — BUG-110 fix verification")
+    @DisplayName("Repository query")
     class RepoQuery {
 
         @Test
-        @DisplayName("BUG-110 (FIXED in F2): uses findByReservationStatusAndCreatedAtBefore(ACTIVE, threshold), not findAll()")
+        @DisplayName("uses findByReservationStatusAndCreatedAtBefore(ACTIVE, threshold), not findAll()")
         void usesNarrowQueryNotFindAll() throws Exception {
             when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
                     .thenReturn(Collections.emptyList());
@@ -222,11 +222,11 @@ class CleanUpExpiredStockReservationsTaskletTest {
     }
 
     @Nested
-    @DisplayName("BUG-110 fix verification — narrow query in use")
+    @DisplayName("narrow query in use")
     class Bug110FixVerification {
 
         @Test
-        @DisplayName("BUG-110 FIX (F2): tasklet calls findByReservationStatusAndCreatedAtBefore and never findAll")
+        @DisplayName("tasklet calls findByReservationStatusAndCreatedAtBefore and never findAll")
         void bug110_narrowQueryUsed_findAllNeverCalled() throws Exception {
             // Originally the tasklet loaded every reservation via stockRepository.findAll()
             // and filtered in memory; it now uses the narrow server-side query. We pin the fix

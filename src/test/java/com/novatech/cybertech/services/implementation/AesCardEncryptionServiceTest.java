@@ -73,14 +73,14 @@ class AesCardEncryptionServiceTest {
         }
 
         @Test
-        @DisplayName("rejects a 16-byte (AES-128) key with IllegalStateException naming BUG-036")
+        @DisplayName("rejects a 16-byte (AES-128) key with IllegalStateException naming ")
         void rejectsAes128Key() {
             final byte[] tooShort = new byte[16];
             final String b64 = Base64.getEncoder().encodeToString(tooShort);
 
             assertThatThrownBy(() -> new AesCardEncryptionService(b64))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("BUG-036")
+                    .hasMessageContaining("")
                     .hasMessageContaining("16 bytes");
         }
 
@@ -92,7 +92,7 @@ class AesCardEncryptionServiceTest {
 
             assertThatThrownBy(() -> new AesCardEncryptionService(b64))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("BUG-036")
+                    .hasMessageContaining("")
                     .hasMessageContaining("24 bytes");
         }
 
@@ -104,7 +104,7 @@ class AesCardEncryptionServiceTest {
 
             assertThatThrownBy(() -> new AesCardEncryptionService(b64))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("BUG-036");
+                    .hasMessageContaining("");
         }
     }
 
@@ -239,7 +239,7 @@ class AesCardEncryptionServiceTest {
 
         assertThatThrownBy(() -> wrongKeyService.decrypt(envelope))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("BUG-036")
+                .hasMessageContaining("")
                 .hasMessageContaining("decryption failed");
     }
 
@@ -254,7 +254,7 @@ class AesCardEncryptionServiceTest {
 
         assertThatThrownBy(() -> service.decrypt(tampered))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("BUG-036");
+                .hasMessageContaining("");
     }
 
     @Test
@@ -268,11 +268,11 @@ class AesCardEncryptionServiceTest {
 
         assertThatThrownBy(() -> service.decrypt(tampered))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("BUG-036");
+                .hasMessageContaining("");
     }
 
     @Test
-    @DisplayName("decrypt of an envelope shorter than the IV is rejected with a clear BUG-036 message")
+    @DisplayName("decrypt of an envelope shorter than the IV is rejected with a clear  message")
     void decryptTooShortEnvelopeFails() {
         // Exactly 12 bytes — that's the IV but no ciphertext, which the impl rejects with
         // a dedicated message before even calling Cipher.
@@ -295,13 +295,13 @@ class AesCardEncryptionServiceTest {
     }
 
     @Test
-    @DisplayName("decrypt of a non-base64 string is wrapped as IllegalStateException (BUG-036)")
+    @DisplayName("decrypt of a non-base64 string is wrapped as IllegalStateException ()")
     void decryptNonBase64Fails() {
         // '!' is not in the base64 alphabet — Base64.getDecoder().decode throws
         // IllegalArgumentException, which the catch-all wraps as IllegalStateException.
         assertThatThrownBy(() -> service.decrypt("!!!not-base64!!!"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("BUG-036");
+                .hasMessageContaining("");
     }
 
     // ---------------------------------------------------------------------
@@ -309,20 +309,20 @@ class AesCardEncryptionServiceTest {
     // ---------------------------------------------------------------------
 
     @Test
-    @DisplayName("encrypt(null) throws IllegalArgumentException with a clear BUG-036 message")
+    @DisplayName("encrypt(null) throws IllegalArgumentException with a clear  message")
     void encryptNullPan() {
         assertThatThrownBy(() -> service.encrypt(null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("BUG-036")
+                .hasMessageContaining("")
                 .hasMessageContaining("null PAN");
     }
 
     @Test
-    @DisplayName("decrypt(null) throws IllegalArgumentException with a clear BUG-036 message")
+    @DisplayName("decrypt(null) throws IllegalArgumentException with a clear  message")
     void decryptNullCiphertext() {
         assertThatThrownBy(() -> service.decrypt(null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("BUG-036")
+                .hasMessageContaining("")
                 .hasMessageContaining("null ciphertext");
     }
 }

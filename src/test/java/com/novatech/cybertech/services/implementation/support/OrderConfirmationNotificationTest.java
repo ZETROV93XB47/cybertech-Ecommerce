@@ -138,7 +138,7 @@ class OrderConfirmationNotificationTest {
     }
 
     @Test
-    @DisplayName("BUG-2517: a wrong payload type triggers a raw ClassCastException (pin)")
+    @DisplayName("a wrong payload type triggers a raw ClassCastException (pin)")
     void wrongPayloadTypeThrowsClassCastException() {
         // ShippingConfirmationPayload is also a NotificationPayload — a misrouted strategy could pass it.
         ShippingConfirmationPayload wrong = ShippingConfirmationPayload.builder()

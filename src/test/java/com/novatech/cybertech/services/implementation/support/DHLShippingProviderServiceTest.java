@@ -23,21 +23,21 @@ class DHLShippingProviderServiceTest {
     private final DHLShippingProviderService service = new DHLShippingProviderService();
 
     @Test
-    @DisplayName("BUG-2513: EXPRESS == 25 EUR (hardcoded)")
+    @DisplayName("EXPRESS == 25 EUR (hardcoded)")
     void expressCostIs25() {
         assertThat(service.calculateShippingCost(ShippingType.EXPRESS))
                 .isEqualByComparingTo(new BigDecimal("25"));
     }
 
     @Test
-    @DisplayName("BUG-2513: STANDARD == 15 EUR (hardcoded)")
+    @DisplayName("STANDARD == 15 EUR (hardcoded)")
     void standardCostIs15() {
         assertThat(service.calculateShippingCost(ShippingType.STANDARD))
                 .isEqualByComparingTo(new BigDecimal("15"));
     }
 
     @Test
-    @DisplayName("BUG-2512: deliver(EXPRESS) returns marketing string with the package id, no API call")
+    @DisplayName("deliver(EXPRESS) returns marketing string with the package id, no API call")
     void deliverExpressReturnsMarketingString() {
         String result = service.deliver("PKG-XYZ", ShippingType.EXPRESS);
 
@@ -48,13 +48,13 @@ class DHLShippingProviderServiceTest {
     }
 
     @Test
-    @DisplayName("BUG-2512: deliver(STANDARD) for the same packageId yields a deterministic, non-tracking-number string")
+    @DisplayName("deliver(STANDARD) for the same packageId yields a deterministic, non-tracking-number string")
     void deliverReturnsHardcodedMessageInsteadOfTrackingNumber() {
         String first = service.deliver("PKG-1", ShippingType.STANDARD);
         String second = service.deliver("PKG-1", ShippingType.STANDARD);
 
         assertThat(first)
-                .as("BUG-2512: identical input -> identical 'tracking' string")
+                .as("identical input -> identical 'tracking' string")
                 .isEqualTo(second)
                 .isEqualTo("DHL STANDARD delivery for PKG-1");
     }
@@ -65,7 +65,7 @@ class DHLShippingProviderServiceTest {
         assertThat(java.util.Arrays.stream(service.getClass().getDeclaredFields())
                         .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers()))
                         .toList())
-                .as("BUG-2512: no RestTemplate / WebClient / SDK field — the deliver() method cannot call DHL")
+                .as("no RestTemplate / WebClient / SDK field — the deliver() method cannot call DHL")
                 .isEmpty();
     }
 }

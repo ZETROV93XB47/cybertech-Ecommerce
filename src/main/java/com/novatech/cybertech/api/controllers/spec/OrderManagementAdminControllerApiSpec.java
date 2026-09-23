@@ -56,7 +56,7 @@ public interface OrderManagementAdminControllerApiSpec {
     );
 
     @Operation(summary = "Place an auto-generated order (admin debug helper)",
-            description = "Admin-only debug / load-test utility that forges an order from synthetic cart data via the data generator. Restricted to ADMIN to avoid letting any authenticated user spam orders against another's cart state (BUG-IDOR-D4).",
+            description = "Admin-only debug / load-test utility that forges an order from synthetic cart data via the data generator. Restricted to ADMIN to avoid letting any authenticated user spam orders against another's cart state.",
             security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "201", description = "Auto-generated order placed successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),

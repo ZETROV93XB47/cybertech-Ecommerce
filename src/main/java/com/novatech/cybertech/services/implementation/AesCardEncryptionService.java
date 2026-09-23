@@ -68,8 +68,7 @@ public class AesCardEncryptionService implements CardEncryptionService {
         final byte[] keyBytes = Base64.getDecoder().decode(base64Key);
         if (keyBytes.length != AES_256_KEY_LENGTH_BYTES) {
             throw new IllegalStateException(
-                    "BUG-036: app.security.card-encryption-key must be a base64-encoded 32-byte (AES-256) key; got "
-                            + keyBytes.length + " bytes.");
+                    "app.security.card-encryption-key must be a base64-encoded 32-byte (AES-256) key; got " + keyBytes.length + " bytes.");
         }
         this.secretKey = new SecretKeySpec(keyBytes, AES_ALGORITHM);
         log.info("AesCardEncryptionService initialised with an AES-256 key (GCM mode, 128-bit tag).");
@@ -84,7 +83,7 @@ public class AesCardEncryptionService implements CardEncryptionService {
     @Override
     public String encrypt(final String pan) {
         if (pan == null) {
-            throw new IllegalArgumentException("BUG-036: cannot encrypt a null PAN");
+            throw new IllegalArgumentException("cannot encrypt a null PAN");
         }
         try {
             final byte[] iv = new byte[GCM_IV_LENGTH_BYTES];
@@ -100,7 +99,7 @@ public class AesCardEncryptionService implements CardEncryptionService {
             return Base64.getEncoder().encodeToString(envelope);
         } catch (final Exception e) {
             // Do NOT log the PAN.
-            throw new IllegalStateException("BUG-036: AES/GCM encryption of PAN failed", e);
+            throw new IllegalStateException("AES/GCM encryption of PAN failed", e);
         }
     }
 
@@ -113,12 +112,12 @@ public class AesCardEncryptionService implements CardEncryptionService {
     @Override
     public String decrypt(final String ciphertext) {
         if (ciphertext == null) {
-            throw new IllegalArgumentException("BUG-036: cannot decrypt a null ciphertext");
+            throw new IllegalArgumentException("cannot decrypt a null ciphertext");
         }
         try {
             final byte[] envelope = Base64.getDecoder().decode(ciphertext);
             if (envelope.length <= GCM_IV_LENGTH_BYTES) {
-                throw new IllegalStateException("BUG-036: ciphertext envelope too short to contain an IV");
+                throw new IllegalStateException("ciphertext envelope too short to contain an IV");
             }
             final byte[] iv = new byte[GCM_IV_LENGTH_BYTES];
             System.arraycopy(envelope, 0, iv, 0, GCM_IV_LENGTH_BYTES);
@@ -132,7 +131,7 @@ public class AesCardEncryptionService implements CardEncryptionService {
         } catch (final IllegalStateException e) {
             throw e;
         } catch (final Exception e) {
-            throw new IllegalStateException("BUG-036: AES/GCM decryption failed (tampered or wrong key?)", e);
+            throw new IllegalStateException("AES/GCM decryption failed (tampered or wrong key?)", e);
         }
     }
 }

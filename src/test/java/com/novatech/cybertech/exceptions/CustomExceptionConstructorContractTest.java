@@ -112,7 +112,7 @@ class CustomExceptionConstructorContractTest {
     @MethodSource("concreteCustomExceptions")
     void exceptionHasStringConstructor(final Class<? extends Throwable> exceptionClass) {
         if (KNOWN_STRING_CTOR_VIOLATORS.contains(exceptionClass.getSimpleName())) {
-            assumeTrue(false, "BUG-137: " + exceptionClass.getSimpleName()
+            assumeTrue(false,   exceptionClass.getSimpleName()
                     + " demands a sub-cause type at construction and exposes no (String) ctor");
         }
         assertThat(hasCtor(exceptionClass, String.class))
@@ -124,7 +124,7 @@ class CustomExceptionConstructorContractTest {
     @MethodSource("concreteCustomExceptions")
     void exceptionHasStringThrowableConstructor(final Class<? extends Throwable> exceptionClass) {
         if (KNOWN_STRING_THROWABLE_CTOR_VIOLATORS.contains(exceptionClass.getSimpleName())) {
-            assumeTrue(false, "BUG-136: " + exceptionClass.getSimpleName()
+            assumeTrue(false, exceptionClass.getSimpleName()
                     + " has no (String, Throwable) ctor — wrapping a lower-layer cause loses the chain");
         }
         assertThat(hasCtor(exceptionClass, String.class, Throwable.class))

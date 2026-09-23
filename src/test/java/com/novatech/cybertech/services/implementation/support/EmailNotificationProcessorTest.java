@@ -53,7 +53,7 @@ class EmailNotificationProcessorTest {
     }
 
     @Test
-    @DisplayName("BUG-2509: hardcoded from='abc@mail.com' is shipped to delegate (pin)")
+    @DisplayName("hardcoded from='abc@mail.com' is shipped to delegate (pin)")
     void shouldDelegateToMailServiceWithBuiltEmailDto() {
         NotificationContext ctx = aContext("user@example.com", "Order confirmation", "email/order-confirmation");
 
@@ -64,7 +64,7 @@ class EmailNotificationProcessorTest {
 
         EmailDto sent = emailCaptor.getValue();
         assertThat(sent.getFrom())
-                .as("BUG-2509: hardcoded sender")
+                .as("hardcoded sender")
                 .isEqualTo("abc@mail.com");
         assertThat(sent.getTo()).isEqualTo("user@example.com");
         assertThat(sent.getSubject()).isEqualTo("Order confirmation");
@@ -93,7 +93,7 @@ class EmailNotificationProcessorTest {
     }
 
     @Test
-    @DisplayName("BUG-2511: processor never touches a NotificationEntity repository (no dedup, no SENT/FAILED tracking)")
+    @DisplayName("processor never touches a NotificationEntity repository (no dedup, no SENT/FAILED tracking)")
     void doesNotPersistNotificationEntity_documentsBug2511() {
         // The processor field set is just `mailService`. No repo dependency exists.
         NotificationContext ctx = aContext("u@e.com", "s", "t");
@@ -106,7 +106,7 @@ class EmailNotificationProcessorTest {
                         .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers()))
                         .map(java.lang.reflect.Field::getName)
                         .toList())
-                .as("BUG-2511: no notification repository to dedup or track status")
+                .as("no notification repository to dedup or track status")
                 .containsExactly("mailService");
     }
 }

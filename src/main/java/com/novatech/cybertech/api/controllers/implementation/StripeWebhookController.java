@@ -94,7 +94,7 @@ public class StripeWebhookController implements StripeWebhookApiSpec {
             // constructEvent BEFORE signature verification runs, so a malformed JSON body never
             // reaches the SignatureVerificationException branch above. Surface it as 400 — Stripe
             // must learn the body it sent could not be parsed (this is non-retriable on our side).
-            log.error("Malformed Stripe webhook payload — returning 400 (BUG-2502)", e);
+            log.error("Malformed Stripe webhook payload — returning 400", e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
@@ -111,7 +111,7 @@ public class StripeWebhookController implements StripeWebhookApiSpec {
             // exponential backoff). For non-retriable downstream faults — orphan PaymentIntent,
             // missing order row, transient DB blip — we WANT to ACK 200 so Stripe stops
             // re-delivering. The error is still logged for the on-call team.
-            log.error("Error processing Stripe event id={}, type={}; ACKing 200 to prevent Stripe retry storm (BUG-2501)",
+            log.error("Error processing Stripe event id={}, type={}; ACKing 200 to prevent Stripe retry storm",
                     event.getId(), event.getType(), e);
             return ResponseEntity.ok().build();
         }

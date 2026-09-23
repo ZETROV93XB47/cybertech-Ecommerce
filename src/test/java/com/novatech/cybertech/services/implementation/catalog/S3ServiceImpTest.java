@@ -90,7 +90,7 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-082 fixed: application/x-msdownload is rejected with IllegalArgumentException")
+        @DisplayName("application/x-msdownload is rejected with IllegalArgumentException")
         void bug082_contentTypeAllowList_rejectsExecutable() {
             MockMultipartFile exe = new MockMultipartFile(
                     "f", "trojan.exe", "application/x-msdownload", new byte[]{0x4d, 0x5a});
@@ -103,7 +103,7 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-082 fixed: null content type is rejected with IllegalArgumentException")
+        @DisplayName("null content type is rejected with IllegalArgumentException")
         void bug082_contentTypeAllowList_rejectsNullContentType() {
             org.springframework.web.multipart.MultipartFile noType = mock(org.springframework.web.multipart.MultipartFile.class);
             when(noType.getContentType()).thenReturn(null);
@@ -115,7 +115,7 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-082 fixed: allowed content types (jpeg, png, webp, gif) pass the allow-list check")
+        @DisplayName("allowed content types (jpeg, png, webp, gif) pass the allow-list check")
         void bug082_contentTypeAllowList_permitsAllowedTypes() throws Exception {
             for (String type : java.util.List.of("image/jpeg", "image/png", "image/webp", "image/gif")) {
                 MockMultipartFile file = new MockMultipartFile("photo", "file.img", type, new byte[]{1});
@@ -130,7 +130,7 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-083 fixed: file exceeding 10 MB is rejected with IllegalArgumentException")
+        @DisplayName("file exceeding 10 MB is rejected with IllegalArgumentException")
         void bug083_sizeCap_rejectsOversizedFile() {
             org.springframework.web.multipart.MultipartFile huge = mock(org.springframework.web.multipart.MultipartFile.class);
             when(huge.getContentType()).thenReturn("image/jpeg");
@@ -144,7 +144,7 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-083 fixed: file exactly at 10 MB is accepted")
+        @DisplayName("file exactly at 10 MB is accepted")
         void bug083_sizeCap_permitsTenMbExactly() throws Exception {
             MockMultipartFile file = new MockMultipartFile(
                     "photo", "big.jpg", "image/jpeg", new byte[10 * 1024 * 1024]);
@@ -193,7 +193,7 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-084: malformed URL is swallowed silently — no S3 call, no exception")
+        @DisplayName("malformed URL is swallowed silently — no S3 call, no exception")
         void bug084_malformedUrl_swallowed() {
             // Not a URL at all
             service.deleteFile("not-a-url");
@@ -202,7 +202,7 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-084: AwsServiceException from s3Client is swallowed, no propagation")
+        @DisplayName("AwsServiceException from s3Client is swallowed, no propagation")
         void bug084_awsServiceException_swallowed() {
             when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
                     .thenThrow(AwsServiceException.builder().message("boom").build());
@@ -212,7 +212,7 @@ class S3ServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-084: arbitrary RuntimeException is swallowed too")
+        @DisplayName("arbitrary RuntimeException is swallowed too")
         void bug084_runtimeException_swallowed() {
             when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
                     .thenThrow(new RuntimeException("kaboom"));

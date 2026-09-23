@@ -280,7 +280,7 @@ class ReviewManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("FIX BUG-2506: order belonging to another user is rejected even when product matches")
+        @DisplayName("Order belonging to another user is rejected even when product matches")
         void create_orderBelongsToAnotherUser_shouldThrowOrderDoesntBelongsToUserException() {
             // Arrange
             final String callerKeycloakId = "caller-kc-id";
@@ -366,37 +366,37 @@ class ReviewManagementServiceImpTest {
         // statuses must produce OrderNotReviewableException; PAID/SHIPPED/DELIVERED must succeed.
 
         @Test
-        @DisplayName("BUG-2: status CREATED -> OrderNotReviewableException; nothing persisted")
+        @DisplayName("status CREATED -> OrderNotReviewableException; nothing persisted")
         void createReviewShouldFailWhenOrderStatusIsCreated() {
             assertOrderStatusIsRejected(OrderStatus.CREATED);
         }
 
         @Test
-        @DisplayName("BUG-2: status PAYMENT_FAILED -> OrderNotReviewableException; nothing persisted")
+        @DisplayName("status PAYMENT_FAILED -> OrderNotReviewableException; nothing persisted")
         void createReviewShouldFailWhenOrderStatusIsPaymentFailed() {
             assertOrderStatusIsRejected(OrderStatus.PAYMENT_FAILED);
         }
 
         @Test
-        @DisplayName("BUG-2: status AWAITING_PAYMENT -> OrderNotReviewableException; nothing persisted")
+        @DisplayName("status AWAITING_PAYMENT -> OrderNotReviewableException; nothing persisted")
         void createReviewShouldFailWhenOrderStatusIsAwaitingPayment() {
             assertOrderStatusIsRejected(OrderStatus.AWAITING_PAYMENT);
         }
 
         @Test
-        @DisplayName("BUG-2 regression: status PAID is reviewable -> review persists")
+        @DisplayName("status PAID is reviewable -> review persists")
         void createReviewShouldSucceedWhenOrderStatusIsPaid() {
             assertOrderStatusIsAccepted(OrderStatus.PAID);
         }
 
         @Test
-        @DisplayName("BUG-2 regression: status SHIPPED is reviewable -> review persists")
+        @DisplayName("status SHIPPED is reviewable -> review persists")
         void createReviewShouldSucceedWhenOrderStatusIsShipped() {
             assertOrderStatusIsAccepted(OrderStatus.SHIPPED);
         }
 
         @Test
-        @DisplayName("BUG-2 regression: status DELIVERED is reviewable -> review persists")
+        @DisplayName("status DELIVERED is reviewable -> review persists")
         void createReviewShouldSucceedWhenOrderStatusIsDelivered() {
             assertOrderStatusIsAccepted(OrderStatus.DELIVERED);
         }

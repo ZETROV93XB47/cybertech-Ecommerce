@@ -150,7 +150,7 @@ class BankCardManagementServiceImpTest {
          * {@link BankCardExpiredException} <i>before</i> any repository or mapper call.
          */
         @Test
-        @DisplayName("BUG-037: expired card should throw BankCardExpiredException before save")
+        @DisplayName("expired card should throw BankCardExpiredException before save")
         void expiredCard_shouldThrow() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(null).build();
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
@@ -164,7 +164,7 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-037: malformed expiry -> IllegalArgumentException before save")
+        @DisplayName("malformed expiry -> IllegalArgumentException before save")
         void malformedExpiry_throws() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(null).build();
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
@@ -177,7 +177,7 @@ class BankCardManagementServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("BUG-036 — card masking / encryption")
+    @DisplayName("card masking / encryption")
     class CardMaskingBug036 {
 
         /**
@@ -219,7 +219,7 @@ class BankCardManagementServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("BUG-038 — default-card support")
+    @DisplayName("default-card support")
     class DefaultCardBug038 {
 
         @Test
@@ -232,7 +232,7 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BankCardEntity has an `isDefault` field (BUG-038)")
+        @DisplayName("BankCardEntity has an `isDefault` field")
         void hasIsDefaultField() {
             boolean hasIsDefault = Arrays.stream(BankCardEntity.class.getDeclaredFields())
                     .anyMatch(f -> f.getName().equalsIgnoreCase("isDefault"));
@@ -523,7 +523,7 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("FIX BUG-036 remaining: admin create() path encrypts PAN via applyPciStorageRules")
+        @DisplayName("remaining: admin create() path encrypts PAN via applyPciStorageRules")
         void create_adminPath_shouldEncryptPan() {
             // Arrange
             final UUID userUuid = UUID.randomUUID();
@@ -563,7 +563,7 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("FIX BUG-036 remaining: admin create() path rejects expired cards")
+        @DisplayName("remaining: admin create() path rejects expired cards")
         void create_adminPath_expiredCard_shouldThrowBankCardExpiredException() {
             final UUID userUuid = UUID.randomUUID();
             final UserEntity user = UserEntityBuilder.aValidUserBuilder()
@@ -710,7 +710,7 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-161 fixed: deleteByUUID(uuid, keycloakId) deletes when caller owns the card")
+        @DisplayName("deleteByUUID(uuid, keycloakId) deletes when caller owns the card")
         void deleteByUuidWithKeycloakId_ownerMatches_deletes() {
             final UUID cardUuid = UUID.randomUUID();
             final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
@@ -726,7 +726,7 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-161 fixed: deleteByUUID(uuid, keycloakId) rejects with UnauthorizedBankCardAccessException when caller is not owner")
+        @DisplayName("deleteByUUID(uuid, keycloakId) rejects with UnauthorizedBankCardAccessException when caller is not owner")
         void deleteByUuidWithKeycloakId_callerIsNotOwner_throwsUnauthorized() {
             final UUID cardUuid = UUID.randomUUID();
             final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-owner").build();
@@ -743,7 +743,7 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-161 fixed: deleteByUUID(uuid, keycloakId) raises BankCardNotFoundException when the card is missing")
+        @DisplayName("deleteByUUID(uuid, keycloakId) raises BankCardNotFoundException when the card is missing")
         void deleteByUuidWithKeycloakId_missingCard_throwsNotFound() {
             final UUID cardUuid = UUID.randomUUID();
             when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.empty());

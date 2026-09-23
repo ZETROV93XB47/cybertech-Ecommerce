@@ -56,7 +56,7 @@ public class MailServiceImp implements MailService {
             helper.setSubject(emailDto.getSubject());
             helper.setText(content, true); // HTML content
         } catch (MessagingException e) {
-            // FIX-2507 / Phase 1: do NOT swallow. Bubble up so the retry layer
+            // do NOT swallow. Bubble up so the retry layer
             // can observe the failure, persist a FAILED audit row, and decide
             // whether to retry. send() is intentionally NOT invoked on a
             // half-built MimeMessage.

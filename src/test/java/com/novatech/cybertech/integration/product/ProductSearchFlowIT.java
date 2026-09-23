@@ -273,7 +273,7 @@ class ProductSearchFlowIT {
     //                   anonymous → 401 (closed by entry-point wiring)
     // -----------------------------------------------------------------------------------------
     @Test
-    @DisplayName("ROLE_USER on admin create → 403 (post-F2 BUG-031); anonymous → 401 (W0 BUG-030)")
+    @DisplayName("ROLE_USER on admin create → 403; anonymous → 401")
     void securityOnAdminEndpoint_userIs403_anonymousIs401() throws Exception {
         ProductCreateRequestDto payload = buildComputerCreate("Should Not Persist", Brand.ASUS, new BigDecimal("100.00"), 16);
 
@@ -302,7 +302,7 @@ class ProductSearchFlowIT {
     //          variant deleteByUUIDs is affected (still open).
     // -----------------------------------------------------------------------------------------
     @Test
-    @DisplayName("admin DELETE removes DELL from MySQL AND ES (BUG-081 single-path is fine)")
+    @DisplayName("admin DELETE removes DELL from MySQL AND ES (single-path is fine)")
     void adminDeleteRemovesFromBothStores() throws Exception {
         mockMvc.perform(delete(DELETE_ENDPOINT, dellUuid)
                         .with(JwtTestUtils.jwtAdmin(ADMIN_KC))
@@ -352,7 +352,7 @@ class ProductSearchFlowIT {
     //           Two identical runs return identical cardinality (deterministic count).
     // -----------------------------------------------------------------------------------------
     @Test
-    @DisplayName("BUG-181: search ignores Sort — two identical calls have identical totals")
+    @DisplayName("search ignores Sort — two identical calls have identical totals")
     void sortSmokeTest_pinsBug181DeterministicCardinality() throws Exception {
         ProductSearchRequestDto req = baseRequest("COMPUTER").build();
 
@@ -371,7 +371,7 @@ class ProductSearchFlowIT {
     //           Flip to GREEN: PATCH updates SQL row AND ES doc; no orphan ES doc with old data.
     // -----------------------------------------------------------------------------------------
     @Nested
-    @DisplayName("BUG-180-product / BUG-080: update flow fixed by F2 — SQL+ES both updated")
+    @DisplayName("update flow fixed by F2 — SQL+ES both updated")
     class FixedUpdateFlow {
 
         @Test
