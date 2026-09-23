@@ -81,8 +81,10 @@ public class OrderCancellationTransactionalDelegateImp implements OrderCancellat
                 .filter(p -> p.getTransactionType() == TransactionType.PAYMENT)
                 .forEach(paymentAttemptEntity -> paymentService.refund(orderEntity, paymentAttemptEntity.getPaymentType(), paymentAttemptEntity.getAmount(), paymentAttemptEntity.getIdempotencyKey()));
 
-        // Release any reserved stock for the cancelled order — mirrors deleteByUUID().
-        // Idempotent: a no-op if the async PAID listener already committed the reservation.
+        // Release any reserved stock for the cancelled order — mirrors deleteByUUID(). Handles
+        // both an ACTIVE reservation (never committed) and a COMMITTED one (order already PAID):
+        // StockService restores product.stock in the latter case so cancelling a paid order
+        // never leaks inventory.
         stockService.releaseStock(orderUUID);
 
         return orderMapper.mapFromEntityToResponseDto(orderRepository.save(orderEntity));
@@ -92,13 +94,13 @@ public class OrderCancellationTransactionalDelegateImp implements OrderCancellat
      * {@code true} when the order's status is in {@link #SHIPPING_IN_PROGRESS_STATUSES} — the
      * order has physically entered fulfillment.
      *
-     * <p>Cancellation lock is stricter than the {@code updateOrder} shipping guard: by the time
-     * an order reaches {@code AWAITING_SHIPPING}, the async {@code OrderPaymentConfirmationEventListener}
-     * has already called {@code stockService.commitStock()} which decrements
-     * {@code productEntity.stock} and removes the reservation. A subsequent cancel would refund the
-     * customer but {@code stockService.releaseStock(orderUUID)} is then a no-op — the stock would
-     * never come back. Block cancel here so the merchant can keep the inventory until shipping
-     * actually leaves the warehouse, or until a return process is initiated post-delivery.</p>
+     * <p>By the time an order reaches {@code AWAITING_SHIPPING}, the async
+     * {@code OrderPaymentConfirmationEventListener} has already called
+     * {@code stockService.commitStock()} for it — but {@code releaseStock} correctly reverses a
+     * committed reservation (restores {@code productEntity.stock}), so cancelling a merely-{@code
+     * PAID} order is safe and does restore inventory. This guard exists purely for the business
+     * rule that once fulfillment has physically started, the customer must use the Return process
+     * instead of a plain cancel — not to work around a stock-restoration limitation.</p>
      *
      * <p>Callers must check {@link #ALREADY_TERMINAL_STATUSES} first — {@code CANCELED} and
      * {@code REFUNDED} are unrelated to shipping and must never reach this check.</p>

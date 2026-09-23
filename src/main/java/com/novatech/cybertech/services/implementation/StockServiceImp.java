@@ -22,6 +22,7 @@ import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.RESERVATION_KEY_PREFIX;
 import static com.novatech.cybertech.entities.enums.ReservationStatus.ACTIVE;
+import static com.novatech.cybertech.entities.enums.ReservationStatus.COMMITTED;
 import static com.novatech.cybertech.entities.enums.ReservationStatus.RELEASED;
 
 
@@ -99,10 +100,19 @@ public class StockServiceImp implements StockService {
     /**
      * {@inheritDoc}
      *
-     * <p>When called for an order with no active reservation we now log a WARN with the
-     * offending {@code orderUuid} so an upstream double-commit (or a webhook replay landing
-     * after the order was cancelled) is observable in logs. Behaviour is unchanged — the
-     * subsequent {@code deleteByOrderUuid} and Redis {@code delete} are no-ops in that case.
+     * <p>Reservation rows are flipped {@code ACTIVE -> COMMITTED} and kept (not deleted): a
+     * later cancellation/refund on the now-PAID order still needs to know which product/quantity
+     * pairs were committed so {@link #releaseStock(UUID)} can restore {@code product.stock}. Only
+     * {@code releaseStock} deletes the rows, once the reservation reaches a terminal state.
+     *
+     * <p>Each row is skipped unless still {@code ACTIVE} — same double-commit guard
+     * {@link #releaseStock(UUID)} already has, for the same reason: a replayed/duplicate
+     * payment-success webhook racing another commit on the same order must not decrement
+     * {@code stock}/{@code reservedStock} twice for the same reservation.
+     *
+     * <p>When called for an order with no active reservation we log a WARN with the offending
+     * {@code orderUuid} so an upstream double-commit (or a webhook replay landing after the order
+     * was cancelled) is observable in logs.
      */
     @Override
     @Transactional
@@ -118,9 +128,9 @@ public class StockServiceImp implements StockService {
             log.warn("commitStock called but no ACTIVE reservation for order={}", orderUuid);
         }
 
-        reservations.stream().map(this::updateStockForCommit).forEach(productRepository::save);
-
-        stockRepository.deleteByOrderUuid(orderUuid);
+        reservations.stream()
+                .filter(r -> r.getReservationStatus() == ACTIVE)
+                .forEach(this::updateStockForCommit);
 
         redisTemplate.delete(reservationKey(orderUuid));
 
@@ -133,15 +143,27 @@ public class StockServiceImp implements StockService {
      * <p>Idempotent: empty reservation set short-circuits before any DB or Redis writes — the
      * cleanup batch and the Redis-expiration listener can both call this safely.
      *
-     * <p>Each row is also skipped individually unless it's still {@code ACTIVE} — mirrors the
-     * same guard {@link com.novatech.cybertech.listener.RedisExpirationListener} already has, for
-     * the same reason: {@code releaseStock} is called from three independent paths (the cleanup
-     * batch, the payment-confirmation listener, order cancellation) that can race the Redis
-     * listener on the same order. Without this guard, two callers both reading a row as
-     * {@code ACTIVE} before either commits would both decrement {@code reservedStock} for the
-     * same reservation, corrupting the stock accounting. Rows are flipped to {@code RELEASED}
-     * (not deleted individually) before the final bulk delete, so a same-transaction re-read
-     * would see the terminal state.
+     * <p>Handles both reservation lifecycle stages a caller may need to unwind:
+     * <ul>
+     *   <li>{@code ACTIVE} — never committed (payment failed/expired/order cancelled pre-payment).
+     *       Only {@code reservedStock} was ever touched, so only it is reverted.</li>
+     *   <li>{@code COMMITTED} — the order reached {@code PAID} and {@link #commitStock(UUID)}
+     *       already decremented both {@code stock} and {@code reservedStock}. Cancelling or
+     *       refunding such an order must return the units to {@code stock} (the warehouse count);
+     *       {@code reservedStock} is not touched again since commit already zeroed it out for
+     *       this reservation. This is what lets cancelling/editing a PAID order actually restore
+     *       inventory instead of leaking it.</li>
+     * </ul>
+     *
+     * <p>Each row is also skipped unless it's still {@code ACTIVE} or {@code COMMITTED} — mirrors
+     * the same guard {@link com.novatech.cybertech.listener.RedisExpirationListener} already has,
+     * for the same reason: {@code releaseStock} is called from several independent paths (the
+     * cleanup batch, the payment-confirmation listener, order cancellation/update) that can race
+     * each other or the Redis listener on the same order. Without this guard, two callers both
+     * reading a row as live before either commits would both decrement stock for the same
+     * reservation, corrupting the accounting. Rows are flipped to {@code RELEASED} (not deleted
+     * individually) before the final bulk delete, so a same-transaction re-read would see the
+     * terminal state.
      */
     @Override
     @Transactional
@@ -154,7 +176,7 @@ public class StockServiceImp implements StockService {
         if (reservations.isEmpty()) return;
 
         reservations.stream()
-                .filter(r -> r.getReservationStatus() == ACTIVE)
+                .filter(r -> r.getReservationStatus() == ACTIVE || r.getReservationStatus() == COMMITTED)
                 .forEach(this::updateStockForRelease);
 
         stockRepository.deleteByOrderUuid(orderUuid);
@@ -174,15 +196,26 @@ public class StockServiceImp implements StockService {
 
 
     /**
-     * Reverts the reserved-stock counter for a single reservation row and flips it to
+     * Reverts the effect of a single reservation row and flips it to
      * {@link com.novatech.cybertech.entities.enums.ReservationStatus#RELEASED}. Called from
-     * {@link #releaseStock(UUID)} only for rows already filtered to {@code ACTIVE}; takes the
-     * per-product DB row lock to serialize against concurrent reservations on the same product.
+     * {@link #releaseStock(UUID)} only for rows already filtered to {@code ACTIVE}/{@code
+     * COMMITTED}; takes the per-product DB row lock to serialize against concurrent reservations
+     * on the same product.
+     *
+     * <p>An {@code ACTIVE} row was never committed, so only {@code reservedStock} is reverted. A
+     * {@code COMMITTED} row already had {@code stock} physically decremented by
+     * {@link #commitStock(UUID)}, so releasing it must add the quantity back to {@code stock}
+     * instead — {@code reservedStock} is left alone since commit already zeroed out this
+     * reservation's contribution to it.
      */
     private void updateStockForRelease(StockEntity r) {
         final ProductEntity product = productRepository.lockByUuid(r.getProductUuid())
                 .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + r.getProductUuid() + " found"));
-        product.setReservedStock(product.getReservedStock() - r.getQuantity());
+        if (r.getReservationStatus() == COMMITTED) {
+            product.setStock(product.getStock() + r.getQuantity());
+        } else {
+            product.setReservedStock(product.getReservedStock() - r.getQuantity());
+        }
         productRepository.save(product);
         r.setReservationStatus(RELEASED);
         stockRepository.save(r);
@@ -190,15 +223,19 @@ public class StockServiceImp implements StockService {
 
     /**
      * Decrements both {@code stock} and {@code reservedStock} on the product side for a single
-     * reservation row. Called from {@link #commitStock(UUID)}; the row lock guards against
-     * concurrent commits/releases on the same product.
+     * reservation row and flips it to
+     * {@link com.novatech.cybertech.entities.enums.ReservationStatus#COMMITTED}. Called from
+     * {@link #commitStock(UUID)}; the row lock guards against concurrent commits/releases on the
+     * same product.
      */
-    private ProductEntity updateStockForCommit(StockEntity r) {
+    private void updateStockForCommit(StockEntity r) {
         final ProductEntity product = productRepository.lockByUuid(r.getProductUuid()).orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + r.getProductUuid() + " found"));
         product.setReservedStock(product.getReservedStock() - r.getQuantity());
         product.setStock(product.getStock() - r.getQuantity());
+        productRepository.save(product);
 
-        return product;
+        r.setReservationStatus(COMMITTED);
+        stockRepository.save(r);
     }
 
     /**

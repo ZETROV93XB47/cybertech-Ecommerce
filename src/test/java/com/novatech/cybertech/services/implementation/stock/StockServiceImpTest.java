@@ -290,7 +290,7 @@ class StockServiceImpTest {
     // ---------------------------------------------------------------------
 
     @Test
-    @DisplayName("commitStock: happy — decrements stock + reservedStock; InOrder repo + redis")
+    @DisplayName("commitStock: happy — decrements stock + reservedStock, flips reservation to COMMITTED (kept, not deleted)")
     void commitStock_happyPath_inOrderAcrossRepoAndRedis() {
         UUID orderUuid = UUID.randomUUID();
         UUID productUuid = UUID.randomUUID();
@@ -308,9 +308,16 @@ class StockServiceImpTest {
         assertThat(saved.getStock()).isEqualTo(6);          // 10 - 4
         assertThat(saved.getReservedStock()).isEqualTo(0);  // 4 - 4
 
+        // The reservation row is KEPT (flipped to COMMITTED, not deleted) so a later
+        // cancel/refund can still restore stock via releaseStock().
+        ArgumentCaptor<StockEntity> reservationCaptor = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository).save(reservationCaptor.capture());
+        assertThat(reservationCaptor.getValue().getReservationStatus()).isEqualTo(ReservationStatus.COMMITTED);
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+
         InOrder inOrder = inOrder(productRepository, stockRepository, redisTemplate);
         inOrder.verify(productRepository).save(any(ProductEntity.class));
-        inOrder.verify(stockRepository).deleteByOrderUuid(orderUuid);
+        inOrder.verify(stockRepository).save(any(StockEntity.class));
         inOrder.verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
     }
 
@@ -330,8 +337,8 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("commitStock: empty reservation set — behaviour-preserving cleanup (delete + redis.delete still fire)")
-    void commitStock_emptyReservations_currentBehaviour_pinsBug064() {
+    @DisplayName("commitStock: empty reservation set — no spurious stockRepository delete, redis sentinel still cleared")
+    void commitStock_emptyReservations_noSpuriousDelete() {
         UUID orderUuid = UUID.randomUUID();
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
 
@@ -339,7 +346,8 @@ class StockServiceImpTest {
 
         verify(productRepository, never()).save(any());
         verify(productRepository, never()).lockByUuid(any());
-        verify(stockRepository).deleteByOrderUuid(orderUuid);
+        verify(stockRepository, never()).save(any());
+        verify(stockRepository, never()).deleteByOrderUuid(any());
         verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
     }
 
@@ -410,6 +418,39 @@ class StockServiceImpTest {
         assertThat(saved).extracting(ProductEntity::getReservedStock).containsExactlyInAnyOrder(0, 0);
         // Stock untouched by release.
         assertThat(saved).extracting(ProductEntity::getStock).containsExactlyInAnyOrder(10, 20);
+
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+        verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("releaseStock: COMMITTED reservation (order already PAID) restores product.stock, not reservedStock")
+    void releaseStock_committedReservation_restoresStockNotReservedStock() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        // Order was committed: stock already decremented by 4, reservedStock already back to 0.
+        StockEntity committed = StockEntityBuilder.aValidStockBuilder()
+                .orderUuid(orderUuid)
+                .productUuid(productUuid)
+                .quantity(4)
+                .reservationStatus(ReservationStatus.COMMITTED)
+                .build();
+        ProductEntity product = productWithStock(productUuid, 6, 0);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(committed));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.releaseStock(orderUuid);
+
+        ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
+        verify(productRepository).save(productCaptor.capture());
+        ProductEntity saved = productCaptor.getValue();
+        assertThat(saved.getStock()).isEqualTo(10);          // 6 + 4 restored
+        assertThat(saved.getReservedStock()).isZero();       // untouched — commit already zeroed it
+
+        ArgumentCaptor<StockEntity> reservationCaptor = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository).save(reservationCaptor.capture());
+        assertThat(reservationCaptor.getValue().getReservationStatus()).isEqualTo(ReservationStatus.RELEASED);
 
         verify(stockRepository).deleteByOrderUuid(orderUuid);
         verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
@@ -866,7 +907,7 @@ class StockServiceImpTest {
     }
 
     @Test
-    @DisplayName("commitStock: multi-product happy — each product saved, stock+reserved decremented")
+    @DisplayName("commitStock: multi-product happy — each product saved, stock+reserved decremented, reservations flipped to COMMITTED")
     void commitStock_multiProduct_decrementsBoth() {
         UUID orderUuid = UUID.randomUUID();
         UUID p1 = UUID.randomUUID();
@@ -888,7 +929,13 @@ class StockServiceImpTest {
         assertThat(saved).extracting(ProductEntity::getStock).containsExactlyInAnyOrder(7, 13);
         assertThat(saved).extracting(ProductEntity::getReservedStock).containsExactlyInAnyOrder(0, 0);
 
-        verify(stockRepository).deleteByOrderUuid(orderUuid);
+        ArgumentCaptor<StockEntity> reservationCap = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository, times(2)).save(reservationCap.capture());
+        assertThat(reservationCap.getAllValues())
+                .extracting(StockEntity::getReservationStatus)
+                .containsOnly(ReservationStatus.COMMITTED);
+
+        verify(stockRepository, never()).deleteByOrderUuid(any());
         verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
     }
 
