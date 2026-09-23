@@ -225,16 +225,17 @@ class KeycloakOutboxServiceImpTest {
         }
 
         @Test
-        @DisplayName("DB row written AFTER the breadcrumb → superseded, stale payload NOT re-applied")
-        void reconcileUpdate_supersededByNewerWrite_skipsReapplication() {
+        @DisplayName("a LATER outbox UPDATE row for the same user is already DONE → superseded, stale payload NOT re-applied")
+        void reconcileUpdate_supersededByNewerAppliedOutboxRow_skipsReapplication() {
             UserUpdateRequestDto dto = new UserUpdateRequestDto();
             dto.setUuid(UUID.randomUUID());
             dto.setFirstName("Stale");
             final KeycloakOutboxEntity row = updateRow("kc-new", dto);
-            // The user row carries a LastModifiedDate AFTER the outbox row's creation -> newer write won.
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-new")
-                    .updatedAt(LocalDateTime.now().plusMinutes(10)).build();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-new").build();
             when(userRepository.findByKeycloakId("kc-new")).thenReturn(Optional.of(user));
+            when(outboxRepository.existsByKeycloakIdAndOperationTypeAndStatusAndCreatedAtAfter(
+                    "kc-new", OutboxOperationType.UPDATE, OutboxStatus.DONE, row.getCreatedAt()))
+                    .thenReturn(true);
 
             service.reconcile(row, 5);
 
@@ -242,6 +243,32 @@ class KeycloakOutboxServiceImpTest {
             verifyNoInteractions(userPersistenceService);
             assertThat(row.getStatus()).isEqualTo(OutboxStatus.DONE);
             assertThat(row.getLastError()).contains("superseded");
+        }
+
+        @Test
+        @DisplayName("regression: an unrelated save bumping user.updatedAt (order, bank card, ...) no longer blocks reapplication")
+        void reconcileUpdate_unrelatedUpdatedAtBump_stillReapplies() {
+            // Pins the fix: user.getUpdatedAt() is a plain @LastModifiedDate touched by ANY flush
+            // of the user row (placing an order, adding a bank card...), not just profile updates.
+            // The supersede guard must no longer key off it.
+            UserUpdateRequestDto dto = new UserUpdateRequestDto();
+            dto.setUuid(UUID.randomUUID());
+            dto.setFirstName("Replayed");
+            final KeycloakOutboxEntity row = updateRow("kc-unrelated", dto);
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-unrelated")
+                    .updatedAt(LocalDateTime.now().plusMinutes(10)) // bumped by something else entirely
+                    .build();
+            when(userRepository.findByKeycloakId("kc-unrelated")).thenReturn(Optional.of(user));
+            // No newer outbox UPDATE row exists for this user -> nothing actually superseded it.
+            when(outboxRepository.existsByKeycloakIdAndOperationTypeAndStatusAndCreatedAtAfter(
+                    eq("kc-unrelated"), eq(OutboxOperationType.UPDATE), eq(OutboxStatus.DONE), any()))
+                    .thenReturn(false);
+
+            service.reconcile(row, 5);
+
+            verify(keycloakService).updateUser(eq("kc-unrelated"), any(UserUpdateRequestDto.class));
+            verify(userPersistenceService).updateUser(any(UserUpdateRequestDto.class), eq(user));
+            assertThat(row.getStatus()).isEqualTo(OutboxStatus.DONE);
         }
     }
 

@@ -159,10 +159,18 @@ public class KeycloakOutboxServiceImp implements KeycloakOutboxService {
      * <ul>
      *   <li>the user no longer exists → nothing to converge (the DELETE saga owns Keycloak
      *       cleanup) — close DONE;</li>
-     *   <li>the DB row was written again AFTER this breadcrumb was created → a newer update
-     *       superseded this one; re-applying would resurrect old data — close DONE without
-     *       touching either system.</li>
+     *   <li>a LATER outbox UPDATE row for the same user has already been fully applied
+     *       ({@code DONE}) → that row's payload is the freshest known intent; re-applying this
+     *       older one would resurrect stale data — close DONE without touching either system.</li>
      * </ul>
+     *
+     * <p>The second guard deliberately checks for a newer outbox row, not
+     * {@code user.getUpdatedAt()}: {@code updatedAt} is a plain {@code @LastModifiedDate} bumped
+     * by ANY flush of the user row — placing an order, adding a bank card, any Hibernate
+     * dirty-check touch — none of which has anything to do with a profile update. Keying off that
+     * field used to make an unrelated save elsewhere in the app silently discard a still-pending
+     * reconciliation. A newer {@code DONE} outbox row is a much narrower, correct signal: it means
+     * a later UPDATE intent for this exact user was actually, successfully applied.</p>
      */
     private void reconcileUpdate(final KeycloakOutboxEntity row) {
         final UserEntity user = userRepository.findByKeycloakId(row.getKeycloakId()).orElse(null);
@@ -172,10 +180,10 @@ public class KeycloakOutboxServiceImp implements KeycloakOutboxService {
             outboxRepository.save(row);
             return;
         }
-        if (user.getUpdatedAt() != null && row.getCreatedAt() != null
-                && user.getUpdatedAt().isAfter(row.getCreatedAt())) {
+        if (outboxRepository.existsByKeycloakIdAndOperationTypeAndStatusAndCreatedAtAfter(
+                row.getKeycloakId(), OutboxOperationType.UPDATE, OutboxStatus.DONE, row.getCreatedAt())) {
             row.setStatus(OutboxStatus.DONE);
-            row.setLastError(truncate("superseded by a newer write — not re-applied"));
+            row.setLastError(truncate("superseded by a newer applied update — not re-applied"));
             outboxRepository.save(row);
             return;
         }

@@ -62,7 +62,7 @@ class KeycloakOutboxReconciliationTaskletTest {
     void reconcilesEveryStalePendingRow() throws Exception {
         final KeycloakOutboxEntity row = KeycloakOutboxEntity.builder()
                 .operationType(OutboxOperationType.DELETE).status(OutboxStatus.PENDING).keycloakId("kc").build();
-        when(outboxRepository.findByStatusAndUpdatedAtBefore(eq(OutboxStatus.PENDING), any(LocalDateTime.class), any(Pageable.class)))
+        when(outboxRepository.findByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(eq(OutboxStatus.PENDING), any(LocalDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of(row));
         final StepContribution contribution = mock(StepContribution.class);
 
@@ -76,13 +76,13 @@ class KeycloakOutboxReconciliationTaskletTest {
     @Test
     @DisplayName("staleness window honored — threshold passed to the repository is now - stalenessMinutes")
     void thresholdReflectsStalenessWindow() throws Exception {
-        when(outboxRepository.findByStatusAndUpdatedAtBefore(eq(OutboxStatus.PENDING), any(LocalDateTime.class), any(Pageable.class)))
+        when(outboxRepository.findByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(eq(OutboxStatus.PENDING), any(LocalDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of());
 
         tasklet.execute(mock(StepContribution.class), stepArguments());
 
         final ArgumentCaptor<LocalDateTime> threshold = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(outboxRepository).findByStatusAndUpdatedAtBefore(eq(OutboxStatus.PENDING), threshold.capture(), any(Pageable.class));
+        verify(outboxRepository).findByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(eq(OutboxStatus.PENDING), threshold.capture(), any(Pageable.class));
         // Threshold must sit ~5 minutes in the past (small tolerance for test execution time).
         assertThat(threshold.getValue())
                 .isBefore(LocalDateTime.now().minusMinutes(4))
@@ -92,7 +92,7 @@ class KeycloakOutboxReconciliationTaskletTest {
     @Test
     @DisplayName("no stale rows — completes without touching the outbox service")
     void noStaleRows_completesQuietly() throws Exception {
-        when(outboxRepository.findByStatusAndUpdatedAtBefore(eq(OutboxStatus.PENDING), any(LocalDateTime.class), any(Pageable.class)))
+        when(outboxRepository.findByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(eq(OutboxStatus.PENDING), any(LocalDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of());
         final StepContribution contribution = mock(StepContribution.class);
 
@@ -107,13 +107,13 @@ class KeycloakOutboxReconciliationTaskletTest {
     @DisplayName("page size bounded by the batch-size knob (no unbounded sweep)")
     void pageSizeIsBounded() throws Exception {
         ReflectionTestUtils.setField(tasklet, "batchSize", 7);
-        when(outboxRepository.findByStatusAndUpdatedAtBefore(eq(OutboxStatus.PENDING), any(LocalDateTime.class), any(Pageable.class)))
+        when(outboxRepository.findByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(eq(OutboxStatus.PENDING), any(LocalDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of());
 
         tasklet.execute(mock(StepContribution.class), stepArguments());
 
         final ArgumentCaptor<Pageable> page = ArgumentCaptor.forClass(Pageable.class);
-        verify(outboxRepository).findByStatusAndUpdatedAtBefore(eq(OutboxStatus.PENDING), any(LocalDateTime.class), page.capture());
+        verify(outboxRepository).findByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(eq(OutboxStatus.PENDING), any(LocalDateTime.class), page.capture());
         assertThat(page.getValue().getPageSize()).isEqualTo(7);
     }
 }

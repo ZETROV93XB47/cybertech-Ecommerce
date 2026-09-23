@@ -47,7 +47,7 @@ public class KeycloakOutboxReconciliationTasklet extends BaseTasklet {
     @Override
     public RepeatStatus execute(final StepContribution stepContribution, final StepArguments stepArguments) {
         final LocalDateTime threshold = LocalDateTime.now().minusMinutes(stalenessMinutes);
-        final List<KeycloakOutboxEntity> stale = outboxRepository.findByStatusAndUpdatedAtBefore(
+        final List<KeycloakOutboxEntity> stale = outboxRepository.findByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(
                 OutboxStatus.PENDING, threshold, PageRequest.ofSize(batchSize));
 
         if (stale.isEmpty()) {
