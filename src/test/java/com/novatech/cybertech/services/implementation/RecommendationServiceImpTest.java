@@ -221,5 +221,28 @@ class RecommendationServiceImpTest {
 
             assertThat(result).extracting(ProductResponseDto::getUuid).containsExactly(uuid1.toString());
         }
+
+        @Test
+        @DisplayName("Gorse ids that ALL fail to resolve fall through to latest, not an empty cached result")
+        void allItemIdsUnmatched_fallsBackToLatest() {
+            // Regression test: every id Gorse recommended belongs to a product deleted since the
+            // last sync. resolveProducts comes back empty even though Gorse's raw id list wasn't
+            // — this must NOT short-circuit the cascade as a "successful empty" personalized
+            // result; it must fall through to latest items.
+            final UUID deletedProductId = UUID.randomUUID();
+            final UUID latestUuid = UUID.randomUUID();
+            final ProductEntity latestProduct = productWithUuid(latestUuid);
+            when(valueOperations.get(any())).thenReturn(null);
+            when(gorseClient.getRecommendations(USER_ID, N)).thenReturn(List.of(deletedProductId.toString()));
+            when(productRepository.findAllByUuidIn(List.of(deletedProductId))).thenReturn(List.of());
+            when(gorseClient.getLatestItems(N)).thenReturn(List.of(new GorseScoredItemDto(latestUuid.toString(), 1.0)));
+            when(productRepository.findAllByUuidIn(List.of(latestUuid))).thenReturn(List.of(latestProduct));
+            when(productMapper.mapFromEntityToResponseDto(latestProduct)).thenReturn(responseDtoFor(latestProduct));
+
+            final List<ProductResponseDto> result = service.getRecommendedProducts(USER_ID, N);
+
+            assertThat(result).extracting(ProductResponseDto::getUuid).containsExactly(latestUuid.toString());
+            verify(productRepository, never()).findBestSellers(any(Pageable.class));
+        }
     }
 }

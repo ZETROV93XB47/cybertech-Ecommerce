@@ -71,7 +71,16 @@ public class RecommendationServiceImp implements RecommendationService {
         log.info("Calling Gorse recommend for user {} (n={})", userId, n);
         try {
             final List<String> itemIds = gorseClient.getRecommendations(userId, n);
-            return itemIds.isEmpty() ? Optional.empty() : Optional.of(resolveProducts(itemIds));
+            if (itemIds.isEmpty()) {
+                return Optional.empty();
+            }
+            // Must check the RESOLVED list, not the raw id list — if every id Gorse
+            // returned belongs to a product deleted since the last sync, resolveProducts comes
+            // back empty even though itemIds wasn't, and an Optional.of(emptyList()) would
+            // short-circuit the .or()/.orElseGet() cascade below, caching an empty result
+            // instead of falling through to latest/best-sellers.
+            final List<ProductResponseDto> resolved = resolveProducts(itemIds);
+            return resolved.isEmpty() ? Optional.empty() : Optional.of(resolved);
         } catch (Exception e) {
             log.warn("Gorse recommend call failed for user {} — falling back to latest items", userId, e);
             return Optional.empty();
@@ -84,7 +93,12 @@ public class RecommendationServiceImp implements RecommendationService {
             final List<String> itemIds = gorseClient.getLatestItems(n).stream()
                     .map(GorseScoredItemDto::getId)
                     .toList();
-            return itemIds.isEmpty() ? Optional.empty() : Optional.of(resolveProducts(itemIds));
+            if (itemIds.isEmpty()) {
+                return Optional.empty();
+            }
+            // Same fix as fromGorseRecommend — check the resolved list, not the raw ids.
+            final List<ProductResponseDto> resolved = resolveProducts(itemIds);
+            return resolved.isEmpty() ? Optional.empty() : Optional.of(resolved);
         } catch (Exception e) {
             log.warn("Gorse latest-items call failed — falling back to best sellers", e);
             return Optional.empty();
