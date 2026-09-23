@@ -41,6 +41,15 @@ public class ProductSearchRequestDto {
     // Pour les ranges numériques (ex: RAM min/max)
     private Map<String, RangeFilter> numericRanges;
 
-    private int page;
-    private int size;
+    // Boxed (not primitive int): Jackson binds this DTO through its all-args constructor, where a
+    // property missing from the JSON body is passed as a literal null — that can't be assigned to
+    // a primitive int and blows up as "Malformed JSON request body" before validation even runs.
+    // A missing page/size must be a legal, absent value here; ProductSearchServiceImp applies the
+    // actual default (DEFAULT_PAGE_SIZE_PRODUCT_SEARCH) when building the Pageable. @Min still
+    // catches an explicit size=0 as a clean 400 instead of a raw PageRequest.of() crash.
+    @Min(value = 0, message = "Page must be >= 0")
+    private Integer page;
+
+    @Min(value = 1, message = "Size must be >= 1")
+    private Integer size;
 }

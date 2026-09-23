@@ -22,6 +22,8 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_PRODUCT_SEARCH;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -32,6 +34,7 @@ public class ProductSearchServiceImp implements ProductSearchService {
     private static final String NAME_FIELD = "name";
     private static final String CATEGORY = "category";
     private static final String DESCRIPTION_FIELD = "description";
+    private static final int DEFAULT_PAGE = 0;
 
     private final ElasticsearchOperations elasticsearchOperations;
 
@@ -40,7 +43,9 @@ public class ProductSearchServiceImp implements ProductSearchService {
 
         List<Query> filters = new ArrayList<>();
         List<Query> musts = new ArrayList<>();
-        Pageable pageable = PageRequest.of(req.getPage(), req.getSize());
+        final int page = req.getPage() != null ? req.getPage() : DEFAULT_PAGE;
+        final int size = req.getSize() != null ? req.getSize() : DEFAULT_PAGE_SIZE_PRODUCT_SEARCH;
+        Pageable pageable = PageRequest.of(page, size);
 
         // Category filter
         if (req.getCategory() != null) {

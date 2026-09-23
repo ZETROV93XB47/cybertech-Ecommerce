@@ -27,8 +27,10 @@ import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNIC
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAnonymous;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -235,6 +237,51 @@ class ProductSearchControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
                 .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void shouldAcceptRequestBodyWithSizeOmitted() throws Exception {
+        // "size" intentionally absent from the raw JSON. ProductSearchRequestDto.size is boxed
+        // (Integer, not int) precisely so Jackson can bind this as null instead of throwing
+        // "Malformed JSON request body" (Cannot map `null` into type `int`) — the actual default
+        // (DEFAULT_PAGE_SIZE_PRODUCT_SEARCH) is applied downstream in ProductSearchServiceImp,
+        // covered by ProductSearchServiceImpTest#nullPageAndSize_fallBackToDefaults.
+        final String jsonWithoutSize = "{\"keyword\":\"laptop\",\"page\":0}";
+
+        final Page<ProductResponseDto> page = new PageImpl<>(List.of(ProductDtoFixtures.aSampleProductResponse()));
+        when(productService.searchProducts(any(ProductSearchRequestDto.class))).thenReturn(page);
+
+        mockMvc.perform(post(SEARCH_PRODUCTS_ENDPOINT)
+                        .with(jwtAnonymous())
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(jsonWithoutSize))
+                .andExpect(status().isOk());
+
+        final org.mockito.ArgumentCaptor<ProductSearchRequestDto> captor =
+                org.mockito.ArgumentCaptor.forClass(ProductSearchRequestDto.class);
+        verify(productService).searchProducts(captor.capture());
+        assertThat(captor.getValue().getSize()).isNull();
+    }
+
+    @Test
+    void shouldRejectExplicitSizeZeroWithValidationErrorInsteadOfCrashing() throws Exception {
+        // An explicit size=0 is still a present value (not omitted) — @Min(1) must catch it as a
+        // clean 400 instead of letting it reach PageRequest.of() and blow up as a raw 500.
+        final String jsonWithZeroSize = "{\"keyword\":\"laptop\",\"page\":0,\"size\":0}";
+
+        mockMvc.perform(post(SEARCH_PRODUCTS_ENDPOINT)
+                        .with(jwtAnonymous())
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(jsonWithZeroSize))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
     // ----------------------------------------------------------------------

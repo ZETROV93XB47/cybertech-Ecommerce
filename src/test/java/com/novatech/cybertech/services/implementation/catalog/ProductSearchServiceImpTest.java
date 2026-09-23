@@ -384,6 +384,20 @@ class ProductSearchServiceImpTest {
             NativeQuery nq = captureQuery();
             assertThat(nq.getPageable().getSort().isUnsorted()).isTrue();
         }
+
+        @Test
+        @DisplayName("null page/size (omitted from the request body) fall back to page 0 / DEFAULT_PAGE_SIZE_PRODUCT_SEARCH instead of crashing")
+        void nullPageAndSize_fallBackToDefaults() {
+            ProductSearchRequestDto req = ProductSearchRequestDto.builder()
+                    .category("COMPUTER").page(null).size(null).build();
+            stubEmptyHits();
+
+            service.search(req);
+            NativeQuery nq = captureQuery();
+            assertThat(nq.getPageable().getPageNumber()).isZero();
+            assertThat(nq.getPageable().getPageSize())
+                    .isEqualTo(com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_PRODUCT_SEARCH);
+        }
     }
 
     // -----------------------------------------------------------------
