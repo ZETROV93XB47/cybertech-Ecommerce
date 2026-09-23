@@ -1,7 +1,6 @@
 package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
-import com.novatech.cybertech.dispatcher.NotificationDispatcher;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.ShippingContext;
 import com.novatech.cybertech.dto.data.UserContactDto;
@@ -10,6 +9,7 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.services.core.NotificationRetryableDelivery;
 import com.novatech.cybertech.services.implementation.ShippingConfirmationPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ import java.util.List;
 public class ShipAllPaidOrdersTasklet extends BaseTasklet {
 
     private final OrderRepository orderRepository;
-    private final NotificationDispatcher notificationDispatcher;
+    private final NotificationRetryableDelivery notificationRetryableDelivery;
     private final ShipOrderTransactionalDelegate shipOrderDelegate;
 
     @Override
@@ -58,7 +58,7 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
                 // Lost the race against ShippingListener (which also ships PAID orders on
                 // OrderPaidEvent). Optimistic locking via @Version on BaseEntity guarantees
                 // exactly one of the two paths wins the claim — the loser silently skips.
-                // Wave 3 fix: the claim+save now lives inside ShipOrderTransactionalDelegate
+                // The claim+save now lives inside ShipOrderTransactionalDelegate
                 // (REQUIRES_NEW), so the optimistic-lock flush happens at delegate-method exit
                 // and this catch can actually observe the race-loss per order.
                 log.debug("Skipping order {} — claimed concurrently by another path: {}", order.getUuid(), e.getMessage());
@@ -113,7 +113,12 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
                 .payload(payload)
                 .build();
 
-        notificationDispatcher.dispatch(notificationContext);
+        // Used to call notificationDispatcher.dispatch(...) directly, which skips both
+        // the Resilience4j retry policy and the NotificationOutcomeRecorder audit trail that
+        // every other notification call site in the app goes through. A transient mail-server
+        // blip here used to be silently dropped — no retry, no PENDING_RETRY row for the Phase 3
+        // redrive tasklet to pick up, and no way to know the shipping confirmation was ever lost.
+        notificationRetryableDelivery.deliver(notificationContext);
         log.info("Order {} shipped via Batch.", order.getUuid());
     }
 }
