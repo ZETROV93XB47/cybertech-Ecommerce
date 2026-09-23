@@ -131,7 +131,7 @@ class RedisExpirationListenerTest {
 
     @Test
     void bug121_malformedUuidAfterPrefix_shouldNotPropagateIllegalArgumentException() {
-        // BUG-121 FIX: malformed UUID tails are now caught, logged at WARN, and short-circuit the
+        // Malformed UUID tails are now caught, logged at WARN, and short-circuit the
         // handler instead of propagating an IllegalArgumentException out to the listener container.
         listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + "not-a-uuid"), null);
 

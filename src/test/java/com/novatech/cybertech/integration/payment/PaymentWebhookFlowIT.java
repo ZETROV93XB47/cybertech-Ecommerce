@@ -41,25 +41,25 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * SA-W5.3 — End-to-end Stripe webhook flow IT against the real Wave-1 Testcontainers stack
- * (MySQL + Redis + Elasticsearch + MongoDB) wired through the W0 public
+ * End-to-end Stripe webhook flow IT against the real Testcontainers stack
+ * (MySQL + Redis + Elasticsearch + MongoDB) wired through the public
  * {@link TestcontainersConfiguration}.
  *
  * <p>The endpoint {@code POST /api/v1/webhooks/stripe} is publicly reachable per
- * {@code SecurityConfig.PUBLIC_URLS} (and mirrored in {@code TestSecurityConfig} by W0 via
+ * {@code SecurityConfig.PUBLIC_URLS} (and mirrored in {@code TestSecurityConfig} via
  * {@code "/api/v1/webhooks/**"}). All requests are signed with the test secret using the
  * shared {@link StripeEventBuilder} fixture.
  *
- * <p><b>SA-Fix-3 closures verified end-to-end here:</b>
+ * <p><b>Fixes verified end-to-end here:</b>
  * <ul>
- *   <li><b>BUG-170</b> — Dedup ledger ({@code ProcessedWebhookEventEntity}) short-circuits replays.</li>
- *   <li><b>BUG-171</b> — {@link OrderPaidEvent} published from {@code handlePaymentSucceeded}.</li>
- *   <li><b>BUG-520</b> — {@link PaymentFailedEvent} published from {@code handlePaymentFailed}.</li>
- *   <li><b>BUG-521</b> — Terminal-state guard prevents SUCCESS→FAILED row regression.</li>
- *   <li><b>BUG-522</b> — Livemode mismatch silently drops the event.</li>
- *   <li><b>BUG-2501</b> — Controller 200-ACKs non-retriable downstream failures.</li>
- *   <li><b>BUG-2502</b> — Controller returns 400 on signed-but-malformed JSON.</li>
- *   <li><b>BUG-172</b> — {@code metadata.order_uuid} fixture key matches the listener.</li>
+ *   <li>Dedup ledger ({@code ProcessedWebhookEventEntity}) short-circuits replays.</li>
+ *   <li>{@link OrderPaidEvent} published from {@code handlePaymentSucceeded}.</li>
+ *   <li>{@link PaymentFailedEvent} published from {@code handlePaymentFailed}.</li>
+ *   <li>Terminal-state guard prevents SUCCESS→FAILED row regression.</li>
+ *   <li>Livemode mismatch silently drops the event.</li>
+ *   <li>Controller 200-ACKs non-retriable downstream failures.</li>
+ *   <li>Controller returns 400 on signed-but-malformed JSON.</li>
+ *   <li>{@code metadata.order_uuid} fixture key matches the listener.</li>
  * </ul>
  */
 @Slf4j
@@ -140,7 +140,7 @@ class PaymentWebhookFlowIT {
      * 200, and the service publishes {@link PaymentSucceededEvent} so the
      * {@code OrderPaymentConfirmationEventListener} (AFTER_COMMIT, async) can flip the order.
      *
-     * <p>Note: BUG-171 (no {@link OrderPaidEvent} published) is asserted separately below — this
+     * <p>Note: the absence of a published {@link OrderPaidEvent} is asserted separately below — this
      * test only verifies the existing {@link PaymentSucceededEvent} surface.
      */
     @Test
@@ -169,11 +169,11 @@ class PaymentWebhookFlowIT {
     }
 
     // ---------------------------------------------------------------------------------
-    // 2) Replay / idempotency — BUG-170 still open (ProcessedWebhookEventEntity NOT in tree)
+    // 2) Replay / idempotency — still open (ProcessedWebhookEventEntity NOT in tree)
     // ---------------------------------------------------------------------------------
 
     /**
-     * BUG-170 fix verification — sending the SAME signed event twice now publishes
+     * Fix verification — sending the SAME signed event twice now publishes
      * {@link PaymentSucceededEvent} exactly ONCE. The dedup ledger
      * ({@code ProcessedWebhookEventEntity}) records the {@code event.getId()} after the first
      * successful processing; the second delivery short-circuits at the top of
@@ -226,11 +226,11 @@ class PaymentWebhookFlowIT {
     }
 
     // ---------------------------------------------------------------------------------
-    // 4) Malformed JSON with valid signature — BUG-2502 (still broken per F1)
+    // 4) Malformed JSON with valid signature — still broken
     // ---------------------------------------------------------------------------------
 
     /**
-     * BUG-2502 fix verification — a valid HMAC over a malformed JSON body now returns 400. The
+     * Fix verification — a valid HMAC over a malformed JSON body now returns 400. The
      * controller catches the {@code JsonSyntaxException} (RuntimeException) thrown by
      * {@code constructEvent} before signature verification.
      */
@@ -247,11 +247,11 @@ class PaymentWebhookFlowIT {
     }
 
     // ---------------------------------------------------------------------------------
-    // 5) payment_intent.payment_failed — BUG-520 (NEW): no PaymentFailedEvent is published
+    // 5) payment_intent.payment_failed — (new) no PaymentFailedEvent was published
     // ---------------------------------------------------------------------------------
 
     /**
-     * BUG-520 fix verification — {@code handlePaymentFailed} now publishes
+     * Fix verification — {@code handlePaymentFailed} now publishes
      * {@link PaymentFailedEvent} after flipping the payment row to FAILED. The order-confirmation
      * listener can therefore release the held stock and flip the order to {@code PAYMENT_FAILED}.
      */
@@ -276,7 +276,7 @@ class PaymentWebhookFlowIT {
     // ---------------------------------------------------------------------------------
 
     /**
-     * BUG-521 fix verification — once a payment row is in {@link PaymentAttemptStatus#SUCCESS},
+     * Fix verification — once a payment row is in {@link PaymentAttemptStatus#SUCCESS},
      * a subsequent {@code payment_intent.payment_failed} (out-of-order Stripe delivery) is
      * dropped. The terminal-state guard in {@code handlePaymentFailed} short-circuits the row
      * regression.
@@ -304,11 +304,11 @@ class PaymentWebhookFlowIT {
     }
 
     // ---------------------------------------------------------------------------------
-    // 7) Orphan PaymentIntent — BUG-2501 still open (controller has no try/catch)
+    // 7) Orphan PaymentIntent — still open (controller has no try/catch)
     // ---------------------------------------------------------------------------------
 
     /**
-     * BUG-2501 fix verification — an orphan {@code pi_*} with no matching payment row no longer
+     * Fix verification — an orphan {@code pi_*} with no matching payment row no longer
      * leaks as a 404/5xx. The controller catches the {@link com.novatech.cybertech.exceptions.PaymentNotFoundException}
      * (and any other service exception) and ACKs 200, preventing a Stripe retry storm.
      */
@@ -330,7 +330,7 @@ class PaymentWebhookFlowIT {
     // ---------------------------------------------------------------------------------
 
     /**
-     * BUG-522 fix verification — a {@code livemode=true} event delivered to a test deployment
+     * Fix verification — a {@code livemode=true} event delivered to a test deployment
      * (where {@code stripe.livemode=false}) is silently dropped: the controller still 200-ACKs
      * (so Stripe stops re-delivering) but the service short-circuits before any side-effect, so
      * the payment row stays {@link PaymentAttemptStatus#PROCESSING}.
@@ -358,14 +358,14 @@ class PaymentWebhookFlowIT {
     }
 
     // ---------------------------------------------------------------------------------
-    // 9) BUG-172 — fixture metadata key matches consumer; happy path flips order to PAID
+    // 9) Fixture metadata key matches consumer; happy path flips order to PAID
     // ---------------------------------------------------------------------------------
 
     /**
      * Direct source-read of {@code OrderPaymentConfirmationEventListener#handlePaymentSuccess} (line
      * 39) confirms the listener reads {@code metadata.get("order_uuid")}. Direct source-read of
      * {@code PaymentDtoFixtures#aValidPaymentIntentPayload} (line 42) confirms the fixture writes
-     * {@code metadata.put("order_uuid", ...)}. Keys MATCH today — BUG-172 is closed by W0's wiring.
+     * {@code metadata.put("order_uuid", ...)}. Keys MATCH today — this is closed by the wiring.
      *
      * <p>This test signs a payload using the SAME production key, posts it, and waits for the
      * AFTER_COMMIT async listener to flip {@link OrderStatus#AWAITING_PAYMENT} → {@link OrderStatus#PAID}.
@@ -395,11 +395,11 @@ class PaymentWebhookFlowIT {
     }
 
     // ---------------------------------------------------------------------------------
-    // 10) BUG-171 — OrderPaidEvent is declared but NEVER published (still open per source read)
+    // 10) OrderPaidEvent is declared but NEVER published (still open per source read)
     // ---------------------------------------------------------------------------------
 
     /**
-     * BUG-171 fix verification — {@link OrderPaidEvent} is now published from the webhook path
+     * Fix verification — {@link OrderPaidEvent} is now published from the webhook path
      * after the payment row flips to SUCCESS. The shipping listener can therefore react.
      */
     @Test

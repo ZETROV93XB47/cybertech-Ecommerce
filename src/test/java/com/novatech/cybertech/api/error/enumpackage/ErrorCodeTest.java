@@ -60,7 +60,7 @@ class ErrorCodeTest {
     @Test
     @DisplayName("F2-added entries are present (verifying F2 fix claim for BUG-001..016)")
     void f2AddedEntriesArePresent() {
-        // BUG-001..016 were closed in Wave F2 by adding both the ErrorCode entries and the handlers.
+        // These gaps were closed by adding both the ErrorCode entries and the handlers.
         // This test confirms the ErrorCode side; the controller branch test confirms the handler side.
         assertThat(Arrays.stream(ErrorCode.values()).map(Enum::name))
                 .contains(

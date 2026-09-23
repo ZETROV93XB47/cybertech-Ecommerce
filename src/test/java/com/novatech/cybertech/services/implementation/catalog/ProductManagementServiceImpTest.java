@@ -45,10 +45,9 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link ProductManagementServiceImp}.
  *
- * <p>SA-W3.5 wave — services/catalog. Source-verified BUG-080 / BUG-180-product / BUG-081 fix
- * status (F2 wave 2026-04-23T10:30Z): {@code update()} now uses {@code lockByUuid} +
+ * <p>Source-verified fix status (as of 2026-04-23T10:30Z): {@code update()} now uses {@code lockByUuid} +
  * IGNORE-style merge + ES re-index; {@code deleteByUUIDs()} now iterates UUIDs and removes
- * each {@code ProductDocument} from ES. F1 handoff that "update does NOT re-index into ES"
+ * each {@code ProductDocument} from ES. A prior claim that "update does NOT re-index into ES"
  * is REFUTED by direct read of the file (lines 110-111).
  */
 @ExtendWith(MockitoExtension.class)

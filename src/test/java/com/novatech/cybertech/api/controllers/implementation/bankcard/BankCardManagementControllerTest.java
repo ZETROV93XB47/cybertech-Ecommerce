@@ -112,7 +112,7 @@ class BankCardManagementControllerTest {
 
     @Test
     void shouldFailAddingBankCardWhenExpired() throws Exception {
-        // BUG-002 (per F2): BankCardExpiredException now mapped to 400 BANK_CARD_EXPIRED.
+        // BankCardExpiredException now mapped to 400 BANK_CARD_EXPIRED.
         BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Card already expired")
@@ -165,7 +165,7 @@ class BankCardManagementControllerTest {
 
     @Test
     void shouldFailDeletingBankCardWhenNoDefaultSet() throws Exception {
-        // BUG-006 (per F2): NoDefaultBankCartSetException now mapped to 403 NO_DEFAULT_BANK_CARD_SET.
+        // NoDefaultBankCartSetException now mapped to 403 NO_DEFAULT_BANK_CARD_SET.
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("No default bank card set for the user")
                 .httpStatusCode(403)
@@ -235,7 +235,7 @@ class BankCardManagementControllerTest {
 
     @Test
     void shouldFailUpdatingBankCardWhenNotFound() throws Exception {
-        // BUG-003 (per F2): BankCardNotFoundException now mapped to 404 BANK_CARD_NOT_FOUND.
+        // BankCardNotFoundException now mapped to 404 BANK_CARD_NOT_FOUND.
         BankCardUpdateRequestDto request = UserDtoFixtures.aValidBankCardUpdateRequest();
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Bank card not found")

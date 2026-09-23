@@ -47,7 +47,7 @@ import static org.mockito.Mockito.when;
  * <p>Coverage focus: status mapping (succeeded / requires_payment_method /
  * canceled / processing fallback), refund status mapping (succeeded / failed /
  * canceled / fallback), {@link StripeException} translation into
- * {@link PaymentProcessingException}, and the BUG-075/076/077 contract around
+ * {@link PaymentProcessingException}, and the contract around
  * the configurable {@code defaultPaymentMethod}.</p>
  */
 @ExtendWith(MockitoExtension.class)
@@ -62,7 +62,7 @@ class StripePaymentAttemptProcessorTest {
     @BeforeEach
     void setUp() {
         processor = new StripePaymentAttemptProcessor();
-        // default behaviour: no payment-method override (BUG-075 default)
+        // default behaviour: no payment-method override
         ReflectionTestUtils.setField(processor, "defaultPaymentMethod", "");
 
         orderUuid = UUID.fromString("11111111-2222-3333-4444-555555555555");

@@ -50,12 +50,12 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for {@link PaymentServiceImp}.
  *
- * Skeptical audit context (per progress.md SA3.2a + Wave F2):
+ * Skeptical audit context (per progress.md):
  * <ul>
- *   <li>BUG-070 (status: open in F2 — partial fix in current source)</li>
- *   <li>BUG-071 (status: open) — null idempotency key not guarded</li>
- *   <li>BUG-072 (status: open) — null order NPEs</li>
- *   <li>BUG-075/076/077 — fixed in F2 (verified in StripePaymentAttemptProcessorTest)</li>
+ *   <li>One defect remains open, with only a partial fix in the current source.</li>
+ *   <li>Null idempotency key is not guarded (status: open).</li>
+ *   <li>Null order causes NPEs (status: open).</li>
+ *   <li>Three further defects are fixed (verified in StripePaymentAttemptProcessorTest).</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -280,7 +280,7 @@ class PaymentServiceImpTest {
         @Test
         @DisplayName("BUG-071: null idempotencyKey is not guarded — passes null to repository (PIN current behavior)")
         void processPayment_nullIdempotencyKey_notGuarded_pin() {
-            // PIN: BUG-071 still open. Service should reject null idempotencyKey at entry; instead it
+            // PIN: still open. Service should reject null idempotencyKey at entry; instead it
             // calls repository.findByIdempotencyKey(null) and propagates null further.
             final OrderEntity order = newOrder();
             when(paymentAttemptRepository.findByIdempotencyKey(null)).thenReturn(Optional.empty());
@@ -299,7 +299,7 @@ class PaymentServiceImpTest {
         @Test
         @DisplayName("BUG-072: null order causes NPE on order.getUuid (PIN current behavior)")
         void processPayment_nullOrder_npe_pin() {
-            // PIN: BUG-072 still open. Service does not validate order != null at entry.
+            // PIN: still open. Service does not validate order != null at entry.
             // The NPE surfaces from inside the entity-builder / processor call rather than as a
             // clean domain-level IllegalArgumentException.
             assertThatThrownBy(() ->

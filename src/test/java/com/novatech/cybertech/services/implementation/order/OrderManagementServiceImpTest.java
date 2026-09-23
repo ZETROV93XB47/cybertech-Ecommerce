@@ -587,7 +587,7 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("BUG-fix: no requested product UUID matches -> ProductNotFoundException, order untouched")
+        @DisplayName("no requested product UUID matches -> ProductNotFoundException, order untouched")
         void noMatchingProducts_throwsProductNotFoundException() {
             // Regression test: findAllByUuidIn silently drops unmatched UUIDs instead of
             // erroring, so a request whose product UUIDs don't exist anymore used to fall

@@ -14,7 +14,7 @@ import java.util.List;
 // UNIQUE(userId) — declarative "one cart per user" data invariant, created by Hibernate's
 // `ddl-auto=update` from JPA metadata (e.g. for Testcontainers integration tests) and also
 // declared explicitly in src/main/resources/sql/databaseSchemaInitFile.sql for the production
-// init path. NOTE: this constraint used to back the BUG-160 first-insert-race retry (layer 3,
+// init path. NOTE: this constraint used to back the first-insert-race retry (layer 3,
 // the SELECT ... FOR UPDATE + DataIntegrityViolationException one-shot retry). That layer was
 // removed — the per-user Redis lock now serialises the cart-add read-modify-write, including the
 // first insert — so this constraint is no longer load-bearing for concurrency; it is kept purely

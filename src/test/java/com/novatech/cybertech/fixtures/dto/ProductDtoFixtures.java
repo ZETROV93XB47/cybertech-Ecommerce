@@ -12,9 +12,8 @@ import java.util.UUID;
 /**
  * Tiny DTO factories for the product surface.
  *
- * <p>Note: {@link ProductResponseDto#getUuid()} is declared as {@link String} (BUG-034 in
- * progress.md). Fixtures here pass {@code uuid.toString()} so STRICT JSON tests don't
- * surface the typed mismatch.
+ * <p>Note: {@link ProductResponseDto#getUuid()} is declared as {@link String}. Fixtures here
+ * pass {@code uuid.toString()} so STRICT JSON tests don't surface the typed mismatch.
  */
 public final class ProductDtoFixtures {
 

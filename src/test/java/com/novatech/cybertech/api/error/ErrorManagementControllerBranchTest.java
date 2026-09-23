@@ -67,18 +67,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code @ExceptionHandler} method and asserts the returned {@link ResponseEntity} status,
  * envelope body, and the load-bearing fields (httpStatusCode, errorCodeType, message).
  *
- * Pinned bugs (carried over from SA4.5R wave — DO NOT renumber):
- *   - BUG-138: handleMethodArgumentNotValidException returns canned message; bind-errors dropped.
- *   - BUG-139: handleUnrecognizedPropertyException — F2 wave fixed (now returns ErrorResponseDto).
- *   - BUG-140: catch-all leaks ex.getMessage() into the 500 body.
+ * Pinned bugs (DO NOT renumber):
+ *   - handleMethodArgumentNotValidException returns canned message; bind-errors dropped.
+ *   - handleUnrecognizedPropertyException — fixed (now returns ErrorResponseDto).
+ *   - catch-all leaks ex.getMessage() into the 500 body.
  *
- * F2-wave fix verification (per progress.md 2026-04-23T10:30Z):
- *   - BUG-2503 (HttpMessageNotReadableException → 400): handler exists. CONFIRMED FIXED.
- *   - BUG-029 (MethodArgumentTypeMismatchException → 400): handler exists. CONFIRMED FIXED.
- *   - BUG-031 (AccessDeniedException + AuthorizationDeniedException → 403): combined handler exists. CONFIRMED FIXED.
- *   - BUG-139 (UnrecognizedProperty returns ErrorResponseDto, not String): CONFIRMED FIXED.
- *   - BUG-138 FIXED — handler now surfaces field-level validation errors; tests re-enabled.
- *   - BUG-140 FIXED — catch-all handler returns a generic message and never leaks ex.getMessage().
+ * Fix verification (per progress.md 2026-04-23T10:30Z):
+ *   - HttpMessageNotReadableException → 400: handler exists. CONFIRMED FIXED.
+ *   - MethodArgumentTypeMismatchException → 400: handler exists. CONFIRMED FIXED.
+ *   - AccessDeniedException + AuthorizationDeniedException → 403: combined handler exists. CONFIRMED FIXED.
+ *   - UnrecognizedProperty returns ErrorResponseDto, not String: CONFIRMED FIXED.
+ *   - handleMethodArgumentNotValidException is now FIXED — handler surfaces field-level validation errors; tests re-enabled.
+ *   - The catch-all handler is now FIXED — it returns a generic message and never leaks ex.getMessage().
  */
 class ErrorManagementControllerBranchTest {
 
@@ -442,7 +442,7 @@ class ErrorManagementControllerBranchTest {
         assertEnvelope(response, HttpStatus.NOT_FOUND, ErrorCodeType.TECHNICAL, "doesn't exists");
     }
 
-    // --- BUG-2503: HttpMessageNotReadableException ----------------------------
+    // --- HttpMessageNotReadableException ---------------------------------------
 
     @Nested
     @DisplayName("HttpMessageNotReadableException — BUG-2503 (F2 wave fixed)")
@@ -470,7 +470,7 @@ class ErrorManagementControllerBranchTest {
         }
     }
 
-    // --- BUG-029: MethodArgumentTypeMismatchException -------------------------
+    // --- MethodArgumentTypeMismatchException -----------------------------------
 
     @Nested
     @DisplayName("MethodArgumentTypeMismatchException — BUG-029 (F2 wave fixed)")
@@ -489,7 +489,7 @@ class ErrorManagementControllerBranchTest {
         }
     }
 
-    // --- BUG-031: AccessDeniedException + AuthorizationDeniedException --------
+    // --- AccessDeniedException + AuthorizationDeniedException ------------------
 
     @Nested
     @DisplayName("AccessDenied / AuthorizationDenied — BUG-031 (F2 wave fixed)")
@@ -516,7 +516,7 @@ class ErrorManagementControllerBranchTest {
         }
     }
 
-    // --- BUG-138: handleMethodArgumentNotValidException ------------------------
+    // --- handleMethodArgumentNotValidException ----------------------------------
 
     @Nested
     @DisplayName("MethodArgumentNotValidException — BUG-138 (fixed)")
@@ -562,7 +562,7 @@ class ErrorManagementControllerBranchTest {
         }
     }
 
-    // --- BUG-139: handleUnrecognizedPropertyException --------------------------
+    // --- handleUnrecognizedPropertyException ------------------------------------
 
     @Nested
     @DisplayName("UnrecognizedPropertyException — BUG-139 (F2 wave fixed)")
@@ -593,7 +593,7 @@ class ErrorManagementControllerBranchTest {
         }
     }
 
-    // --- BUG-140: catch-all RuntimeException leaks ex.getMessage() ------------
+    // --- catch-all RuntimeException leaks ex.getMessage() ----------------------
 
     @Nested
     @DisplayName("RuntimeException catch-all — BUG-140 (fixed)")
@@ -650,7 +650,7 @@ class ErrorManagementControllerBranchTest {
         }
     }
 
-    /** Used as the {@code MethodParameter}-bearing target for the BUG-138 binding-result builder. */
+    /** Used as the {@code MethodParameter}-bearing target for the binding-result builder. */
     @SuppressWarnings("unused")
     private void syntheticMethodForMethodParameter(final String unused) {
         // Reflection target only — never invoked.

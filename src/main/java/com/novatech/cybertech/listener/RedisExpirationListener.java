@@ -54,7 +54,7 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
      *   <li>Early-returns when the expired key does not start with {@link
      *       com.novatech.cybertech.constants.CyberTechAppConstants#RESERVATION_KEY_PREFIX}, so we
      *       only do work for keys we own.</li>
-     *   <li>Wraps {@link UUID#fromString(String)} in a try/catch (BUG-121 fix). A malformed key
+     *   <li>Wraps {@link UUID#fromString(String)} in a try/catch. A malformed key
      *       tail used to surface as an {@link IllegalArgumentException} swallowed by the Redis
      *       listener container, silently dropping the event. We now log a WARN and return early
      *       so the malformed key is observable in logs but does not crash the listener loop.</li>
@@ -77,7 +77,7 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
         try {
             orderUuid = UUID.fromString(key.substring(RESERVATION_KEY_PREFIX.length()));
         } catch (IllegalArgumentException ex) {
-            // BUG-121: a malformed UUID tail used to bubble up as IllegalArgumentException and be
+            // A malformed UUID tail used to bubble up as IllegalArgumentException and be
             // swallowed by the Redis listener container, losing the event entirely. We log it now
             // so the bad key is visible in logs and return early without further work.
             log.warn("Ignoring malformed reservation expiration key '{}': {}", key, ex.getMessage());

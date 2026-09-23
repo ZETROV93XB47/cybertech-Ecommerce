@@ -42,7 +42,7 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for {@link CleanUpExpiredStockReservationsTasklet}.
  *
- * Per progress.md (SA4.3R / F2): BUG-110 fix lands as a switch from
+ * Per progress.md, the fix lands as a switch from
  * {@code stockRepository.findAll()} to
  * {@code stockRepository.findByReservationStatusAndCreatedAtBefore(ReservationStatus.ACTIVE, threshold)}.
  * We verify it green here.
@@ -190,7 +190,7 @@ class CleanUpExpiredStockReservationsTaskletTest {
 
         /**
          * Per-reservation try/catch is NOT implemented in {@link CleanUpExpiredStockReservationsTasklet}
-         * (compare with {@link CancelAllPendingOrdersByTimeTasklet} which got the BUG-111 patch).
+         * (compare with {@link CancelAllPendingOrdersByTimeTasklet} which got that fix).
          * The current behaviour is: a single {@code releaseStock} failure aborts remaining cleanups
          * by propagating to {@link BaseTasklet}'s ChunkContext wrapper which swallows the exception.
          * This test PINS that current behaviour (typed execute() throws).
@@ -228,8 +228,8 @@ class CleanUpExpiredStockReservationsTaskletTest {
         @Test
         @DisplayName("BUG-110 FIX (F2): tasklet calls findByReservationStatusAndCreatedAtBefore and never findAll")
         void bug110_narrowQueryUsed_findAllNeverCalled() throws Exception {
-            // BUG-110 FIX: original behaviour loaded every reservation via stockRepository.findAll()
-            // and filtered in memory. F2 switched to the narrow server-side query. We pin the fix
+            // Originally the tasklet loaded every reservation via stockRepository.findAll()
+            // and filtered in memory; it now uses the narrow server-side query. We pin the fix
             // here as a green assertion (companion to RepoQuery#usesNarrowQueryNotFindAll).
             when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
                     .thenReturn(Collections.emptyList());

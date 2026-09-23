@@ -38,7 +38,7 @@ public class CartServiceImp implements CartService {
     private final ProductRepository productRepository;
 
     /**
-     * BUG-160 — The transactional inner half of the cart-add design. Held as a separate Spring bean
+     * The transactional inner half of the cart-add design. Held as a separate Spring bean
      * (not an inlined private method) so Spring's transaction proxy actually applies when we cross
      * the bean boundary — the basis of the commit-before-unlock guarantee. See
      * {@link CartWriteTransactionalDelegate} for the full rationale.
@@ -56,7 +56,7 @@ public class CartServiceImp implements CartService {
     private static final long CART_ADD_LOCK_WAIT_MS = 4_000L;
 
     /**
-     * BUG-160 — Add items to the authenticated user's cart, serialising concurrent writes for the
+     * Add items to the authenticated user's cart, serialising concurrent writes for the
      * same user with a per-user <b>Redis distributed lock</b> ({@link CartCacheHelper}, backed by
      * Redisson's {@code RLock}).
      *
@@ -269,7 +269,7 @@ public class CartServiceImp implements CartService {
     }
 
     /**
-     * BUG-161 — Ownership-checked read-by-UUID.
+     * Ownership-checked read-by-UUID.
      * <p>
      * Loads the cart, asserts the caller's Keycloak subject matches
      * {@code cart.userEntity.keycloakId}, then maps. The single-arg
@@ -312,7 +312,7 @@ public class CartServiceImp implements CartService {
     }
 
     /**
-     * BUG-026 / BUG-161 — New, correctly-typed, ownership-checked cart update.
+     * New, correctly-typed, ownership-checked cart update.
      * <p>
      * Loads the cart by UUID, asserts the caller owns it, replaces its items
      * with the incoming list (existing lines are cleared and re-created from
@@ -343,7 +343,7 @@ public class CartServiceImp implements CartService {
 
         final List<CartItemAddRequestDto> items = dto.getCartItemAddRequestDtos();
 
-        // BUG-7 — Validate every line (product existence + stock availability) BEFORE
+        // Validate every line (product existence + stock availability) BEFORE
         // mutating the cart. Without this fail-fast pass, updateCart would clear the
         // existing items and re-add them one by one; if line N had insufficient stock
         // we would have already wiped the cart and partially rebuilt it. Loading the
@@ -399,7 +399,7 @@ public class CartServiceImp implements CartService {
     }
 
     /**
-     * BUG-161 — Ownership-checked delete-by-UUID.
+     * Ownership-checked delete-by-UUID.
      * <p>
      * Loads the cart, asserts ownership, then delegates to the repository. The
      * single-arg {@link #deleteByUUID(UUID)} is kept for the
@@ -438,7 +438,7 @@ public class CartServiceImp implements CartService {
     }
 
     /**
-     * BUG-161 — Central ownership guard.
+     * Central ownership guard.
      * <p>
      * Throws {@link UnauthorizedCartAccessException} when the caller's
      * Keycloak id does not match the cart's owner. Extracted so the three

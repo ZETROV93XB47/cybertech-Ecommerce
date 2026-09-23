@@ -18,12 +18,12 @@ import java.util.UUID;
  * <p>Implementations own validation, stock reservation, payment delegation, and event
  * publication; persistence is delegated to the order/cart repositories.</p>
  *
- * <p><b>JWT contract (BUG-054):</b> every method that takes a {@link Jwt} requires a
+ * <p><b>JWT contract:</b> every method that takes a {@link Jwt} requires a
  * non-null {@code jwt.getSubject()}. A missing subject must surface as
  * {@link com.novatech.cybertech.exceptions.UserNotFoundException} (HTTP 404 via the advice)
  * rather than NPE or a generic 500.</p>
  *
- * <p><b>Discount contract (BUG-052):</b> {@link #retryPayment} reuses the order's already-
+ * <p><b>Discount contract:</b> {@link #retryPayment} reuses the order's already-
  * discounted {@code totalAmount} as-is; implementations must NOT re-apply any discount
  * strategy on retry — the {@code totalAmount} is set once at {@link #placeOrder} time and
  * already reflects every applicable discount.</p>
@@ -62,7 +62,7 @@ public interface OrderManagementService {
 
     /**
      * Retry a failed (or pending) payment using the order's already-discounted
-     * {@code totalAmount} verbatim — see the BUG-052 contract on the type-level Javadoc.
+     * {@code totalAmount} verbatim — see the discount contract on the type-level Javadoc.
      */
     OrderResponseDto retryPayment(final UUID orderUuid, final Jwt jwt);
 
@@ -73,9 +73,8 @@ public interface OrderManagementService {
      */
     OrderStatusDto getStatusByUUID(final UUID orderUuid, final String keycloakId);
 
-    // FIX(INTERFACE-CONTRACT): added missing method to honor interface-first convention
     /**
-     * BUG-IDOR-D1 — ownership-checked read of a single order.
+     * Ownership-checked read of a single order.
      *
      * <p>Resolves the order and verifies its initiator's {@code keycloakId} matches the
      * caller's JWT subject. Differing identities throw

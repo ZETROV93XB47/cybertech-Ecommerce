@@ -50,7 +50,7 @@ class ShippingListenerTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
     @Mock
-    private NotificationDispatcher notificationDispatcher; // not wired into ShippingListener; verifies BUG-122
+    private NotificationDispatcher notificationDispatcher; // not wired into ShippingListener; verifies it stays unused
 
     @InjectMocks
     private ShippingListener listener;
@@ -128,7 +128,7 @@ class ShippingListenerTest {
 
     @Test
     void bug122_shippingListenerDoesNotDispatchNotification_notificationGoesViaOrderShippedEvent() {
-        // BUG-122 FIX: the orphan NotificationContext local was removed. ShippingListener now
+        // The orphan NotificationContext local was removed. ShippingListener now
         // hands off the notification side-effect to NotificationListener via OrderShippedEvent.
         // It must never call NotificationDispatcher itself.
         OrderEntity order = paidOrder();

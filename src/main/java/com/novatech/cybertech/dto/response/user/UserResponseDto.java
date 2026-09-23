@@ -26,7 +26,7 @@ public class UserResponseDto {
     private Role role;
 
     /**
-     * BUG-LEAK-D6: stop leaking the Keycloak subject on every user-fetch response.
+     * Stop leaking the Keycloak subject on every user-fetch response.
      *
      * <p>The {@code POST /register} response is built from a {@code Map.of("id", ..., "keycloakId", ...)}
      * server-side (see {@link com.novatech.cybertech.api.controllers.implementation.UserManagementController#register}),

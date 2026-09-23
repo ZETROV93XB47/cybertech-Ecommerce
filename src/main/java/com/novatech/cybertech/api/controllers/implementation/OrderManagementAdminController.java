@@ -50,7 +50,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "OrderAdminController", description = "API for Order management (Admin)")
 public class OrderManagementAdminController implements OrderManagementAdminControllerApiSpec {
 
-    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    // Inject service interface instead of concrete impl per project convention
     private final OrderManagementService orderManagementService;
 
     @Override

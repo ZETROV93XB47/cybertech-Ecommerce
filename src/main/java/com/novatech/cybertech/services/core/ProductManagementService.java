@@ -16,7 +16,7 @@ public interface ProductManagementService extends CrudBaseService<UUID, ProductC
     @Transactional
     ProductResponseDto createWithImage(ProductCreateRequestDto productCreateRequestDto, MultipartFile image);
 
-    // FIX(INTERFACE-CONTRACT): added missing method to honor interface-first convention
+    // Added missing method to honor interface-first convention
     /**
      * Paginated read of every product, used by the admin catalog screen.
      *
@@ -25,7 +25,7 @@ public interface ProductManagementService extends CrudBaseService<UUID, ProductC
      */
     Page<ProductResponseDto> getAll(final Pageable pageable);
 
-    // FIX(INTERFACE-CONTRACT): added missing method to honor interface-first convention
+    // Added missing method to honor interface-first convention
     /**
      * Elasticsearch-backed product search exposed by the public {@code /search} endpoint.
      *
@@ -34,7 +34,7 @@ public interface ProductManagementService extends CrudBaseService<UUID, ProductC
      */
     Page<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto);
 
-    // FIX(INTERFACE-CONTRACT): added missing method to honor interface-first convention
+    // Added missing method to honor interface-first convention
     /**
      * Paginated read of best-selling products, ranked by aggregate sales count.
      *

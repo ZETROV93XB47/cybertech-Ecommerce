@@ -56,9 +56,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Each test wipes MySQL via {@link TestDataCleaner} and Redis cart keys via {@link RedisTemplate}
  * to keep the environment hermetic. Persistence is asserted via JPA repositories; cache state is
  * asserted via {@link CartCacheHelper#getRaw(String)}.
- *
- * <p>Bug-pin policy: original BUG numbers preserved (BUG-008, BUG-028, BUG-160, BUG-161).
- * New findings would consume BUG-510..BUG-519 — none filed by this run.
  */
 @Testcontainers
 @AutoConfigureMockMvc
@@ -247,7 +244,7 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
-    // 4. Out-of-stock batch (3rd item OOS). Per F2 fix BUG-008 the handler maps to 409.
+    // 4. Out-of-stock batch (3rd item OOS). The handler maps this to 409.
     // ----------------------------------------------------------------------------------
     @Test
     @DisplayName("batch with OOS third item — F2 BUG-008 handler returns 409")
@@ -276,7 +273,7 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
-    // 5. Nested @Valid propagation (BUG-028 closed by F2): items.quantity = -1 → 400
+    // 5. Nested @Valid propagation: items.quantity = -1 → 400
     // ----------------------------------------------------------------------------------
     @Test
     @DisplayName("nested negative quantity — F2 BUG-028 nested @Valid returns 400")
@@ -300,7 +297,7 @@ class CartFlowIT {
 
     // ----------------------------------------------------------------------------------
     // 6. Concurrency: 2 threads add 2 each via CountDownLatch → final qty MUST equal 4.
-    //    Sister SA-W2.2 + SA-W3.4 refuted F1's claim of fix; pin via @Disabled if surfaces.
+    //    A prior test run refuted the earlier claim that this was fixed; pin via @Disabled if it surfaces again.
     // ----------------------------------------------------------------------------------
     @Test
     @DisplayName("BUG-160 (CLOSED): concurrent /cart/add — final qty MUST sum (no race)")
@@ -346,7 +343,7 @@ class CartFlowIT {
         assertThat(errorCount.get()).as("no thread should have errored").isZero();
 
         // PIN: the correct final quantity is the sum of both thread contributions.
-        // BUG-160 surfaces when the read-modify-write inside CartServiceImp.addItemsToCart
+        // This surfaces when the read-modify-write inside CartServiceImp.addItemsToCart
         // races and the second thread overwrites the first.
         transactionTemplate.executeWithoutResult(tx -> {
             UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
@@ -424,7 +421,7 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
-    // 7. Delete-by-uuid endpoint audit — verifies path binds correctly post-F2 BUG-027 fix.
+    // 7. Delete-by-uuid endpoint audit — verifies path binds correctly.
     // ----------------------------------------------------------------------------------
     @Test
     @DisplayName("DELETE /cart/delete/{cartUuid} binds path variable post-F2 BUG-027 fix")
@@ -466,7 +463,7 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
-    // 9a. BUG-161 (CLOSED): GET /cart/get/{cartUuid} now rejects non-owners with 403.
+    // 9a. GET /cart/get/{cartUuid} now rejects non-owners with 403.
     // ----------------------------------------------------------------------------------
     @Test
     @DisplayName("BUG-161 (CLOSED) — GET /cart/get/{cartUuid} returns 403 for non-owner")
@@ -487,7 +484,7 @@ class CartFlowIT {
                         .build()
         );
 
-        // BUG-161 (CLOSED): user B is now blocked from reading user A's cart -> 403.
+        // User B is now blocked from reading user A's cart -> 403.
         mockMvc.perform(get(CART_GET_BY_UUID_ENDPOINT, userACartUuid)
                         .with(JwtTestUtils.jwtUser(userBKeycloakId))
                         .contentType(MediaType.APPLICATION_JSON))
@@ -495,7 +492,7 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
-    // 9b. BUG-161 (CLOSED): DELETE /cart/delete/{cartUuid} returns 403 for non-owner.
+    // 9b. DELETE /cart/delete/{cartUuid} returns 403 for non-owner.
     // ----------------------------------------------------------------------------------
     @Test
     @DisplayName("BUG-161 (CLOSED) — DELETE /cart/delete/{cartUuid} returns 403 for non-owner")

@@ -25,7 +25,7 @@ public class BankCardEntity extends BaseEntity<Long> {
     private String cardHolderName;
 
     /**
-     * <b>BUG-036 (PCI-DSS) — legacy column, kept for backward compatibility only.</b>
+     * <b>PCI-DSS — legacy column, kept for backward compatibility only.</b>
      *
      * <p>Populated only by legacy rows and historical test fixtures; new code writes the PAN
      * through {@link #encryptedNumber} instead and never copies the plaintext here. Kept as a
@@ -40,7 +40,7 @@ public class BankCardEntity extends BaseEntity<Long> {
     private String cardNumber;
 
     /**
-     * BUG-036: at-rest AES/GCM ciphertext of the PAN (base64-encoded IV + ciphertext + tag).
+     * At-rest AES/GCM ciphertext of the PAN (base64-encoded IV + ciphertext + tag).
      *
      * <p>Length is generous (512) because the envelope includes a random per-record IV and a
      * GCM authentication tag — see {@code AesCardEncryptionService} for the full rationale.
@@ -50,7 +50,7 @@ public class BankCardEntity extends BaseEntity<Long> {
     private String encryptedNumber;
 
     /**
-     * BUG-036: last four digits of the PAN, cached for display. This is the ONLY PAN-derived
+     * Last four digits of the PAN, cached for display. This is the ONLY PAN-derived
      * value that may ever appear in a response, and only embedded in a masked form
      * ({@code "**** **** **** 4242"}).
      */
@@ -65,7 +65,7 @@ public class BankCardEntity extends BaseEntity<Long> {
     private BankCardType cardType;
 
     /**
-     * BUG-038: marks the user's default bank card. Only one card per user should carry
+     * Marks the user's default bank card. Only one card per user should carry
      * {@code true}; the service layer enforces this invariant on {@code setDefault}.
      *
      * <p>Named {@code isDefault} (Boolean wrapper) so Lombok's generated accessors become

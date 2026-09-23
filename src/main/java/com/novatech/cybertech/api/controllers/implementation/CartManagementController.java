@@ -34,7 +34,7 @@ public class CartManagementController implements CartManagementControllerApiSpec
 
     //Base CRUD Endpoints, maybe delete these endpoints in the future
     /**
-     * BUG-161 — Forwards to the ownership-checked
+     * Forwards to the ownership-checked
      * {@link CartService#getByUUID(UUID, String)} overload using the JWT
      * subject as caller identity. Previously {@code getByUUID(UUID)} was
      * called with no caller context, allowing any authenticated user to
@@ -55,7 +55,7 @@ public class CartManagementController implements CartManagementControllerApiSpec
     }
 
     /**
-     * BUG-026 / BUG-161 — Update a cart identified by UUID with the
+     * Update a cart identified by UUID with the
      * correctly-typed {@link CartUpdateRequestDto}. Uses the JWT subject as
      * the caller identity so the service can enforce ownership.
      */
@@ -67,7 +67,7 @@ public class CartManagementController implements CartManagementControllerApiSpec
     }
 
     /**
-     * BUG-161 — Forwards to the ownership-checked
+     * Forwards to the ownership-checked
      * {@link CartService#deleteByUUID(UUID, String)} overload. An attacker
      * can no longer delete an unrelated user's cart by guessing its UUID.
      */
@@ -87,7 +87,7 @@ public class CartManagementController implements CartManagementControllerApiSpec
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @GetMapping(value = "/get", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<CartResponseDto> getCart(@AuthenticationPrincipal final Jwt jwt) {
-        // FIX(PII-LEAK): removed log of full JWT claims (sub, email, realm_access roles) — only the subject is needed below
+        // Removed log of full JWT claims (sub, email, realm_access roles) — only the subject is needed below
         return ResponseEntity.status(HttpStatus.OK).body(cartService.getCart(jwt.getSubject()));
     }
 

@@ -26,8 +26,8 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 /**
  * Unit tests for {@link ShippingConfirmationNotification}.
  *
- * Pins {@code BUG-2517}: payload is cast blindly; misroute surfaces as a {@link ClassCastException}.
- * Documents {@code BUG-2511}: no NotificationEntity persisted; no dedup repo touch.
+ * Pins the fact that the payload is cast blindly; misroute surfaces as a {@link ClassCastException}.
+ * Documents that no NotificationEntity is persisted; no dedup repo touch.
  */
 @ExtendWith(MockitoExtension.class)
 class ShippingConfirmationNotificationTest {
@@ -67,7 +67,7 @@ class ShippingConfirmationNotificationTest {
                 .containsEntry("shippingType", ShippingType.EXPRESS);
 
         verify(notificationProcessor).sendMessage(ctx);
-        verifyNoMoreInteractions(notificationProcessor); // BUG-2511: no repo persistence
+        verifyNoMoreInteractions(notificationProcessor); // No repo persistence
     }
 
     @Test

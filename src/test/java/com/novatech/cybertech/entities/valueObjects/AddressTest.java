@@ -11,8 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link Address}. Pure POJO; no Spring/Mockito.
  *
- * Pinned bug (carried over from SA4.5R wave — DO NOT renumber):
- *   - BUG-132: Address is JPA @Embeddable but carries Lombok @Setter — NOT immutable.
+ * Pinned bug (DO NOT renumber):
+ *   - Address is JPA @Embeddable but carries Lombok @Setter — NOT immutable.
  */
 class AddressTest {
 

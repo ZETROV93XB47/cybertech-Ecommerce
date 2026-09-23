@@ -330,7 +330,7 @@ class OrderManagementControllerTest {
 
     @Test
     void shouldFailRetryPaymentWhenPathUuidMalformed() throws Exception {
-        // BUG-029 (per F2): path-UUID type mismatch should yield 400 via MethodArgumentTypeMismatchException handler.
+        // Path-UUID type mismatch should yield 400 via MethodArgumentTypeMismatchException handler.
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Invalid value for parameter 'uuid'")
                 .httpStatusCode(400)
@@ -350,7 +350,7 @@ class OrderManagementControllerTest {
 
     @Test
     void shouldGetOrderByUuidSuccessfully() throws Exception {
-        // BUG-IDOR-D1: GET /get/{uuid} now delegates to the ownership-checked overload
+        // GET /get/{uuid} now delegates to the ownership-checked overload
         // getByUUID(UUID, keycloakId). Verify the JWT subject is forwarded.
         UUID orderUuid = UUID.randomUUID();
         OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
@@ -386,7 +386,7 @@ class OrderManagementControllerTest {
 
     @Test
     void shouldFailGettingOrderByUuidWhenOrderDoesntBelongToCallerReturning403() throws Exception {
-        // BUG-IDOR-D1: ensure the IDOR check at the service layer surfaces as 403.
+        // Ensure the IDOR check at the service layer surfaces as 403.
         UUID orderUuid = UUID.randomUUID();
         when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID)))
                 .thenThrow(new com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException(
@@ -400,7 +400,7 @@ class OrderManagementControllerTest {
 
     @Test
     void shouldGetOrderByUuidAsAdminBypassingOwnershipCheck() throws Exception {
-        // Wave 3 regression-fix: GET /get/{uuid} now permits hasRole('USER') OR hasRole('ADMIN').
+        // GET /get/{uuid} now permits hasRole('USER') OR hasRole('ADMIN').
         // The service layer bypasses the ownership check for ADMIN callers (read from
         // SecurityContextHolder), so the admin can fetch any order regardless of initiator.
         UUID orderUuid = UUID.randomUUID();

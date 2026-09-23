@@ -62,8 +62,8 @@ class ProductSearchControllerTest {
 
     @Test
     void shouldGetProductByUuidAsAnonymous() throws Exception {
-        // BUG-032 (closed by W0 TestSecurityConfig PUBLIC_URLS update): /api/v1/services/product/**
-        // is now whitelisted, so anonymous reads succeed.
+        // /api/v1/services/product/** is now whitelisted via the TestSecurityConfig PUBLIC_URLS
+        // update, so anonymous reads succeed.
         UUID productUuid = UUID.randomUUID();
         ProductResponseDto productResponseDto = ProductDtoFixtures.aSampleProductResponseBuilder()
                 .uuid(productUuid.toString())
@@ -118,7 +118,7 @@ class ProductSearchControllerTest {
 
     @Test
     void shouldRejectGetProductByUuidWhenPathUuidIsMalformed() throws Exception {
-        // BUG-029 (closed by F2): MethodArgumentTypeMismatchException → 400 TECHNICAL.
+        // MethodArgumentTypeMismatchException → 400 TECHNICAL.
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
@@ -139,7 +139,7 @@ class ProductSearchControllerTest {
 
     @Test
     void shouldSearchProductsAsAnonymousSuccessfully() throws Exception {
-        // BUG-032 (closed by W0): /api/v1/services/product/** is whitelisted; anonymous POST allowed.
+        // /api/v1/services/product/** is whitelisted; anonymous POST allowed.
         ProductSearchRequestDto searchRequestDto = ProductSearchRequestDto.builder()
                 .keyword("laptop")
                 .category("COMPUTER")
@@ -243,7 +243,7 @@ class ProductSearchControllerTest {
 
     @Test
     void shouldGetBestSellersAsAnonymousSuccessfully() throws Exception {
-        // BUG-032 (closed by W0): /api/v1/services/product/** whitelisted; anonymous GET allowed.
+        // /api/v1/services/product/** whitelisted; anonymous GET allowed.
         ProductResponseDto productResponseDto = ProductDtoFixtures.aSampleProductResponse();
         Page<ProductResponseDto> page = new PageImpl<>(List.of(productResponseDto));
 

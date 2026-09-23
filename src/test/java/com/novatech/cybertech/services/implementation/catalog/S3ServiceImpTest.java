@@ -35,8 +35,8 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link S3ServiceImp}.
  *
- * <p>SA-W3.5 wave — services/catalog. Pins BUG-082 (no content-type allow-list),
- * BUG-083 (no size cap), BUG-084 (deleteFile swallows every error).
+ * <p>Pins the missing content-type allow-list, the missing size cap, and
+ * deleteFile swallowing every error.
  */
 @ExtendWith(MockitoExtension.class)
 class S3ServiceImpTest {

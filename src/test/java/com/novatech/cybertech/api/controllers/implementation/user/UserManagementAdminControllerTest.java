@@ -50,15 +50,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * @WebMvcTest slice for {@link UserManagementAdminController}.
  *
- * <p>The controller is class-annotated {@code @PreAuthorize("hasRole('ADMIN')")}; W0's
+ * <p>The controller is class-annotated {@code @PreAuthorize("hasRole('ADMIN')")};
  * {@code @EnableMethodSecurity} on {@link TestSecurityConfig} should enforce role on every
  * endpoint. Pinned bug status:
  * <ul>
- *   <li>BUG-015: {@link UserAlreadyExistsException} → 409 (handler verified).
+ *   <li>{@link UserAlreadyExistsException} → 409 (handler verified).
  *       Asserted by {@link #shouldFailCreateUserAlreadyExistsAs409}.</li>
- *   <li>BUG-016: {@link UserNotActiveException} → 403 (handler verified).
+ *   <li>{@link UserNotActiveException} → 403 (handler verified).
  *       Asserted by {@link #shouldFailUpdateUserNotActiveAs403}.</li>
- *   <li>BUG-031: {@code AccessDeniedException}/{@code AuthorizationDeniedException} → 403.
+ *   <li>{@code AccessDeniedException}/{@code AuthorizationDeniedException} → 403.
  *       Asserted by every {@code shouldRejectXxxAsRoleUserReturning403}.</li>
  * </ul>
  */
@@ -101,7 +101,7 @@ class UserManagementAdminControllerTest {
 
     @Test
     void shouldRejectGetAllUsersAsRoleUserReturning403() throws Exception {
-        // BUG-031 verification: ROLE_USER hitting an admin-only endpoint must yield 403 FUNCTIONAL.
+        // ROLE_USER hitting an admin-only endpoint must yield 403 FUNCTIONAL.
         final ErrorResponseDto error = ErrorResponseDto.builder()
                 .message("Access denied")
                 .httpStatusCode(403)
@@ -162,7 +162,7 @@ class UserManagementAdminControllerTest {
 
     @Test
     void shouldFailCreateUserAlreadyExistsAs409() throws Exception {
-        // BUG-015 verification.
+        // UserAlreadyExistsException → 409 verification.
         final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequest();
         final ErrorResponseDto error = ErrorResponseDto.builder()
                 .message("User already exists")
@@ -186,7 +186,7 @@ class UserManagementAdminControllerTest {
 
     @Test
     void shouldRejectCreateUserAsRoleUserReturning403() throws Exception {
-        // BUG-031 verification.
+        // Access-denied verification.
         final ErrorResponseDto error = ErrorResponseDto.builder()
                 .message("Access denied")
                 .httpStatusCode(403)
@@ -266,7 +266,7 @@ class UserManagementAdminControllerTest {
 
     @Test
     void shouldFailUpdateUserNotActiveAs403() throws Exception {
-        // BUG-016 verification: UserNotActiveException → 403 FORBIDDEN (FUNCTIONAL).
+        // UserNotActiveException → 403 FORBIDDEN (FUNCTIONAL).
         final UserUpdateRequestDto request = UserDtoFixtures.aValidUpdateRequest();
         final ErrorResponseDto error = ErrorResponseDto.builder()
                 .message("User is not active")
@@ -361,7 +361,7 @@ class UserManagementAdminControllerTest {
 
     @Test
     void shouldRejectRegisterAutoSingleWhenAnonymousAfterBug201Fix() throws Exception {
-        // BUG-201 — CLOSED. registerAuto() is now @PreAuthorize("hasRole('ADMIN')") AND the
+        // registerAuto() is now @PreAuthorize("hasRole('ADMIN')") AND the
         // SecurityConfig#PUBLIC_URLS whitelist no longer covers /register/auto/** (only the
         // exact /register path is anonymous). The URL is now `anyRequest().authenticated()`
         // → CustomAuthenticationEntryPoint translates a missing JWT into 401.
@@ -374,7 +374,7 @@ class UserManagementAdminControllerTest {
 
     @Test
     void shouldRejectRegisterAutoSingleAsRoleUserReturning403() throws Exception {
-        // BUG-201 — even an authenticated non-ADMIN must be rejected (403) by @PreAuthorize.
+        // Even an authenticated non-ADMIN must be rejected (403) by @PreAuthorize.
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
                         .with(jwtUser(USER_KEYCLOAK_ID))
                         .with(csrf())
@@ -385,8 +385,8 @@ class UserManagementAdminControllerTest {
 
     @Test
     void shouldRegisterAutoSingleAsAdminReturning201() throws Exception {
-        // Admin call still works — covers the happy path regardless of BUG-201 wiring.
-        // Wave 3 regression-fix: response body is a Map.of(id, keycloakId, email, username)
+        // Admin call still works — covers the happy path regardless of the access-control wiring above.
+        // The response body is a Map.of(id, keycloakId, email, username)
         // (mirrors the /register endpoint) so the synthetic user's keycloakId is exposed —
         // the @JsonIgnore on UserResponseDto.keycloakId would have suppressed it otherwise.
         final UserResponseDto created = UserDtoFixtures.aSampleUserResponse();

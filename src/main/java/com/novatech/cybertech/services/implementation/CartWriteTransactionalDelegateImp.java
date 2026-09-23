@@ -29,7 +29,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Transactional inner half of the BUG-160 cart-add design. See
+ * Transactional inner half of the cart-add design. See
  * {@link CartWriteTransactionalDelegate} for the full "why a separate bean / why commit-before-unlock"
  * rationale.
  *
@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
  * pessimistic row lock — as a second, DB-level line of defence on top of the Redis lock. That has
  * been dropped: the per-user Redis lock held by {@code CartServiceImp.addItemsToCart} is now the
  * sole serialisation point. The cart is resolved with a plain {@code user.getCartEntity()} lazy
- * load, exactly as the pre-BUG-160 code did. The trade-off is documented on
+ * load, exactly as the prior code did. The trade-off is documented on
  * {@code CartServiceImp.addItemsToCart}.
  */
 @Slf4j

@@ -25,7 +25,7 @@ import static com.novatech.cybertech.entities.enums.NotificationType.SHIPPING_CO
  * communication channel, which in turn calls the {@link NotificationDispatcher}.
  *
  * <p>The shipping listener intentionally does NOT dispatch a notification itself — see
- * {@link ShippingListener} (BUG-122 cleanup).
+ * {@link ShippingListener}.
  *
  * <p><b>Phase 2 hardening:</b> retries are now Resilience4j-driven. The
  * hand-rolled three-attempt {@code for} loop and the SENT/FAILED audit-row

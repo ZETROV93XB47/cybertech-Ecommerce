@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 /**
  * Per-class constructor + cause-chain coverage for every concrete custom exception
  * under {@code com.novatech.cybertech.exceptions}. One consolidated test class
- * (rather than one file per exception) per the SA-W1.4 brief.
+ * (rather than one file per exception).
  *
  * <p>Goals:</p>
  * <ul>
@@ -116,7 +116,7 @@ class CustomExceptionsConstructorTest {
         @MethodSource("com.novatech.cybertech.exceptions.CustomExceptionsConstructorTest#allConcreteCustomExceptions")
         void stringThrowableCtorPreservesCause(final Class<? extends Throwable> exceptionClass) throws Exception {
             if (!hasCtor(exceptionClass, String.class, Throwable.class)) {
-                return; // ctor absence is asserted in CustomExceptionConstructorContractTest (BUG-136)
+                return; // ctor absence is asserted in CustomExceptionConstructorContractTest
             }
             final Constructor<? extends Throwable> ctor =
                     exceptionClass.getDeclaredConstructor(String.class, Throwable.class);
@@ -168,7 +168,7 @@ class CustomExceptionsConstructorTest {
                     new IdempotencyKeyGenerationException("could not hash", cause);
 
             assertThat(ex.getMessage()).isEqualTo("could not hash");
-            // BUG-136: the existing ctor passes message-only to super, so cause is dropped.
+            // The existing ctor passes message-only to super, so cause is dropped.
             assertThat(ex.getCause())
                     .as("BUG-136 — cause is currently dropped because super(message) is called instead of super(message, cause)")
                     .isNull();
@@ -184,7 +184,7 @@ class CustomExceptionsConstructorTest {
                     new PaymentProcessingException("payment failed", cause);
 
             assertThat(ex.getMessage()).isEqualTo("payment failed");
-            // BUG-136: the existing ctor passes message-only to super, so cause is dropped.
+            // The existing ctor passes message-only to super, so cause is dropped.
             assertThat(ex.getCause())
                     .as("BUG-136 — cause is currently dropped because super(message) is called instead of super(message, cause)")
                     .isNull();
@@ -213,7 +213,7 @@ class CustomExceptionsConstructorTest {
         void messageIsLiteral() {
             final NotEnoughStockException ex = new NotEnoughStockException("Not enough stock");
 
-            // No domain getters per BUG-061 — the message is the only carrier of operator info today.
+            // No domain getters exist yet — the message is the only carrier of operator info today.
             assertThat(ex.getMessage()).isEqualTo("Not enough stock");
             assertThat(Arrays.stream(ex.getClass().getDeclaredMethods())
                     .map(java.lang.reflect.Method::getName))

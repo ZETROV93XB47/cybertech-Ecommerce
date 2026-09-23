@@ -42,12 +42,12 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for {@link MailServiceImp}.
  *
- * <p>Phase 1 hardening — the previous swallow-and-return path on
- * {@link jakarta.mail.MessagingException} (BUG-2507) is replaced by a rethrow
+ * <p>Hardening pass — the previous swallow-and-return path on
+ * {@link jakarta.mail.MessagingException} is replaced by a rethrow
  * as {@link NotificationDeliveryException}; SMTP-level
  * {@link org.springframework.mail.MailException} failures are normalized to
  * the same domain exception so the upstream retry policy can target a single
- * type. The previous BUG-2511 pin (no notification-repository field) is
+ * type. The previous pin on the absence of a notification-repository field is
  * obsolete: persistence is now delegated to
  * {@link com.novatech.cybertech.services.implementation.NotificationOutcomeRecorder}
  * called from the listeners, not from this service.
@@ -199,7 +199,7 @@ class MailServiceImpTest {
         // Reflective sanity check — only mailer + template engine + frontendUrl.
         // Persistence has been moved out of this service into
         // NotificationOutcomeRecorder, which is invoked from the listeners.
-        // Replaces the BUG-2511 pin (which asserted the same shape but framed
+        // Replaces the earlier pin (which asserted the same shape but framed
         // it as a defect — the centralisation choice is now intentional).
         assertThat(java.util.Arrays.stream(service.getClass().getDeclaredFields())
                         .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers()))

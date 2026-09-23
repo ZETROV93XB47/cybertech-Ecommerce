@@ -46,7 +46,7 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link WishlistServiceImp}.
  *
- * <p>SA-W3.4 wave — exhaustive coverage of add/remove/list. Documents BUG-430 — non-idempotent
+ * <p>Exhaustive coverage of add/remove/list. Documents the non-idempotent
  * remove (throws if entry already absent) — pinned via passing test asserting current behavior.</p>
  */
 @ExtendWith(MockitoExtension.class)

@@ -17,9 +17,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Unit tests for {@link CurrencyCode}. Pure enum; no Spring/Mockito.
  *
- * Pinned bugs (carried over from SA4.5R wave — DO NOT renumber):
- *   - BUG-133: enum lacks INR/BRL/MXN/RUB/KRW/ZAR.
- *   - BUG-134: no fromString(String) — naming-convention mismatch with brief.
+ * Pinned bugs (DO NOT renumber):
+ *   - enum lacks INR/BRL/MXN/RUB/KRW/ZAR.
+ *   - no fromString(String) — naming-convention mismatch with brief.
  */
 class CurrencyCodeTest {
 

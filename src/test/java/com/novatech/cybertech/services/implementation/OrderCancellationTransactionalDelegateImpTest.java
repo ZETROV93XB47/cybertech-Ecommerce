@@ -50,7 +50,7 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for {@link OrderCancellationTransactionalDelegateImp}.
  *
- * <p>BUG-fix regression coverage: {@code isCancellationLockedDueToShipping} used to compare
+ * <p>Regression coverage: {@code isCancellationLockedDueToShipping} used to compare
  * {@code status.getCode() >= AWAITING_SHIPPING.getCode()}, which also matched {@code CANCELED}
  * (9) and {@code REFUNDED} (10) — so cancelling an already-cancelled order threw a false
  * "already shipped" error instead of the documented idempotent return. The fix reorders the
@@ -119,7 +119,7 @@ class OrderCancellationTransactionalDelegateImpTest {
     }
 
     @Nested
-    @DisplayName("BUG-fix: idempotent re-cancel")
+    @DisplayName("Idempotent re-cancel")
     class Idempotency {
 
         @ParameterizedTest

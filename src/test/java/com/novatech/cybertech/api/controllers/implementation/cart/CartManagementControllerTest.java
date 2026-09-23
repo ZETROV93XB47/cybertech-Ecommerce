@@ -84,7 +84,7 @@ class CartManagementControllerTest {
             UUID cartUuid = UUID.randomUUID();
             CartResponseDto response = CartDtoFixtures.aSampleCartResponseBuilder().cartUuid(cartUuid).build();
 
-            // BUG-161 fix: controller now forwards JWT subject to ownership-checked overload.
+            // Controller now forwards JWT subject to ownership-checked overload.
             when(cartService.getByUUID(eq(cartUuid), eq(KEYCLOAK_ID))).thenReturn(response);
 
             mockMvc.perform(get(GET_CART_BY_UUID_ENDPOINT, cartUuid)
@@ -97,7 +97,7 @@ class CartManagementControllerTest {
 
         @Test
         void failGetCartByUuid_whenCartNotFound_thenNotFound() throws Exception {
-            // BUG-025 fixed in Wave F2: handler now maps CartNotFoundException -> 404 CART_NOT_FOUND.
+            // Handler now maps CartNotFoundException -> 404 CART_NOT_FOUND.
             UUID cartUuid = UUID.randomUUID();
             String message = "No cart with the UUID : " + cartUuid + " found";
 
@@ -155,7 +155,7 @@ class CartManagementControllerTest {
 
         @Test
         void failCreateCart_whenNestedNegativeQuantity_thenBadRequest() throws Exception {
-            // BUG-028 fixed in Wave F2: @Valid on cartItemAddRequestDtos now propagates to nested @Min(1).
+            // @Valid on cartItemAddRequestDtos now propagates to nested @Min(1).
             CartItemAddRequestDto badItem = CartItemAddRequestDto.builder()
                     .productUuid(UUID.randomUUID())
                     .quantity(-5)
@@ -179,7 +179,7 @@ class CartManagementControllerTest {
 
         @Test
         void shouldUpdateCartSuccessfully() throws Exception {
-            // BUG-026 (CLOSED): updateCart now uses CartUpdateRequestDto + JWT subject for BUG-161 ownership.
+            // updateCart now uses CartUpdateRequestDto + JWT subject for ownership.
             UUID cartUuid = UUID.randomUUID();
             CartUpdateRequestDto request = CartUpdateRequestDto.builder()
                     .cartItemAddRequestDtos(List.of(CartDtoFixtures.aValidCartItemAddRequest()))
@@ -202,7 +202,7 @@ class CartManagementControllerTest {
 
         @Test
         void failUpdateCart_whenNullBody_thenBadRequest() throws Exception {
-            // BUG-026 (CLOSED): empty body (no cartItemAddRequestDtos) trips @NotNull on CartUpdateRequestDto -> 400.
+            // Empty body (no cartItemAddRequestDtos) trips @NotNull on CartUpdateRequestDto -> 400.
             UUID cartUuid = UUID.randomUUID();
             CartUpdateRequestDto bad = new CartUpdateRequestDto();
 
@@ -221,8 +221,8 @@ class CartManagementControllerTest {
 
         @Test
         void shouldDeleteCartByUuidSuccessfully() throws Exception {
-            // BUG-027 fixed in Wave F2: deleteCartByUuid now binds @PathVariable("cartUuid").
-            // BUG-161 (CLOSED): controller forwards JWT subject for ownership check.
+            // deleteCartByUuid now binds @PathVariable("cartUuid").
+            // Controller forwards JWT subject for ownership check.
             UUID cartUuid = UUID.randomUUID();
             doNothing().when(cartService).deleteByUUID(eq(cartUuid), eq(KEYCLOAK_ID));
 
@@ -238,7 +238,7 @@ class CartManagementControllerTest {
 
         @Test
         void idorOnDeleteByCartUuidReturnsForbidden() throws Exception {
-            // BUG-161 (CLOSED): caller does not own cart -> service throws
+            // Caller does not own cart -> service throws
             // UnauthorizedCartAccessException -> @ExceptionHandler -> HTTP 403.
             UUID otherUserCartUuid = UUID.randomUUID();
             doThrow(new UnauthorizedCartAccessException("Caller does not own cart " + otherUserCartUuid))
@@ -254,7 +254,7 @@ class CartManagementControllerTest {
 
         @Test
         void idorOnGetByCartUuidReturnsForbidden() throws Exception {
-            // BUG-161 (CLOSED): GET /cart/get/{cartUuid} also enforces ownership.
+            // GET /cart/get/{cartUuid} also enforces ownership.
             UUID otherUserCartUuid = UUID.randomUUID();
             when(cartService.getByUUID(eq(otherUserCartUuid), eq(KEYCLOAK_ID)))
                     .thenThrow(new UnauthorizedCartAccessException("Caller does not own cart " + otherUserCartUuid));
@@ -355,7 +355,7 @@ class CartManagementControllerTest {
 
         @Test
         void failAddToCart_whenNegativeQuantity_thenBadRequest() throws Exception {
-            // BUG-028 fixed: nested @Valid now fires for negative quantities.
+            // Nested @Valid now fires for negative quantities.
             CartItemAddRequestDto badItem = CartItemAddRequestDto.builder()
                     .productUuid(UUID.randomUUID())
                     .quantity(-1)
@@ -379,7 +379,7 @@ class CartManagementControllerTest {
 
         @Test
         void failAddToCart_whenNotEnoughStock_thenConflict() throws Exception {
-            // BUG-008 fixed in Wave F2: handler now maps NotEnoughStockException -> 409 CONFLICT FUNCTIONAL.
+            // Handler now maps NotEnoughStockException -> 409 CONFLICT FUNCTIONAL.
             CartCreateRequestDto request = CartDtoFixtures.aValidCartCreateRequest();
             String message = "Not enough stock for product XYZ";
 
@@ -440,7 +440,7 @@ class CartManagementControllerTest {
 
         @Test
         void failRemoveFromCart_whenInvalidUuidPath_thenBadRequest() throws Exception {
-            // BUG-029 fixed in Wave F2: MethodArgumentTypeMismatchException handler now returns 400.
+            // MethodArgumentTypeMismatchException handler now returns 400.
             ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                     .message("Invalid value for parameter 'productUuid'")
                     .httpStatusCode(400)
@@ -476,7 +476,7 @@ class CartManagementControllerTest {
 
         @Test
         void failDecreaseQuantity_whenNegativeQuantity_thenBadRequest() throws Exception {
-            // CartItemRemoveRequestDto is the root @Valid body — @Min(1) fires regardless of BUG-028.
+            // CartItemRemoveRequestDto is the root @Valid body — @Min(1) fires regardless.
             CartItemRemoveRequestDto bad = CartItemRemoveRequestDto.builder()
                     .productUuid(UUID.randomUUID())
                     .quantity(-3)
@@ -504,7 +504,7 @@ class CartManagementControllerTest {
 
         @Test
         void whenAnonymousAccessGetCart_thenUnauthorized() throws Exception {
-            // BUG-030 fixed by W0: TestSecurityConfig now wires CustomAuthenticationEntryPoint -> 401.
+            // TestSecurityConfig now wires CustomAuthenticationEntryPoint -> 401.
             mockMvc.perform(get(GET_MY_CART_ENDPOINT)
                             .accept(APPLICATION_JSON))
                     .andExpect(status().isUnauthorized());
@@ -512,7 +512,7 @@ class CartManagementControllerTest {
 
         @Test
         void whenAnonymousAddToCart_thenUnauthorized() throws Exception {
-            // BUG-030 fixed by W0: anonymous now properly returns 401, not 403.
+            // Anonymous now properly returns 401, not 403.
             CartCreateRequestDto request = CartDtoFixtures.aValidCartCreateRequest();
             mockMvc.perform(post(ADD_TO_CART_ENDPOINT)
                             .with(csrf())
@@ -545,7 +545,7 @@ class CartManagementControllerTest {
 
         @Test
         void failClearCart_whenServiceThrowsCartNotFound_thenNotFound() throws Exception {
-            // BUG-025 fixed: CartNotFoundException -> 404 even for the keycloakId-driven path.
+            // CartNotFoundException -> 404 even for the keycloakId-driven path.
             String message = "No cart found for user: " + KEYCLOAK_ID;
             ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                     .message(message)

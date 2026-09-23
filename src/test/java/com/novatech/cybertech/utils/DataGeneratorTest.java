@@ -350,7 +350,7 @@ class DataGeneratorTest {
         @Test
         @DisplayName("BUG-135 historical: orderGenerator() returns a non-null DTO; userUuid no longer on DTO")
         void orderGeneratorIsNonNull_pinsHistoricalFix() {
-            // BUG-135 originally pinned a fresh per-call userUuid on the DTO. The DTO no longer
+            // This originally pinned a fresh per-call userUuid on the DTO. The DTO no longer
             // exposes userUuid (identity is JWT-derived) so the assertion is reduced to non-null.
             final OrderPlacingRequestDto a = DataGenerator.orderGenerator();
             assertThat(a).isNotNull();

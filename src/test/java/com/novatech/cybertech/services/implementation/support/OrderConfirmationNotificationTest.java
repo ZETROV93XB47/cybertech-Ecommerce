@@ -29,10 +29,10 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 /**
  * Unit tests for {@link OrderConfirmationNotification}.
  *
- * Pins {@code BUG-2517}: payload is cast blindly to {@link OrderConfirmationPayload}; a misrouted
+ * Pins the fact that the payload is cast blindly to {@link OrderConfirmationPayload}; a misrouted
  * dispatch surfaces as a raw {@link ClassCastException}.
  *
- * Also documents {@code BUG-2511}: the notification dispatch never persists a
+ * Also documents that the notification dispatch never persists a
  * {@code NotificationEntity} (no dedup, no SENT/FAILED status).
  */
 @ExtendWith(MockitoExtension.class)
@@ -132,7 +132,7 @@ class OrderConfirmationNotificationTest {
 
         ArgumentCaptor<NotificationContext> captor = ArgumentCaptor.forClass(NotificationContext.class);
         verify(notificationProcessor).sendMessage(captor.capture());
-        // BUG-2511: only the processor is called — no notification repo touch
+        // Only the processor is called — no notification repo touch
         verifyNoMoreInteractions(notificationProcessor);
         assertThat(captor.getValue()).isSameAs(ctx);
     }

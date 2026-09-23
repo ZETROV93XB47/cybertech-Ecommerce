@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit coverage for {@link NotificationProcessorStrategyFactory} — Map-backed lookup keyed on
  * {@link CommunicationChanel}. Same dispatch contract as the other notification factory: returns
- * null for any unknown / null key. SA4.1R note: this is intentional and consistent with the rest
+ * null for any unknown / null key. This is intentional and consistent with the rest
  * of the notification family (only PaymentStrategyFactory throws on miss).
  */
 class NotificationProcessorStrategyFactoryTest {

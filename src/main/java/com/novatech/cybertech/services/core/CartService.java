@@ -15,10 +15,10 @@ import java.util.UUID;
  * ({@code getByUUID / create / update / deleteByUUID}). The generics use
  * {@link CartItemRemoveRequestDto} as the update argument purely to keep that
  * base contract — the new {@link #updateCart(UUID, CartUpdateRequestDto, String)}
- * overload below is the <em>correct</em> update entrypoint introduced for
- * BUG-026 (a new argument type + caller identity for BUG-161 ownership
- * enforcement). The inherited {@code update(CartItemRemoveRequestDto)} remains
- * untouched so the base CRUD contract stays wired.
+ * overload below is the <em>correct</em> update entrypoint introduced to carry
+ * a new argument type and caller identity for ownership enforcement. The
+ * inherited {@code update(CartItemRemoveRequestDto)} remains untouched so the
+ * base CRUD contract stays wired.
  */
 public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto, CartItemRemoveRequestDto, CartResponseDto> {
     /**
@@ -64,8 +64,8 @@ public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto,
     CartResponseDto decreaseQuantity(final CartItemRemoveRequestDto cartItemRemoveRequestDto, final String keycloakId);
 
     /**
-     * BUG-026 / BUG-161 — Update an existing cart identified by UUID, after
-     * verifying the caller owns it.
+     * Update an existing cart identified by UUID, after verifying the caller
+     * owns it.
      * <p>
      * This is a <em>new</em> method rather than a modification of the inherited
      * {@code update(CartItemRemoveRequestDto)} so the generic signatures of
@@ -77,14 +77,14 @@ public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto,
      * @param dto        the new items payload.
      * @param keycloakId Keycloak subject of the caller — must match the cart
      *                   owner or an {@link UnauthorizedCartAccessException} is
-     *                   thrown (BUG-161).
+     *                   thrown.
      * @return the updated cart DTO.
      * @throws UnauthorizedCartAccessException when the caller does not own the cart.
      */
     CartResponseDto updateCart(final UUID cartUuid, final CartUpdateRequestDto dto, final String keycloakId);
 
     /**
-     * BUG-161 — Ownership-checked variant of {@link #getByUUID(UUID)}.
+     * Ownership-checked variant of {@link #getByUUID(UUID)}.
      * <p>
      * Loads the cart, verifies {@code cart.userEntity.keycloakId} matches the
      * caller, and returns the DTO. On a mismatch, throws
@@ -99,7 +99,7 @@ public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto,
     CartResponseDto getByUUID(final UUID cartUuid, final String keycloakId);
 
     /**
-     * BUG-161 — Ownership-checked variant of {@link #deleteByUUID(UUID)}.
+     * Ownership-checked variant of {@link #deleteByUUID(UUID)}.
      *
      * @param cartUuid   cart to delete.
      * @param keycloakId Keycloak subject of the caller.

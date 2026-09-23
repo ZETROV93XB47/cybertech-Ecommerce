@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 /**
  * Unit tests for {@link SmsNotificationProcessor}.
  *
- * Pins {@code BUG-2510}: {@code sendMessage} is a logging stub — no SMS gateway integration.
+ * Pins the fact that {@code sendMessage} is a logging stub — no SMS gateway integration.
  * Users who pick {@code CommunicationChanel.SMS} silently receive nothing.
  */
 @ExtendWith(MockitoExtension.class)
@@ -36,10 +36,10 @@ class SmsNotificationProcessorTest {
         // The stub should never throw — it only writes a log line.
         assertThatCode(() -> processor.sendMessage(ctx)).doesNotThrowAnyException();
 
-        // BUG-2510 reproducer: even null is silently swallowed because the body never reads anything from the context.
+        // Even null is silently swallowed because the body never reads anything from the context.
         assertThatCode(() -> processor.sendMessage(null)).doesNotThrowAnyException();
 
-        // BUG-2510: there is no SMS-gateway field on the class — proof that this is a stub, not a real integration.
+        // There is no SMS-gateway field on the class — proof that this is a stub, not a real integration.
         assertThat(java.util.Arrays.stream(processor.getClass().getDeclaredFields())
                         .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers()))
                         .toList())

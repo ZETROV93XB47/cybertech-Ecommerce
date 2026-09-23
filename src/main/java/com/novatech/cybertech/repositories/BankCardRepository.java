@@ -10,7 +10,7 @@ import java.util.Optional;
 public interface BankCardRepository extends CrudBaseRepository<BankCardEntity, Long> {
 
     /**
-     * BUG-038: resolves the card currently flagged as the user's default, if any.
+     * Resolves the card currently flagged as the user's default, if any.
      *
      * <p>Spring Data derives the SQL from the method name:
      * {@code userEntity.keycloakId = ?1 AND isDefault = true}. Scoping by {@code keycloakId}
@@ -23,7 +23,7 @@ public interface BankCardRepository extends CrudBaseRepository<BankCardEntity, L
     Optional<BankCardEntity> findByUserEntity_KeycloakIdAndIsDefaultTrue(String keycloakId);
 
     /**
-     * BUG-038: returns every card belonging to a given user, used by
+     * Returns every card belonging to a given user, used by
      * {@code setDefault} to clear the existing default flag before flipping the new one.
      *
      * @param keycloakId the authenticated user's Keycloak subject identifier.

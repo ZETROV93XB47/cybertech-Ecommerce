@@ -37,7 +37,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BankCardManagementServiceImp implements BankCardManagementService {
 
-    /** BUG-037: canonical expiry format. Matches {@code BankCardCreationRequestDto} validation. */
+    /** Canonical expiry format. Matches {@code BankCardCreationRequestDto} validation. */
     private static final DateTimeFormatter EXPIRY_FORMATTER = DateTimeFormatter.ofPattern("MM/yyyy");
 
     private final BankCardMapper bankCardMapper;
@@ -48,15 +48,15 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     // --- Méthodes Spécifiques (User Context) ---
 
     /**
-     * BUG-036 + BUG-037: creates a card for the authenticated user.
+     * Creates a card for the authenticated user.
      *
      * <p>Flow:
      * <ol>
      *   <li>Resolve the user by {@code keycloakId}.</li>
      *   <li>Reject if a card already exists (one-card-per-user business rule).</li>
-     *   <li><b>BUG-037</b>: parse the expiry as {@code MM/yyyy}; reject past-dated cards
+     *   <li>Parse the expiry as {@code MM/yyyy}; reject past-dated cards
      *       with {@link BankCardExpiredException} <i>before</i> any persistence.</li>
-     *   <li><b>BUG-036</b>: encrypt the PAN through {@link CardEncryptionService},
+     *   <li>Encrypt the PAN through {@link CardEncryptionService},
      *       compute {@code lastFourDigits}, and clear the legacy plaintext field so a
      *       newly-created row never holds the raw PAN.</li>
      * </ol>
@@ -71,13 +71,13 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
             throw new IllegalStateException("User already has a bank card.");
         }
 
-        // BUG-037: expiry validation happens before any mapper/repository touch.
+        // Expiry validation happens before any mapper/repository touch.
         validateExpiryNotInThePast(dto.getExpiryDate());
 
         BankCardEntity bankCardEntity = bankCardMapper.mapFromCreationRequestToEntity(dto);
         bankCardEntity.setUserEntity(user);
 
-        // BUG-036: encrypt at rest; keep only the last four digits for display.
+        // Encrypt at rest; keep only the last four digits for display.
         applyPciStorageRules(bankCardEntity, dto.getCardNumber());
 
         BankCardEntity savedCard = bankCardRepository.save(bankCardEntity);
@@ -101,7 +101,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     /**
      * Updates the editable fields of the caller's bank card: holder name and expiry date only.
      * The PAN is WRITE-ONCE — {@link BankCardUpdateRequestDto} no longer carries {@code cardNumber},
-     * so the encrypted-at-rest ciphertext (BUG-036) can never be mutated through this path. To
+     * so the encrypted-at-rest ciphertext can never be mutated through this path. To
      * change the card number, delete the card and add a new one.
      */
     @Override
@@ -171,7 +171,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         BankCardEntity entity = bankCardMapper.mapFromCreationRequestToEntity(dto);
         entity.setUserEntity(user);
 
-        // BUG-036: apply same PCI + expiry rules as the user-facing path
+        // Apply same PCI + expiry rules as the user-facing path
         validateExpiryNotInThePast(dto.getExpiryDate());
         applyPciStorageRules(entity, dto.getCardNumber());
 
@@ -219,7 +219,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     /**
-     * BUG-161: ownership-checked variant. Loads the card, verifies the caller owns it,
+     * Ownership-checked variant. Loads the card, verifies the caller owns it,
      * and only then deletes. Mirrors {@code CartServiceImp#deleteByUUID(UUID, String)}.
      */
     @Override
@@ -237,10 +237,10 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         bankCardRepository.deleteAllByUuidIn(uuids);
     }
 
-    // --- BUG-038: default-card surface -------------------------------------------------
+    // --- Default-card surface -------------------------------------------------
 
     /**
-     * BUG-038: promotes a specific card to the user's default.
+     * Promotes a specific card to the user's default.
      *
      * <p>Steps:
      * <ol>
@@ -291,7 +291,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     /**
-     * BUG-038: returns the user's default card, already masked for safe API exposure.
+     * Returns the user's default card, already masked for safe API exposure.
      *
      * @throws NoDefaultBankCartSetException if the user has not flagged any card as default.
      */
@@ -308,7 +308,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     // --- helpers ----------------------------------------------------------------------
 
     /**
-     * BUG-037: enforces that the expiry string is a valid {@code MM/yyyy} month that has
+     * Enforces that the expiry string is a valid {@code MM/yyyy} month that has
      * not already passed. Called before any mapping/save on the add-path so we do not waste
      * a round-trip to the database for obviously-invalid input.
      */
@@ -326,7 +326,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     /**
-     * BUG-161 / BUG-038 — Central ownership guard. Throws {@link UnauthorizedBankCardAccessException}
+     * Central ownership guard. Throws {@link UnauthorizedBankCardAccessException}
      * when the caller's Keycloak id does not match the card's owner. Shared by
      * {@link #setDefault(UUID, String)} and {@link #deleteByUUID(UUID, String)}.
      */
@@ -341,7 +341,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     /**
-     * BUG-036: applies PCI-DSS storage rules to a freshly-mapped entity.
+     * Applies PCI-DSS storage rules to a freshly-mapped entity.
      *
      * <ul>
      *   <li>{@code encryptedNumber} gets the AES/GCM ciphertext envelope — the only place

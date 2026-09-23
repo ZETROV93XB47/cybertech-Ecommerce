@@ -45,7 +45,7 @@ public class OrderUpdateRequestDto {
     @NotBlank(message = "Shipping Country cannot be blank")
     private String shippingCountry;
 
-    // BUG-fix: an empty list made updateOrder() compute a zero-amount difference and flip the
+    // An empty list made updateOrder() compute a zero-amount difference and flip the
     // order to PAID with no payment ever processed (see OrderManagementServiceImp#updateOrder).
     @NotEmpty(message = "At least one item is required to update an order")
     private List<OrderItemCreateRequestDto> itemUpdateRequestDtoList;

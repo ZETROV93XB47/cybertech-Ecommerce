@@ -35,7 +35,7 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
     @Value("${stripe.payment-method:}")
     private String defaultPaymentMethod;
 
-    // FIX(RESILIENCE): protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
+    // Protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
     @Override
     @Retry(name = STRIPE_API_RESILIENCE_INSTANCE)
     @CircuitBreaker(name = STRIPE_API_RESILIENCE_INSTANCE, fallbackMethod = "processPaymentFallback")
@@ -95,7 +95,7 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
         }
     }
 
-    // FIX(RESILIENCE): protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
+    // Protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
     @Override
     @Retry(name = STRIPE_API_RESILIENCE_INSTANCE)
     @CircuitBreaker(name = STRIPE_API_RESILIENCE_INSTANCE, fallbackMethod = "refundFallback")

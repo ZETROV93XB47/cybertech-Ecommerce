@@ -62,7 +62,7 @@ public class StockServiceImp implements StockService {
      *   <li>Idempotent: a retried call for an order that already has a reservation refreshes the
      *       Redis TTL and returns. Rebuilding would open a concurrency window where another
      *       order could grab the freed stock between release and re-lock.</li>
-     *   <li>BUG-060 fix: products are locked in canonical order (sorted by {@link UUID#toString()}
+     *   <li>Products are locked in canonical order (sorted by {@link UUID#toString()}
      *       via {@link TreeMap}) so two concurrent reservations covering an overlapping product
      *       set always acquire DB row locks in the same order — eliminating A→B / B→A
      *       deadlocks.</li>
@@ -84,7 +84,7 @@ public class StockServiceImp implements StockService {
             return;
         }
 
-        // BUG-060: canonical lock order across all callers prevents A-B / B-A deadlocks on
+        // Canonical lock order across all callers prevents A-B / B-A deadlocks on
         // concurrent orders that touch the same product set in different input order.
         final Map<UUID, Integer> ordered = new TreeMap<>(Comparator.comparing(UUID::toString));
         ordered.putAll(quantities);
@@ -98,7 +98,7 @@ public class StockServiceImp implements StockService {
     /**
      * {@inheritDoc}
      *
-     * <p>BUG-064: when called for an order with no active reservation we now log a WARN with the
+     * <p>When called for an order with no active reservation we now log a WARN with the
      * offending {@code orderUuid} so an upstream double-commit (or a webhook replay landing
      * after the order was cancelled) is observable in logs. Behaviour is unchanged — the
      * subsequent {@code deleteByOrderUuid} and Redis {@code delete} are no-ops in that case.
@@ -112,7 +112,7 @@ public class StockServiceImp implements StockService {
         final List<StockEntity> reservations = stockRepository.findByOrderUuid(orderUuid);
 
         if (reservations.isEmpty()) {
-            // BUG-064 signal: silent no-op used to hide upstream double-commit bugs. The WARN
+            // Silent no-op used to hide upstream double-commit bugs. The WARN
             // does NOT change behaviour — cleanup steps still run and stay no-ops.
             log.warn("commitStock called but no ACTIVE reservation for order={}", orderUuid);
         }

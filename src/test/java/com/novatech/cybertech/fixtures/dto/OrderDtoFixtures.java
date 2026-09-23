@@ -56,7 +56,7 @@ public final class OrderDtoFixtures {
                 .shippingCity("Paris")
                 .shippingZipCode("75001")
                 .shippingCountry("FR")
-                // BUG-fix: OrderUpdateRequestDto now requires a non-empty item list (an empty
+                // OrderUpdateRequestDto now requires a non-empty item list (an empty
                 // list used to let updateOrder() price the order at zero and mark it PAID for
                 // free) — this fixture must stay "a valid update request", so it needs one item.
                 .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder()

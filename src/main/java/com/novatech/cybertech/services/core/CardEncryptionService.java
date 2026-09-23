@@ -3,7 +3,7 @@ package com.novatech.cybertech.services.core;
 /**
  * Cryptographic boundary used to protect a payment card Primary Account Number (PAN) at rest.
  *
- * <p><b>PCI-DSS rationale (BUG-036).</b> PCI-DSS requirement 3.5 mandates that the PAN be
+ * <p><b>PCI-DSS rationale.</b> PCI-DSS requirement 3.5 mandates that the PAN be
  * rendered unreadable anywhere it is stored. We therefore route every persistence path through
  * this service rather than letting callers stash a plaintext PAN on a JPA entity. The interface
  * is deliberately tiny so it can be mocked in unit tests without dragging key material into the

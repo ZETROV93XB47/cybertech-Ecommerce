@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Unit coverage for {@link NotificationStrategyFactory} — Map-backed lookup keyed on
  * {@link NotificationType}. Mirrors {@link DiscountStrategyFactoryTest}.
  *
- * Per SA4.1R: this factory has NO null-guard nor throw-on-miss; it returns null for any
+ * This factory has NO null-guard nor throw-on-miss; it returns null for any
  * unknown / null key when the map is HashMap-backed. EnumMap.get(null) also returns null
  * (so null-key behaviour is consistent for both impls).
  *

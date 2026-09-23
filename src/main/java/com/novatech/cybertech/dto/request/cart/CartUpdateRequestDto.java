@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * BUG-026 — Proper update DTO for the cart resource.
+ * Update DTO for the cart resource.
  * <p>
  * Carries the changeable fields of a cart (currently the list of items to add /
  * replace). Replaces the previous misuse of {@code CartItemRemoveRequestDto} as

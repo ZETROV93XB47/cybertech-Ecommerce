@@ -8,9 +8,9 @@ import com.stripe.model.Event;
  * <p>Implementations are responsible for:
  * <ul>
  *   <li>Idempotency: skipping events whose {@code event.getId()} has already been processed
- *       (BUG-170 dedup ledger).</li>
+ *       (dedup ledger).</li>
  *   <li>Environment safety: skipping events whose {@code livemode} flag does not match the
- *       deployment's expected mode (BUG-522).</li>
+ *       deployment's expected mode.</li>
  *   <li>Dispatch: delegating to per-event-type handlers (success / failure / refund).</li>
  *   <li>Side-effects: updating the {@code PaymentEntity} row and publishing the matching
  *       Spring application event.</li>

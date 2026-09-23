@@ -15,10 +15,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Unit tests for {@link Money}. Pure POJO; no Spring/Mockito.
  *
- * Pinned bugs (carried over from SA4.5R wave — DO NOT renumber):
- *   - BUG-130: Money.equals is BigDecimal-scale-sensitive (Lombok @EqualsAndHashCode delegates to BigDecimal#equals).
- *   - BUG-131: Money has no subtract / multiply / equalsValue API.
- *   - BUG-132 (sibling): Money carries Lombok @Setter despite being an @Embeddable value object.
+ * Pinned bugs (DO NOT renumber):
+ *   - Money.equals is BigDecimal-scale-sensitive (Lombok @EqualsAndHashCode delegates to BigDecimal#equals).
+ *   - Money has no subtract / multiply / equalsValue API.
+ *   - Money carries Lombok @Setter despite being an @Embeddable value object.
  */
 class MoneyTest {
 
@@ -123,7 +123,7 @@ class MoneyTest {
         }
 
         /**
-         * BUG-130 — desired contract: numerically equal amounts (regardless of scale) should be equal.
+         * Desired contract: numerically equal amounts (regardless of scale) should be equal.
          * Now passes thanks to the custom {@code equals/hashCode} on {@link Money} that delegates
          * to {@link BigDecimal#compareTo} on the amount.
          */
@@ -156,9 +156,9 @@ class MoneyTest {
     class ArithmeticApi {
 
         /**
-         * BUG-131 — desired contract: {@code Money} exposes {@code subtract} and
+         * Desired contract: {@code Money} exposes {@code subtract} and
          * {@code multiply}. {@code equalsValue} is intentionally NOT added: the new
-         * scale-insensitive {@link Money#equals(Object) equals} (BUG-130 fix) makes it
+         * scale-insensitive {@link Money#equals(Object) equals} makes it
          * redundant. Adjusted assertion accordingly.
          */
         @Test
@@ -209,7 +209,7 @@ class MoneyTest {
                     .toList();
 
             // Pin the FIX: add / subtract / multiply now exist; equalsValue is absent
-            // because the scale-insensitive equals (BUG-130) makes it redundant.
+            // because the scale-insensitive equals makes it redundant.
             assertThat(declared).contains("add", "subtract", "multiply");
             assertThat(declared).doesNotContain("equalsValue", "minus");
         }

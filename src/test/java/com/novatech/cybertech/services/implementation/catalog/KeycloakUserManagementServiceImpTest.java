@@ -38,7 +38,7 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link KeycloakUserManagementServiceImp}.
  *
- * <p>SA-W3.5 wave — services/catalog. Pins BUG-085 (Keycloak admin client never closed).
+ * <p>Pins the Keycloak admin client never being closed.
  * Uses the Keycloak chain: {@code keycloak.realm(realm).users().create(...)} +
  * {@code .roles().get(role).toRepresentation()} + {@code .users().get(id).roles().realmLevel().add(...)}.
  */

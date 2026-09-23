@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link UserMapper}.
  *
- * <p>Verifies BUG-019 fix (null {@code dto.address} no longer wipes {@code entity.address}).
+ * <p>Verifies the fix for null {@code dto.address} no longer wiping {@code entity.address}.
  */
 class UserMapperTest {
 
@@ -164,7 +164,7 @@ class UserMapperTest {
 
         @Test
         void shouldNotEraseAddressWhenDtoAddressNull() {
-            // BUG-019 verification (F2 wave): the address ternary expression preserves
+            // Verifies the address ternary expression preserves
             // entity.address when dto.address is null.
             Address original = Address.builder()
                     .street("Original")

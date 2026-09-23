@@ -63,13 +63,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /**
- * SA-W5.1 — End-to-end order placement flow IT (cart → place → cancel → retry payment).
+ * End-to-end order placement flow IT (cart → place → cancel → retry payment).
  *
- * <p>Mirrors SA5.1's surface (~9 tests) against the real Wave-1 Testcontainers stack
- * (MySQL, Redis, Elasticsearch, MongoDB) wired through the W0 public
+ * <p>Mirrors the full order-service test surface (~9 tests) against the real Testcontainers stack
+ * (MySQL, Redis, Elasticsearch, MongoDB) wired through the public
  * {@link TestcontainersConfiguration}. Uses a {@link TestPaymentConfig} mock that overrides
  * {@link PaymentAttemptProcessor} via {@code @Primary} so the suite never reaches live Stripe
- * (BUG-150 was reported as fixed by SA-F1.3 but the {@code TestPaymentProcessorConfig} class
+ * (a fix was reported for this but the {@code TestPaymentProcessorConfig} class
  * is NOT present in the working tree — so this BYO override is required).
  */
 @Slf4j
@@ -188,8 +188,8 @@ class OrderFlowIT {
         });
     }
 
-    // 3) POST /order/place with no JWT → 401 (W0 wired CustomAuthenticationEntryPoint)
-    //    BUG-030 / BUG-2504 — tolerant range so the test stays green pre/post fix.
+    // 3) POST /order/place with no JWT → 401 (wired CustomAuthenticationEntryPoint)
+    //    Tolerant range so the test stays green pre/post fix.
     @Test
     void placeOrderWithoutAuthenticationReturnsClientError() throws Exception {
         final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
@@ -205,7 +205,7 @@ class OrderFlowIT {
                 });
     }
 
-    // 4) F2 added handler so this should return 404. BUG-009 closed.
+    // 4) A handler was added so this should return 404. Closed.
     //    Tolerant range (404 expected; 500 if handler regression).
     @Test
     void getNonExistentOrderByUuidSurfacesAsServerError() throws Exception {
@@ -215,15 +215,15 @@ class OrderFlowIT {
                         .with(jwtUser(keycloakId)))
                 .andExpect(result -> {
                     final int status = result.getResponse().getStatus();
-                    // F2 wired @ExceptionHandler(OrderNotFoundException) → 404.
-                    // Range-assert in case BUG-009 ever regresses.
+                    // @ExceptionHandler(OrderNotFoundException) is wired → 404.
+                    // Range-assert in case this ever regresses.
                     assertThat(status).isIn(404, 500);
                 });
     }
 
     // 5) Empty cart → 4xx (currently 404 because OrderManagementServiceImp throws
-    //    CartNotFoundException("Cannot place order: Cart is empty") which the F2-wired
-    //    handler maps to 404 NOT_FOUND. BUG-152 — semantic mismatch (empty cart ≠ missing).
+    //    CartNotFoundException("Cannot place order: Cart is empty") which the wired
+    //    handler maps to 404 NOT_FOUND. Semantic mismatch: empty cart ≠ missing.
     @Test
     void placeOrderWithEmptyCartReturnsErrorPerBug152() throws Exception {
         final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
@@ -236,14 +236,14 @@ class OrderFlowIT {
                         .content(objectMapper.writeValueAsBytes(body)))
                 .andExpect(result -> {
                     final int status = result.getResponse().getStatus();
-                    // BUG-152: 404 today (CartNotFoundException), should arguably be 409/422.
+                    // 404 today (CartNotFoundException), should arguably be 409/422.
                     assertThat(status).isBetween(400, 499);
                 });
     }
 
     // 6) Happy path — full cart → place → event capture + stock decrement.
     //    Requires payment SUCCESS — TestPaymentConfig @Primary mock returns SUCCESS by default.
-    //    BUG-150: SA-F1.3 reported a TestPaymentProcessorConfig fix but the file is NOT in tree.
+    //    A fix for TestPaymentProcessorConfig was reported but the file is NOT in tree.
     //    This test still passes because the inline TestPaymentConfig overrides the bean.
     @Test
     void happyPathPlaceOrderDecrementsStockAndPublishesEvent() throws Exception {
@@ -310,12 +310,12 @@ class OrderFlowIT {
         assertThat(reloaded.getStatus()).isEqualTo(OrderStatus.CANCELED);
     }
 
-    // 8) Insufficient stock — F2 added @ExceptionHandler(NotEnoughStockException) → 409.
-    //    Pre-fix this surfaced as 500 (BUG-008). Tolerant range covers both.
+    // 8) Insufficient stock — @ExceptionHandler(NotEnoughStockException) was added → 409.
+    //    Pre-fix this surfaced as 500. Tolerant range covers both.
     @Test
     void placeOrderWithInsufficientStockReturnsConflict() throws Exception {
         // Add a quantity that exceeds the seeded stock (10) so reservation fails.
-        // Cart-add itself enforces stock (NotEnoughStockException → 409 once F2 handler is wired).
+        // Cart-add itself enforces stock (NotEnoughStockException → 409 once the handler is wired).
         final CartCreateRequestDto cartBody = CartCreateRequestDto.builder()
                 .cartItemAddRequestDtos(List.of(
                         CartItemAddRequestDto.builder().productUuid(productUuid).quantity(999).build()))
@@ -327,8 +327,8 @@ class OrderFlowIT {
                         .content(objectMapper.writeValueAsBytes(cartBody)))
                 .andExpect(result -> {
                     final int status = result.getResponse().getStatus();
-                    // F2 wired @ExceptionHandler(NotEnoughStockException) → 409 CONFLICT.
-                    // Pre-F2 this was 500 (BUG-008).
+                    // @ExceptionHandler(NotEnoughStockException) is wired → 409 CONFLICT.
+                    // Previously this was 500.
                     assertThat(status).isIn(409, 500);
                 });
     }
@@ -344,7 +344,7 @@ class OrderFlowIT {
                 .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_ok_" + UUID.randomUUID()));
 
         // 2) Add to cart + place order — first attempt should FAIL (and stock should be released
-        //    per BUG-050 fix in OrderManagementServiceImp.placeOrder).
+        //    per the stock-release fix in OrderManagementServiceImp.placeOrder).
         addItemToCart(productUuid, 1);
 
         final OrderPlacingRequestDto placeBody = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()

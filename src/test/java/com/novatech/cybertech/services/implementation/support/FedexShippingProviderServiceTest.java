@@ -13,9 +13,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link FedexShippingProviderService}.
  *
- * Pins {@code BUG-2512}: {@code deliver} returns a hardcoded string instead of a real tracking number.
+ * Pins the fact that {@code deliver} returns a hardcoded string instead of a real tracking number.
  *
- * Pins {@code BUG-2513}: FEDEX and DHL produce identical prices — the provider abstraction adds no
+ * Pins the fact that FEDEX and DHL produce identical prices — the provider abstraction adds no
  * carrier-specific pricing.
  */
 class FedexShippingProviderServiceTest {

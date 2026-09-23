@@ -55,7 +55,7 @@ class ActiveUserValidatorTest {
     @Test
     @DisplayName("Inactive user: throws UserNotActiveException (mapped to HTTP 403 by ErrorManagementController) and short-circuits chain")
     void inactiveUserThrowsAndShortCircuits() {
-        // FIX(EXCEPTION-MAPPING): the validator now raises UserNotActiveException so the global
+        // The validator now raises UserNotActiveException so the global
         // @ControllerAdvice can return a structured 403 instead of leaking IllegalStateException
         // as an opaque HTTP 500. The English message is the new contract surface.
         validator.setNext(nextValidator);

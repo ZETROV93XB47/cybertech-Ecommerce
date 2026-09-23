@@ -11,7 +11,7 @@ import java.util.UUID;
 
 public interface UserManagementService extends CrudBaseService<UUID, UserCreateRequestDto, UserUpdateRequestDto, UserResponseDto> {
 
-    // FIX(INTERFACE-CONTRACT): added missing method to honor interface-first convention
+    // Added missing method to honor interface-first convention
     /**
      * Paginated read of every user, used by the admin user-management screen.
      *

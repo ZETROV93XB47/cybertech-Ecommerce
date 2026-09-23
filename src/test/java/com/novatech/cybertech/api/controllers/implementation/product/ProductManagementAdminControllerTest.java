@@ -100,7 +100,7 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldForbidGetAllProductsForNonAdminUser() throws Exception {
-        // BUG-031 (closed by F1/F2): non-admin → 403 (was 500 before the AccessDenied handler landed).
+        // Non-admin → 403 (was 500 before the AccessDenied handler landed).
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Access denied")
                 .httpStatusCode(403)
@@ -191,7 +191,7 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldForbidCreateProductForNonAdminUser() throws Exception {
-        // BUG-031 (closed by F1/F2): non-admin → 403, was 500 pre-fix.
+        // Non-admin → 403, was 500 pre-fix.
         ProductCreateRequestDto createRequestDto = ProductDtoFixtures.aValidCreateRequest();
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Access denied")
@@ -238,11 +238,11 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldRejectUpdateProductWhenBodyUuidIsNull() throws Exception {
-        // BUG-380 [TEST-CONTRACT TENSION]: ProductManagementAdminController#updateProduct (post-F2)
-        // contains a "fill body UUID from path when null" branch — but ProductUpdateRequestDto
-        // declares @NotNull on productUuid, so @Valid trips first and that branch is unreachable
-        // through the HTTP boundary. Pin: null body UUID → 400 TECHNICAL (validation), not the
-        // 200 the controller code would otherwise produce.
+        // ProductManagementAdminController#updateProduct contains a "fill body UUID from path
+        // when null" branch — but ProductUpdateRequestDto declares @NotNull on productUuid, so
+        // @Valid trips first and that branch is unreachable through the HTTP boundary. Pin: null
+        // body UUID → 400 TECHNICAL (validation), not the 200 the controller code would
+        // otherwise produce.
         UUID productUuid = UUID.randomUUID();
         ProductUpdateRequestDto updateRequestDto = ProductDtoFixtures.aValidUpdateRequest();
         updateRequestDto.setProductUuid(null);
@@ -262,8 +262,8 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldRejectUpdateWhenPathAndBodyUuidMismatch() throws Exception {
-        // BUG-033 (closed by F2): controller now throws IllegalArgumentException when path
-        // and body UUIDs differ. ErrorManagementController maps that to 400 TECHNICAL.
+        // Controller now throws IllegalArgumentException when path and body UUIDs differ.
+        // ErrorManagementController maps that to 400 TECHNICAL.
         UUID pathUuid = UUID.randomUUID();
         UUID bodyUuid = UUID.randomUUID();
 
@@ -350,7 +350,7 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldForbidUpdateProductForNonAdminUser() throws Exception {
-        // BUG-031 (closed by F1/F2): non-admin → 403.
+        // Non-admin → 403.
         UUID productUuid = UUID.randomUUID();
         ProductUpdateRequestDto updateRequestDto = ProductDtoFixtures.aValidUpdateRequest();
         updateRequestDto.setProductUuid(productUuid);
@@ -373,7 +373,7 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldRejectUpdateProductWhenPathUuidIsMalformed() throws Exception {
-        // BUG-029 (closed by F2): MethodArgumentTypeMismatchException now → 400 TECHNICAL.
+        // MethodArgumentTypeMismatchException now → 400 TECHNICAL.
         ProductUpdateRequestDto updateRequestDto = ProductDtoFixtures.aValidUpdateRequest();
 
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
@@ -446,7 +446,7 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldForbidDeleteProductForNonAdminUser() throws Exception {
-        // BUG-031 (closed by F1/F2): non-admin → 403.
+        // Non-admin → 403.
         UUID productUuid = UUID.randomUUID();
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Access denied")
@@ -464,7 +464,7 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldRejectDeleteProductWhenPathUuidIsMalformed() throws Exception {
-        // BUG-029 (closed by F2): bad UUID in path → 400 TECHNICAL.
+        // Bad UUID in path → 400 TECHNICAL.
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
@@ -564,7 +564,7 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldForbidCreateProductWithImageForNonAdminUser() throws Exception {
-        // BUG-031 (closed by F1/F2): non-admin → 403.
+        // Non-admin → 403.
         ProductCreateRequestDto createRequestDto = ProductDtoFixtures.aValidCreateRequest();
 
         MockMultipartFile productPart = new MockMultipartFile(

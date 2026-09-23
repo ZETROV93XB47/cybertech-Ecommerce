@@ -217,13 +217,13 @@ class OrderPaymentConfirmationEventListenerTest {
                 .hasMessageContaining(uuid.toString());
     }
 
-    // ---------- BUG-124: no null-guard on metadata.order_uuid ----------
+    // ---------- No null-guard on metadata.order_uuid ----------
 
     @Test
     void bug124_handlePaymentSuccess_nullOrderUuidInMetadata_shouldThrowDomainError() {
         StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
         stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
-        // BUG-124 FIX: missing order_uuid is now translated to a domain-level PaymentNotFoundException
+        // Missing order_uuid is now translated to a domain-level PaymentNotFoundException
         // (was: raw NullPointerException out of UUID.fromString(null) bubbling to the listener container).
         assertThatThrownBy(() -> listener.handlePaymentSuccess(new PaymentSucceededEvent(stripe)))
                 .isInstanceOf(PaymentNotFoundException.class)

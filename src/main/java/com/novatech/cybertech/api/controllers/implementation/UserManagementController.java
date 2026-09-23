@@ -61,13 +61,13 @@ public class UserManagementController implements UserControllerApiSpec {
 
     private static final String ACCESS_DENIED_OWN_PROFILE_ONLY = "Access denied: user can only fetch their own profile";
 
-    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    // Inject service interface instead of concrete impl per project convention
     private final UserManagementService userManagementServiceImp;
 
     /**
      * Returns a user by UUID. Authenticated users only — not in the public whitelist.
      *
-     * <p><b>BUG-IDOR-D2:</b> regular USERs may only fetch their own profile; ADMINs bypass the
+     * <p>Regular USERs may only fetch their own profile; ADMINs bypass the
      * ownership check. Ownership is asserted by comparing the loaded entity's
      * {@code keycloakId} against the JWT {@code sub} claim. Differing identities for non-admins
      * trigger {@link AccessDeniedException} (→ 403 via the existing handler).</p>
@@ -105,7 +105,7 @@ public class UserManagementController implements UserControllerApiSpec {
      * @return HTTP 201 with a compact {@code Map} body containing {@code id} (local UUID),
      *         {@code email} and {@code username}.
      *
-     * <p><b>BUG-LEAK-D6 (this fix):</b> the {@code keycloakId} previously included in this
+     * <p>The {@code keycloakId} previously included in this
      * anonymous-public response is now stripped — it is an identity-system internal that an
      * attacker probing signup must not be able to harvest.</p>
      */

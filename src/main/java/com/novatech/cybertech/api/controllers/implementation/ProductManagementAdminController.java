@@ -36,7 +36,7 @@ import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
 @PreAuthorize("hasRole('ADMIN')")
 public class ProductManagementAdminController implements ProductManagementAdminApiSpec {
 
-    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    // Inject service interface instead of concrete impl per project convention
     private final ProductManagementService productService;
 
 

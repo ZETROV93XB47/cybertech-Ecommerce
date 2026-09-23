@@ -36,7 +36,7 @@ public class MailServiceImp implements MailService {
      * currently the hand-rolled loop in
      * {@link com.novatech.cybertech.listener.NotificationListener}, replaced in
      * Phase 2 by Resilience4j {@code @Retry} — can act on them. Previously a
-     * caught {@link MessagingException} returned silently (BUG-2507) and the
+     * caught {@link MessagingException} returned silently and the
      * listener wrote {@code status=SENT} for an e-mail that never went out.
      */
     @Override

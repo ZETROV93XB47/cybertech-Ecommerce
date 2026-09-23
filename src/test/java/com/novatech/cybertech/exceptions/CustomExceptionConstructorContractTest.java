@@ -30,22 +30,21 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *       lower-layer cause without losing the stack-trace chain.</li>
  * </ol>
  *
- * <p>Originally authored by SA4.5R; reproduced here per the SA-W1.4 brief after
- * the previous test files were lost during a session reset (see SA-W0 report
- * in {@code progress.md}).</p>
+ * <p>Reproduced here after the previous test files were lost during a session reset (see the
+ * report in {@code progress.md}).</p>
  *
  * <p><strong>Known violators (kept disabled / skipped to surface the bug):</strong></p>
  * <ul>
  *   <li>{@link IdempotencyKeyGenerationException} — only ctor is
- *       {@code (String, NoSuchAlgorithmException)} (BUG-137 + BUG-136).</li>
+ *       {@code (String, NoSuchAlgorithmException)}.</li>
  *   <li>{@link PaymentProcessingException} — only ctor is
- *       {@code (String, StripeException)} (BUG-137 + BUG-136).</li>
+ *       {@code (String, StripeException)}.</li>
  *   <li>{@link ProductConstraintsViolationException} — second ctor is
  *       {@code (String, Set<ConstraintViolation<Object>>)}, not
- *       {@code (String, Throwable)} (BUG-136).</li>
+ *       {@code (String, Throwable)}.</li>
  *   <li>10 other exceptions (e.g. {@link PaymentFailedException},
  *       {@link UserAlreadyExistsException}, ...) only expose a single
- *       {@code (String)} ctor (BUG-136).</li>
+ *       {@code (String)} ctor.</li>
  * </ul>
  */
 @DisplayName("Custom exception constructor contract")
@@ -53,13 +52,13 @@ class CustomExceptionConstructorContractTest {
 
     private static final String EXCEPTIONS_PACKAGE = "com.novatech.cybertech.exceptions";
 
-    /** BUG-137 — exceptions whose ONLY ctor demands a concrete sub-cause and lacks {@code (String)}. */
+    /** Exceptions whose ONLY ctor demands a concrete sub-cause and lacks {@code (String)}. */
     private static final Set<String> KNOWN_STRING_CTOR_VIOLATORS = Set.of(
             "IdempotencyKeyGenerationException",
             "PaymentProcessingException"
     );
 
-    /** BUG-136 — exceptions that lack a {@code (String, Throwable)} ctor, breaking cause-wrapping. */
+    /** Exceptions that lack a {@code (String, Throwable)} ctor, breaking cause-wrapping. */
     private static final Set<String> KNOWN_STRING_THROWABLE_CTOR_VIOLATORS = Set.of(
             "IdempotencyKeyGenerationException",
             "PaymentProcessingException",

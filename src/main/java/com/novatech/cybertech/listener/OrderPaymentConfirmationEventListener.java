@@ -40,7 +40,7 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION
  * before we touch order status / stock; otherwise a rollback in the producer would leave us
  * having shipped, refunded, or released stock for a payment that never persisted.
  *
- * <p>BUG-124: missing {@code order_uuid} metadata used to NPE through
+ * <p>Missing {@code order_uuid} metadata used to NPE through
  * {@code UUID.fromString(null)}; we now extract the value via {@link Optional} and throw a
  * domain-level {@link PaymentNotFoundException} so the listener container surfaces a clean,
  * non-fatal failure.
@@ -85,7 +85,7 @@ public class OrderPaymentConfirmationEventListener {
      *
      * @param event the Stripe-derived {@link PaymentSucceededEvent}
      * @throws PaymentNotFoundException when the {@code order_uuid} metadata is missing
-     *                                  (BUG-124 guard) or no matching order exists
+     *                                  or no matching order exists
      */
     @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -171,7 +171,7 @@ public class OrderPaymentConfirmationEventListener {
     }
 
     /**
-     * BUG-124 null-guard: extracts the order UUID from the raw metadata value, raising a
+     * Null-guard: extracts the order UUID from the raw metadata value, raising a
      * domain-level {@link PaymentNotFoundException} when it is missing or unparseable instead
      * of letting a raw {@link NullPointerException} from {@code UUID.fromString(null)} bubble
      * out to the listener container as a fatal.

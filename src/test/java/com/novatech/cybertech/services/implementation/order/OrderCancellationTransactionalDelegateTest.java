@@ -198,7 +198,7 @@ class OrderCancellationTransactionalDelegateTest {
     }
 
     /**
-     * BUG-1 FIX: AWAITING_SHIPPING used to satisfy {@code isOrderAlreadyShipped}'s
+     * AWAITING_SHIPPING used to satisfy {@code isOrderAlreadyShipped}'s
      * {@code >= SHIPPED} check by returning {@code false}, so cancellation went through, the
      * Stripe refund fired, but {@code stockService.releaseStock(uuid)} ran AFTER the async
      * commitStock listener — i.e. it was a no-op and the stock never came back. The fix

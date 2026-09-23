@@ -6,7 +6,7 @@ import org.springframework.stereotype.Repository;
 /**
  * Cart persistence.
  *
- * <p>BUG-160 history: this repository used to expose a {@code findByOwnerKeycloakIdForUpdate}
+ * <p>History: this repository used to expose a {@code findByOwnerKeycloakIdForUpdate}
  * ({@code SELECT ... FOR UPDATE}) pessimistic-lock lookup as a DB-level second line of defence on
  * top of the per-user Redis lock. That "layer 3" was removed once the Redis lock became the single
  * serialisation point for the cart-add read-modify-write — see

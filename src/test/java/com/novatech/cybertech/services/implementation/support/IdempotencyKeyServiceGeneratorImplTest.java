@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link IdempotencyKeyServiceGeneratorImpl}.
  *
- * Pins {@code BUG-2505}: when {@code orderUUID} or {@code context} is null/empty, the implementation
+ * Pins the fact that when {@code orderUUID} or {@code context} is null/empty, the implementation
  * falls back to a random UUID. Two calls for the same malformed request produce different keys —
  * defeating the very purpose of idempotency.
  */

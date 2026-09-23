@@ -4,7 +4,7 @@ import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 
 /**
- * Transactional inner half of the cart-add concurrency design (BUG-160).
+ * Transactional inner half of the cart-add concurrency design.
  *
  * <h2>Why this is a separate bean</h2>
  * Adding items to a cart is a read-modify-write (RMW): {@code load cart → mutate quantities →

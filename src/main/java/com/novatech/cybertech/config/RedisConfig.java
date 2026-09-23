@@ -95,7 +95,7 @@ public class RedisConfig {
         // reconstruct domain objects on read. Without DefaultTyping every cached
         // object would silently come back as a LinkedHashMap.
         //
-        // Wave 3 regression-fix: tighten the polymorphic type validator from a blanket
+        // Tighten the polymorphic type validator from a blanket
         // `allowIfBaseType(Object.class)` to an explicit per-class allowlist of cached
         // domain DTOs and the JDK collection / wrapper types that show up inside their
         // serialised graphs. Allowing arbitrary base types lets a malicious cache writer

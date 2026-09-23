@@ -44,7 +44,7 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for {@link CancelAllPendingOrdersByTimeTasklet}.
  *
- * Per progress.md (SA4.3R / F2): BUG-111 fix lands as a per-order try/catch around
+ * Per progress.md, the fix lands as a per-order try/catch around
  * {@code stockService.releaseStock(...)}. We verify it green here.
  *
  * Test strategy: bypass {@link BaseTasklet#execute(StepContribution, org.springframework.batch.core.scope.context.ChunkContext)}

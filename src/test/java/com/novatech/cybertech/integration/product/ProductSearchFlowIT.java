@@ -51,28 +51,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * SA-W5.4 — End-to-end product search flow IT.
+ * End-to-end product search flow IT.
  *
- * <p>Boots the full Spring context against the W0 public {@link TestcontainersConfiguration}
+ * <p>Boots the full Spring context against the public {@link TestcontainersConfiguration}
  * (MySQL + Redis + Elasticsearch + MongoDB). Exercises the create / get / update / search /
  * delete surface end-to-end through MockMvc + the real ES index, using {@link org.awaitility.Awaitility}
  * to bridge the ES refresh window.
  *
  * <h2>Bug-pin policy</h2>
- * Original BUG numbers preserved per orchestrator brief:
  * <ul>
- *   <li>BUG-080 — {@code update} does not lock-by-uuid → <b>fixed by F2</b>; the {@code BrokenUpdateFlow}
- *       nested class (originally @Disabled by SA5.4) is now flipped to GREEN, asserting SQL+ES updated.</li>
- *   <li>BUG-180-product — {@code update} did not load existing entity, never re-indexed ES →
- *       <b>fixed by F2</b> (lockByUuid + IGNORE merge + ES re-index). Asserted end-to-end here.</li>
- *   <li>BUG-181 — {@code search} drops caller {@code Sort} → still open; sort smoke test pins
+ *   <li>{@code update} does not lock-by-uuid → <b>now fixed</b>; the {@code BrokenUpdateFlow}
+ *       nested class (originally @Disabled) is now flipped to GREEN, asserting SQL+ES updated.</li>
+ *   <li>{@code update} did not load existing entity, never re-indexed ES →
+ *       <b>now fixed</b> (lockByUuid + IGNORE merge + ES re-index). Asserted end-to-end here.</li>
+ *   <li>{@code search} drops caller {@code Sort} → still open; sort smoke test pins
  *       deterministic-cardinality contract.</li>
- *   <li>BUG-081 — bulk {@code deleteByUUIDs} leaves ES orphans → still open. Single-delete path
+ *   <li>Bulk {@code deleteByUUIDs} leaves ES orphans → still open. Single-delete path
  *       (verified) does clean ES.</li>
- *   <li>BUG-030 — anonymous → 401 (TestSecurityConfig wires CustomAuthenticationEntryPoint).</li>
- *   <li>BUG-031 — non-admin → 403 (F2 added AuthorizationDeniedException @ExceptionHandler).</li>
+ *   <li>Anonymous → 401 (TestSecurityConfig wires CustomAuthenticationEntryPoint).</li>
+ *   <li>Non-admin → 403 (AuthorizationDeniedException @ExceptionHandler was added).</li>
  * </ul>
- * No new BUGs filed by this run (BUG-530..BUG-539 reserved per orchestrator).
+ * No new bugs were found during this run.
  */
 @Slf4j
 @Testcontainers
@@ -270,15 +269,15 @@ class ProductSearchFlowIT {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Test 8 — security: ROLE_USER POST admin CRUD → 403 (BUG-031 fixed by F2);
-    //                   anonymous → 401 (BUG-030 closed by W0 entry-point wiring)
+    // Test 8 — security: ROLE_USER POST admin CRUD → 403;
+    //                   anonymous → 401 (closed by entry-point wiring)
     // -----------------------------------------------------------------------------------------
     @Test
     @DisplayName("ROLE_USER on admin create → 403 (post-F2 BUG-031); anonymous → 401 (W0 BUG-030)")
     void securityOnAdminEndpoint_userIs403_anonymousIs401() throws Exception {
         ProductCreateRequestDto payload = buildComputerCreate("Should Not Persist", Brand.ASUS, new BigDecimal("100.00"), 16);
 
-        // ROLE_USER → 403 (AuthorizationDeniedException handled by F2 advice)
+        // ROLE_USER → 403 (AuthorizationDeniedException handled by advice)
         mockMvc.perform(post(CREATE_ENDPOINT)
                         .with(JwtTestUtils.jwtUser(USER_KC))
                         .with(csrf())
@@ -299,8 +298,8 @@ class ProductSearchFlowIT {
 
     // -----------------------------------------------------------------------------------------
     // Test 9 — admin delete of DELL → ES /search?brand=DELL returns 0
-    //          Single-delete path is correct (deleteByUUID hits both stores). BUG-081 only
-    //          affects the bulk variant deleteByUUIDs (still open).
+    //          Single-delete path is correct (deleteByUUID hits both stores). Only the bulk
+    //          variant deleteByUUIDs is affected (still open).
     // -----------------------------------------------------------------------------------------
     @Test
     @DisplayName("admin DELETE removes DELL from MySQL AND ES (BUG-081 single-path is fine)")
@@ -349,7 +348,7 @@ class ProductSearchFlowIT {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Test 11 — Sort smoke test: BUG-181 documented (ProductSearchServiceImp drops Sort).
+    // Test 11 — Sort smoke test: documented that ProductSearchServiceImp drops Sort.
     //           Two identical runs return identical cardinality (deterministic count).
     // -----------------------------------------------------------------------------------------
     @Test
@@ -366,9 +365,9 @@ class ProductSearchFlowIT {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Test 12 — BUG-180-product / BUG-080: F2 fix for update.
-    //           Originally pinned by SA5.4 as a @Disabled @Nested BrokenUpdateFlow class.
-    //           F2 made update() use lockByUuid + IGNORE-style merge + ES re-index.
+    // Test 12 — Fix for update.
+    //           Originally pinned as a @Disabled @Nested BrokenUpdateFlow class.
+    //           The fix made update() use lockByUuid + IGNORE-style merge + ES re-index.
     //           Flip to GREEN: PATCH updates SQL row AND ES doc; no orphan ES doc with old data.
     // -----------------------------------------------------------------------------------------
     @Nested
@@ -468,7 +467,7 @@ class ProductSearchFlowIT {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        // Response uuid is a String (BUG-034 documented).
+        // Response uuid is a String (documented behavior).
         Map<String, Object> body = objectMapper.readValue(
                 res.getResponse().getContentAsString(),
                 new TypeReference<Map<String, Object>>() {

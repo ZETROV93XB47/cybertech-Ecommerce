@@ -37,8 +37,8 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION
  *
  * <p>Notifications are intentionally NOT dispatched from this listener: the
  * {@link OrderShippedEvent} fan-out via {@link NotificationListener} is the single source of
- * truth for the shipping-confirmation channel (BUG-122 fix removed an orphan local
- * {@code NotificationContext} that was built but never dispatched).
+ * truth for the shipping-confirmation channel — an orphan local
+ * {@code NotificationContext} that was built here but never dispatched was removed.
  */
 @Slf4j
 @Component
@@ -107,11 +107,12 @@ public class ShippingListener {
 
         orderRepository.save(order);
 
-        // BUG-122: an orphan NotificationContext local was built here but never dispatched —
-        // the actual shipping-confirmation notification is sent by NotificationListener
-        // when it consumes the OrderShippedEvent below. Dead code removed.
+        // An orphan NotificationContext local was built here but never dispatched — the actual
+        // shipping-confirmation notification is sent by NotificationListener when it consumes
+        // the OrderShippedEvent below. Dead code removed.
 
-        // FIX(NPE-EDGE-CASE): guard against empty paymentAttempts (race condition where listener fires before flush, or migrated orders with no legacy attempts)
+        // Guard against empty paymentAttempts (race condition where the listener fires before
+        // flush, or migrated orders with no legacy attempts).
         final PaymentAttemptStatus lastAttemptStatus = order.getPaymentAttempts().stream()
                 .max(Comparator.comparing(BaseEntity::getCreatedAt))
                 .map(PaymentEntity::getStatus)

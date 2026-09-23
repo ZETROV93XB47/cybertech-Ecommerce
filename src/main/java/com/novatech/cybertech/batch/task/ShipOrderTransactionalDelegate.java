@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Per-order claim+dispatch helper invoked by {@link ShipAllPaidOrdersTasklet} in its own
  * {@link Propagation#REQUIRES_NEW} transaction.
  *
- * <p>Wave 3 regression-fix: the previous implementation kept everything inside the tasklet's
+ * <p>The previous implementation kept everything inside the tasklet's
  * outer {@code @Transactional} method. With a single Hibernate session covering all orders,
  * the optimistic-lock UPDATE only flushed at end-of-method — so the per-order
  * {@code try/catch} on {@link org.springframework.dao.OptimisticLockingFailureException}

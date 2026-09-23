@@ -32,15 +32,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Slice tests for {@link StripeWebhookController}. The webhook is anonymously reachable in
- * production (per {@code SecurityConfig.PUBLIC_URLS}) and SA-W0 mirrored that into the shared
+ * production (per {@code SecurityConfig.PUBLIC_URLS}) and that has been mirrored into the shared
  * {@link TestSecurityConfig} (entry {@code "/api/v1/webhooks/**"}), so we do NOT need a sibling
  * security config — just import the canonical one and POST without a JWT.
  *
  * <p>The controller catches only {@link com.stripe.exception.SignatureVerificationException} and
  * forwards everything else to the {@link PaymentWebhookService}, which means malformed JSON
  * (which throws {@code JsonSyntaxException} from {@code Webhook.constructEvent} BEFORE signature
- * verification runs) and any service-thrown exception leak out as 500 — pinned via BUG-2501 /
- * BUG-2502 below.
+ * verification runs) and any service-thrown exception leak out as 500 — pinned by the tests below.
  */
 @Slf4j
 @Import({TestSecurityConfig.class})
@@ -287,10 +286,10 @@ class StripeWebhookControllerTest {
         verifyNoInteractions(paymentWebhookService);
     }
 
-    // ----- BUG-2501: orphan PaymentIntent — controller now ACKs 200 (FIXED by SA-Fix-3) ---
+    // ----- Orphan PaymentIntent — controller now ACKs 200 (fixed) ---
 
     /**
-     * BUG-2501 fix verification — when the service throws for a non-retriable downstream fault
+     * Fix verification — when the service throws for a non-retriable downstream fault
      * (orphan PaymentIntent / unknown order id), the controller now wraps the service call in a
      * try/catch and 200-ACKs to prevent a Stripe retry storm. Stripe stops re-delivering the event
      * once it sees the 2xx; the on-call team learns of the inconsistency via the controller's
@@ -309,10 +308,10 @@ class StripeWebhookControllerTest {
                 .andExpect(status().isOk());
     }
 
-    // ----- BUG-2502: signed-but-malformed-JSON → 400 (FIXED by SA-Fix-3) ----------------
+    // ----- signed-but-malformed-JSON → 400 (fixed) ----------------------------------------
 
     /**
-     * BUG-2502 fix verification — the Stripe SDK's {@code constructEvent} throws
+     * Fix verification — the Stripe SDK's {@code constructEvent} throws
      * {@code JsonSyntaxException} (a RuntimeException) BEFORE signature verification when given a
      * malformed JSON body. The controller now catches that RuntimeException branch and returns
      * 400 BAD_REQUEST so Stripe surfaces the schema mismatch on the on-call dashboard.

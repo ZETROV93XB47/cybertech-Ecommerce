@@ -238,7 +238,7 @@ public class DataGenerator {
      * Build a fully-populated {@link OrderPlacingRequestDto} suitable for happy-path
      * tests and demo data. Each invocation now produces a fresh {@code userUuid}
      * (mirroring {@link #generateOrderUpdateRequestDto()}); the previous hard-coded
-     * UUID introduced cross-test coupling and was tracked as BUG-135.
+     * UUID introduced cross-test coupling.
      *
      * @return a freshly-built DTO carrying {@link PaymentType#VISA} / {@link ShippingType#STANDARD}
      *         / {@link ShippingProvider#FEDEX} defaults, or {@code null} if Jackson

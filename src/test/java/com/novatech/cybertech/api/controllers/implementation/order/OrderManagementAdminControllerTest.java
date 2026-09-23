@@ -91,7 +91,7 @@ class OrderManagementAdminControllerTest {
 
     @Test
     void getAllAsUserShouldReturn403() throws Exception {
-        // BUG-031 / class-level @PreAuthorize: ROLE_USER hitting an admin-only endpoint must yield 403.
+        // Class-level @PreAuthorize: ROLE_USER hitting an admin-only endpoint must yield 403.
         mockMvc.perform(get(GET_ALL_ENDPOINT)
                         .with(jwtUser(USER_KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
@@ -149,7 +149,7 @@ class OrderManagementAdminControllerTest {
 
     @Test
     void shouldPlaceOrderViaAutoEndpointAsAdmin() throws Exception {
-        // BUG-IDOR-D4: /place/auto is now ADMIN-only. Use an admin JWT for the happy path.
+        // /place/auto is now ADMIN-only. Use an admin JWT for the happy path.
         OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponse();
         when(orderManagementService.placeOrder(any(), any(Jwt.class))).thenReturn(response);
 
@@ -170,7 +170,7 @@ class OrderManagementAdminControllerTest {
 
     @Test
     void shouldRejectPlaceAutoEndpointAsRoleUserReturning403() throws Exception {
-        // BUG-IDOR-D4: the data-generator endpoint must not be reachable by ROLE_USER.
+        // The data-generator endpoint must not be reachable by ROLE_USER.
         mockMvc.perform(post(PLACE_AUTO_ENDPOINT)
                         .with(jwtUser(USER_KEYCLOAK_ID))
                         .with(csrf())
@@ -200,8 +200,8 @@ class OrderManagementAdminControllerTest {
 
     @Test
     void shouldFailDeletingOrderByUuidAsUserCauseForbidden() throws Exception {
-        // BUG-020 update: with W0's @EnableMethodSecurity(proxyTargetClass = true) the @PreAuthorize
-        // is now enforced — ROLE_USER should be rejected with 403 via the AuthorizationDeniedException handler.
+        // With @EnableMethodSecurity(proxyTargetClass = true) the @PreAuthorize is now enforced —
+        // ROLE_USER should be rejected with 403 via the AuthorizationDeniedException handler.
         UUID orderUuid = UUID.randomUUID();
 
         mockMvc.perform(delete(DELETE_BY_UUID_ENDPOINT, orderUuid)

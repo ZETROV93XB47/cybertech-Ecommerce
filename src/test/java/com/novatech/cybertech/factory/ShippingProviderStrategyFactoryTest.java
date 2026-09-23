@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit coverage for {@link ShippingProviderStrategyFactory} — same Map-backed shape as
- * the notification factories. SA4.1R note: unknown key returns null (no throw).
+ * the notification factories. Note: unknown key returns null (no throw).
  *
  * Only DHL / FEDEX exist on {@link ShippingProvider} today; if a future enum value is added,
  * the EnumSource test will catch any coverage gap automatically.

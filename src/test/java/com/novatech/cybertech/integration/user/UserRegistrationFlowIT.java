@@ -45,26 +45,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * SA-W5.5 — End-to-end user registration flow IT against the real Wave-1 Testcontainers
- * stack (MySQL + Redis + Elasticsearch + MongoDB) wired through the W0 public
+ * End-to-end user registration flow IT against the real Testcontainers
+ * stack (MySQL + Redis + Elasticsearch + MongoDB) wired through the public
  * {@link TestcontainersConfiguration}. The Keycloak admin client is swapped for a Mockito
  * stub via {@link KeycloakAdminStub} so this suite never reaches a live Keycloak.
  *
  * <p><b>Bug-pin policy (original numbers preserved):</b>
  * <ul>
- *   <li><b>BUG-015</b> — {@code UserAlreadyExistsException} now mapped to 409 by
- *       {@code ErrorManagementController#handleUserAlreadyExistsException}. F2 fix
+ *   <li>{@code UserAlreadyExistsException} now mapped to 409 by
+ *       {@code ErrorManagementController#handleUserAlreadyExistsException}. The fix is
  *       <b>CONFIRMED</b> live. Asserted by
  *       {@link #duplicateRegisterReturns409PerBug015}. Note: production code does not yet
  *       throw {@code UserAlreadyExistsException} from the registration path itself
  *       (Keycloak conflicts surface as {@code IllegalStateException}); we stub the service
  *       to throw the exception so the @ControllerAdvice mapping can be exercised end-to-end
  *       through the real Spring MVC + security filter chain.</li>
- *   <li><b>BUG-031</b> — {@code AuthorizationDeniedException}/{@code AccessDeniedException}
+ *   <li>{@code AuthorizationDeniedException}/{@code AccessDeniedException}
  *       now mapped to 403 (combined handler at lines 57-61 of
- *       {@code ErrorManagementController}). F2 fix <b>CONFIRMED</b> live. Asserted by
+ *       {@code ErrorManagementController}). The fix is <b>CONFIRMED</b> live. Asserted by
  *       {@link #adminGetAllAsRoleUserReturns403PerBug031}.</li>
- *   <li><b>BUG-201</b> — <b>CLOSED</b> by SA-Fix-4 (2026-04-23). {@code registerAuto()} is
+ *   <li><b>CLOSED</b> (2026-04-23). {@code registerAuto()} is
  *       now annotated {@code @PreAuthorize("hasRole('ADMIN')")} and the
  *       {@code SecurityConfig#PUBLIC_URLS} whitelist entry has been narrowed from
  *       {@code /api/v1/services/user/register/**} to the exact
@@ -114,7 +114,7 @@ class UserRegistrationFlowIT {
      * {@code createUser(...)} dereferences that to extract the keycloakId, which NPEs in the IT
      * even though production hits a real Keycloak that always sets the header. Stubbing the spy
      * to return a deterministic id keeps the IT focused on the local persistence + REST surface
-     * (BUG-201, BUG-015, /actuator) without hard-coding the real Keycloak SDK contract.
+     * (/actuator included) without hard-coding the real Keycloak SDK contract.
      */
     @MockitoSpyBean
     private KeycloakUserManagementService keycloakUserManagementService;
@@ -163,7 +163,7 @@ class UserRegistrationFlowIT {
     }
 
     // -----------------------------------------------------------------------------------
-    // 2. Duplicate email → 409 CONFLICT (BUG-015 closed by F2).
+    // 2. Duplicate email → 409 CONFLICT.
     //    The registration code-path never throws UserAlreadyExistsException itself today
     //    (Keycloak conflicts bubble up as IllegalStateException), so we spy on the service
     //    and force the exception. The point of this IT is to verify that the @ControllerAdvice
@@ -192,7 +192,7 @@ class UserRegistrationFlowIT {
     }
 
     // -----------------------------------------------------------------------------------
-    // 3. GET /admin/user/get/all as ROLE_USER → 403 (BUG-031 closed by F2; was 500).
+    // 3. GET /admin/user/get/all as ROLE_USER → 403 (was 500).
     // -----------------------------------------------------------------------------------
     @Test
     @DisplayName("GET /admin/user/get/all as ROLE_USER — 403 FORBIDDEN (BUG-031 fix CONFIRMED)")
@@ -222,7 +222,7 @@ class UserRegistrationFlowIT {
     }
 
     // -----------------------------------------------------------------------------------
-    // 5. BUG-201 — CLOSED. POST /register/auto/single now requires ADMIN.
+    // 5. POST /register/auto/single now requires ADMIN.
     //    The @PreAuthorize annotation lives on UserManagementController#registerAuto() and
     //    the SecurityConfig#PUBLIC_URLS whitelist entry has been narrowed to the exact
     //    /register path (no wildcard), so anonymous calls fall through to
@@ -257,7 +257,7 @@ class UserRegistrationFlowIT {
     @DisplayName("BUG-201 fix — POST /register/auto/single as ROLE_ADMIN returns 201")
     void registerAutoSingleAsRoleAdminReturns201AfterBug201Fix() throws Exception {
         final String adminKeycloakId = "kc-it-admin-" + UUID.randomUUID();
-        // Wave 3 (commit 44fb0b9) changed registerAuto's body from UserResponseDto to a
+        // Commit 44fb0b9 changed registerAuto's body from UserResponseDto to a
         // Map.of("id", uuid, "keycloakId", kid, "email", email, "username", username) so the
         // synthetic user's keycloakId surfaces past the @JsonIgnore on UserResponseDto.keycloakId.
         // Assertions follow the new shape (id replaces uuid).

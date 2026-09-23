@@ -12,7 +12,7 @@ import org.mapstruct.ReportingPolicy;
 /**
  * MapStruct mapper for {@link BankCardEntity}.
  *
- * <p>BUG-036 (PCI-DSS) rationale: the response DTO builds {@code maskedNumber} from
+ * <p>PCI-DSS rationale: the response DTO builds {@code maskedNumber} from
  * {@code lastFourDigits} so the plaintext PAN never leaks out of the server — even if a row
  * was written before the fix, only the last four digits surface via the masked field. We
  * also explicitly ignore {@code encryptedNumber} when producing the response so the base64
@@ -28,9 +28,9 @@ public interface BankCardMapper extends BaseMapper<BankCardEntity, BankCardCreat
 
     @Override
     @Mapping(target = "userEntity", ignore = true) // Géré manuellement dans le service
-    @Mapping(target = "encryptedNumber", ignore = true) // BUG-036: set by the service via CardEncryptionService
-    @Mapping(target = "lastFourDigits", ignore = true) // BUG-036: computed by the service, never from the raw DTO
-    @Mapping(target = "isDefault", ignore = true) // BUG-038: never user-settable on creation
+    @Mapping(target = "encryptedNumber", ignore = true) // set by the service via CardEncryptionService
+    @Mapping(target = "lastFourDigits", ignore = true) // computed by the service, never from the raw DTO
+    @Mapping(target = "isDefault", ignore = true) // never user-settable on creation
     BankCardEntity mapFromCreationRequestToEntity(BankCardCreationRequestDto dto);
 
     @Mapping(target = "uuid", ignore = true)

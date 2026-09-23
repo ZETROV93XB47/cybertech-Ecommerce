@@ -74,7 +74,7 @@ public class ErrorManagementController {
     }
 
     /**
-     * BUG-161 — Maps {@link UnauthorizedCartAccessException} to a 403 FUNCTIONAL
+     * Maps {@link UnauthorizedCartAccessException} to a 403 FUNCTIONAL
      * error. The exception is raised by {@code CartServiceImp} when an
      * authenticated user attempts to read, update or delete a cart whose owner's
      * Keycloak subject differs from the caller's — closing the IDOR hole on
@@ -294,7 +294,7 @@ public class ErrorManagementController {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponseDto> handleRuntimeException(RuntimeException exception) {
-        // BUG-140 fix: the raw exception message can carry SQL fragments, stack traces, internal
+        // The raw exception message can carry SQL fragments, stack traces, internal
         // paths or leaked secrets. Log it server-side in full, but return a sanitized generic
         // message to the client.
         log.error("Unhandled exception surfaced to @ControllerAdvice", exception);

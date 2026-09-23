@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
  * where Redis loses the keyspace event (restart, network partition, listener crash) so a stuck
  * reservation cannot indefinitely pin product inventory.
  *
- * <p>BUG-110 (FIXED in F2): the tasklet used to load every reservation via
+ * <p>The tasklet used to load every reservation via
  * {@code stockRepository.findAll()} and filter in memory; it now uses the dedicated
  * {@link StockRepository#findByReservationStatusAndCreatedAtBefore} query for a tight
  * server-side filter.

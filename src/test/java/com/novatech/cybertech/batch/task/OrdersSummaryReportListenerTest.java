@@ -37,10 +37,10 @@ import static org.mockito.Mockito.verifyNoInteractions;
 /**
  * Unit tests for {@link OrdersSummaryReportListener}.
  *
- * Per progress.md:
+ * Per progress.md, open issues:
  * <ul>
- *   <li>BUG-112 (open): unchecked raw casts on JobExecutionContext entries.</li>
- *   <li>BUG-113 (open): no per-recipient try/catch around mailService.sendEmail.</li>
+ *   <li>Unchecked raw casts on JobExecutionContext entries.</li>
+ *   <li>No per-recipient try/catch around mailService.sendEmail.</li>
  * </ul>
  *
  * BatchStatus matrix: {@link BatchStatus#isUnsuccessful()} returns true for FAILED, ABANDONED,
@@ -197,7 +197,7 @@ class OrdersSummaryReportListenerTest {
         }
 
         /**
-         * BUG-112 byline: {@link BatchStatus#STOPPED}.isUnsuccessful() == false, so emails ARE sent
+         * {@link BatchStatus#STOPPED}.isUnsuccessful() == false, so emails ARE sent
          * even when the job was stopped on user request — likely undesired but this is the
          * documented current behaviour; pinned green.
          */

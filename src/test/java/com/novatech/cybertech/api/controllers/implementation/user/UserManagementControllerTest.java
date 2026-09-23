@@ -48,10 +48,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Verifies happy-path JSON shapes plus security boundaries on the user-facing controller.
  * Pinned bug status:
  * <ul>
- *   <li>BUG-015: {@link UserAlreadyExistsException} now mapped to 409 (handler verified in
+ *   <li>{@link UserAlreadyExistsException} now mapped to 409 (handler verified in
  *       {@code ErrorManagementController}). Asserted live by
  *       {@link #shouldFailRegisterUserAlreadyExistsAs409}.</li>
- *   <li>BUG-201 — <b>CLOSED</b> (SA-Fix-4, 2026-04-23): {@code POST /register/auto/single}
+ *   <li><b>CLOSED</b> (2026-04-23): {@code POST /register/auto/single}
  *       has been moved to {@code UserManagementAdminController} (ADMIN-gated at class level).
  *       Security and happy-path tests now live in {@code UserManagementAdminControllerTest}.</li>
  * </ul>
@@ -77,7 +77,7 @@ class UserManagementControllerTest {
 
     @Test
     void shouldGetUserByUuidSuccessfullyWhenCallerIsOwner() throws Exception {
-        // BUG-IDOR-D2: a USER may only read their own profile. The fixture's keycloakId is
+        // A USER may only read their own profile. The fixture's keycloakId is
         // pinned to the JWT subject so the ownership check passes.
         final UUID userUuid = UUID.randomUUID();
         final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
@@ -97,7 +97,7 @@ class UserManagementControllerTest {
 
     @Test
     void shouldGetUserByUuidSuccessfullyWhenCallerIsAdmin() throws Exception {
-        // BUG-IDOR-D2: ADMINs bypass the ownership check.
+        // ADMINs bypass the ownership check.
         final UUID userUuid = UUID.randomUUID();
         final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
                 .uuid(userUuid)
@@ -116,7 +116,7 @@ class UserManagementControllerTest {
 
     @Test
     void shouldFailGetUserByUuidWhenCallerNotOwnerReturning403() throws Exception {
-        // BUG-IDOR-D2: a USER asking for someone else's profile gets 403.
+        // A USER asking for someone else's profile gets 403.
         final UUID userUuid = UUID.randomUUID();
         final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
                 .uuid(userUuid)
@@ -230,7 +230,7 @@ class UserManagementControllerTest {
 
     @Test
     void shouldFailRegisterUserAlreadyExistsAs409() throws Exception {
-        // BUG-015 verification: the dedicated @ExceptionHandler in ErrorManagementController
+        // The dedicated @ExceptionHandler in ErrorManagementController
         // maps UserAlreadyExistsException → 409 CONFLICT (FUNCTIONAL).
         final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequest();
         final ErrorResponseDto error = ErrorResponseDto.builder()

@@ -8,7 +8,7 @@ import lombok.Getter;
 /**
  * Per-field validation failure entry surfaced inside {@link ErrorResponseDto}
  * when a {@code @Valid} controller argument fails Bean Validation. Introduced
- * to close BUG-138 — the previous canned message dropped the
+ * to replace the previous canned message, which dropped the
  * {@link org.springframework.validation.BindingResult BindingResult} payload.
  *
  * @see com.novatech.cybertech.api.error.ErrorManagementController#handleMethodArgumentNotValidException

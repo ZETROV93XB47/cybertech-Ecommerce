@@ -13,7 +13,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 /**
- * AES/GCM reference implementation of {@link CardEncryptionService} — BUG-036 (PCI-DSS).
+ * AES/GCM reference implementation of {@link CardEncryptionService} (PCI-DSS).
  *
  * <p><b>Why AES/GCM rather than AES/CBC or AES/ECB.</b> GCM is an <i>authenticated</i>
  * encryption mode (AEAD): it provides confidentiality <i>and</i> integrity in a single pass.

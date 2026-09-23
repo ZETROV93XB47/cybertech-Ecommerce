@@ -148,7 +148,7 @@ class WishlistManagementControllerTest {
 
     @Test
     void failAddProduct_whenInvalidUuidPath_thenBadRequest() throws Exception {
-        // BUG-029 fixed in Wave F2: MethodArgumentTypeMismatchException handler now returns 400.
+        // The MethodArgumentTypeMismatchException handler now returns 400.
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
@@ -223,7 +223,7 @@ class WishlistManagementControllerTest {
 
     @Test
     void failRemoveProduct_whenInvalidUuidPath_thenBadRequest() throws Exception {
-        // BUG-029 fixed in Wave F2.
+        // The MethodArgumentTypeMismatchException handler now returns 400.
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
@@ -249,7 +249,7 @@ class WishlistManagementControllerTest {
 
         when(wishlistService.getMyWishlist(anyString(), any(Pageable.class))).thenReturn(page);
 
-        // Page<T> is serialized as a non-stable PageImpl JSON (tech-debt noted in SA2.2).
+        // Page<T> is serialized as a non-stable PageImpl JSON — this is tech debt.
         // Use jsonPath rather than STRICT equality to avoid coupling to PageImpl's internal shape.
         mockMvc.perform(get(GET_MY_WISHLIST_ENDPOINT)
                         .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
@@ -284,7 +284,7 @@ class WishlistManagementControllerTest {
     // -----------------------------------------------------------------
     @Test
     void whenAnonymousAddToWishlist_thenUnauthorized() throws Exception {
-        // BUG-030 fixed by W0: TestSecurityConfig now returns 401 for anonymous.
+        // TestSecurityConfig now returns 401 for anonymous.
         UUID productUuid = UUID.randomUUID();
         mockMvc.perform(post(ADD_TO_WISHLIST_ENDPOINT, productUuid)
                         .with(csrf())

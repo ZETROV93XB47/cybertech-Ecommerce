@@ -55,8 +55,8 @@ import static org.mockito.Mockito.when;
  *
  * <p>Coverage targets every public-method branch and every guard:
  * <ul>
- *   <li>{@code handleEvent} dedup short-circuit (BUG-170)</li>
- *   <li>{@code handleEvent} livemode mismatch (BUG-522, both directions: livemode=true on a test
+ *   <li>{@code handleEvent} dedup short-circuit</li>
+ *   <li>{@code handleEvent} livemode mismatch (both directions: livemode=true on a test
  *       deployment AND livemode=false on a prod deployment)</li>
  *   <li>{@code handleEvent} switch — succeeded / failed / refunded / unknown</li>
  *   <li>{@code handlePaymentSucceeded} happy path → publishes {@link PaymentSucceededEvent} +
@@ -64,7 +64,7 @@ import static org.mockito.Mockito.when;
  *       handles invalid UUID metadata (warn-and-fallback), handles null orderEntity (no
  *       OrderPaidEvent published)</li>
  *   <li>{@code handlePaymentFailed} happy path → publishes {@link PaymentFailedEvent}, terminal
- *       SUCCESS guard (BUG-521) drops the failure, missing payment row throws
+ *       SUCCESS guard drops the failure, missing payment row throws
  *       {@link PaymentNotFoundException}</li>
  *   <li>{@code handleRefund} happy path → publishes {@link PaymentRefundedEvent}</li>
  *   <li>{@code deserializeDataObject} fallback into {@code deserializeUnsafe()} when the event's

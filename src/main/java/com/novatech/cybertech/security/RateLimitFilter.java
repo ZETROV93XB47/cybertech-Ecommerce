@@ -78,7 +78,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
      */
     private static final long BUCKET_MAX_SIZE = 100_000L;
 
-    // FIX(DOS-MEMORY): switched from unbounded ConcurrentHashMap to Caffeine with TTL+maxSize
+    // Switched from unbounded ConcurrentHashMap to Caffeine with TTL+maxSize
     // to prevent slow OOM under IP/JWT rotation. Bucket4j's Bucket itself is thread-safe,
     // and Caffeine's get(key, mapper) provides the same atomic compute-if-absent semantics
     // as ConcurrentMap#computeIfAbsent — no concurrency regression on the hot path.
@@ -118,8 +118,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         response.setStatus(429);
         response.setHeader("Retry-After", Long.toString(retryAfterSeconds));
         response.setContentType("application/json");
-        response.getWriter().write(
-                "{\"error\":\"too_many_requests\",\"retryAfterSeconds\":" + retryAfterSeconds + "}");
+        response.getWriter().write("{\"error\":\"too_many_requests\",\"retryAfterSeconds\":" + retryAfterSeconds + "}");
     }
 
     private Policy matchPolicy(final HttpServletRequest request) {

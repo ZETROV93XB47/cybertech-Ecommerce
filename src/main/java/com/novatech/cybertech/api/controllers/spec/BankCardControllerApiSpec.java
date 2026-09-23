@@ -59,7 +59,7 @@ public interface BankCardControllerApiSpec {
             })
     ResponseEntity<BankCardResponseDto> updateBankCard(BankCardUpdateRequestDto dto, Jwt jwt);
 
-    // --- BUG-038 — default-card surface -----------------------------------------------
+    // --- Default-card surface -----------------------------------------------
 
     @Operation(summary = "Set a bank card as the caller's default",
             description = "Marks the specified card as the authenticated user's default card, clearing any previous default. Enforces ownership via the JWT subject.",

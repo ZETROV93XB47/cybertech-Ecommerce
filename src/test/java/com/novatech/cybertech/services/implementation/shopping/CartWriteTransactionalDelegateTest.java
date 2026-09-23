@@ -45,7 +45,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Mockito unit tests for {@link CartWriteTransactionalDelegateImp} — the transactional inner half of
- * the BUG-160 cart-add design.
+ * the distributed-lock cart-add design.
  *
  * <p>These tests exercise the read-modify-write itself (cart creation, quantity merge, stock guard,
  * product/user lookup), in isolation from the Redis lock orchestration which lives in

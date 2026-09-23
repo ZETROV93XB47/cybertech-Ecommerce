@@ -56,7 +56,7 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link StockServiceImp}.
  *
- * <p>Subagent SA-W3.3 — services/stock. BUG-060..BUG-064 are now closed; the previously
+ * <p>Covers services/stock. The previously tracked stock-service defects are now closed; the previously
  * {@code @Disabled} pinning tests are re-enabled and verify the fixed contract (no test in
  * this class is currently disabled).
  */
@@ -145,7 +145,7 @@ class StockServiceImpTest {
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
         when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
 
-        // BUG-061 fix verification (per F2 wave): message MUST include productUuid + requested + available.
+        // Message MUST include productUuid + requested + available.
         assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, 5)))
                 .isInstanceOf(NotEnoughStockException.class)
                 .hasMessageContaining(productUuid.toString())
@@ -346,7 +346,7 @@ class StockServiceImpTest {
     @Test
     @DisplayName("BUG-064 FIX: commitStock with no reservation logs a WARN (signal for upstream double-commit)")
     void commitStock_emptyReservations_logsWarn_bug064() {
-        // BUG-064 FIX: behaviour preserved (no throw), but a WARN is emitted naming the orderUuid
+        // Behaviour preserved (no throw), but a WARN is emitted naming the orderUuid
         // so a double-commit / replayed webhook is observable in logs.
         final UUID orderUuid = UUID.randomUUID();
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
@@ -425,14 +425,14 @@ class StockServiceImpTest {
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(res));
         when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
 
-        // F2 fix: throws domain ProductNotFoundException (not raw NoSuchElementException).
+        // Throws domain ProductNotFoundException (not raw NoSuchElementException).
         assertThatThrownBy(() -> service.releaseStock(orderUuid))
                 .isInstanceOf(ProductNotFoundException.class)
                 .isNotInstanceOf(NoSuchElementException.class);
     }
 
     // ---------------------------------------------------------------------
-    // Multi-product canonical lock order (BUG-060 — F1+F2 fix verification)
+    // Multi-product canonical lock order
     // ---------------------------------------------------------------------
 
     @Test

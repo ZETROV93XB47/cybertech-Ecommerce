@@ -30,13 +30,13 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.STRIPE_WEBH
  * <ul>
  *   <li><b>200 OK</b> — event accepted (or non-retriable from our side: orphan PaymentIntent,
  *       unknown order id, etc.). Stripe stops delivering this event id.</li>
- *   <li><b>400 BAD_REQUEST</b> — signature verification failed (BUG-2501 carve-out: Stripe
+ *   <li><b>400 BAD_REQUEST</b> — signature verification failed (a carve-out so Stripe
  *       <em>must</em> learn the receiver is broken so the on-call dashboard surfaces it) or the
- *       signed payload is structurally malformed JSON (BUG-2502).</li>
+ *       signed payload is structurally malformed JSON.</li>
  * </ul>
  *
- * <p>Service-thrown exceptions on a structurally-valid event are <b>swallowed and 200-ACKed</b>
- * (BUG-2501): a Stripe retry storm cannot fix a missing order row in our DB. Errors are still
+ * <p>Service-thrown exceptions on a structurally-valid event are <b>swallowed and 200-ACKed</b>:
+ * a Stripe retry storm cannot fix a missing order row in our DB. Errors are still
  * logged for the on-call team via the standard log pipeline.
  *
  * <p>The endpoint is publicly reachable (per {@code SecurityConfig.PUBLIC_URLS}) — Stripe does not
@@ -62,13 +62,13 @@ public class StripeWebhookController implements StripeWebhookApiSpec {
      * <p>Flow:
      * <ol>
      *   <li>Verify the {@code Stripe-Signature} header against the raw body using the configured
-     *       webhook secret. A failure returns <b>400</b> (BUG-2501 carve-out — Stripe must learn
-     *       its endpoint is misconfigured).</li>
+     *       webhook secret. A failure returns <b>400</b> — a carve-out since Stripe must learn
+     *       its endpoint is misconfigured.</li>
      *   <li>If the signature is valid but the SDK reports a malformed payload (no deserialized
-     *       data object), return <b>400</b> (BUG-2502 — non-retriable bad request).</li>
+     *       data object), return <b>400</b> (non-retriable bad request).</li>
      *   <li>Delegate to {@link PaymentWebhookService#handleEvent(Event, String)}. Any exception
-     *       thrown by the service is caught, logged, and converted to a <b>200 OK</b> ACK
-     *       (BUG-2501 — Stripe retries cannot fix a downstream data inconsistency).</li>
+     *       thrown by the service is caught, logged, and converted to a <b>200 OK</b> ACK,
+     *       since Stripe retries cannot fix a downstream data inconsistency.</li>
      * </ol>
      *
      * @param payload         the raw HTTP body — preserved as a String so that signature verification
@@ -90,7 +90,7 @@ public class StripeWebhookController implements StripeWebhookApiSpec {
             log.error("Invalid Stripe signature", e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         } catch (final RuntimeException e) {
-            // BUG-2502: the Stripe SDK throws JsonSyntaxException (a RuntimeException) from
+            // The Stripe SDK throws JsonSyntaxException (a RuntimeException) from
             // constructEvent BEFORE signature verification runs, so a malformed JSON body never
             // reaches the SignatureVerificationException branch above. Surface it as 400 — Stripe
             // must learn the body it sent could not be parsed (this is non-retriable on our side).
@@ -98,7 +98,7 @@ public class StripeWebhookController implements StripeWebhookApiSpec {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
-        // BUG-2502 coverage: a malformed JSON body throws JsonSyntaxException from
+        // A malformed JSON body throws JsonSyntaxException from
         // Webhook.constructEvent(...) → caught by the RuntimeException branch above → 400.
         // Downstream service is responsible for tolerating events whose data object did not
         // deserialize (older API versions, schema drift) — returning 200 by default.
@@ -107,7 +107,7 @@ public class StripeWebhookController implements StripeWebhookApiSpec {
         try {
             paymentWebhookService.handleEvent(event, payload);
         } catch (final Exception e) {
-            // BUG-2501: returning a non-2xx triggers a Stripe retry storm (up to 3 days of
+            // Returning a non-2xx triggers a Stripe retry storm (up to 3 days of
             // exponential backoff). For non-retriable downstream faults — orphan PaymentIntent,
             // missing order row, transient DB blip — we WANT to ACK 200 so Stripe stops
             // re-delivering. The error is still logged for the on-call team.

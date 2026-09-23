@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link CartMapper}.
  *
- * <p>Verifies BUG-018 fix (null {@code unitPrice} no longer NPEs in {@code lineItemTotalPrice}).
+ * <p>Verifies the fix for null {@code unitPrice} no longer NPE-ing in {@code lineItemTotalPrice}.
  */
 class CartMapperTest {
 
@@ -136,7 +136,7 @@ class CartMapperTest {
 
         @Test
         void shouldHandleNullUnitPriceGracefully() {
-            // BUG-018 verification (F2 wave): the lineItemTotalPrice helper now null-guards
+            // Verifies the lineItemTotalPrice helper now null-guards
             // CartItemEntity#unitPrice and returns BigDecimal.ZERO instead of NPE-ing.
             CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder()
                     .unitPrice(null)

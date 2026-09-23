@@ -19,8 +19,8 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link ModerationServiceImp}.
  *
- * <p>SA-W3.5 wave — services/catalog. Pins BUG-086 (no caching, every call hits the
- * sidecar HTTP client). Service is a single-method passthrough so coverage is intentionally
+ * <p>Pins the lack of caching — every call hits the
+ * sidecar HTTP client. Service is a single-method passthrough so coverage is intentionally
  * thin but documents the fail-closed contract on client errors.
  */
 @ExtendWith(MockitoExtension.class)

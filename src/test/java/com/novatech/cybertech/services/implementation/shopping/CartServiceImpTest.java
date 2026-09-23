@@ -62,20 +62,20 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link CartServiceImp}.
  *
- * <p><b>SA-Cart-v2 — Cart cluster closures:</b></p>
+ * <p><b>Cart cluster closures:</b></p>
  * <ul>
- *   <li><b>BUG-026</b>: CLOSED. New {@link CartUpdateRequestDto} carries the correct
+ *   <li>New {@link CartUpdateRequestDto} carries the correct
  *       update payload, and {@code updateCart(UUID, CartUpdateRequestDto, keycloakId)}
  *       loads the existing cart, verifies ownership, and replaces its items. The
  *       historical {@code update(CartItemRemoveRequestDto)} stays wired to keep
  *       {@code CrudBaseService} happy.</li>
- *   <li><b>BUG-160</b>: CLOSED. {@link CartServiceImp#addItemsToCart} now takes a
+ *   <li>{@link CartServiceImp#addItemsToCart} now takes a
  *       per-user distributed Redis lock around the full read-modify-write path.</li>
- *   <li><b>BUG-161</b>: CLOSED. Ownership-checked overloads
+ *   <li>Ownership-checked overloads
  *       {@code getByUUID(UUID, String)} / {@code deleteByUUID(UUID, String)} throw
  *       {@link UnauthorizedCartAccessException} when the caller's Keycloak subject
  *       does not match the cart's owner.</li>
- *   <li><b>BUG-039</b>: remains CLOSED (negative/null quantity rejected) — enforced by
+ *   <li>Negative/null quantity is rejected — enforced by
      *       {@code @Valid} bean validation at the controller boundary, covered in
      *       {@code CartManagementControllerTest}; no longer duplicated at the service level.</li>
  * </ul>
@@ -97,7 +97,7 @@ class CartServiceImpTest {
     @BeforeEach
     void setUp() {
         keycloakId = "kc-" + UUID.randomUUID();
-        // BUG-160 — addItemsToCart now wraps its read-modify-write in the distributed lock.
+        // addItemsToCart now wraps its read-modify-write in the distributed lock.
         // Use lenient so tests which never exercise addItemsToCart (e.g. getCart, remove,
         // decreaseQuantity, CRUD paths) don't fail with Mockito strict-stubbing.
         lenient().when(cartCacheHelper.acquireLockBlocking(anyString(), anyLong()))
@@ -177,7 +177,7 @@ class CartServiceImpTest {
             verify(cartCacheHelper).releaseLock(eq(keycloakId));
         }
 
-        // BUG-039's negative/zero/null quantity coverage moved to
+        // Negative/zero/null quantity coverage moved to
         // CartManagementControllerTest#failAddToCart_whenNegativeQuantity_thenBadRequest: quantity
         // validation lives on CartItemAddRequestDto (@NotNull @Min(1)) and is enforced by @Valid at
         // the controller boundary, so CartServiceImp no longer re-checks it — there was nothing left

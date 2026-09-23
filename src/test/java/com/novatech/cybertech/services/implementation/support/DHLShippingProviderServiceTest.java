@@ -12,10 +12,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link DHLShippingProviderService}.
  *
- * Pins {@code BUG-2512}: {@code deliver} returns a hardcoded marketing string instead of a real
+ * Pins the fact that {@code deliver} returns a hardcoded marketing string instead of a real
  * tracking number — two calls for the same packageId always return the same response.
  *
- * Pins {@code BUG-2513}: {@code calculateShippingCost} returns hardcoded EXPRESS=25, STANDARD=15
+ * Pins the fact that {@code calculateShippingCost} returns hardcoded EXPRESS=25, STANDARD=15
  * with no carrier-specific differentiation.
  */
 class DHLShippingProviderServiceTest {

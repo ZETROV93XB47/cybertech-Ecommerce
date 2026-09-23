@@ -22,8 +22,8 @@ public interface OrderMapper {
      * Map an {@link OrderPlacingRequestDto} into a fresh {@link OrderEntity}.
      * <p>
      * Address construction is delegated to an {@code @AfterMapping} hook
-     * because {@link Address} is now an immutable value object (see BUG-132)
-     * and no longer exposes setters that MapStruct could call via the
+     * because {@link Address} is now an immutable value object and no longer
+     * exposes setters that MapStruct could call via the
      * {@code target = "shippingAddress.xxx"} dotted-path syntax.
      * </p>
      */
@@ -62,8 +62,8 @@ public interface OrderMapper {
     /**
      * Patch a managed {@link OrderEntity} from an {@link OrderUpdateRequestDto}.
      * <p>
-     * Shipping-address fields are now applied via an {@code @AfterMapping} hook
-     * (see BUG-132). When the existing entity address is {@code null}, a fresh
+     * Shipping-address fields are now applied via an {@code @AfterMapping} hook.
+     * When the existing entity address is {@code null}, a fresh
      * {@link Address} is constructed from the incoming DTO. When it is non-null,
      * each provided field is propagated through the immutable {@code withXxx(...)}
      * withers, preserving the {@code NullValuePropertyMappingStrategy.IGNORE}

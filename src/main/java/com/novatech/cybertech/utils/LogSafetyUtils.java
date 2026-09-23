@@ -5,7 +5,7 @@ import java.util.UUID;
 /**
  * Centralised PII masking helpers for log statements.
  *
- * <p>FIX(PII-LEAK): A code audit revealed that {@code log.info("... {}", req)} on user-related DTOs
+ * <p>A code audit revealed that {@code log.info("... {}", req)} on user-related DTOs
  * was dumping raw email, password, bank-card numbers, JWT tokens and other regulated fields into
  * application logs. This class concentrates the masking primitives so that:
  * <ul>

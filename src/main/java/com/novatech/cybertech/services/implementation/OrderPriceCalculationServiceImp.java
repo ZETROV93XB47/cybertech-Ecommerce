@@ -52,7 +52,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // FIX(SHIPPING-INT): include shipping cost computed via ShippingProviderStrategyFactory in final order price (previously omitted)
+        // Include shipping cost computed via ShippingProviderStrategyFactory in final order price (previously omitted)
         final BigDecimal shippingCost = computeShippingCost(request);
 
         // Short-circuit for NO_DISCOUNT: avoid touching the discount_campaign table.

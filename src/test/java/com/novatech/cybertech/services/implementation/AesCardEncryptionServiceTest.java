@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Unit tests for {@link AesCardEncryptionService}.
  *
- * <p>Pins the BUG-036 PCI-DSS contract:
+ * <p>Pins the PCI-DSS contract:
  * <ul>
  *   <li>round-trip {@code decrypt(encrypt(pan)) == pan} for any well-formed PAN;</li>
  *   <li>encryption is non-deterministic — same input twice produces different envelopes

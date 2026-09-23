@@ -27,7 +27,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "ProductSearchController", description = "API for Product Search")
 public class ProductSearchController implements ProductSearchApiSpec {
 
-    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    // Inject service interface instead of concrete impl per project convention
     private final ProductManagementService productService;
 
     @Override
@@ -37,7 +37,7 @@ public class ProductSearchController implements ProductSearchApiSpec {
     }
 
     @Override
-    // FIX(DEAD-CODE): removed redundant alias variable; @Override added to enforce ApiSpec contract at compile-time
+    // Removed redundant alias variable; @Override added to enforce ApiSpec contract at compile-time
     @PostMapping(value = "/search", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public Page<ProductResponseDto> searchProducts(@Valid @RequestBody final ProductSearchRequestDto productSearchRequestDto) {
         log.info("products search :: {}", productSearchRequestDto);

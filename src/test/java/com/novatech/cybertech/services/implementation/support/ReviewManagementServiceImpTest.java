@@ -59,7 +59,7 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for {@link ReviewManagementServiceImp}.
  *
- * Pins {@code BUG-2506}: {@code create} only checks whether the product appears anywhere in the
+ * Pins the fact that {@code create} only checks whether the product appears anywhere in the
  * caller's order history, NOT whether the referenced {@code orderUuid} belongs to the caller.
  * User A can therefore review user B's order so long as user A has bought the same product elsewhere.
  */
@@ -94,7 +94,7 @@ class ReviewManagementServiceImpTest {
     }
 
     private OrderEntity orderContainingProduct(final UUID uuid, final UserEntity owner) {
-        // Default to a reviewable status (PAID) so happy-path tests do not trip the BUG-2 status guard.
+        // Default to a reviewable status (PAID) so happy-path tests do not trip the order status guard.
         return orderContainingProduct(uuid, owner, OrderStatus.PAID);
     }
 
@@ -227,7 +227,7 @@ class ReviewManagementServiceImpTest {
             List<OrderItemEntity> items = new ArrayList<>();
             items.add(otherItem);
             // Order belongs to the caller so the ownership check passes; product check fails.
-            // Status PAID so the BUG-2 reviewability guard is satisfied (we want the product check to fire).
+            // Status PAID so the reviewability guard is satisfied (we want the product check to fire).
             OrderEntity order = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).status(OrderStatus.PAID).build();
 
             when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
@@ -257,7 +257,7 @@ class ReviewManagementServiceImpTest {
             OrderItemEntity otherItem = OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(otherProduct).build();
             List<OrderItemEntity> items = new ArrayList<>();
             items.add(otherItem);
-            // PAID so the BUG-2 reviewability guard is satisfied for this happy-path scenario.
+            // PAID so the reviewability guard is satisfied for this happy-path scenario.
             OrderEntity requestOrder = OrderEntityBuilder.aValidOrderBuilder().orderItemEntities(items).userEntity(user).status(OrderStatus.PAID).build();
 
             ReviewEntity reviewEntity = ReviewEntity.builder().comment("Excellent").build();
@@ -360,7 +360,7 @@ class ReviewManagementServiceImpTest {
             verify(reviewRepository, never()).save(any());
         }
 
-        // ============================ BUG-2: order status guard ============================
+        // ============================ Order status guard ============================
         // create() must reject reviews on orders that have not reached a "reviewable" lifecycle
         // state. Pre-payment statuses (CREATED, AWAITING_PAYMENT, PAYMENT_FAILED) and post-cancel
         // statuses must produce OrderNotReviewableException; PAID/SHIPPED/DELIVERED must succeed.
@@ -405,7 +405,7 @@ class ReviewManagementServiceImpTest {
          * Asserts that creating a review against an order in {@code status} raises
          * {@link OrderNotReviewableException} and that no review is persisted. The order is
          * caller-owned and contains the requested product, so the only check that can fail
-         * is the BUG-2 status guard.
+         * is the order status guard.
          */
         private void assertOrderStatusIsRejected(final OrderStatus status) {
             final ReviewCreateRequestDto dto = createDto();

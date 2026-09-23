@@ -41,7 +41,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "UserAdminController", description = "API for User management (Admin)")
 public class UserManagementAdminController implements UserManagementAdminApiSpec {
 
-    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    // Inject service interface instead of concrete impl per project convention
     private final UserManagementService userManagementServiceImp;
 
     @Override

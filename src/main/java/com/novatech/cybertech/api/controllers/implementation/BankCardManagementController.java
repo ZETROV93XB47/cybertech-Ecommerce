@@ -57,7 +57,7 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
     }
 
     /**
-     * BUG-038: marks the supplied card as the caller's default. The JWT subject drives
+     * Marks the supplied card as the caller's default. The JWT subject drives
      * ownership and sibling lookup at the service layer.
      */
     @Override
@@ -69,7 +69,7 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
     }
 
     /**
-     * BUG-038: returns the caller's default card as a masked response DTO.
+     * Returns the caller's default card as a masked response DTO.
      */
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")

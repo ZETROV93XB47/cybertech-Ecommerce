@@ -45,7 +45,7 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link UserManagementServiceImp}.
  *
- * <p>SA-W3.5 wave — services/catalog. Pins (post H1 fix):
+ * <p>Pins the following, verified after the fix:
  * <ul>
  *   <li>auto-admin guard: {@code create()} hardcodes {@link Role#USER} — request payload cannot
  *       elevate.</li>

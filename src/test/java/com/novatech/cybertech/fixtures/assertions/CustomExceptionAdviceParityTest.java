@@ -26,18 +26,17 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * declared on {@link ErrorManagementController}, otherwise the {@code RuntimeException}
  * catch-all returns a 500 TECHNICAL response and clients lose actionable error context.
  *
- * <p>Originally authored by SA1.3 and reproduced here per the SA-W1.4 brief
- * after the previous test files were lost during a session reset (see SA-W0
- * report in {@code progress.md}). The F2 wave (orchestrator, 2026-04-23) claims
- * to have closed BUG-001..BUG-016 by adding the missing handlers — this test
- * is the live oracle for that claim.</p>
+ * <p>Reproduced here after the previous test files were lost during a session reset (see the
+ * report in {@code progress.md}). A prior fix pass (2026-04-23) claims to have closed the
+ * outstanding gaps by adding the missing handlers — this test is the live oracle for that
+ * claim.</p>
  */
 @DisplayName("Custom exception <-> @ExceptionHandler advice parity")
 class CustomExceptionAdviceParityTest {
 
     private static final String EXCEPTIONS_PACKAGE = "com.novatech.cybertech.exceptions";
 
-    /** Bug numbers to keep alive — currently EMPTY because F2 closed BUG-001..016. */
+    /** Bug numbers to keep alive — currently EMPTY because all previously known gaps were closed. */
     private static final Set<String> KNOWN_MISSING_HANDLERS = Set.of();
 
     /** Resolves the set of {@code @ExceptionHandler}-declared exception classes on the advice. */
@@ -81,7 +80,7 @@ class CustomExceptionAdviceParityTest {
     @ParameterizedTest(name = "[{index}] {0} must have an @ExceptionHandler on the advice")
     @MethodSource("concreteCustomExceptions")
     void everyCustomExceptionMustBeHandledByTheAdvice(final Class<? extends Throwable> exceptionClass) {
-        // F2 closed BUG-001..016 by adding handlers; KNOWN_MISSING_HANDLERS is empty so the assume passes.
+        // All previously known gaps were closed by adding handlers; KNOWN_MISSING_HANDLERS is empty so the assume passes.
         // If a future regression re-opens one of those bugs, add the bug-id token here.
         if (KNOWN_MISSING_HANDLERS.contains(exceptionClass.getSimpleName())) {
             assumeTrue(false, "BUG: handler still missing for " + exceptionClass.getSimpleName());

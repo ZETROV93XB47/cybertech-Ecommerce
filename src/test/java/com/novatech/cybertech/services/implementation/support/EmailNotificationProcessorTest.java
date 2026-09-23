@@ -24,8 +24,8 @@ import static org.mockito.Mockito.verify;
 /**
  * Unit tests for {@link EmailNotificationProcessor}.
  *
- * Pins {@code BUG-2509}: hardcoded {@code from="abc@mail.com"} is shipped to production.
- * Pins {@code BUG-2511}: no {@code NotificationEntity} is persisted (no dedup repository call).
+ * Pins the fact that a hardcoded {@code from="abc@mail.com"} is shipped to production.
+ * Pins the fact that no {@code NotificationEntity} is persisted (no dedup repository call).
  */
 @ExtendWith(MockitoExtension.class)
 class EmailNotificationProcessorTest {

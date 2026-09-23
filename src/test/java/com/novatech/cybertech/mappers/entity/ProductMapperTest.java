@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link ProductMapper}.
  *
- * <p>Verifies BUG-017 fix (entity {@code photo} → response {@code photoUrl}) is in place.
+ * <p>Verifies the fix mapping entity {@code photo} → response {@code photoUrl} is in place.
  */
 class ProductMapperTest {
 
@@ -144,7 +144,7 @@ class ProductMapperTest {
 
         @Test
         void shouldMapPhotoToPhotoUrlFromEntity() {
-            // BUG-017 fix verification (F2 wave). Prior to fix, photoUrl was null.
+            // Verifies the fix. Prior to the fix, photoUrl was null.
             ProductEntity entity = ProductEntityBuilder.aValidProductBuilder()
                     .photo("https://example.com/img.png")
                     .build();

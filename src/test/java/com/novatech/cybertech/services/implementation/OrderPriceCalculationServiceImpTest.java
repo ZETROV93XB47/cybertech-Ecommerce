@@ -243,7 +243,7 @@ class OrderPriceCalculationServiceImpTest {
     }
 
     // -----------------------------------------------------------------
-    // Shipping integration tests (FIX(SHIPPING-INT))
+    // Shipping integration tests
     // -----------------------------------------------------------------
 
     @Test

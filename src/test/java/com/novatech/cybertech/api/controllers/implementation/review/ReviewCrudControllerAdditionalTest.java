@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Sibling test class to {@code ReviewCrudControllerTest} — adds branches the canonical reference
  * does NOT cover (rating bounds, GET 404, malformed JSON, anonymous access, admin-vs-other-user
  * delete, CommentPostNotAllowedException). The canonical file is the user's gold-standard style
- * and must NOT be modified — see SA-W2.3 brief.
+ * and must NOT be modified.
  */
 @Slf4j
 @Import({TestSecurityConfig.class})
@@ -182,10 +182,10 @@ class ReviewCrudControllerAdditionalTest {
                 .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
     }
 
-    // ----- Malformed JSON body (BUG-2503 — F2 fix verification) -------------------------
+    // ----- Malformed JSON body — fix verification ----------------------------------------
 
     /**
-     * F2 added an {@code HttpMessageNotReadableException} handler in {@code ErrorManagementController}
+     * An {@code HttpMessageNotReadableException} handler was added to {@code ErrorManagementController}
      * (lines 45-49), so a malformed body now resolves to 400 TECHNICAL with message
      * "Malformed JSON request body". Pinning the post-fix behaviour here.
      */
@@ -208,11 +208,11 @@ class ReviewCrudControllerAdditionalTest {
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
     }
 
-    // ----- Unauthenticated CREATE/UPDATE/DELETE (BUG-2504) ------------------------------
+    // ----- Unauthenticated CREATE/UPDATE/DELETE --------------------------------------------
 
     /**
-     * SA2.5 documented BUG-2504: anonymous calls returned 403 instead of 401. SA-W0 wired the
-     * production {@code CustomAuthenticationEntryPoint} into {@link TestSecurityConfig} so anonymous
+     * Previously, anonymous calls returned 403 instead of 401. The
+     * production {@code CustomAuthenticationEntryPoint} was wired into {@link TestSecurityConfig} so anonymous
      * requests now resolve to 401 — confirming the fix at the slice-test level.
      */
     @Test
@@ -262,7 +262,7 @@ class ReviewCrudControllerAdditionalTest {
      * deliberately-current behaviour and any future "admin can moderate" change should flip the
      * assertion explicitly). Note: ROLE_ADMIN does not satisfy the {@code @PreAuthorize("hasRole('USER')")}
      * either, so the @PreAuthorize layer denies the admin first → 403 ACCESS_DENIED via the
-     * F1.1 advice handler (also FUNCTIONAL). Either path resolves to 403 FUNCTIONAL — assert that
+     * advice handler (also FUNCTIONAL). Either path resolves to 403 FUNCTIONAL — assert that
      * shape only.
      */
     @Test
@@ -278,12 +278,12 @@ class ReviewCrudControllerAdditionalTest {
                 .andExpect(content().contentType(APPLICATION_JSON));
     }
 
-    // ----- CommentPostNotAllowedException (BUG-004 — F2 fix verification) ---------------
+    // ----- CommentPostNotAllowedException — fix verification -------------------------------
 
     /**
-     * F2 added a dedicated handler at lines 172-176 of {@code ErrorManagementController} mapping
+     * A dedicated handler was added at lines 172-176 of {@code ErrorManagementController} mapping
      * {@link CommentPostNotAllowedException} to 403 FORBIDDEN with FUNCTIONAL error type. Confirming
-     * the post-fix behaviour here — replaces the SA2.5 disabled "desired behaviour" pin.
+     * the post-fix behaviour here — replaces the previously disabled "desired behaviour" pin.
      */
     @Test
     void shouldReturn403FunctionalWhenCommentPostNotAllowed_BUG_004_postFix() throws Exception {

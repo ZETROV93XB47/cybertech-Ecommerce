@@ -36,9 +36,9 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link ProductSearchServiceImp}.
  *
- * <p>SA-W3.5 wave — services/catalog. Captures the {@link NativeQuery} sent to
+ * <p>Captures the {@link NativeQuery} sent to
  * {@link ElasticsearchOperations} and asserts the BoolQuery filter / must clause
- * counts match the requested DTO. BUG-181 (Sort dropped) is pinned.
+ * counts match the requested DTO. The dropped Sort is pinned.
  */
 @ExtendWith(MockitoExtension.class)
 class ProductSearchServiceImpTest {

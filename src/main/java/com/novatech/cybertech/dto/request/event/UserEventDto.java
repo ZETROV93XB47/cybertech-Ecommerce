@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 import java.util.Map;
 
 /**
- * BUG-SPOOF-D5: {@code userId} is no longer client-controlled. The controller derives it from
+ * {@code userId} is no longer client-controlled. The controller derives it from
  * the JWT subject; Jackson is instructed to ignore inbound {@code userId} via
  * {@link JsonIgnoreProperties} so a malicious client cannot pre-populate it. {@code @NotBlank}
  * validation was removed for the same reason — the field is server-set after deserialization.

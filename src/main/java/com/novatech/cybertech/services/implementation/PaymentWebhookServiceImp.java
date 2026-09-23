@@ -32,24 +32,24 @@ import java.util.UUID;
 /**
  * Default implementation of {@link PaymentWebhookService}.
  *
- * <p><b>Idempotency (BUG-170)</b>: every successful invocation appends a
+ * <p><b>Idempotency</b>: every successful invocation appends a
  * {@link ProcessedWebhookEventEntity} keyed on {@code event.getId()}. A subsequent delivery of the
  * same event short-circuits at the very top — no DB mutation, no domain event re-published. The
  * unique constraint on the ledger column also serves as a race-safe second line of defence when
  * two concurrent deliveries beat the existence check.
  *
- * <p><b>Environment safety (BUG-522)</b>: the {@code livemode} flag of every event is matched
+ * <p><b>Environment safety</b>: the {@code livemode} flag of every event is matched
  * against the deployment-level {@code stripe.livemode} property. A mismatch is logged at SEVERE
  * (a misconfigured prod-secret leaking into a test env would otherwise mutate real-money
  * payments) and the event is dropped without processing.
  *
  * <p><b>Domain events</b>: {@code payment_intent.succeeded} publishes both
  * {@link PaymentSucceededEvent} (consumed by the order-confirmation listener) and
- * {@link OrderPaidEvent} (consumed by the shipping listener — BUG-171 fix).
- * {@code payment_intent.payment_failed} publishes {@link PaymentFailedEvent} (BUG-520 fix).
+ * {@link OrderPaidEvent} (consumed by the shipping listener).
+ * {@code payment_intent.payment_failed} publishes {@link PaymentFailedEvent}.
  * {@code charge.refunded} publishes {@link PaymentRefundedEvent}.
  *
- * <p><b>Terminal-state guard (BUG-521)</b>: out-of-order Stripe deliveries (e.g. SUCCESS then a
+ * <p><b>Terminal-state guard</b>: out-of-order Stripe deliveries (e.g. SUCCESS then a
  * delayed FAILED for the same {@code pi_*}) MUST NOT regress a payment row from SUCCESS to FAILED.
  * The failure handler short-circuits in that case.
  */
@@ -66,7 +66,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
     private final ApplicationEventPublisher eventPublisher;
     private final PaymentAttemptRepository attemptRepository;
     private final ProcessedWebhookEventRepository processedWebhookEventRepository;
-    // FIX(BEAN-BYPASS): use the Spring-managed Jackson 3 ObjectMapper instead of instantiating a new one — avoids losing global module config (Java time, custom serializers) and is cheaper than per-call construction
+    // Use the Spring-managed Jackson 3 ObjectMapper instead of instantiating a new one — avoids losing global module config (Java time, custom serializers) and is cheaper than per-call construction
     private final ObjectMapper objectMapper;
 
     /**
@@ -84,7 +84,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
      * <ol>
      *   <li>Dedup: short-circuit if {@code event.getId()} is already in the ledger.</li>
      *   <li>Livemode gate: skip the event if its {@code livemode} disagrees with the configured
-     *       deployment mode (BUG-522).</li>
+     *       deployment mode.</li>
      *   <li>Dispatch on {@code event.getType()} to the matching per-type handler.</li>
      *   <li>Append a {@link ProcessedWebhookEventEntity} row to seal the dedup ledger.</li>
      * </ol>
@@ -166,7 +166,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
     /**
      * Handle {@code payment_intent.succeeded}. Flips the payment row to {@link PaymentAttemptStatus#SUCCESS}
      * (no-op if already SUCCESS), publishes {@link PaymentSucceededEvent} for the order-confirmation
-     * listener, and publishes {@link OrderPaidEvent} for the shipping listener (BUG-171 fix).
+     * listener, and publishes {@link OrderPaidEvent} for the shipping listener.
      *
      * @param event the parsed Stripe {@link Event}
      * @param dto   the rich application-level DTO parsed from the raw payload
@@ -187,11 +187,11 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
     }
 
     /**
-     * Handle {@code payment_intent.payment_failed}. Includes the BUG-521 terminal-state guard:
+     * Handle {@code payment_intent.payment_failed}. Includes the terminal-state guard:
      * if the payment row is already {@link PaymentAttemptStatus#SUCCESS} the failure is dropped
      * (out-of-order Stripe delivery — SUCCESS is terminal once the order has been moved to PAID).
      * Otherwise flips the row to {@link PaymentAttemptStatus#FAILED} and publishes
-     * {@link PaymentFailedEvent} for the listener that releases the held stock (BUG-520 fix).
+     * {@link PaymentFailedEvent} for the listener that releases the held stock.
      *
      * @param event the parsed Stripe {@link Event}
      * @param dto   the rich application-level DTO parsed from the raw payload

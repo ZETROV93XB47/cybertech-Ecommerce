@@ -8,7 +8,7 @@ import java.util.Optional;
 
 /**
  * Spring-Data repository for {@link ProcessedWebhookEventEntity}, the dedup-ledger backing the
- * Stripe webhook idempotency check (BUG-170 fix).
+ * Stripe webhook idempotency check.
  *
  * <p>The single source of dedup truth is the unique constraint on
  * {@link ProcessedWebhookEventEntity#getStripeEventId()}. {@link #existsByStripeEventId(String)} is

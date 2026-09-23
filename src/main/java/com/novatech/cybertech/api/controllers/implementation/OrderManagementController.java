@@ -39,7 +39,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "OrderManagementController", description = "API for managing Orders")
 public class OrderManagementController implements OrderManagementControllerApiSpec {
 
-    // FIX(INTERFACE-CONTRACT): inject service interface instead of concrete impl per project convention
+    // Inject service interface instead of concrete impl, per project convention.
     private final OrderManagementService orderManagementService;
 
 
@@ -76,13 +76,13 @@ public class OrderManagementController implements OrderManagementControllerApiSp
 
 
     /**
-     * BUG-IDOR-D1: ownership-checked read. Forwards the JWT subject to the service so the
+     * Ownership-checked read. Forwards the JWT subject to the service so the
      * service layer can throw {@link com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException}
      * (→ 403) when the caller is not the order's initiator.
      *
-     * <p>Wave 3 regression-fix: ADMINs are also allowed on this endpoint and the service
-     * layer bypasses the ownership check when the caller carries {@code ROLE_ADMIN}
-     * (resolved from the SecurityContext inside the service to keep this signature stable).</p>
+     * <p>ADMINs are also allowed on this endpoint — the service layer bypasses the ownership
+     * check when the caller carries {@code ROLE_ADMIN} (resolved from the SecurityContext
+     * inside the service to keep this signature stable).</p>
      */
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")

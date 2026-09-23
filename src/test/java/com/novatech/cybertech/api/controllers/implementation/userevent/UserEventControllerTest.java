@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>Pinned bug status:
  * <ul>
- *   <li>BUG-035: F1.6 closed by replacing the {@code jakarta.mail.event.FolderEvent.CREATED}
+ *   <li>Replaced the {@code jakarta.mail.event.FolderEvent.CREATED}
  *       static import with {@code HttpStatus.CREATED}. Source verified — controller line 39 uses
  *       {@code HttpStatus.CREATED}. Asserted live by
  *       {@link #shouldCollectEventSuccessfullyReturning201Created}.</li>
@@ -72,7 +72,7 @@ class UserEventControllerTest {
 
     @Test
     void shouldCollectEventSuccessfullyReturning201Created() throws Exception {
-        // BUG-035 verification: controller now uses HttpStatus.CREATED (201), not the old
+        // Controller now uses HttpStatus.CREATED (201), not the old
         // FolderEvent.CREATED int constant (1). A valid JWT-authenticated POST must return 201.
         final UserEventDto request = UserEventDtoFixtures.aValidUserEvent();
         final UserEvent persisted = UserEvent.builder()
@@ -117,7 +117,7 @@ class UserEventControllerTest {
 
     @Test
     void shouldOverwriteUserIdFromJwtBeforeForwardingToService() throws Exception {
-        // BUG-SPOOF-D5: the controller derives userId from the JWT subject (regardless of
+        // The controller derives userId from the JWT subject (regardless of
         // whatever the body contained) before delegating to the service. Verify both that the
         // overwrite happens and that the rest of the payload is forwarded as-is.
         final UserEventDto request = UserEventDtoFixtures.aValidUserEventBuilder()
@@ -142,7 +142,7 @@ class UserEventControllerTest {
         verify(userEventService).processEvent(captor.capture());
 
         final UserEventDto forwarded = captor.getValue();
-        // BUG-SPOOF-D5: userId must come from the JWT subject, not from the body.
+        // userId must come from the JWT subject, not from the body.
         assertEquals(USER_KEYCLOAK_ID, forwarded.getUserId());
         assertEquals(request.getSessionId(), forwarded.getSessionId());
         assertEquals(request.getProductId(), forwarded.getProductId());
@@ -183,7 +183,7 @@ class UserEventControllerTest {
     @Test
     void shouldRejectCollectEventAsAdminWithoutUserRoleReturning403() throws Exception {
         // @PreAuthorize("hasRole('USER')") on the method — an ADMIN-only token (no ROLE_USER)
-        // must yield 403 (BUG-031 wiring + W0's @EnableMethodSecurity).
+        // must yield 403 (access-denied wiring + @EnableMethodSecurity).
         final UserEventDto request = UserEventDtoFixtures.aValidUserEvent();
         final ErrorResponseDto error = ErrorResponseDto.builder()
                 .message("Access denied")

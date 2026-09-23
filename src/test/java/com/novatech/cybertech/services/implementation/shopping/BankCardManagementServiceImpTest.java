@@ -53,8 +53,8 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link BankCardManagementServiceImp}.
  *
- * <p><b>SA-BankCard-v2:</b> BUG-036 (PAN encryption + masking), BUG-037 (expiry guard), and
- * BUG-038 (default-card surface) are now closed. The previously {@code @Disabled} pinning
+ * <p>PAN encryption + masking, the expiry guard, and the
+ * default-card surface are now closed. The previously {@code @Disabled} pinning
  * tests are re-enabled and now verify the <i>fixed</i> contract.</p>
  */
 @ExtendWith(MockitoExtension.class)
@@ -146,7 +146,7 @@ class BankCardManagementServiceImpTest {
         }
 
         /**
-         * BUG-037 (re-enabled by SA-BankCard-v2): expiry in the past now throws
+         * Re-enabled: expiry in the past now throws
          * {@link BankCardExpiredException} <i>before</i> any repository or mapper call.
          */
         @Test
@@ -181,7 +181,7 @@ class BankCardManagementServiceImpTest {
     class CardMaskingBug036 {
 
         /**
-         * BUG-036 (re-enabled): the saved entity carries an encrypted envelope plus the last four
+         * Re-enabled: the saved entity carries an encrypted envelope plus the last four
          * digits — and the legacy {@code cardNumber} column is NOT populated with the raw PAN.
          */
         @Test
@@ -513,7 +513,7 @@ class BankCardManagementServiceImpTest {
 
             when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));
             when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(mapped);
-            // BUG-036 fix: admin create() now calls applyPciStorageRules -> encrypt must be stubbed
+            // admin create() now calls applyPciStorageRules -> encrypt must be stubbed
             when(cardEncryptionService.encrypt(anyString())).thenReturn("ENC:4242");
             when(bankCardRepository.save(mapped)).thenReturn(saved);
             when(bankCardMapper.mapFromEntityToResponseDto(saved)).thenReturn(resp);

@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link CartCacheHelperImp}.
  *
- * <p>SA-W3.4 wave — covers cache key format ({@code cart::<userId>}), TTL jitter band,
+ * <p>Covers cache key format ({@code cart::<userId>}), TTL jitter band,
  * sliding-TTL refresh on hit, and exception propagation. {@code @Value} fields are seeded
  * via {@link ReflectionTestUtils} since we don't bootstrap Spring.</p>
  */

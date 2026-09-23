@@ -10,8 +10,7 @@ import java.util.Arrays;
  * Closed enumeration of ISO-4217 currency codes supported by the platform.
  * <p>
  * Coverage spans the historical "core" currencies (USD/EUR/GBP/JPY/AUD/CAD/CHF/CNY/SEK/NZD)
- * plus the major emerging-market currencies (INR/BRL/MXN/RUB/KRW/ZAR) added in
- * BUG-133.
+ * plus the major emerging-market currencies (INR/BRL/MXN/RUB/KRW/ZAR).
  * </p>
  */
 @Getter

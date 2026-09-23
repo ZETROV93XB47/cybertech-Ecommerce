@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for {@link CybertechOrdersUpdateJobImp}.
  *
- * Per progress.md (BUG-114, FIXED in F2): scheduler key is now "runDate" instead of
+ * Per progress.md, the scheduler key is now "runDate" instead of
  * now.toString(). Verified green via ArgumentCaptor on JobParameters.
  */
 @ExtendWith(MockitoExtension.class)
