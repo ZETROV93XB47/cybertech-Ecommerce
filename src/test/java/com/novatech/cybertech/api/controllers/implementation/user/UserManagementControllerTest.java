@@ -281,7 +281,10 @@ class UserManagementControllerTest {
                 .firstName("Alice")
                 .lastName("Doe")
                 .phoneNumber("+33611111111")
-                .address("42 rue de Test")
+                .street("42 rue de Test")
+                .city("Paris")
+                .zipCode("75001")
+                .country("FR")
                 .build();
         final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
                 .firstName("Alice")

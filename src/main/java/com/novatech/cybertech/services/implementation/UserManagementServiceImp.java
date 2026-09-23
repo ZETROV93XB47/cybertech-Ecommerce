@@ -241,7 +241,10 @@ public class UserManagementServiceImp implements UserManagementService {
         adapted.setUuid(loadedUser.getUuid());
         adapted.setFirstName(dto.getFirstName());
         adapted.setLastName(dto.getLastName());
-        adapted.setAddress(dto.getAddress());
+        adapted.setStreet(dto.getStreet());
+        adapted.setCity(dto.getCity());
+        adapted.setZipCode(dto.getZipCode());
+        adapted.setCountry(dto.getCountry());
 
         final UserResponseDto saved = updateWithOutbox(adapted, loadedUser);
 

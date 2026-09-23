@@ -98,9 +98,11 @@ class UserMapperTest {
             assertThat(entity.getEmail()).isEqualTo(dto.getEmail());
             assertThat(entity.getFirstName()).isEqualTo(dto.getFirstName());
             assertThat(entity.getLastName()).isEqualTo(dto.getLastName());
-            // mapStringToAddress places the dto's address string in the street field.
             assertThat(entity.getAddress()).isNotNull();
-            assertThat(entity.getAddress().getStreet()).isEqualTo(dto.getAddress());
+            assertThat(entity.getAddress().getStreet()).isEqualTo(dto.getStreet());
+            assertThat(entity.getAddress().getCity()).isEqualTo(dto.getCity());
+            assertThat(entity.getAddress().getZipCode()).isEqualTo(dto.getZipCode());
+            assertThat(entity.getAddress().getCountry()).isEqualTo(dto.getCountry());
         }
 
         @Test
@@ -163,9 +165,9 @@ class UserMapperTest {
         }
 
         @Test
-        void shouldNotEraseAddressWhenDtoAddressNull() {
-            // Verifies the address ternary expression preserves
-            // entity.address when dto.address is null.
+        void shouldNotEraseAddressWhenNoAddressFieldProvided() {
+            // A partial update where the caller sends none of street/city/zipCode/country
+            // must leave the existing address entirely untouched.
             Address original = Address.builder()
                     .street("Original")
                     .city("Original City")
@@ -174,26 +176,59 @@ class UserMapperTest {
                     .build();
             UserEntity entity = UserEntityBuilder.aValidUserBuilder().address(original).build();
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
-            dto.setAddress(null);
+            dto.setStreet(null);
+            dto.setCity(null);
+            dto.setZipCode(null);
+            dto.setCountry(null);
 
             mapper.updateEntityFromDto(dto, entity);
 
-            assertThat(entity.getAddress()).isSameAs(original);
+            assertThat(entity.getAddress().getStreet()).isEqualTo("Original");
+            assertThat(entity.getAddress().getCity()).isEqualTo("Original City");
+            assertThat(entity.getAddress().getZipCode()).isEqualTo("00001");
+            assertThat(entity.getAddress().getCountry()).isEqualTo("FR");
         }
 
         @Test
-        void shouldReplaceAddressWhenDtoAddressProvided() {
-            UserEntity entity = UserEntityBuilder.aValidUser();
+        void shouldPatchOnlyTheProvidedAddressFieldsPreservingTheRest() {
+            // Bug fix: patching just the street must NOT wipe city/zipCode/country with
+            // placeholder values — only the fields actually sent are changed.
+            Address original = Address.builder()
+                    .street("Original")
+                    .city("Original City")
+                    .zipCode("00001")
+                    .country("FR")
+                    .build();
+            UserEntity entity = UserEntityBuilder.aValidUserBuilder().address(original).build();
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
-            dto.setAddress("99 rue Z");
+            dto.setStreet("99 rue Z");
+            dto.setCity(null);
+            dto.setZipCode(null);
+            dto.setCountry(null);
 
             mapper.updateEntityFromDto(dto, entity);
 
-            // mapStringToAddress puts the string into Street with placeholders for the rest.
             assertThat(entity.getAddress().getStreet()).isEqualTo("99 rue Z");
-            assertThat(entity.getAddress().getCity()).isEqualTo("Unknown City");
-            assertThat(entity.getAddress().getZipCode()).isEqualTo("00000");
-            assertThat(entity.getAddress().getCountry()).isEqualTo("Unknown Country");
+            assertThat(entity.getAddress().getCity()).isEqualTo("Original City");
+            assertThat(entity.getAddress().getZipCode()).isEqualTo("00001");
+            assertThat(entity.getAddress().getCountry()).isEqualTo("FR");
+        }
+
+        @Test
+        void shouldReplaceAllAddressFieldsWhenAllProvided() {
+            UserEntity entity = UserEntityBuilder.aValidUser();
+            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+            dto.setStreet("99 rue Z");
+            dto.setCity("Lyon");
+            dto.setZipCode("69000");
+            dto.setCountry("FR");
+
+            mapper.updateEntityFromDto(dto, entity);
+
+            assertThat(entity.getAddress().getStreet()).isEqualTo("99 rue Z");
+            assertThat(entity.getAddress().getCity()).isEqualTo("Lyon");
+            assertThat(entity.getAddress().getZipCode()).isEqualTo("69000");
+            assertThat(entity.getAddress().getCountry()).isEqualTo("FR");
         }
 
         @Test
@@ -267,22 +302,8 @@ class UserMapperTest {
     }
 
     @Nested
-    @DisplayName("default helpers — mapStringToAddress / mapAddressToString / usernameMapper")
+    @DisplayName("default helpers — mapAddressToString / usernameMapper")
     class Helpers {
-
-        @Test
-        void mapStringToAddress_shouldReturnNullForNull() {
-            assertThat(mapper.mapStringToAddress(null)).isNull();
-        }
-
-        @Test
-        void mapStringToAddress_shouldUsePlaceholdersForOtherFields() {
-            Address addr = mapper.mapStringToAddress("Some street");
-            assertThat(addr.getStreet()).isEqualTo("Some street");
-            assertThat(addr.getCity()).isEqualTo("Unknown City");
-            assertThat(addr.getZipCode()).isEqualTo("00000");
-            assertThat(addr.getCountry()).isEqualTo("Unknown Country");
-        }
 
         @Test
         void mapAddressToString_shouldReturnNullForNull() {

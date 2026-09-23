@@ -519,7 +519,10 @@ class UserManagementServiceImpTest {
                     .firstName("Alice")
                     .lastName("Doe")
                     .phoneNumber("+33611111111")
-                    .address("42 rue Selfservice")
+                    .street("42 rue Selfservice")
+                    .city("Paris")
+                    .zipCode("75001")
+                    .country("FR")
                     .build();
         }
 
@@ -560,7 +563,10 @@ class UserManagementServiceImpTest {
             assertThat(adapted.getUuid()).isEqualTo(userUuid);
             assertThat(adapted.getFirstName()).isEqualTo("Alice");
             assertThat(adapted.getLastName()).isEqualTo("Doe");
-            assertThat(adapted.getAddress()).isEqualTo("42 rue Selfservice");
+            assertThat(adapted.getStreet()).isEqualTo("42 rue Selfservice");
+            assertThat(adapted.getCity()).isEqualTo("Paris");
+            assertThat(adapted.getZipCode()).isEqualTo("75001");
+            assertThat(adapted.getCountry()).isEqualTo("FR");
             // Privilege-elevation guard: email is admin-managed (would resync Keycloak login) so the
             // self-update path must never propagate it. The DTO surface itself has no role/status field,
             // so the only sensitive write the adapter could leak is email.
@@ -594,7 +600,7 @@ class UserManagementServiceImpTest {
                     .thenReturn(UserDtoFixtures.aSampleUserResponse());
 
             final UserSelfUpdateRequestDto noPhone = UserSelfUpdateRequestDto.builder()
-                    .firstName("Alice").lastName("Doe").address("42 rue").build();
+                    .firstName("Alice").lastName("Doe").street("42 rue").build();
             service.updateMe(keycloakId, noPhone);
 
             verify(userRepository, never()).save(any(UserEntity.class));

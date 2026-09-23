@@ -60,7 +60,10 @@ public final class UserDtoFixtures {
         dto.setLastName("Doe");
         dto.setSex(Sex.F);
         dto.setEmail("user@example.com");
-        dto.setAddress("1 rue de Test, Paris");
+        dto.setStreet("1 rue de Test");
+        dto.setCity("Paris");
+        dto.setZipCode("75001");
+        dto.setCountry("FR");
         dto.setBirthDate(LocalDateTime.now().minusYears(30));
         return dto;
     }

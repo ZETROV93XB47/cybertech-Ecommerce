@@ -32,7 +32,13 @@ public class UserUpdateRequestDto {
     @Email(message = "Email must be valid")
     private String email;
 
-    private String address; // Peut être null si non modifié
+    // Address is split field-by-field (mirrors UserCreateRequestDto / the entity's Address
+    // value object) so a partial update — e.g. only the street changed — never has to guess
+    // city/zipCode/country. Each field is null if not modified.
+    private String street;
+    private String city;
+    private String zipCode;
+    private String country;
 
     @Past(message = "Birth date must be in the past")
     private LocalDateTime birthDate; // Peut être null si non modifié

@@ -5,6 +5,7 @@ import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.valueObjects.Address;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -20,8 +21,36 @@ public interface UserMapper extends BaseMapper<UserEntity, UserCreateRequestDto,
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     // Il me faut l'uuid pour pouvoir retrouver le User, pas pour le maj
     @Mapping(target = "uuid", ignore = true)
-    @Mapping(target = "address", expression = "java(dto.getAddress() != null ? mapStringToAddress(dto.getAddress()) : entity.getAddress())")
+    @Mapping(target = "address", ignore = true)
     void updateEntityFromDto(UserUpdateRequestDto dto, @MappingTarget UserEntity entity);
+
+    /**
+     * Applies the (possibly partial) address fields of an update request onto the managed
+     * user's immutable {@link Address}. Mirrors {@link OrderMapper#mergeShippingAddressFromUpdate}
+     * — only the fields present in the DTO are changed, the rest of the existing address (and
+     * any field never sent) is preserved instead of being overwritten with placeholder values.
+     */
+    @AfterMapping
+    default void mergeAddressFromUpdate(final UserUpdateRequestDto dto, @MappingTarget final UserEntity entity) {
+        Address current = entity.getAddress();
+        if (current == null) {
+            entity.setAddress(new Address(dto.getStreet(), dto.getCity(), dto.getZipCode(), dto.getCountry()));
+            return;
+        }
+        if (dto.getStreet() != null) {
+            current = current.withStreet(dto.getStreet());
+        }
+        if (dto.getCity() != null) {
+            current = current.withCity(dto.getCity());
+        }
+        if (dto.getZipCode() != null) {
+            current = current.withZipCode(dto.getZipCode());
+        }
+        if (dto.getCountry() != null) {
+            current = current.withCountry(dto.getCountry());
+        }
+        entity.setAddress(current);
+    }
 
     // Mapping direct des champs éclatés du DTO vers l'objet Address de l'entité
     @Override
@@ -31,15 +60,19 @@ public interface UserMapper extends BaseMapper<UserEntity, UserCreateRequestDto,
     @Mapping(target = "address.country", source = "country")
     UserEntity mapFromCreationRequestToEntity(UserCreateRequestDto dto);
 
+    // Idem pour le DTO d'update (fresh entity, pas de patch partiel ici) : mêmes champs éclatés.
+    @Override
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "address.street", source = "street")
+    @Mapping(target = "address.city", source = "city")
+    @Mapping(target = "address.zipCode", source = "zipCode")
+    @Mapping(target = "address.country", source = "country")
+    UserEntity mapFromUpdateRequestToEntity(UserUpdateRequestDto dto);
+
     @Override
     @Mapping(target = "username", expression = "java(usernameMapper(entity.getFirstName(), entity.getLastName()))")
     @Mapping(target = "address", expression = "java(mapAddressToString(entity.getAddress()))")
     UserResponseDto mapFromEntityToResponseDto(UserEntity entity);
-
-    default Address mapStringToAddress(String address) {
-        if (address == null) return null;
-        return new Address(address, "Unknown City", "00000", "Unknown Country");
-    }
 
     default String mapAddressToString(Address address) {
         if (address == null) return null;
