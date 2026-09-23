@@ -4,6 +4,7 @@ import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
@@ -44,5 +45,8 @@ public class OrderUpdateRequestDto {
     @NotBlank(message = "Shipping Country cannot be blank")
     private String shippingCountry;
 
+    // BUG-fix: an empty list made updateOrder() compute a zero-amount difference and flip the
+    // order to PAID with no payment ever processed (see OrderManagementServiceImp#updateOrder).
+    @NotEmpty(message = "At least one item is required to update an order")
     private List<OrderItemCreateRequestDto> itemUpdateRequestDtoList;
 }

@@ -112,7 +112,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     /**
-     * BUG-IDOR-D1 — ownership-checked variant of {@link #getByUUID(UUID)}.
+     * Ownership-checked variant of {@link #getByUUID(UUID)}.
      *
      * <p>Resolves the order and verifies its initiator's {@code keycloakId} matches the
      * caller's JWT subject. Mirrors the CartServiceImp / {@link #getStatusByUUID(UUID, String)}
@@ -120,7 +120,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * to HTTP 403 by {@code ErrorManagementController}). Used by the user-facing
      * {@code GET /order/get/{uuid}} endpoint to prevent IDOR.
      *
-     * <p>Wave 3 regression-fix: callers carrying {@code ROLE_ADMIN} bypass the ownership
+     * <p>Callers carrying {@code ROLE_ADMIN} bypass the ownership
      * check (resolved via {@link ControllerSecurityUtils#isCurrentCallerAdmin()}). USERs
      * still get the IDOR protection.</p>
      *
@@ -163,7 +163,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * Lightweight status read with ownership check — used by the frontend's order-confirmation
      * polling loop after a Stripe payment so we don't refetch the full {@code OrderResponseDto}.
      *
-     * <p>BUG-5 FIX: callers carrying {@code ROLE_ADMIN} bypass the ownership check — mirrors the
+     * <p>Callers carrying {@code ROLE_ADMIN} bypass the ownership check — mirrors the
      * admin escape-hatch already implemented in {@link #getByUUID(UUID, String)}. Without this,
      * admin support tooling would receive HTTP 403 when polling status on a customer's order.</p>
      */
@@ -199,7 +199,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     /**
      * Hard-delete an order after verifying ownership and state eligibility.
      *
-     * <p>BUG-054 guard: resolves the caller via {@link #resolveKeycloakIdFromJwt(Jwt)}, surfacing a
+     * <p>Resolves the caller via {@link #resolveKeycloakIdFromJwt(Jwt)}, surfacing a
      * {@link UserNotFoundException} instead of an NPE when the JWT {@code sub} claim is missing.
      * Stock is released before the row is deleted — no refund is issued here;
      * use {@link #cancelOrder(UUID, Jwt)} for that.
@@ -209,7 +209,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * @throws OrderNotFoundException              when no order matches {@code uuid}.
      * @throws OrderDoesntBelongsToUserException   when the caller is not the order's initiator.
      * @throws CannotCancelOrderException          when the order is not in a deletable state.
-     * @throws UserNotFoundException               when the JWT subject is missing (BUG-054).
+     * @throws UserNotFoundException               when the JWT subject is missing.
      */
     @Override
     @Transactional
@@ -236,7 +236,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * positive delta, refund the negative delta, or commit the existing reservation when the
      * total is unchanged.
      *
-     * <p>BUG-054 guard: callers with a missing JWT {@code sub} now get a clean
+     * <p>Callers with a missing JWT {@code sub} now get a clean
      * {@link UserNotFoundException} rather than an NPE on {@code keycloakId.equals(null)}.
      *
      * @param dto update payload (new items, new shipping, new total).
@@ -244,7 +244,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * @throws OrderNotFoundException             when no order matches {@code dto.uuid}.
      * @throws OrderDoesntBelongsToUserException  when the caller is not the order's initiator.
      * @throws OrderAlreadyShippedException       when the order has already shipped.
-     * @throws UserNotFoundException              when the JWT subject is missing (BUG-054).
+     * @throws UserNotFoundException              when the JWT subject is missing.
      */
     @Override
     @Transactional
@@ -279,29 +279,31 @@ public class OrderManagementServiceImp implements OrderManagementService {
         validateUserBeforeProcessingPayment(order.getUserEntity());//TODO: is it really necessary to make this check here ? maybe make it before launching the order placing process
 
         // 3) Calculer le total — delegated to OrderPriceCalculationService (no re-discount on updates)
-        final BigDecimal amount;
+        // products.isEmpty() used to default the total to ZERO and fall through to the
+        // "no price difference" branch below, which flips the order to PAID — an all-nonexistent
+        // product UUID list (findAllByUuidIn silently drops unmatched UUIDs, see
+        // getAllProductsFromRequest) let a caller mark their own order PAID for €0 with no
+        // payment. Reject instead of silently pricing at zero.
         if (products.isEmpty()) {
-            // Guard: no matched products -> treat total as zero (preserves legacy behaviour for missing-product edge case)
-            amount = BigDecimal.ZERO;
-        } else {
-            final List<OrderItemPriceDto> priceDtos = products.stream()
-                    .map(p -> OrderItemPriceDto.builder()
-                            .productUuid(p.getUuid())
-                            .unitPrice(p.getPrice())
-                            .quantity(quantities.get(p.getUuid()))
-                            .build())
-                    .toList();
-
-            final PriceCalculationRequestDto priceReq = PriceCalculationRequestDto.builder()
-                    .items(priceDtos)
-                    .discountType(DiscountType.NO_DISCOUNT)
-                    .currencyCode(CurrencyCode.fromCode("EUR"))
-                    .shippingProvider(dto.getShippingProvider())
-                    .shippingType(dto.getShippingType())
-                    .build();
-
-            amount = orderPriceCalculationService.calculate(priceReq).getFinalAmount();
+            throw new ProductNotFoundException("None of the requested products were found");
         }
+        final List<OrderItemPriceDto> priceDtos = products.stream()
+                .map(p -> OrderItemPriceDto.builder()
+                        .productUuid(p.getUuid())
+                        .unitPrice(p.getPrice())
+                        .quantity(quantities.get(p.getUuid()))
+                        .build())
+                .toList();
+
+        final PriceCalculationRequestDto priceReq = PriceCalculationRequestDto.builder()
+                .items(priceDtos)
+                .discountType(DiscountType.NO_DISCOUNT)
+                .currencyCode(CurrencyCode.fromCode("EUR"))
+                .shippingProvider(dto.getShippingProvider())
+                .shippingType(dto.getShippingType())
+                .build();
+
+        final BigDecimal amount = orderPriceCalculationService.calculate(priceReq).getFinalAmount();
         final Money total = Money.of(amount);
 
         // Calcul du montant déjà payé (Paiements - Remboursements)
@@ -355,7 +357,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         final PaymentEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), updateIdempotencyKey);
 
-        // FIX(LISIBILITE): explicit save instead of relying on JPA dirty-check
+        // Explicit save instead of relying on JPA dirty-check
         orderRepository.save(order);
 
         sendOrderUpdatedEvent(order, order.getUserEntity(), total.getAmount(), attempt.getStatus());
@@ -366,7 +368,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     /**
      * Retry a failed (or still-pending) payment for an existing order.
      *
-     * <p><b>BUG-052 contract — no double-discount on retry:</b> {@code order.getTotalAmount()} is the
+     * <p><b>No double-discount on retry:</b> {@code order.getTotalAmount()} is the
      * post-discount final amount set once at {@link #placeOrder} time (placeOrder sums
      * {@code unitPrice * quantity} for every cart item — the unit price already reflects any
      * promotional discount applied upstream in the cart service). Retry forwards that stored total
@@ -374,12 +376,12 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * Consequently a customer who retries after a transient payment failure pays exactly the same
      * amount as the original attempt — never 2× the discount.
      *
-     * <p><b>BUG-054 guard:</b> {@link #resolveKeycloakIdFromJwt(Jwt)} surfaces a
+     * <p>{@link #resolveKeycloakIdFromJwt(Jwt)} surfaces a
      * {@link UserNotFoundException} when the JWT {@code sub} claim is missing, instead of an NPE.
      *
      * <p>Side effects, in order:
      * <ol>
-     *   <li>Re-reserves stock (the prior reservation was released on failure — see BUG-050 fix);
+     *   <li>Re-reserves stock (the prior reservation was released on failure);
      *       bubbles {@link com.novatech.cybertech.exceptions.NotEnoughStockException} if the stock
      *       is no longer available.</li>
      *   <li>Re-uses the {@link PaymentType} from the most recent attempt.</li>
@@ -396,7 +398,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * @throws FailedRetryingPayment               when the order is not in a retryable state.
      * @throws NoPreviousPaymentAttemptException   when there is no prior attempt to copy the
      *                                             payment type from.
-     * @throws UserNotFoundException               when the JWT subject is missing (BUG-054).
+     * @throws UserNotFoundException               when the JWT subject is missing.
      */
     @Override
     @Transactional
@@ -457,10 +459,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * Convert the caller's cart into a persisted order, reserve stock, attempt payment, and
      * publish an {@code OrderCreatedEvent}.
      *
-     * <p>BUG-054 guard: {@link #resolveKeycloakIdFromJwt(Jwt)} rejects a null JWT subject with
+     * <p>{@link #resolveKeycloakIdFromJwt(Jwt)} rejects a null JWT subject with
      * {@link UserNotFoundException} — no more NPE when the token is malformed.
      *
-     * <p>Pinning for BUG-052: the {@code totalAmount} persisted here is the FINAL,
+     * <p>The {@code totalAmount} persisted here is the FINAL,
      * discount-adjusted amount (sum of cart-item unit prices × quantities — the cart service is
      * responsible for applying any promotional discount into the unit price before this call).
      * Any subsequent retry via {@link #retryPayment(UUID, Jwt)} forwards this amount verbatim.
@@ -584,7 +586,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * payment attempt (excluding refunds themselves). Differs from {@link #deleteByUUID}, which
      * hard-deletes the row and issues no refund.
      *
-     * <p>BUG-054 guard: the JWT subject is resolved via {@link #resolveKeycloakIdFromJwt(Jwt)}
+     * <p>The JWT subject is resolved via {@link #resolveKeycloakIdFromJwt(Jwt)}
      * — a missing {@code sub} claim now throws {@link UserNotFoundException}.
      *
      * <p><b>Race-fix (full-suite IT regression):</b> the async {@code PaymentSucceededEvent}
@@ -788,7 +790,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     /**
-     * BUG-054: defensive null-guard around {@link Jwt#getSubject()}.
+     * Defensive null-guard around {@link Jwt#getSubject()}.
      *
      * <p>Every user-facing method in this service identifies the caller by the JWT {@code sub}
      * claim. A malformed / stripped token (missing sub) used to fall through to

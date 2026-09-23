@@ -36,6 +36,7 @@ import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
+import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.CartEntityBuilder;
@@ -102,9 +103,9 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link OrderManagementServiceImp}.
  *
- * <p><b>SA-W3.1 wave</b> — recreates SA3.1a's surface (50 tests in 7 nested groups) and re-verifies
- * the BUG-050 stock-release-on-payment-failure fix asserted by Wave F2 (2026-04-23). The brief
- * mentioned an {@code OrderPriceCalculationService} dependency added in Wave F4, but the actual
+ * <p>Recreates the full order-service test surface (50 tests in 7 nested groups) and re-verifies
+ * the stock-release-on-payment-failure fix (2026-04-23). The brief
+ * mentioned an {@code OrderPriceCalculationService} dependency, but the actual
  * production source on this branch does NOT inject it — only the original 9 dependencies remain
  * ({@link OrderMapper}, {@link StockService}, {@link PaymentService}, {@link UserRepository},
  * {@link OrderRepository}, {@link ProductRepository}, {@link OrderValidator},
@@ -355,13 +356,13 @@ class OrderManagementServiceImpTest {
         }
 
         /**
-         * BUG-050 fix verification (Wave F2).
+         * Verifies the payment-failed stock-release fix.
          * <p>
-         * F2 reports: {@code OrderManagementServiceImp.placeOrder} now calls
+         * {@code OrderManagementServiceImp.placeOrder} now calls
          * {@code stockService.releaseStock(orderUuid)} when {@code paymentService.processPayment}
          * returns a {@link PaymentEntity} with {@link PaymentAttemptStatus#FAILED}. This test
          * asserts that compensating action — if the fix is in place, the test PASSES; if reverted,
-         * it FAILS loudly and we reopen BUG-050.
+         * it FAILS loudly.
          */
         @Test
         @DisplayName("BUG-050 fix: payment FAILED path releases stock reservation")
@@ -457,7 +458,7 @@ class OrderManagementServiceImpTest {
         @Test
         @DisplayName("BUG-054 FIX: null JWT subject throws UserNotFoundException without NPE and never queries repo")
         void placeOrder_nullJwtSubject_shouldThrowUserNotFound() {
-            // BUG-054 FIX verified: resolveKeycloakIdFromJwt surfaces a missing sub claim as
+            // resolveKeycloakIdFromJwt surfaces a missing sub claim as
             // UserNotFoundException before any repo call — no NPE, no findByKeycloakId(null).
             when(jwt.getSubject()).thenReturn(null);
 
@@ -583,6 +584,33 @@ class OrderManagementServiceImpTest {
                     .uuid(orderUuid)
                     .itemUpdateRequestDtoList(List.of(item))
                     .build();
+        }
+
+        @Test
+        @DisplayName("BUG-fix: no requested product UUID matches -> ProductNotFoundException, order untouched")
+        void noMatchingProducts_throwsProductNotFoundException() {
+            // Regression test: findAllByUuidIn silently drops unmatched UUIDs instead of
+            // erroring, so a request whose product UUIDs don't exist anymore used to fall
+            // through to a zero-amount price calc and flip the order to PAID for free.
+            final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, new BigDecimal("100.00"), null);
+            final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                    .uuid(order.getUuid())
+                    .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder()
+                            .productUuid(UUID.randomUUID())
+                            .quantity(1)
+                            .build()))
+                    .build();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of());
+
+            assertThatThrownBy(() -> service.updateOrder(req, jwt))
+                    .isInstanceOf(ProductNotFoundException.class);
+
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+            verifyNoInteractions(paymentService);
+            verify(stockService, never()).commitStock(any());
+            verify(stockService, never()).reserveStock(any(), any());
+            verify(orderRepository, never()).save(any());
         }
 
         @Test
@@ -736,9 +764,11 @@ class OrderManagementServiceImpTest {
 
         @Test
         @DisplayName("product missing from fetched products: silently treated as 0 in total computation")
-        void productMissingFromFetch_silentlySkipped() {
-            // Request asks for one product, fetched list is empty -> processOrderTotalPrice returns 0
-            // Prior paid = 0 -> difference 0 -> commit branch and status forced to PAID.
+        void productMissingFromFetch_throwsProductNotFoundException() {
+            // Superseded 2026-09: this used to pin the buggy "silently treat as zero
+            // and force PAID" behaviour covered by noMatchingProducts_throwsProductNotFoundException
+            // above. Kept here as its own scenario (requested UUID that simply isn't found, as
+            // opposed to an all-UUIDs-missing list) to lock in the fix from both angles.
             final UUID requestedProductUuid = UUID.randomUUID();
             final UserEntity user = UserEntityBuilder.aValidUserBuilder()
                     .keycloakId(keycloakId)
@@ -752,18 +782,19 @@ class OrderManagementServiceImpTest {
                     .build();
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of()); // empty!
-            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             final OrderItemCreateRequestDto item = OrderItemCreateRequestDto.builder()
                     .productUuid(requestedProductUuid).quantity(2).build();
             final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder()
                     .uuid(order.getUuid()).itemUpdateRequestDtoList(List.of(item)).build();
 
-            service.updateOrder(req, jwt);
+            assertThatThrownBy(() -> service.updateOrder(req, jwt))
+                    .isInstanceOf(ProductNotFoundException.class);
 
-            verify(stockService).commitStock(order.getUuid());
+            verify(stockService, never()).commitStock(any());
             verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
             verify(paymentService, never()).refund(any(), any(), any(), anyString());
+            verify(orderRepository, never()).save(any());
         }
 
         @Test
@@ -942,7 +973,7 @@ class OrderManagementServiceImpTest {
         @Test
         @DisplayName("BUG-052 FIX: retryPayment forwards stored discount-adjusted total verbatim — no double-discount")
         void retryPayment_shouldNotDoubleApplyDiscount() {
-            // BUG-052 contract verified: order.totalAmount is the POST-discount final amount written
+            // order.totalAmount is the POST-discount final amount written
             // once at placeOrder time. retryPayment forwards it verbatim to processPayment — never
             // re-applying the discount strategy on top of an already-discounted total. A customer
             // retrying after a transient payment failure pays exactly the same amount as the original
@@ -1266,7 +1297,7 @@ class OrderManagementServiceImpTest {
         }
 
         /**
-         * BUG-5 FIX: getStatusByUUID was missing the {@code !isCurrentCallerAdmin()} guard that
+         * getStatusByUUID was missing the {@code !isCurrentCallerAdmin()} guard that
          * {@link OrderManagementServiceImp#getByUUID(UUID, String)} already had — admin support
          * tooling polling status on a customer's order would receive HTTP 403. The fix mirrors
          * {@code getByUUID}'s admin escape-hatch.
