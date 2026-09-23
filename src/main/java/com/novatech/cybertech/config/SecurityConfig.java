@@ -24,6 +24,7 @@ import org.springframework.security.config.annotation.web.configurers.HeadersCon
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.StaticHeadersWriter;
@@ -60,13 +61,13 @@ public class SecurityConfig {
      */
     private static final String H2_CONSOLE_URL_PATTERN = "/h2-console/**";
 
-    // FIX(H2-CONSOLE): H2 console is now exposed only under the 'dev' profile to prevent
+    // H2 console is now exposed only under the 'dev' profile to prevent
     // accidental exposure in non-dev environments. The pattern was deliberately removed
     // from PUBLIC_URLS below — the dedicated h2ConsoleSecurityFilterChain bean (annotated
     // @Profile("dev") + @Order(HIGHEST_PRECEDENCE)) wires it up only when the dev profile
     // is active and disables frame-options so the H2 web UI iframe renders.
     /**
-     * BUG-PRE-3: actuator probes ({@code /actuator/health}, {@code /actuator/health/liveness},
+     * Actuator probes ({@code /actuator/health}, {@code /actuator/health/liveness},
      * {@code /actuator/health/readiness}, {@code /actuator/info}) MUST be reachable anonymously
      * so kubelet liveness/readiness probes (and Helm chart wait jobs) succeed without
      * provisioning a service-account token. Every OTHER {@code /actuator/**} endpoint is locked
@@ -80,18 +81,18 @@ public class SecurityConfig {
             "/products/list",       // Exemple: Liste publique des produits
             "/swagger-ui/**",       // Accès à Swagger UI (si utilisé)
             "/v3/api-docs/**",      // Accès à la définition OpenAPI (si utilisé)
-            // BUG-201: narrowed from "/api/v1/services/user/register/**" to the exact
+            // Narrowed from "/api/v1/services/user/register/**" to the exact
             // human-signup path so /register/auto/** is NO LONGER anonymously reachable.
             // The /auto endpoints are ADMIN-only via @PreAuthorize on the controllers.
             "/api/v1/services/user/register",
-            // BUG-IDOR-D3: removed "/api/v1/services/user/get/all" — user listing must be
+            // Removed "/api/v1/services/user/get/all" — user listing must be
             // ADMIN-only via @PreAuthorize on the management controller, never anonymous.
             "/test/upload-image/**",
             "/api/v1/services/product/**",
             "/api/v1/services/discounts/**",
             "/api/v1/services/product-category-schemas/**",
             "/api/v1/webhooks/**",
-            // BUG-PRE-3: kubelet probes + Spring Boot health groups (liveness/readiness).
+            // Kubelet probes + Spring Boot health groups (liveness/readiness).
             "/actuator/health",
             "/actuator/health/**",
             "/actuator/info",
@@ -127,7 +128,7 @@ public class SecurityConfig {
     private String corsAllowedOrigins;
 
     /**
-     * FIX(H2-CONSOLE): dev-only SecurityFilterChain that exposes the H2 web console
+     * Dev-only SecurityFilterChain that exposes the H2 web console
      * ({@value #H2_CONSOLE_URL_PATTERN}) without authentication and disables frame-options
      * so the console's nested iframe layout renders. Active only when the {@value #DEV_PROFILE}
      * Spring profile is on; in every other profile the H2 console is unreachable through
@@ -206,7 +207,11 @@ public class SecurityConfig {
                     }
                 })
                 .addFilterBefore(stripeWebhookIpAllowlistFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class);
+                // Must run AFTER BearerTokenAuthenticationFilter, not before UsernamePasswordAuthenticationFilter:
+                // the latter runs before the JWT is parsed into the SecurityContext, so
+                // RateLimitFilter#resolveClientId always saw an empty SecurityContext and fell back to
+                // per-IP keying — its per-JWT-subject quota (order.place, cart) never actually applied.
+                .addFilterAfter(rateLimitFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }
