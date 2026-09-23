@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,9 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.FAILED_PAYMENT_ORDERS_MAP_BY_USERS;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_ORDERS_TO_CANCEL;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.PENDING_ORDERS_MAP_BY_USER_EMAIL;
 import static org.springframework.batch.core.ExitStatus.COMPLETED;
@@ -75,13 +78,51 @@ public class CancelAllPendingOrdersByTimeTasklet extends BaseTasklet {
                             Collectors.mapping(BaseEntity::getUuid, Collectors.toList())
                     ));
 
-            stepContribution.getStepExecution().getJobExecution().getExecutionContext()
-                    .put(PENDING_ORDERS_MAP_BY_USER_EMAIL, cancelledOrdersIdsByUserEmail);
+            final var executionContext = stepContribution.getStepExecution().getJobExecution().getExecutionContext();
+            executionContext.put(PENDING_ORDERS_MAP_BY_USER_EMAIL, cancelledOrdersIdsByUserEmail);
+
+            // Prune the orders we just cancelled from the "still awaiting payment retry" map the
+            // previous step (GetAllFailedPaymentOrderTasklet) already wrote — otherwise a customer
+            // whose stale PAYMENT_FAILED order gets cancelled here would receive both a "please pay"
+            // and a "your order was cancelled" email from the same job run.
+            pruneJustCancelledOrdersFromPendingPaymentMap(executionContext, successfullyCancelled);
+
             stepContribution.setExitStatus(COMPLETED);
         }
 
         log.info("CancelAllPendingOrdersByTimeTasklet finished");
 
         return RepeatStatus.FINISHED;
+    }
+
+    /**
+     * Removes the just-cancelled order UUIDs from {@link com.novatech.cybertech.constants.CyberTechAppConstants#FAILED_PAYMENT_ORDERS_MAP_BY_USERS}
+     * (written earlier in this same job run by {@code GetAllFailedPaymentOrderTasklet}) so
+     * {@code OrdersSummaryReportListener} never sends a "please retry your payment" email for an
+     * order this same run just cancelled. A user email key whose orders are all pruned is dropped
+     * entirely rather than left mapped to an empty list.
+     */
+    @SuppressWarnings("unchecked")
+    private static void pruneJustCancelledOrdersFromPendingPaymentMap(final ExecutionContext executionContext,
+                                                                        final List<OrderEntity> justCancelled) {
+        final Map<String, List<UUID>> pendingPaymentOrdersMap =
+                (Map<String, List<UUID>>) executionContext.get(FAILED_PAYMENT_ORDERS_MAP_BY_USERS);
+
+        if (pendingPaymentOrdersMap == null || justCancelled.isEmpty()) {
+            return;
+        }
+
+        final Set<UUID> justCancelledUuids = justCancelled.stream()
+                .map(BaseEntity::getUuid)
+                .collect(Collectors.toSet());
+
+        final Map<String, List<UUID>> prunedPendingPaymentOrdersMap = pendingPaymentOrdersMap.entrySet().stream()
+                .map(entry -> Map.entry(entry.getKey(), entry.getValue().stream()
+                        .filter(orderUuid -> !justCancelledUuids.contains(orderUuid))
+                        .toList()))
+                .filter(entry -> !entry.getValue().isEmpty())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        executionContext.put(FAILED_PAYMENT_ORDERS_MAP_BY_USERS, prunedPendingPaymentOrdersMap);
     }
 }

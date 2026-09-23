@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.FAILED_PAYMENT_ORDERS_MAP_BY_USERS;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_ORDERS_TO_CANCEL;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.PENDING_ORDERS_MAP_BY_USER_EMAIL;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -275,6 +276,81 @@ class CancelAllPendingOrdersByTimeTaskletTest {
             @SuppressWarnings("unchecked")
             final Map<String, List<UUID>> grouped = (Map<String, List<UUID>>) jobExecution.getExecutionContext().get(PENDING_ORDERS_MAP_BY_USER_EMAIL);
             assertThat(grouped).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("Pruning the pending-payment-retry map (no contradictory emails in the same run)")
+    class PruningPendingPaymentMap {
+
+        @SuppressWarnings("unchecked")
+        @Test
+        @DisplayName("an order cancelled here is removed from FAILED_PAYMENT_ORDERS_MAP_BY_USERS written by the previous step")
+        void removesJustCancelledOrderFromPendingPaymentMap() throws Exception {
+            final OrderEntity cancelled = orderForUser("a@example.com");
+            final OrderEntity stillPending = orderForUser("a@example.com");
+            when(orderRepository.findByStatusAndOrderDateBefore(eq(OrderStatus.PAYMENT_FAILED), any(LocalDateTime.class)))
+                    .thenReturn(List.of(cancelled));
+
+            // Simulate GetAllFailedPaymentOrderTasklet having already run in the same job and
+            // written both orders as "still awaiting payment retry".
+            final Map<String, List<UUID>> pendingPaymentMap = new java.util.HashMap<>();
+            pendingPaymentMap.put("a@example.com", new java.util.ArrayList<>(List.of(cancelled.getUuid(), stillPending.getUuid())));
+            jobExecution.getExecutionContext().put(FAILED_PAYMENT_ORDERS_MAP_BY_USERS, pendingPaymentMap);
+
+            tasklet.execute(stepContribution, stepArguments);
+
+            final Map<String, List<UUID>> prunedPendingMap =
+                    (Map<String, List<UUID>>) jobExecution.getExecutionContext().get(FAILED_PAYMENT_ORDERS_MAP_BY_USERS);
+            assertThat(prunedPendingMap.get("a@example.com"))
+                    .containsExactly(stillPending.getUuid())
+                    .doesNotContain(cancelled.getUuid());
+        }
+
+        @SuppressWarnings("unchecked")
+        @Test
+        @DisplayName("a user whose every pending order gets cancelled is dropped entirely from the map (no empty-list entry)")
+        void dropsUserEntryWhenAllTheirOrdersAreCancelled() throws Exception {
+            final OrderEntity cancelled = orderForUser("only@example.com");
+            when(orderRepository.findByStatusAndOrderDateBefore(eq(OrderStatus.PAYMENT_FAILED), any(LocalDateTime.class)))
+                    .thenReturn(List.of(cancelled));
+
+            final Map<String, List<UUID>> pendingPaymentMap = new java.util.HashMap<>();
+            pendingPaymentMap.put("only@example.com", new java.util.ArrayList<>(List.of(cancelled.getUuid())));
+            jobExecution.getExecutionContext().put(FAILED_PAYMENT_ORDERS_MAP_BY_USERS, pendingPaymentMap);
+
+            tasklet.execute(stepContribution, stepArguments);
+
+            final Map<String, List<UUID>> prunedPendingMap =
+                    (Map<String, List<UUID>>) jobExecution.getExecutionContext().get(FAILED_PAYMENT_ORDERS_MAP_BY_USERS);
+            assertThat(prunedPendingMap).doesNotContainKey("only@example.com");
+        }
+
+        @Test
+        @DisplayName("no pending-payment map present (previous step found nothing) — no-op, nothing written")
+        void noPendingPaymentMapPresent_isNoOp() throws Exception {
+            final OrderEntity cancelled = orderForUser("a@example.com");
+            when(orderRepository.findByStatusAndOrderDateBefore(eq(OrderStatus.PAYMENT_FAILED), any(LocalDateTime.class)))
+                    .thenReturn(List.of(cancelled));
+
+            tasklet.execute(stepContribution, stepArguments);
+
+            assertThat(jobExecution.getExecutionContext().containsKey(FAILED_PAYMENT_ORDERS_MAP_BY_USERS)).isFalse();
+        }
+
+        @Test
+        @DisplayName("no orders cancelled (empty result) — pending-payment map from the previous step is left untouched")
+        void noOrdersCancelled_pendingPaymentMapUntouched() throws Exception {
+            when(orderRepository.findByStatusAndOrderDateBefore(eq(OrderStatus.PAYMENT_FAILED), any(LocalDateTime.class)))
+                    .thenReturn(Collections.emptyList());
+
+            final Map<String, List<UUID>> pendingPaymentMap = new java.util.HashMap<>();
+            pendingPaymentMap.put("a@example.com", new java.util.ArrayList<>(List.of(UUID.randomUUID())));
+            jobExecution.getExecutionContext().put(FAILED_PAYMENT_ORDERS_MAP_BY_USERS, pendingPaymentMap);
+
+            tasklet.execute(stepContribution, stepArguments);
+
+            assertThat(jobExecution.getExecutionContext().get(FAILED_PAYMENT_ORDERS_MAP_BY_USERS)).isSameAs(pendingPaymentMap);
         }
     }
 }

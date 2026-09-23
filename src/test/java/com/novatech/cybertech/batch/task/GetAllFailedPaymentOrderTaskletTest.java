@@ -2,13 +2,11 @@ package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
 import com.novatech.cybertech.entities.OrderEntity;
-import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.UserEntity;
-import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
-import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
-import com.novatech.cybertech.repositories.PaymentAttemptRepository;
+import com.novatech.cybertech.repositories.OrderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -39,13 +37,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link GetAllFailedPaymentOrderTasklet}. Pure read + group-by-user.
+ * Unit tests for {@link GetAllFailedPaymentOrderTasklet}.
+ *
+ * <p>Pins the fix: the tasklet queries orders CURRENTLY {@link OrderStatus#PAYMENT_FAILED}
+ * (via {@link OrderRepository#findByStatus}), not payment-attempt history — a retried/completed
+ * order must never resurface in the "please retry your payment" reminder.
  */
 @ExtendWith(MockitoExtension.class)
 class GetAllFailedPaymentOrderTaskletTest {
 
     @Mock
-    private PaymentAttemptRepository paymentAttemptRepository;
+    private OrderRepository orderRepository;
 
     @InjectMocks
     private GetAllFailedPaymentOrderTasklet tasklet;
@@ -68,12 +70,12 @@ class GetAllFailedPaymentOrderTaskletTest {
         );
     }
 
-    private PaymentEntity failedPaymentForUser(final String email) {
+    private OrderEntity paymentFailedOrderForUser(final String email) {
         final UserEntity user = UserEntityBuilder.aValidUserBuilder().email(email).build();
-        final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder().userEntity(user).uuid(UUID.randomUUID()).build();
-        return PaymentEntityBuilder.aValidPaymentBuilder()
-                .status(PaymentAttemptStatus.FAILED)
-                .orderEntity(order)
+        return OrderEntityBuilder.aValidOrderBuilder()
+                .userEntity(user)
+                .uuid(UUID.randomUUID())
+                .status(OrderStatus.PAYMENT_FAILED)
                 .build();
     }
 
@@ -83,13 +85,13 @@ class GetAllFailedPaymentOrderTaskletTest {
 
         @SuppressWarnings("unchecked")
         @Test
-        @DisplayName("groups failed-payment order UUIDs by user email and writes to JobExecutionContext")
+        @DisplayName("groups PAYMENT_FAILED order UUIDs by user email and writes to JobExecutionContext")
         void groupsFailedPaymentsByUserEmail() throws Exception {
-            final PaymentEntity p1 = failedPaymentForUser("a@example.com");
-            final PaymentEntity p2 = failedPaymentForUser("a@example.com");
-            final PaymentEntity p3 = failedPaymentForUser("b@example.com");
-            when(paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED))
-                    .thenReturn(List.of(p1, p2, p3));
+            final OrderEntity o1 = paymentFailedOrderForUser("a@example.com");
+            final OrderEntity o2 = paymentFailedOrderForUser("a@example.com");
+            final OrderEntity o3 = paymentFailedOrderForUser("b@example.com");
+            when(orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED))
+                    .thenReturn(List.of(o1, o2, o3));
 
             final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
 
@@ -97,34 +99,34 @@ class GetAllFailedPaymentOrderTaskletTest {
             assertThat(stepContribution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
             final Map<String, List<UUID>> grouped = (Map<String, List<UUID>>) jobExecution.getExecutionContext().get(FAILED_PAYMENT_ORDERS_MAP_BY_USERS);
             assertThat(grouped).hasSize(2);
-            assertThat(grouped.get("a@example.com")).containsExactlyInAnyOrder(p1.getOrderEntity().getUuid(), p2.getOrderEntity().getUuid());
-            assertThat(grouped.get("b@example.com")).containsExactly(p3.getOrderEntity().getUuid());
+            assertThat(grouped.get("a@example.com")).containsExactlyInAnyOrder(o1.getUuid(), o2.getUuid());
+            assertThat(grouped.get("b@example.com")).containsExactly(o3.getUuid());
         }
 
         @Test
-        @DisplayName("queries the repository with PaymentAttemptStatus.FAILED")
-        void queriesRepoWithFailedStatus() throws Exception {
-            when(paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED))
+        @DisplayName("queries the repository with OrderStatus.PAYMENT_FAILED (current status, not payment-attempt history)")
+        void queriesRepoWithPaymentFailedOrderStatus() throws Exception {
+            when(orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED))
                     .thenReturn(Collections.emptyList());
 
             tasklet.execute(stepContribution, stepArguments);
 
-            verify(paymentAttemptRepository).findByStatus(PaymentAttemptStatus.FAILED);
+            verify(orderRepository).findByStatus(OrderStatus.PAYMENT_FAILED);
         }
 
         @SuppressWarnings("unchecked")
         @Test
-        @DisplayName("single user with single failed payment → one-entry map")
+        @DisplayName("single user with single PAYMENT_FAILED order → one-entry map")
         void singleEntryMap() throws Exception {
-            final PaymentEntity p1 = failedPaymentForUser("only@example.com");
-            when(paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED))
-                    .thenReturn(List.of(p1));
+            final OrderEntity o1 = paymentFailedOrderForUser("only@example.com");
+            when(orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED))
+                    .thenReturn(List.of(o1));
 
             tasklet.execute(stepContribution, stepArguments);
 
             final Map<String, List<UUID>> grouped = (Map<String, List<UUID>>) jobExecution.getExecutionContext().get(FAILED_PAYMENT_ORDERS_MAP_BY_USERS);
             assertThat(grouped).hasSize(1).containsKey("only@example.com");
-            assertThat(grouped.get("only@example.com")).containsExactly(p1.getOrderEntity().getUuid());
+            assertThat(grouped.get("only@example.com")).containsExactly(o1.getUuid());
         }
     }
 
@@ -133,9 +135,9 @@ class GetAllFailedPaymentOrderTaskletTest {
     class EmptyInput {
 
         @Test
-        @DisplayName("no failed payments → ExitStatus.exitCode == NO_FAILED_PAYMENT_ORDER_FOUND, nothing written")
+        @DisplayName("no PAYMENT_FAILED orders → ExitStatus.exitCode == NO_FAILED_PAYMENT_ORDER_FOUND, nothing written")
         void noFailures_isNoOp() throws Exception {
-            when(paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED))
+            when(orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED))
                     .thenReturn(Collections.emptyList());
 
             tasklet.execute(stepContribution, stepArguments);
@@ -147,7 +149,7 @@ class GetAllFailedPaymentOrderTaskletTest {
         @Test
         @DisplayName("returns FINISHED on empty repository result")
         void returnsFinishedOnEmpty() throws Exception {
-            when(paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED))
+            when(orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED))
                     .thenReturn(Collections.emptyList());
 
             final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
@@ -163,7 +165,7 @@ class GetAllFailedPaymentOrderTaskletTest {
         @Test
         @DisplayName("repository failure bubbles out from typed execute()")
         void repositoryThrows_bubbles() {
-            when(paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED))
+            when(orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED))
                     .thenThrow(new RuntimeException("DB unavailable"));
 
             assertThatThrownBy(() -> tasklet.execute(stepContribution, stepArguments))
@@ -172,13 +174,13 @@ class GetAllFailedPaymentOrderTaskletTest {
         }
 
         @Test
-        @DisplayName("a payment with a missing order entity NPEs (defensive coverage)")
-        void paymentWithoutOrderNpe() {
-            final PaymentEntity broken = PaymentEntityBuilder.aValidPaymentBuilder()
-                    .status(PaymentAttemptStatus.FAILED)
-                    .orderEntity(null)
+        @DisplayName("an order with a missing user entity NPEs (defensive coverage)")
+        void orderWithoutUserNpe() {
+            final OrderEntity broken = OrderEntityBuilder.aValidOrderBuilder()
+                    .status(OrderStatus.PAYMENT_FAILED)
+                    .userEntity(null)
                     .build();
-            when(paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED))
+            when(orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED))
                     .thenReturn(List.of(broken));
 
             assertThatThrownBy(() -> tasklet.execute(stepContribution, stepArguments))

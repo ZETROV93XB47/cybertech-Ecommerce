@@ -1,9 +1,9 @@
 package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
-import com.novatech.cybertech.entities.PaymentEntity;
-import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
-import com.novatech.cybertech.repositories.PaymentAttemptRepository;
+import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.repositories.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
@@ -27,19 +27,26 @@ import static org.springframework.batch.core.ExitStatus.COMPLETED;
 @RequiredArgsConstructor
 public class GetAllFailedPaymentOrderTasklet extends BaseTasklet {
 
-    private final PaymentAttemptRepository paymentAttemptRepository;
+    private final OrderRepository orderRepository;
 
 
+    /**
+     * Queries orders that are CURRENTLY {@link OrderStatus#PAYMENT_FAILED} — not payment attempts
+     * that were ever marked FAILED. A retried payment leaves the old {@code PaymentEntity} row at
+     * FAILED forever (see {@code OrderPaymentConfirmationEventListener}) even once the order moves
+     * on to PAID/SHIPPED/CANCELED/etc., so querying payment-attempt history used to keep resurfacing
+     * long-completed orders in the "please retry your payment" reminder email.
+     */
     @Override
     @Transactional
     public RepeatStatus execute(final StepContribution stepContribution, final StepArguments stepArguments) {
 
         log.info("Starting GetAllFailedPaymentOrderTasklet");
 
-        final List<PaymentEntity> byStatus = paymentAttemptRepository.findByStatus(PaymentAttemptStatus.FAILED);
+        final List<OrderEntity> ordersStillAwaitingPaymentRetry = orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED);
 
-        final Map<String, List<UUID>> failedPaymentsMapUserEmailByUserEmail = byStatus.stream()
-                .collect(Collectors.groupingBy(pa -> pa.getOrderEntity().getUserEntity().getEmail(), Collectors.mapping(pa -> pa.getOrderEntity().getUuid(), Collectors.toList())));
+        final Map<String, List<UUID>> failedPaymentsMapUserEmailByUserEmail = ordersStillAwaitingPaymentRetry.stream()
+                .collect(Collectors.groupingBy(o -> o.getUserEntity().getEmail(), Collectors.mapping(OrderEntity::getUuid, Collectors.toList())));
 
 
         if (failedPaymentsMapUserEmailByUserEmail.isEmpty()) {
