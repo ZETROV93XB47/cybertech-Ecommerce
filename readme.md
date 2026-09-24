@@ -355,7 +355,6 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant SK as Stripe
-    participant F as StripeWebhookIpAllowlistFilter
     participant CT as StripeWebhookController
     participant WS as PaymentWebhookServiceImp
     participant ID as IdempotencyKeyService
@@ -363,9 +362,7 @@ sequenceDiagram
     participant E as ApplicationEventPublisher
     participant L as OrderPaymentConfirmationEventListener
 
-    SK->>F: POST /api/v1/webhooks/stripe (Stripe-Signature)
-    F->>F: source IP allowlist check (prod)
-    F->>CT: forward
+    SK->>CT: POST /api/v1/webhooks/stripe (Stripe-Signature)
     CT->>CT: HMAC-SHA256 verify (raw body + secret)
     CT->>WS: handleEvent(stripeEvent)
     WS->>WS: livemode guard (must match stripe.livemode)

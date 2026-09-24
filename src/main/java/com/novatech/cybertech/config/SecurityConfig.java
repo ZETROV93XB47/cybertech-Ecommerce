@@ -5,7 +5,6 @@ import com.novatech.cybertech.api.error.CustomAccessDeniedHandler;
 import com.novatech.cybertech.api.error.CustomAuthenticationEntryPoint;
 import com.novatech.cybertech.converter.KeycloakRoleConverter;
 import com.novatech.cybertech.security.RateLimitFilter;
-import com.novatech.cybertech.security.StripeWebhookIpAllowlistFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -26,7 +25,6 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.StaticHeadersWriter;
 import org.springframework.security.web.header.writers.frameoptions.XFrameOptionsHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -45,7 +43,6 @@ public class SecurityConfig {
     private final CustomAccessDeniedHandler accessDeniedHandler;
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
     private final RateLimitFilter rateLimitFilter;
-    private final StripeWebhookIpAllowlistFilter stripeWebhookIpAllowlistFilter;
 
     /**
      * Spring profile name guarding development-only relaxations (e.g. anonymous access to
@@ -206,7 +203,6 @@ public class SecurityConfig {
                         headers.httpStrictTransportSecurity(HeadersConfigurer.HstsConfig::disable);
                     }
                 })
-                .addFilterBefore(stripeWebhookIpAllowlistFilter, UsernamePasswordAuthenticationFilter.class)
                 // Must run AFTER BearerTokenAuthenticationFilter, not before UsernamePasswordAuthenticationFilter:
                 // the latter runs before the JWT is parsed into the SecurityContext, so
                 // RateLimitFilter#resolveClientId always saw an empty SecurityContext and fell back to

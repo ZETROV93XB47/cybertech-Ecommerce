@@ -118,7 +118,6 @@ The default `application.properties` is already wired for localhost, so launchin
 | `cybertech.cors.allowed-origins`                 | `http://localhost:3000`                     | OK — matches Next dev |
 | `spring.security.oauth2.resourceserver.jwt.issuer-uri` | `http://localhost:8080/realms/cybertech` | OK    |
 | `cybertech.security.hsts.enabled`                | `false`                                     | OK    |
-| `cybertech.security.stripe-ip-allowlist.enabled` | `false`                                     | OK    |
 | `spring.cloud.vault.enabled`                     | `false`                                     | OK    |
 
 ### C.3 Properties you SHOULD override locally

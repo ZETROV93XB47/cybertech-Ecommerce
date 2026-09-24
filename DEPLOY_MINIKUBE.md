@@ -335,13 +335,6 @@ kubectl get svc
 Verify `kubectl get svc <name>` returns the expected port. Confirm `/etc/hosts`
 points at the right minikube IP (`minikube ip` may change on `minikube delete`).
 
-### Stripe webhook not firing
-The `cybertech.security.stripe-ip-allowlist.enabled` flag is **true** in
-`application-prod.properties`. For local Stripe CLI testing, override it:
-```bash
-kubectl set env deploy/cybertech-app CYBERTECH_SECURITY_STRIPE_IP_ALLOWLIST_ENABLED=false
-```
-
 ### `mvn clean install` fails on JaCoCo gate
 The gate is meaningful only with IT coverage. Either:
 ```bash
