@@ -85,4 +85,37 @@ class NotificationRetryableDeliveryImpTest {
         verify(outcomeRecorder).recordOutcome(eq(context), eq(NotificationStatus.PENDING_RETRY), eq(MAX_ATTEMPTS), eq(boom));
         verify(outcomeRecorder, never()).recordOutcome(any(), eq(NotificationStatus.SENT), any(Integer.class), any());
     }
+
+    @Test
+    void redeliver_happyPath_updatesExistingRowAsSentWithUnchangedRetryCount() {
+        final NotificationEntity existing = NotificationEntity.builder().retryCount(6).build();
+        doNothing().when(dispatchAttempt).attemptDispatch(any());
+        when(outcomeRecorder.updateOutcome(any(), any(), any(Integer.class), any()))
+                .thenReturn(existing);
+
+        delivery.redeliver(context, existing);
+
+        verify(dispatchAttempt).attemptDispatch(context);
+        // Success: the row is marked SENT, retryCount left as-is (no new failure to count).
+        verify(outcomeRecorder).updateOutcome(eq(existing), eq(NotificationStatus.SENT), eq(6), isNull());
+        verify(outcomeRecorder, never()).updateOutcome(any(), eq(NotificationStatus.PENDING_RETRY), any(Integer.class), any());
+        // Never inserts a fresh row via recordOutcome — redrive only ever updates in place.
+        verify(outcomeRecorder, never()).recordOutcome(any(), any(), any(Integer.class), any());
+    }
+
+    @Test
+    void redeliver_attemptDispatchThrows_bumpsExistingRowRetryCountAndDoesNotPropagate() {
+        final NotificationEntity existing = NotificationEntity.builder().retryCount(6).build();
+        final NotificationDeliveryException boom = new NotificationDeliveryException("budget exhausted");
+        doThrow(boom).when(dispatchAttempt).attemptDispatch(any());
+        when(outcomeRecorder.updateOutcome(any(), any(), any(Integer.class), any()))
+                .thenReturn(existing);
+
+        assertThatCode(() -> delivery.redeliver(context, existing)).doesNotThrowAnyException();
+
+        // retryCount bumped by this call's in-process budget (6 + 3 = 9) on the SAME row.
+        verify(outcomeRecorder).updateOutcome(eq(existing), eq(NotificationStatus.PENDING_RETRY), eq(9), eq(boom));
+        verify(outcomeRecorder, never()).updateOutcome(any(), eq(NotificationStatus.SENT), any(Integer.class), any());
+        verify(outcomeRecorder, never()).recordOutcome(any(), any(), any(Integer.class), any());
+    }
 }

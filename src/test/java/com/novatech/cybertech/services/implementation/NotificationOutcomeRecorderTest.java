@@ -192,4 +192,77 @@ class NotificationOutcomeRecorderTest {
         assertThat(saved.getStatus()).isEqualTo(NotificationStatus.SENT);
         assertThat(saved.getRecipient()).isEqualTo("jane@example.com");
     }
+
+    @Test
+    @DisplayName("updateOutcome: mutates and saves the SAME row in place (no new row inserted)")
+    void updateOutcome_mutatesSameEntityInPlace() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final NotificationEntity existing = NotificationEntity.builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChannel(CommunicationChanel.EMAIL)
+                .status(NotificationStatus.PENDING_RETRY)
+                .recipient("jane@example.com")
+                .retryCount(3)
+                .payload("{\"original\":\"snapshot\"}")
+                .build();
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        final NotificationEntity result = recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException("still down"));
+
+        assertThat(result).isSameAs(existing);
+        final ArgumentCaptor<NotificationEntity> cap = ArgumentCaptor.forClass(NotificationEntity.class);
+        org.mockito.Mockito.verify(notificationRepository).save(cap.capture());
+        assertThat(cap.getValue()).isSameAs(existing);
+        assertThat(existing.getRetryCount()).isEqualTo(6);
+        assertThat(existing.getStatus()).isEqualTo(NotificationStatus.PENDING_RETRY);
+        assertThat(existing.getErrorMessage()).isEqualTo("still down");
+        assertThat(existing.getLastAttemptAt()).isNotNull();
+        assertThat(existing.getSentAt()).as("sentAt stays null on PENDING_RETRY").isNull();
+        // payload column untouched — still the original redrive snapshot.
+        assertThat(existing.getPayload()).isEqualTo("{\"original\":\"snapshot\"}");
+    }
+
+    @Test
+    @DisplayName("updateOutcome: SENT sets sentAt and clears errorMessage")
+    void updateOutcome_sentSetsAndClearsFields() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final NotificationEntity existing = NotificationEntity.builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChannel(CommunicationChanel.EMAIL)
+                .status(NotificationStatus.PENDING_RETRY)
+                .recipient("jane@example.com")
+                .retryCount(6)
+                .errorMessage("previous failure")
+                .payload("{\"original\":\"snapshot\"}")
+                .build();
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        recorder.updateOutcome(existing, NotificationStatus.SENT, 6, null);
+
+        assertThat(existing.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(existing.getSentAt()).isNotNull();
+        assertThat(existing.getErrorMessage()).isNull();
+    }
+
+    @Test
+    @DisplayName("updateOutcome: error message is truncated to fit @Column(length=1000)")
+    void updateOutcome_truncatesLongErrorMessage() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final NotificationEntity existing = NotificationEntity.builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChannel(CommunicationChanel.EMAIL)
+                .status(NotificationStatus.PENDING_RETRY)
+                .recipient("jane@example.com")
+                .retryCount(3)
+                .build();
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        final String longMessage = "x".repeat(1500);
+        recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException(longMessage));
+
+        assertThat(existing.getErrorMessage()).hasSize(1000);
+    }
 }

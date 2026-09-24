@@ -113,6 +113,40 @@ public class NotificationOutcomeRecorder {
         return notificationRepository.save(entity);
     }
 
+    /**
+     * Updates an EXISTING audit row in place instead of inserting a new one — used by the
+     * redrive tasklet so a sustained outage bumps the SAME row's {@code retryCount} across ticks
+     * instead of inserting a fresh row that would itself become independently redrivable (a prior
+     * design forked an unbounded number of parallel redrive lineages for a single notification
+     * during a long outage, risking duplicate sends once the outage cleared). Only the latest
+     * error message is kept — no per-attempt history, by design.
+     *
+     * @param existing   the row to update, as loaded by the redrive tasklet — must not be null
+     * @param status     the outcome of this attempt
+     * @param retryCount the new cumulative retry count to persist
+     * @param failure    the failure that caused {@code PENDING_RETRY} / {@code FAILED}, or
+     *                   {@code null} on success
+     * @return the persisted (same) entity
+     */
+    public NotificationEntity updateOutcome(
+            final NotificationEntity existing,
+            final NotificationStatus status,
+            final int retryCount,
+            @Nullable final Throwable failure) {
+
+        final LocalDateTime now = LocalDateTime.now();
+
+        existing.setStatus(status);
+        existing.setRetryCount(retryCount);
+        existing.setLastAttemptAt(now);
+        existing.setSentAt(status == NotificationStatus.SENT ? now : null);
+        existing.setErrorMessage(truncate(failure != null ? failure.getMessage() : null));
+        // payload column untouched — it already holds the redrive snapshot from the original
+        // insert, still valid for a further redrive if this attempt fails again.
+
+        return notificationRepository.save(existing);
+    }
+
     private static UUID extractOrderUuid(final NotificationContext<?> context) {
         if (context.getPayload() instanceof ShippingConfirmationPayload shipping) {
             return shipping.getOrderUuid();

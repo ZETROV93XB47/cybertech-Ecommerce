@@ -16,7 +16,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.core.ExitStatus;
@@ -38,6 +37,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -49,14 +49,24 @@ import static org.mockito.Mockito.when;
  *
  * <p>Mirrors {@link CleanUpExpiredStockReservationsTaskletTest} (same
  * fixture-building style, same {@link BaseTasklet.StepArguments} setup).
- * Covers the four cases called out in the Phase 3 spec:
+ *
+ * <p>{@link NotificationRetryableDelivery#redeliver(NotificationContext, NotificationEntity)}
+ * is mocked — its real bump/persist behaviour is {@link NotificationRetryableDeliveryImpTest}'s
+ * responsibility. Here, a {@code doAnswer} on the mock mutates the same {@code entity} instance
+ * the tasklet passed in (exactly like the real implementation would, via
+ * {@code NotificationOutcomeRecorder#updateOutcome}), so these tests can verify the tasklet's OWN
+ * decision logic in isolation: does it promote to terminal {@code FAILED} at the right moment,
+ * and does it correctly leave a just-{@code SENT} row alone.
+ *
+ * <p>Covers:
  * <ol>
  *   <li>No candidates returned → no-op, no recorder/retryable interactions.</li>
- *   <li>Single redrivable candidate → retryable bean invoked once and the
- *       coordination row's count is bumped, status stays PENDING_RETRY.</li>
- *   <li>Cumulative cap reached after the bump → row flips to FAILED.</li>
- *   <li>Corrupted/null payload → row goes straight to FAILED, retryable bean
- *       NEVER invoked.</li>
+ *   <li>Single redrivable candidate, still under budget after redrive → stays PENDING_RETRY,
+ *       tasklet does not save it again (persistence is the retryable bean's job).</li>
+ *   <li>Cumulative cap reached after redrive → tasklet promotes the row to FAILED and saves it.</li>
+ *   <li>Redrive succeeds (SENT) → tasklet never promotes it to FAILED, even if retryCount happens
+ *       to be at/above the cap.</li>
+ *   <li>Corrupted/null payload → row goes straight to FAILED, retryable bean NEVER invoked.</li>
  * </ol>
  */
 @ExtendWith(MockitoExtension.class)
@@ -89,7 +99,6 @@ class RedeliverFailedNotificationsTaskletTest {
         ReflectionTestUtils.setField(tasklet, "cumulativeMaxAttempts", CUMULATIVE_MAX_ATTEMPTS);
         ReflectionTestUtils.setField(tasklet, "backoffMinutes", BACKOFF_MINUTES);
         ReflectionTestUtils.setField(tasklet, "batchSize", BATCH_SIZE);
-        ReflectionTestUtils.setField(tasklet, "inProcessMaxAttempts", IN_PROCESS_MAX_ATTEMPTS);
 
         final JobInstance jobInstance = new JobInstance(1L, "REDELIVER_FAILED_NOTIFICATIONS_JOB");
         final JobExecution jobExecution = new JobExecution(1L, jobInstance, new JobParameters());
@@ -128,6 +137,21 @@ class RedeliverFailedNotificationsTaskletTest {
                 .lastAttemptAt(LocalDateTime.now().minusHours(1))
                 .payload(payloadJson)
                 .build();
+    }
+
+    /**
+     * Stubs {@code retryableDelivery.redeliver(any, entity)} to mutate {@code entity} in place —
+     * exactly what the real {@code NotificationRetryableDeliveryImp} does via
+     * {@code NotificationOutcomeRecorder#updateOutcome} — so the tasklet's own promotion logic can
+     * be exercised without pulling in that bean's real implementation.
+     */
+    private void stubRedeliverOutcome(final NotificationEntity entity, final NotificationStatus resultingStatus, final int resultingRetryCount) {
+        doAnswer(inv -> {
+            entity.setStatus(resultingStatus);
+            entity.setRetryCount(resultingRetryCount);
+            entity.setLastAttemptAt(LocalDateTime.now());
+            return null;
+        }).when(retryableDelivery).redeliver(any(NotificationContext.class), eq(entity));
     }
 
     @Nested
@@ -224,38 +248,34 @@ class RedeliverFailedNotificationsTaskletTest {
     class HappyPath {
 
         @Test
-        @DisplayName("invokes retryable delivery once and bumps coordination row, status stays PENDING_RETRY")
-        void redrivesAndBumpsRow() throws Exception {
+        @DisplayName("invokes redeliver on the SAME row (no new row); still under cap so tasklet does not save it again")
+        void redrivesInPlace_noPromotion() throws Exception {
             final String payloadJson = objectMapper.writeValueAsString(validRedrivePayload());
-            // retryCount=0 → after bump (3) still under cap (9) → PENDING_RETRY
+            // retryCount=0 → redeliver bumps it to 3 (still under cap 9) → PENDING_RETRY
             final NotificationEntity entity = entityWith(0, payloadJson);
             when(notificationRepository.findRedrivable(
                     any(NotificationStatus.class),
                     any(Integer.class),
                     any(LocalDateTime.class),
                     any(Pageable.class))).thenReturn(List.of(entity));
-            when(notificationRepository.save(any(NotificationEntity.class)))
-                    .thenAnswer(inv -> inv.getArgument(0));
+            stubRedeliverOutcome(entity, NotificationStatus.PENDING_RETRY, IN_PROCESS_MAX_ATTEMPTS);
 
             tasklet.execute(stepContribution, stepArguments);
 
-            // The retryable bean must be invoked exactly once with a context
-            // rebuilt from the persisted payload.
+            // redeliver() is called on the SAME entity instance — one row, not a new one.
             final ArgumentCaptor<NotificationContext<?>> ctxCap = forNotificationContext();
-            verify(retryableDelivery, times(1)).deliver(ctxCap.capture());
+            verify(retryableDelivery, times(1)).redeliver(ctxCap.capture(), eq(entity));
             final NotificationContext<?> ctx = ctxCap.getValue();
             assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.SHIPPING_CONFIRMATION);
             assertThat(ctx.getCommunicationChanel()).isEqualTo(CommunicationChanel.EMAIL);
             assertThat(ctx.getUser().getEmail()).isEqualTo("jane@example.com");
 
-            // The OLD coordination row is bumped: retryCount 0 + 3 = 3,
-            // status remains PENDING_RETRY (still under the cap of 9).
-            final ArgumentCaptor<NotificationEntity> saveCap = ArgumentCaptor.forClass(NotificationEntity.class);
-            verify(notificationRepository).save(saveCap.capture());
-            final NotificationEntity saved = saveCap.getValue();
-            assertThat(saved.getRetryCount()).isEqualTo(IN_PROCESS_MAX_ATTEMPTS);
-            assertThat(saved.getStatus()).isEqualTo(NotificationStatus.PENDING_RETRY);
-            assertThat(saved.getLastAttemptAt()).isNotNull();
+            // Still under the cumulative cap after the bump — the tasklet itself never calls
+            // save() here; persisting the bumped state is entirely the retryable bean's job
+            // (mocked away above).
+            verify(notificationRepository, never()).save(any(NotificationEntity.class));
+            assertThat(entity.getRetryCount()).isEqualTo(IN_PROCESS_MAX_ATTEMPTS);
+            assertThat(entity.getStatus()).isEqualTo(NotificationStatus.PENDING_RETRY);
 
             assertThat(stepContribution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
         }
@@ -266,10 +286,9 @@ class RedeliverFailedNotificationsTaskletTest {
     class CumulativeCap {
 
         @Test
-        @DisplayName("retryCount + inProcessMax >= cumulativeMax → row flips to FAILED")
+        @DisplayName("redeliver leaves the row PENDING_RETRY at/above the cap → tasklet promotes it to FAILED")
         void capReachedFlipsToFailed() throws Exception {
             final String payloadJson = objectMapper.writeValueAsString(validRedrivePayload());
-            // retryCount=6, +3 = 9, hits cap → FAILED
             final NotificationEntity entity = entityWith(CUMULATIVE_MAX_ATTEMPTS - IN_PROCESS_MAX_ATTEMPTS, payloadJson);
             when(notificationRepository.findRedrivable(
                     any(NotificationStatus.class),
@@ -278,17 +297,44 @@ class RedeliverFailedNotificationsTaskletTest {
                     any(Pageable.class))).thenReturn(List.of(entity));
             when(notificationRepository.save(any(NotificationEntity.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
+            // redeliver bumps retryCount to exactly the cap, still failing (PENDING_RETRY).
+            stubRedeliverOutcome(entity, NotificationStatus.PENDING_RETRY, CUMULATIVE_MAX_ATTEMPTS);
 
             tasklet.execute(stepContribution, stepArguments);
 
-            // Retryable bean still invoked — the row had budget when picked up.
-            verify(retryableDelivery, times(1)).deliver(any(NotificationContext.class));
+            verify(retryableDelivery, times(1)).redeliver(any(NotificationContext.class), eq(entity));
 
+            // The tasklet notices the cap was crossed and promotes + saves the SAME row.
             final ArgumentCaptor<NotificationEntity> saveCap = ArgumentCaptor.forClass(NotificationEntity.class);
-            verify(notificationRepository).save(saveCap.capture());
+            verify(notificationRepository, times(1)).save(saveCap.capture());
             final NotificationEntity saved = saveCap.getValue();
+            assertThat(saved).isSameAs(entity);
             assertThat(saved.getRetryCount()).isEqualTo(CUMULATIVE_MAX_ATTEMPTS);
             assertThat(saved.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        }
+
+        @Test
+        @DisplayName("redeliver succeeds (SENT) even though retryCount is at/above the cap → NOT promoted to FAILED")
+        void successfulRedriveIsNeverPromotedToFailed() throws Exception {
+            // Regression test for a prior design flaw: the coordination row used to get bumped
+            // (and potentially flipped to FAILED) unconditionally after every redrive tick, even
+            // one that just succeeded — leaving a SENT notification's row marked FAILED.
+            final String payloadJson = objectMapper.writeValueAsString(validRedrivePayload());
+            final NotificationEntity entity = entityWith(CUMULATIVE_MAX_ATTEMPTS - IN_PROCESS_MAX_ATTEMPTS, payloadJson);
+            when(notificationRepository.findRedrivable(
+                    any(NotificationStatus.class),
+                    any(Integer.class),
+                    any(LocalDateTime.class),
+                    any(Pageable.class))).thenReturn(List.of(entity));
+            // redeliver succeeds this time — status flips to SENT.
+            stubRedeliverOutcome(entity, NotificationStatus.SENT, entity.getRetryCount());
+
+            tasklet.execute(stepContribution, stepArguments);
+
+            verify(retryableDelivery, times(1)).redeliver(any(NotificationContext.class), eq(entity));
+            // The tasklet must never touch a row that just succeeded.
+            verify(notificationRepository, never()).save(any(NotificationEntity.class));
+            assertThat(entity.getStatus()).isEqualTo(NotificationStatus.SENT);
         }
     }
 

@@ -34,27 +34,23 @@ import java.util.List;
  * listener path. After the cumulative budget is spent the row is promoted to
  * terminal {@link NotificationStatus#FAILED}.
  *
- * <h2>Two-row audit pattern</h2>
+ * <h2>One row per notification</h2>
  *
- * Each call to {@link NotificationRetryableDelivery#deliver(NotificationContext)}
- * writes a NEW {@link NotificationEntity} row reflecting that single attempt's
- * outcome ({@code SENT} or {@code PENDING_RETRY}). That's intentional: the
- * audit trail is per attempt, so ops can reconstruct the full lifecycle of any
- * given notification.
+ * Each redrive tick calls {@link NotificationRetryableDelivery#redeliver(NotificationContext, NotificationEntity)}
+ * on the SAME {@link NotificationEntity} row picked up from {@code findRedrivable} — the row is
+ * updated in place ({@code status}, {@code retryCount}, {@code lastAttemptAt}, {@code errorMessage})
+ * rather than a new row being inserted per attempt. Only the latest error message is kept, no
+ * per-attempt history — a deliberate simplification: an earlier design inserted a fresh row on
+ * every redrive, which meant that fresh row was itself indistinguishable from a genuine
+ * coordination row and became independently eligible for its own redrive lineage on the next
+ * tick. During a sustained outage this forked an unbounded number of parallel lineages for a
+ * single logical notification, risking multiple duplicate sends once the outage cleared.
  *
- * <p>The OLD row (the one we picked up from {@code findRedrivable}) is kept as
- * the <b>redrive coordination row</b>: its {@code retryCount} accumulates the
- * cumulative attempt count across runs and its {@code status} reflects whether
- * the tasklet should pick it up again next tick. After each redrive we bump
- * the old row's count by the in-process {@code max-attempts} (3 by default —
- * the Resilience4j budget consumed by the just-finished {@code deliver} call)
- * and update {@code lastAttemptAt}. If the bumped count crosses the cumulative
- * cap, the old row flips to {@link NotificationStatus#FAILED} (terminal); else
- * it stays {@link NotificationStatus#PENDING_RETRY} for another tick.
- *
- * <p>The decision is purely a function of the OLD row's bumped count — no
- * cross-row lookup, so two redrive ticks racing for the same row don't clobber
- * each other's coordination state.
+ * <p>After each redrive, {@code entity.retryCount} is bumped by the in-process {@code max-attempts}
+ * (3 by default — the Resilience4j budget consumed by the just-finished {@code redeliver} call).
+ * If the bumped count crosses the cumulative cap, the row is promoted to
+ * {@link NotificationStatus#FAILED} (terminal); else it stays {@link NotificationStatus#PENDING_RETRY}
+ * for another tick.
  *
  * <h2>Reuse of the retryable bean</h2>
  *
@@ -105,16 +101,7 @@ public class RedeliverFailedNotificationsTasklet extends BaseTasklet {
     private int batchSize;
 
     /**
-     * Mirrors the in-process Resilience4j {@code max-attempts} value. Same
-     * property key as Phase 2 ({@code cybertech.notification.dispatch.max-attempts})
-     * — single source of truth so changing the in-process budget automatically
-     * adjusts the cumulative-bump arithmetic here.
-     */
-    @Value("${cybertech.notification.dispatch.max-attempts:3}")
-    private int inProcessMaxAttempts;
-
-    /**
-     * One redrive tick. See class javadoc for the two-row audit pattern.
+     * One redrive tick. See class javadoc for the one-row-per-notification update pattern.
      *
      * @return {@link RepeatStatus#FINISHED} — one-shot per scheduled run
      */
@@ -160,25 +147,31 @@ public class RedeliverFailedNotificationsTasklet extends BaseTasklet {
                 continue;
             }
 
-            // Step 2: resubmit through the SAME @Retry-protected bean used by
-            // the synchronous listener path. The bean writes a NEW per-attempt
-            // audit row (SENT or PENDING_RETRY) — see class javadoc for why.
+            // Step 2: resubmit through the SAME @Retry-protected bean used by the synchronous
+            // listener path, updating `entity` in place (SENT, or PENDING_RETRY with retryCount
+            // bumped) — see class javadoc for why this is a single row, not a new one per attempt.
             try {
-                retryableDelivery.deliver(context);
+                retryableDelivery.redeliver(context, entity);
             } catch (Exception e) {
                 // The retryable bean is contractually swallow-on-exhaustion
                 // (see NotificationRetryableDeliveryImp javadoc). Anything
                 // escaping here is a true infrastructure failure (DB/proxy
                 // glitch, etc.). Log and treat the redrive as a no-op so the
-                // coordination-row update below still flips the row through
-                // its expected lifecycle.
-                log.error("Unexpected escape from retryableDelivery.deliver() for notification {}",
+                // promotion check below still runs against whatever state
+                // `entity` was last successfully saved in.
+                log.error("Unexpected escape from retryableDelivery.redeliver() for notification {}",
                         entity.getId(), e);
             }
 
-            // Step 3: bump the OLD coordination row. The new per-attempt row
-            // is independent and already persisted by the retryable bean.
-            advanceCoordinationRow(entity);
+            // Step 3: redeliver() already updated + saved `entity` in place. Promote to terminal
+            // FAILED only if it's still not sent and the cumulative budget across all ticks is
+            // now exhausted — a row that just succeeded (status flipped to SENT) is left alone.
+            if (entity.getStatus() == NotificationStatus.PENDING_RETRY && entity.getRetryCount() >= cumulativeMaxAttempts) {
+                entity.setStatus(NotificationStatus.FAILED);
+                notificationRepository.save(entity);
+                log.warn("Notification {} promoted to terminal FAILED after cumulative {} attempts",
+                        entity.getId(), entity.getRetryCount());
+            }
             redelivered++;
         }
 
@@ -223,31 +216,6 @@ public class RedeliverFailedNotificationsTasklet extends BaseTasklet {
         entity.setStatus(NotificationStatus.FAILED);
         entity.setLastAttemptAt(LocalDateTime.now());
         entity.setErrorMessage("redrive payload missing/corrupted");
-        notificationRepository.save(entity);
-    }
-
-    /**
-     * Bump the coordination row's cumulative {@code retryCount} and decide
-     * whether it stays {@link NotificationStatus#PENDING_RETRY} (budget left)
-     * or flips to terminal {@link NotificationStatus#FAILED}.
-     *
-     * <p>The bump amount equals the in-process Resilience4j {@code max-attempts}
-     * because each {@code retryableDelivery.deliver(...)} call burns up to that
-     * many in-process attempts. We don't read the actual count back from
-     * Resilience4j (Phase 2 documents why per-attempt telemetry belongs in
-     * Micrometer, not the audit row); the worst case is we slightly
-     * over-count, which only makes the cumulative cap stricter — safe.
-     */
-    private void advanceCoordinationRow(final NotificationEntity entity) {
-        final int newCount = entity.getRetryCount() + inProcessMaxAttempts;
-        entity.setRetryCount(newCount);
-        entity.setLastAttemptAt(LocalDateTime.now());
-        if (newCount >= cumulativeMaxAttempts) {
-            entity.setStatus(NotificationStatus.FAILED);
-            log.warn("Notification {} promoted to terminal FAILED after cumulative {} attempts",
-                    entity.getId(), newCount);
-        }
-        // else: stays PENDING_RETRY for the next tick.
         notificationRepository.save(entity);
     }
 }

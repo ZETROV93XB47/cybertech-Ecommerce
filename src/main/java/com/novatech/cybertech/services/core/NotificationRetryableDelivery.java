@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.entities.NotificationEntity;
 import com.novatech.cybertech.exceptions.NotificationDeliveryException;
 
 /**
@@ -53,4 +54,21 @@ public interface NotificationRetryableDelivery {
      * @param context the dispatch context (type, channel, payload, user); must not be null
      */
     void deliver(NotificationContext<?> context);
+
+    /**
+     * Redrive variant of {@link #deliver}, used exclusively by the Phase 3 batch tasklet
+     * ({@code RedeliverFailedNotificationsTasklet}). Attempts the same in-process
+     * Resilience4j-protected dispatch, but updates {@code existing} in place (via
+     * {@link com.novatech.cybertech.services.implementation.NotificationOutcomeRecorder#updateOutcome})
+     * instead of inserting a new audit row.
+     *
+     * <p>Exactly one {@link NotificationEntity} row tracks a given notification for its whole
+     * lifecycle this way — a sustained outage bumps that single row's {@code retryCount} tick
+     * after tick instead of forking an independent row that would itself become eligible for its
+     * own redrive lineage (which could cause duplicate sends once the outage clears).
+     *
+     * @param context  the dispatch context rebuilt from {@code existing}'s persisted payload
+     * @param existing the audit row to update in place; must not be null
+     */
+    void redeliver(NotificationContext<?> context, NotificationEntity existing);
 }

@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.entities.NotificationEntity;
 import com.novatech.cybertech.entities.enums.NotificationStatus;
 import com.novatech.cybertech.services.core.NotificationDispatchAttempt;
 import com.novatech.cybertech.services.core.NotificationRetryableDelivery;
@@ -86,6 +87,27 @@ public class NotificationRetryableDeliveryImp implements NotificationRetryableDe
             // tasklet can pick it up.
             log.warn("Notification dispatch budget exhausted for type={} channel={}: {}", context.getNotificationType(), context.getCommunicationChanel(), t.getMessage());
             outcomeRecorder.recordOutcome(context, NotificationStatus.PENDING_RETRY, maxAttempts, t);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Same in-process retry budget as {@link #deliver}, but the outcome is written onto
+     * {@code existing} in place ({@link NotificationOutcomeRecorder#updateOutcome}) instead of
+     * inserting a new row. On failure, {@code existing}'s retryCount is bumped by this call's
+     * in-process attempt budget — the redrive tasklet reads the bumped value back off the same
+     * (now-updated) entity instance to decide whether to promote it to terminal {@code FAILED}.
+     */
+    @Override
+    public void redeliver(final NotificationContext<?> context, final NotificationEntity existing) {
+        try {
+            dispatchAttempt.attemptDispatch(context);
+            outcomeRecorder.updateOutcome(existing, NotificationStatus.SENT, existing.getRetryCount(), null);
+        } catch (Throwable t) {
+            log.warn("Notification redrive attempt exhausted for id={}: {}", existing.getId(), t.getMessage());
+            outcomeRecorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY,
+                    existing.getRetryCount() + maxAttempts, t);
         }
     }
 }
