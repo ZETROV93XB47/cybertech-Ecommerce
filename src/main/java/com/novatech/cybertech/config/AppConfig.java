@@ -14,6 +14,8 @@ import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import com.novatech.cybertech.validator.implementation.ActiveUserValidator;
 import com.novatech.cybertech.validator.implementation.BankCardValidityValidator;
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.ClientBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
@@ -36,6 +38,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.*;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL;
@@ -55,6 +58,10 @@ public class AppConfig {
     private String clientId;
     @Value("${keycloak.client.user.management.client.secret}")
     private String clientSecret;
+    @Value("${keycloak.client.user.management.connect-timeout-ms:5000}")
+    private long keycloakConnectTimeoutMs;
+    @Value("${keycloak.client.user.management.read-timeout-ms:10000}")
+    private long keycloakReadTimeoutMs;
 
     private final ActiveUserValidator activeUserValidator;
     private final BankCardValidityValidator bankCardValidityValidator;
@@ -152,12 +159,20 @@ public class AppConfig {
 
     @Bean
     public Keycloak keycloakAdminClient() {
+        // The admin client has no timeout by default, so a stalled Keycloak would block a
+        // user-provisioning request thread indefinitely without this.
+        Client resteasyClient = ClientBuilder.newBuilder()
+                .connectTimeout(keycloakConnectTimeoutMs, TimeUnit.MILLISECONDS)
+                .readTimeout(keycloakReadTimeoutMs, TimeUnit.MILLISECONDS)
+                .build();
+
         return KeycloakBuilder.builder()
                 .serverUrl(serverUrl)
                 .realm(realm)
                 .clientId(clientId)
                 .clientSecret(clientSecret)
                 .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
+                .resteasyClient(resteasyClient)
                 .build();
     }
 

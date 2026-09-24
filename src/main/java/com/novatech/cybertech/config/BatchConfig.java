@@ -7,6 +7,7 @@ import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.Step;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -44,6 +45,9 @@ public class BatchConfig {
     private final RedeliverFailedNotificationsTasklet redeliverFailedNotificationsTasklet;
     private final KeycloakOutboxReconciliationTasklet keycloakOutboxReconciliationTasklet;
     private final GorseSyncTasklet gorseSyncTasklet;
+
+    @Value("${cybertech.scheduler.pool-size:4}")
+    private int schedulerPoolSize;
 
 
     @Primary
@@ -149,8 +153,10 @@ public class BatchConfig {
 
     @Bean
     public TaskScheduler taskScheduler() {
+        // Concurrency headroom across the independent @Scheduled jobs, not a substitute for
+        // per-job exclusivity — that's already ShedLock's responsibility (RedisConfig).
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(1); // un seul thread = une seule exécution
+        scheduler.setPoolSize(schedulerPoolSize);
         scheduler.setThreadNamePrefix("scheduler-");
         return scheduler;
     }
