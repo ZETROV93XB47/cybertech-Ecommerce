@@ -98,7 +98,6 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
             } else {
                 final CartItemEntity newItem = CartItemEntity.builder()
                         .quantity(quantity)
-                        .unitPrice(product.getPrice())
                         .productEntity(product)
                         .cart(cartEntity) // link child to parent
                         .uuid(UuidCreator.getTimeOrderedEpoch())

@@ -377,7 +377,6 @@ public class CartServiceImp implements CartService {
                 final ProductEntity product = productMap.get(line.getProductUuid());
                 final CartItemEntity newItem = CartItemEntity.builder()
                         .quantity(line.getQuantity())
-                        .unitPrice(product.getPrice())
                         .productEntity(product)
                         .cart(cart)
                         .uuid(UuidCreator.getTimeOrderedEpoch())

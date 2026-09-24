@@ -184,7 +184,9 @@ class OrderManagementServiceImpTest {
 
     // ---- helpers --------------------------------------------------------
 
-    private UserEntity userWithCart(final ProductEntity product, final int quantity, final BigDecimal unitPrice) {
+    // CartItemEntity carries no price of its own — the line's price is always the linked
+    // product's live price, so this helper takes no separate unitPrice parameter.
+    private UserEntity userWithCart(final ProductEntity product, final int quantity) {
         final UserEntity user = UserEntityBuilder.aValidUserBuilder()
                 .keycloakId(keycloakId)
                 .bankCardEntity(BankCardEntityBuilder.aValidBankCard())
@@ -192,7 +194,6 @@ class OrderManagementServiceImpTest {
         final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder()
                 .productEntity(product)
                 .quantity(quantity)
-                .unitPrice(unitPrice)
                 .build();
         final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
                 .userEntity(user)
@@ -247,7 +248,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("happy path saves order, reserves stock, processes payment, publishes event in order")
         void happyPath_savesReservesPaysAndPublishes_inOrder() {
             final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("50.00")).build();
-            final UserEntity user = userWithCart(product, 2, new BigDecimal("50.00"));
+            final UserEntity user = userWithCart(product, 2);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             final OrderEntity savedOrder = OrderEntityBuilder.aValidOrderBuilder().userEntity(user).build();
@@ -306,7 +307,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("user without default bank card throws NoDefaultBankCartSetException before save")
         void noDefaultCard_throwsNoDefaultBankCart() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             user.setBankCardEntity(null);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
@@ -321,7 +322,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("validator rejects -> exception bubbles, no save / no payment")
         void validatorRejects_propagates() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             doThrowOn(orderValidator);
@@ -342,7 +343,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("stock reservation fails -> NotEnoughStockException bubbles, no payment, no event")
         void stockReservationFails_propagates() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
             when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
             org.mockito.Mockito.doThrow(new NotEnoughStockException("nope"))
@@ -368,7 +369,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("payment FAILED path releases stock reservation")
         void paymentFailure_releasesStockReservation() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             final ArgumentCaptor<OrderEntity> savedOrderCap = ArgumentCaptor.forClass(OrderEntity.class);
@@ -394,7 +395,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("event is published AFTER orderRepository.save (InOrder)")
         void eventAfterSave_orderingHolds() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
             when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
@@ -411,8 +412,8 @@ class OrderManagementServiceImpTest {
         @Test
         @DisplayName("total computed via OrderPriceCalculationService and saved as Money.EUR")
         void totalAmountIsSumAndEurByDefault() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 3, new BigDecimal("12.50"));
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("12.50")).build();
+            final UserEntity user = userWithCart(product, 3);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
             // Override default stub: price calculation service returns 37.50 (= 3 × 12.50, no discount)
             when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
@@ -441,7 +442,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("status of the order saved before payment is AWAITING_PAYMENT")
         void savedOrderStatusIsAwaitingPayment() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
@@ -479,7 +480,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("SHIPPING-INT: placeOrder forwards shippingProvider + shippingType to OrderPriceCalculationService")
         void placeOrder_forwardsShippingProviderAndTypeToPriceCalc() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
             when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
@@ -504,7 +505,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("currency: total uses EUR by default — no cross-currency Money.add path")
         void totalAmount_usesEurByDefault_documented() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
@@ -1207,7 +1208,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("placeOrder uses the (String, List<String>) idempotency overload with productUuids")
         void placeOrder_usesListOverload() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1, new BigDecimal("10.00"));
+            final UserEntity user = userWithCart(product, 1);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(

@@ -28,7 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link CartMapper}.
  *
- * <p>Verifies the fix for null {@code unitPrice} no longer NPE-ing in {@code lineItemTotalPrice}.
+ * <p>{@link CartItemEntity} carries no frozen price — the line's price is always read live from
+ * its linked {@link ProductEntity}. Verifies {@code lineItemTotalPrice} null-guards a missing
+ * product / missing product price instead of NPE-ing.
  */
 class CartMapperTest {
 
@@ -47,7 +49,6 @@ class CartMapperTest {
             CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder()
                     .productEntity(product)
                     .quantity(3)
-                    .unitPrice(new BigDecimal("10.00"))
                     .build();
             CartEntity cart = CartEntityBuilder.aValidCartBuilder()
                     .userEntity(user)
@@ -118,7 +119,6 @@ class CartMapperTest {
             CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder()
                     .productEntity(product)
                     .quantity(4)
-                    .unitPrice(new BigDecimal("12.50"))
                     .build();
 
             CartItemResponseDto dto = mapper.mapFromCartItemEntityToResponseDto(item);
@@ -127,19 +127,23 @@ class CartMapperTest {
             assertThat(dto.getCartItemUuid()).isEqualTo(item.getUuid());
             assertThat(dto.getProductUuid()).isEqualTo(product.getUuid());
             assertThat(dto.getProductName()).isEqualTo("widget");
-            // unitPrice on the response is sourced from productEntity.price (see mapper config),
-            // not from cartItem.unitPrice.
+            // unitPrice on the response is sourced from productEntity.price — the cart item
+            // itself carries no price of its own.
             assertThat(dto.getUnitPrice()).isEqualByComparingTo("12.50");
             assertThat(dto.getQuantity()).isEqualTo(4);
             assertThat(dto.getLineItemTotalPrice()).isEqualByComparingTo("50.00");
         }
 
         @Test
-        void shouldHandleNullUnitPriceGracefully() {
-            // Verifies the lineItemTotalPrice helper now null-guards
-            // CartItemEntity#unitPrice and returns BigDecimal.ZERO instead of NPE-ing.
+        void shouldHandleNullProductPriceGracefully() {
+            // Verifies the lineItemTotalPrice helper null-guards a product with no price
+            // (rather than a cart-item-level price, which no longer exists) and returns
+            // BigDecimal.ZERO instead of NPE-ing.
+            ProductEntity productWithNoPrice = ProductEntityBuilder.aValidProductBuilder()
+                    .price(null)
+                    .build();
             CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder()
-                    .unitPrice(null)
+                    .productEntity(productWithNoPrice)
                     .quantity(2)
                     .build();
 
@@ -177,15 +181,23 @@ class CartMapperTest {
         }
 
         @Test
-        void lineItemTotalPrice_shouldReturnZeroForNullUnitPrice() {
-            CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().unitPrice(null).build();
+        void lineItemTotalPrice_shouldReturnZeroForNullProductEntity() {
+            CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(null).build();
             assertThat(mapper.lineItemTotalPrice(item)).isEqualByComparingTo(BigDecimal.ZERO);
         }
 
         @Test
-        void lineItemTotalPrice_shouldMultiplyUnitPriceByQuantity() {
+        void lineItemTotalPrice_shouldReturnZeroForNullProductPrice() {
+            ProductEntity productWithNoPrice = ProductEntityBuilder.aValidProductBuilder().price(null).build();
+            CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(productWithNoPrice).build();
+            assertThat(mapper.lineItemTotalPrice(item)).isEqualByComparingTo(BigDecimal.ZERO);
+        }
+
+        @Test
+        void lineItemTotalPrice_shouldMultiplyProductPriceByQuantity() {
+            ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("3.00")).build();
             CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder()
-                    .unitPrice(new BigDecimal("3.00"))
+                    .productEntity(product)
                     .quantity(7)
                     .build();
             assertThat(mapper.lineItemTotalPrice(item)).isEqualByComparingTo("21.00");
@@ -203,10 +215,12 @@ class CartMapperTest {
 
         @Test
         void calculateTotalPrice_shouldSumLineTotals() {
+            ProductEntity productA = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("5.00")).build();
+            ProductEntity productB = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("3.00")).build();
             CartItemEntity a = CartItemEntityBuilder.aValidCartItemBuilder()
-                    .unitPrice(new BigDecimal("5.00")).quantity(2).build();
+                    .productEntity(productA).quantity(2).build();
             CartItemEntity b = CartItemEntityBuilder.aValidCartItemBuilder()
-                    .unitPrice(new BigDecimal("3.00")).quantity(4).build();
+                    .productEntity(productB).quantity(4).build();
 
             assertThat(mapper.calculateTotalPrice(List.of(a, b)))
                     .isEqualByComparingTo("22.00");

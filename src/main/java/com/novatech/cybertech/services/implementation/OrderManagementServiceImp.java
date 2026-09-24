@@ -495,11 +495,14 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 3) UUID commande (v7/ordered)
         final UUID orderUuid = UuidCreator.getTimeOrderedEpoch();
 
-        // 4) Total — delegated to OrderPriceCalculationService for proper discount support
+        // 4) Total — delegated to OrderPriceCalculationService for proper discount support.
+        // Price is read live from the product here — the cart itself carries no frozen price
+        // (see CartItemEntity), so this is the moment the price actually gets locked in for the
+        // order, at time of purchase rather than at time of add-to-cart.
         final List<OrderItemPriceDto> priceDtos = cartItems.stream()
                 .map(item -> OrderItemPriceDto.builder()
                         .productUuid(item.getProductEntity().getUuid())
-                        .unitPrice(item.getUnitPrice())
+                        .unitPrice(item.getProductEntity().getPrice())
                         .quantity(item.getQuantity())
                         .build())
                 .toList();
@@ -519,9 +522,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 5) Items commande
         final List<OrderItemEntity> orderItems = cartItems.stream()
                 .map(item -> OrderItemEntity.builder()
-                        .unitPrice(item.getUnitPrice())
+                        .unitPrice(item.getProductEntity().getPrice())
                         .quantity(item.getQuantity())
-                        .subtotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                        .subtotal(item.getProductEntity().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                         .productEntity(item.getProductEntity())
                         // IMPORTANT: si OrderItemEntity a un champ orderEntity, set-le ici
                         // .orderEntity(order)

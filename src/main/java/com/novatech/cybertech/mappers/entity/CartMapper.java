@@ -33,10 +33,11 @@ public interface CartMapper extends BaseMapper<CartEntity, CartCreateRequestDto,
     CartItemResponseDto mapFromCartItemEntityToResponseDto(CartItemEntity cartItemEntity);
 
     default BigDecimal lineItemTotalPrice(CartItemEntity cartItemEntity) {
-        if (cartItemEntity == null || cartItemEntity.getUnitPrice() == null) {
+        if (cartItemEntity == null || cartItemEntity.getProductEntity() == null
+                || cartItemEntity.getProductEntity().getPrice() == null) {
             return BigDecimal.ZERO;
         }
-        return cartItemEntity.getUnitPrice().multiply(BigDecimal.valueOf(cartItemEntity.getQuantity()));
+        return cartItemEntity.getProductEntity().getPrice().multiply(BigDecimal.valueOf(cartItemEntity.getQuantity()));
     }
 
     @Named("calculateTotalPrice")

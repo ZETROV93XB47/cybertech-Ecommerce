@@ -6,7 +6,6 @@ import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Slf4j
@@ -23,9 +22,6 @@ public class CartItemEntity extends BaseEntity<Long> {
     @Setter
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
-
-    @Column(name = "unitPrice", precision = 10, scale = 2, nullable = false)
-    private BigDecimal unitPrice;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cartId", nullable = false)
