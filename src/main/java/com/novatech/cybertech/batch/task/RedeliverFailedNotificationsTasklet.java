@@ -140,8 +140,7 @@ public class RedeliverFailedNotificationsTasklet extends BaseTasklet {
             try {
                 context = rebuildContext(entity);
             } catch (Exception e) {
-                log.warn("Notification {} has a missing/corrupted redrive payload; promoting to FAILED",
-                        entity.getId(), e);
+                log.warn("Notification {} has a missing/corrupted redrive payload; promoting to FAILED", entity.getId(), e);
                 markCorrupted(entity);
                 corrupted++;
                 continue;
@@ -159,8 +158,7 @@ public class RedeliverFailedNotificationsTasklet extends BaseTasklet {
                 // glitch, etc.). Log and treat the redrive as a no-op so the
                 // promotion check below still runs against whatever state
                 // `entity` was last successfully saved in.
-                log.error("Unexpected escape from retryableDelivery.redeliver() for notification {}",
-                        entity.getId(), e);
+                log.error("Unexpected escape from retryableDelivery.redeliver() for notification {}", entity.getId(), e);
             }
 
             // Step 3: redeliver() already updated + saved `entity` in place. Promote to terminal
@@ -169,15 +167,14 @@ public class RedeliverFailedNotificationsTasklet extends BaseTasklet {
             if (entity.getStatus() == NotificationStatus.PENDING_RETRY && entity.getRetryCount() >= cumulativeMaxAttempts) {
                 entity.setStatus(NotificationStatus.FAILED);
                 notificationRepository.save(entity);
-                log.warn("Notification {} promoted to terminal FAILED after cumulative {} attempts",
-                        entity.getId(), entity.getRetryCount());
+                log.warn("Notification {} promoted to terminal FAILED after cumulative {} attempts", entity.getId(), entity.getRetryCount());
             }
             redelivered++;
         }
 
-        log.info("RedeliverFailedNotificationsTasklet finished: redelivered={}, corrupted={}, total={}",
-                redelivered, corrupted, candidates.size());
+        log.info("RedeliverFailedNotificationsTasklet finished: redelivered={}, corrupted={}, total={}", redelivered, corrupted, candidates.size());
         stepContribution.setExitStatus(ExitStatus.COMPLETED);
+
         return RepeatStatus.FINISHED;
     }
 
