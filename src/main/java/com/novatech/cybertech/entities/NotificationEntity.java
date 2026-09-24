@@ -20,8 +20,6 @@ import java.util.UUID;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
-@EqualsAndHashCode(callSuper = true)
 @Table(
         name = "notificationTable",
         indexes = {
@@ -30,6 +28,8 @@ import java.util.UUID;
                 @Index(name = "idx_notification_type_status", columnList = "notificationType,status")
         }
 )
+@ToString(callSuper = true)
+@EqualsAndHashCode(callSuper = true)
 public class NotificationEntity extends BaseEntity<Long> {
 
     /**

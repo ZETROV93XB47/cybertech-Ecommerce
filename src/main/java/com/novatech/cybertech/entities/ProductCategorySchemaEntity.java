@@ -26,11 +26,11 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
 @Table(
         name = "productCategorySchemaTable",
         uniqueConstraints = @UniqueConstraint(name = "uk_product_category_schema_categoryKey", columnNames = "categoryKey")
 )
+@ToString(callSuper = true)
 public class ProductCategorySchemaEntity extends BaseEntity<Long> {
 
     /** Free-form category identifier (e.g. {@code "COMPUTER"}), chosen by the admin at registration time. */

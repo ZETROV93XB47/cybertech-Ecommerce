@@ -114,12 +114,6 @@ public class UserManagementServiceImp implements UserManagementService {
         return userMapper.mapFromEntityToResponseDto(user);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public Collection<UserResponseDto> getByUUIDs(final Collection<UUID> uuids) {
-        return userMapper.mapFromEntityToResponseDto(userRepository.findAllByUuidIn(uuids));
-    }
-
     /**
      * Update a user's profile across Keycloak and the local DB without coupling them in a single
      * outer transaction (Bug 3 — Option B: Keycloak FIRST) — now crash-safe via a durable outbox
@@ -202,23 +196,6 @@ public class UserManagementServiceImp implements UserManagementService {
         // Co-commit a durable DELETE breadcrumb in THIS transaction, then trigger immediate reconcile.
         final UUID outboxUuid = keycloakOutboxService.recordDeletePending(keycloakId);
         eventPublisher.publishEvent(new UserDeletedEvent(this, outboxUuid));
-    }
-
-    /**
-     * Bulk delete mirroring {@link #deleteByUUID}: one co-committed outbox row + one event per
-     * resolved entity, all riding the surrounding transaction (a rollback drops the rows AND
-     * suppresses the events together).
-     */
-    @Override
-    @Transactional
-    public void deleteByUUIDs(final Collection<UUID> uuids) {
-        final List<UserEntity> users = userRepository.findAllByUuidIn(uuids);
-
-        userRepository.deleteAllByUuidIn(uuids);
-        users.forEach(user -> {
-            final UUID outboxUuid = keycloakOutboxService.recordDeletePending(user.getKeycloakId());
-            eventPublisher.publishEvent(new UserDeletedEvent(this, outboxUuid));
-        });
     }
 
     /**

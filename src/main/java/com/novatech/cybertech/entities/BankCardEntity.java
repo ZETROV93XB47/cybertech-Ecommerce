@@ -10,8 +10,8 @@ import lombok.experimental.SuperBuilder;
 @Getter
 @Setter
 @SuperBuilder
+@NoArgsConstructor
 @AllArgsConstructor
-@RequiredArgsConstructor
 @Table(name = "bankCardTable")
 @ToString(callSuper = true, exclude = {"userEntity", "encryptedNumber", "cardNumber"})
 @EqualsAndHashCode(callSuper = true, exclude = {"userEntity"})

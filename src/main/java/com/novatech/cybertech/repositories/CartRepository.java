@@ -1,7 +1,10 @@
 package com.novatech.cybertech.repositories;
 
 import com.novatech.cybertech.entities.CartEntity;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
+
+import java.util.List;
 
 /**
  * Cart persistence.
@@ -15,4 +18,18 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public interface CartRepository extends CrudBaseRepository<CartEntity, Long> {
+
+    /**
+     * Backs the admin {@code CartServiceImp#getAll} listing with a single round trip instead of
+     * the N (items) + N*M (products) lazy-load chain {@code CartMapper} would otherwise trigger
+     * walking every cart's {@code cartItems} and each item's {@code productEntity}.
+     */
+    @Query("""
+            SELECT DISTINCT c
+            FROM   CartEntity c
+            LEFT   JOIN FETCH c.userEntity
+            LEFT   JOIN FETCH c.cartItems ci
+            LEFT   JOIN FETCH ci.productEntity
+            """)
+    List<CartEntity> findAllWithItemsAndProducts();
 }

@@ -429,7 +429,7 @@ class BankCardManagementServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("getAll / getByUUID / getByUUIDs / getAll(Pageable)")
+    @DisplayName("getAll / getByUUID / getAll(Pageable)")
     class ReadOps {
 
         @Test
@@ -481,23 +481,11 @@ class BankCardManagementServiceImpTest {
                     .hasMessageContaining(uuid.toString());
         }
 
-        @Test
-        @DisplayName("getByUUIDs delegates to repository.findAllByUuidIn and maps")
-        void getByUuids_happy() {
-            final List<UUID> uuids = List.of(UUID.randomUUID(), UUID.randomUUID());
-            final List<BankCardEntity> entities = List.of(BankCardEntityBuilder.aValidBankCard());
-            final List<BankCardResponseDto> dtos = List.of(new BankCardResponseDto());
-            when(bankCardRepository.findAllByUuidIn(uuids)).thenReturn(entities);
-            when(bankCardMapper.mapFromEntityToResponseDto(entities)).thenReturn(dtos);
-
-            Collection<BankCardResponseDto> result = service.getByUUIDs(uuids);
-            assertThat(result).isEqualTo(dtos);
-        }
     }
 
     // =================================================================
     @Nested
-    @DisplayName("create / update / deleteByUUID / deleteByUUIDs (admin)")
+    @DisplayName("create / update / deleteByUUID (admin)")
     class AdminCrud {
 
         @Test
@@ -699,14 +687,6 @@ class BankCardManagementServiceImpTest {
             service.deleteByUUID(uuid);
 
             verify(bankCardRepository).deleteByUuid(uuid);
-        }
-
-        @Test
-        @DisplayName("deleteByUUIDs delegates to repository")
-        void deleteByUuids_delegates() {
-            final List<UUID> uuids = List.of(UUID.randomUUID(), UUID.randomUUID());
-            service.deleteByUUIDs(uuids);
-            verify(bankCardRepository).deleteAllByUuidIn(uuids);
         }
 
         @Test

@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_discount_campaign_enabled", columnList = "enabled")
         }
 )
+@ToString(callSuper = true)
 public class DiscountCampaignEntity extends BaseEntity<Long> {
 
     @Enumerated(EnumType.STRING)

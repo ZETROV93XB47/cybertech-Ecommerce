@@ -10,11 +10,11 @@ import java.math.BigDecimal;
 @Getter
 @Setter
 @SuperBuilder
-@EqualsAndHashCode(callSuper = true, exclude = {"orderEntity", "productEntity"})
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true, exclude = {"orderEntity", "productEntity"})
 @Table(name = "orderItemTable")
+@ToString(callSuper = true, exclude = {"orderEntity", "productEntity"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderEntity", "productEntity"})
 public class OrderItemEntity extends BaseEntity<Long> {
 
     @Column(name = "quantity", nullable = false)

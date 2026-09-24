@@ -46,8 +46,7 @@ import static org.mockito.Mockito.when;
  * Mockito unit tests for {@link ProductManagementServiceImp}.
  *
  * <p>Source-verified fix status (as of 2026-04-23T10:30Z): {@code update()} now uses {@code lockByUuid} +
- * IGNORE-style merge + ES re-index; {@code deleteByUUIDs()} now iterates UUIDs and removes
- * each {@code ProductDocument} from ES. A prior claim that "update does NOT re-index into ES"
+ * IGNORE-style merge + ES re-index. A prior claim that "update does NOT re-index into ES"
  * is REFUTED by direct read of the file (lines 110-111).
  */
 @ExtendWith(MockitoExtension.class)
@@ -309,46 +308,6 @@ class ProductManagementServiceImpTest {
     }
 
     @Nested
-    @DisplayName("deleteByUUIDs fix verification (per-UUID ES cleanup)")
-    class DeleteByUUIDs {
-
-        @Test
-        @DisplayName("bulk delete also removes each ProductDocument from ES")
-        void deleteByUUIDs_cleansEsPerUuid() {
-            UUID a = UUID.randomUUID();
-            UUID b = UUID.randomUUID();
-            UUID c = UUID.randomUUID();
-            List<UUID> ids = List.of(a, b, c);
-
-            service.deleteByUUIDs(ids);
-
-            verify(productRepository).deleteAllByUuidIn(ids);
-            verify(productSearchRepository).deleteByUuid(a);
-            verify(productSearchRepository).deleteByUuid(b);
-            verify(productSearchRepository).deleteByUuid(c);
-            verify(productSearchRepository, times(3)).deleteByUuid(any(UUID.class));
-        }
-
-        @Test
-        @DisplayName("null collection only touches SQL (defensive guard)")
-        void deleteByUUIDs_nullCollection_onlySql() {
-            service.deleteByUUIDs(null);
-
-            verify(productRepository).deleteAllByUuidIn(null);
-            verifyNoInteractions(productSearchRepository);
-        }
-
-        @Test
-        @DisplayName("empty collection is a no-op against ES")
-        void deleteByUUIDs_emptyCollection_noEsCalls() {
-            service.deleteByUUIDs(List.of());
-
-            verify(productRepository).deleteAllByUuidIn(List.of());
-            verify(productSearchRepository, never()).deleteByUuid(any(UUID.class));
-        }
-    }
-
-    @Nested
     @DisplayName("getByUUID")
     class GetByUUID {
 
@@ -399,26 +358,6 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromEntityToResponseDto(List.<ProductEntity>of())).thenReturn(List.of());
 
             assertThat(service.getAll()).isEmpty();
-        }
-    }
-
-    @Nested
-    @DisplayName("getByUUIDs")
-    class GetByUUIDs {
-
-        @Test
-        @DisplayName("returns mapped collection")
-        void getByUUIDs_happyPath() {
-            UUID a = UUID.randomUUID();
-            UUID b = UUID.randomUUID();
-            List<UUID> ids = List.of(a, b);
-            List<ProductEntity> entities = List.of(ProductEntityBuilder.aValidProductBuilder().uuid(a).build());
-            List<ProductResponseDto> responses = List.of(ProductDtoFixtures.aSampleProductResponse());
-
-            when(productRepository.findAllByUuidIn(ids)).thenReturn(entities);
-            when(productMapper.mapFromEntityToResponseDto(entities)).thenReturn(responses);
-
-            assertThat(service.getByUUIDs(ids)).isEqualTo(responses);
         }
     }
 

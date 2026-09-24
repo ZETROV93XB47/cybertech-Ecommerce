@@ -3,6 +3,7 @@ package com.novatech.cybertech.entities;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.List;
 
@@ -28,6 +29,9 @@ public class CartEntity extends BaseEntity<Long> {
     @JoinColumn(name = "userId", nullable = false, unique = true) // C'est Cart qui porte la clé étrangère (voir SQL)
     private UserEntity userEntity;
 
+    // Batches lazy collection initialization across multiple carts loaded in the same session
+    // (see CartServiceImp#getAll) instead of one SELECT per cart.
+    @BatchSize(size = 20)
     @OneToMany(mappedBy = "cart", orphanRemoval = true, cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<CartItemEntity> cartItems;
 }

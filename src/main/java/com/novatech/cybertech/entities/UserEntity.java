@@ -14,14 +14,14 @@ import java.util.List;
 import java.util.Set;
 
 @Entity
-@Setter
 @Getter
+@Setter
 @SuperBuilder
+@NoArgsConstructor
 @AllArgsConstructor
-@RequiredArgsConstructor
 @Table(name = "userTable")
-@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntities", "wishlistItems", "recommendations"})
-@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntities", "wishlistItems", "recommendations"})
+@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntity", "wishlistItems", "recommendations"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntity", "wishlistItems", "recommendations"})
 public class UserEntity extends BaseEntity<Long> {
 
     @Column(name = "email", nullable = false, unique = true, length = 254)
@@ -88,10 +88,15 @@ public class UserEntity extends BaseEntity<Long> {
     @OneToMany(fetch = FetchType.LAZY, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ReviewEntity> reviewEntities;
 
-    @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    // fetch = LAZY is advisory only on the non-owning side of a bidirectional @OneToOne: without
+    // bytecode enhancement, Hibernate cannot proxy it (no way to know if a row exists without a
+    // query) and always loads it eagerly regardless of this annotation. Bytecode enhancement was
+    // tried to fix this for real (see pom.xml) and reverted — broken on this Java 26 / Hibernate
+    // 7.2.7 combination. Kept anyway to document intent; costs nothing today.
+    @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private BankCardEntity bankCardEntity;
 
-    @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL)
+    @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private CartEntity cartEntity;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)

@@ -31,11 +31,11 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
 @Table(name = "keycloak_outbox", indexes = {
         @Index(name = "idx_outbox_status", columnList = "status"),
         @Index(name = "idx_outbox_email", columnList = "email")
 })
+@ToString(callSuper = true)
 public class KeycloakOutboxEntity extends BaseEntity<Long> {
 
     @Enumerated(EnumType.STRING)

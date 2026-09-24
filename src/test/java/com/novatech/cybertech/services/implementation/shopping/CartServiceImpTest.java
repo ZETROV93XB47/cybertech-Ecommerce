@@ -558,15 +558,15 @@ class CartServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("CRUD admin: getAll / getByUUID / getByUUIDs / create / update / deleteByUUID(s)")
+    @DisplayName("CRUD admin: getAll / getByUUID / create / update / deleteByUUID")
     class CrudAdmin {
 
         @Test
-        @DisplayName("getAll delegates to repository.findAll and maps")
+        @DisplayName("getAll delegates to repository.findAllWithItemsAndProducts and maps")
         void getAll_happy() {
             final List<CartEntity> all = List.of(CartEntityBuilder.aValidCart());
             final List<CartResponseDto> dtos = List.of(new CartResponseDto());
-            when(cartRepository.findAll()).thenReturn(all);
+            when(cartRepository.findAllWithItemsAndProducts()).thenReturn(all);
             when(cartMapper.mapFromEntityToResponseDto((Collection<CartEntity>) all))
                     .thenReturn((Collection<CartResponseDto>) (Collection<?>) dtos);
 
@@ -597,20 +597,6 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("getByUUIDs delegates to repository and maps collection")
-        void getByUuids_happy() {
-            final List<UUID> uuids = List.of(UUID.randomUUID());
-            final List<CartEntity> entities = List.of(CartEntityBuilder.aValidCart());
-            final List<CartResponseDto> dtos = List.of(new CartResponseDto());
-            when(cartRepository.findAllByUuidIn(uuids)).thenReturn(entities);
-            when(cartMapper.mapFromEntityToResponseDto((Collection<CartEntity>) entities))
-                    .thenReturn((Collection<CartResponseDto>) (Collection<?>) dtos);
-
-            Collection<CartResponseDto> result = service.getByUUIDs(uuids);
-            assertThat(result).isEqualTo(dtos);
-        }
-
-        @Test
         @DisplayName("create() maps creation request, saves, maps response")
         void create_happy() {
             final CartCreateRequestDto req = CartCreateRequestDto.builder()
@@ -632,14 +618,6 @@ class CartServiceImpTest {
             final UUID uuid = UUID.randomUUID();
             service.deleteByUUID(uuid);
             verify(cartRepository).deleteByUuid(uuid);
-        }
-
-        @Test
-        @DisplayName("deleteByUUIDs delegates to repository.deleteAllByUuidIn")
-        void deleteByUuids_delegates() {
-            final List<UUID> uuids = List.of(UUID.randomUUID(), UUID.randomUUID());
-            service.deleteByUUIDs(uuids);
-            verify(cartRepository).deleteAllByUuidIn(uuids);
         }
 
         @Test

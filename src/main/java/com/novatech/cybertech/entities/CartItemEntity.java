@@ -14,9 +14,9 @@ import java.time.LocalDateTime;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
 @Table(name = "cartItemTable")
-@EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true, exclude = {"cart", "productEntity"})
+@EqualsAndHashCode(callSuper = true, exclude = {"cart", "productEntity"})
 public class CartItemEntity extends BaseEntity<Long> {
 
     @Setter
@@ -25,12 +25,10 @@ public class CartItemEntity extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cartId", nullable = false)
-    @ToString.Exclude
     private CartEntity cart;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "productEntity", nullable = false)
-    @ToString.Exclude
     private ProductEntity productEntity;
 
     @CreationTimestamp

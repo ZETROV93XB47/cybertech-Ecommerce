@@ -95,7 +95,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
     @Transactional(readOnly = true)
     public Collection<OrderResponseDto> getAll() {
-        return orderRepository.findAll().stream().map(orderMapper::mapFromEntityToResponseDto).toList();
+        final List<OrderEntity> orders = orderRepository.findAll();
+        hydrateOrderItemsAndProducts(orders);
+        return orders.stream().map(orderMapper::mapFromEntityToResponseDto).toList();
     }
 
     /**
@@ -631,8 +633,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
     @Transactional(readOnly = true)
     public Page<OrderResponseDto> findMyOrders(final String keycloakId, final Pageable pageable, final Set<OrderStatus> statuses) {
         final Set<OrderStatus> effectiveStatuses = (statuses == null || statuses.isEmpty()) ? null : statuses;
-        return orderRepository.findByUserKeycloakIdAndOptionalStatuses(keycloakId, effectiveStatuses, pageable)
-                .map(orderMapper::mapFromEntityToResponseDto);
+        final Page<OrderEntity> page = orderRepository.findByUserKeycloakIdAndOptionalStatuses(keycloakId, effectiveStatuses, pageable);
+        hydrateOrderItemsAndProducts(page.getContent());
+        return page.map(orderMapper::mapFromEntityToResponseDto);
     }
 
     /**
@@ -646,8 +649,22 @@ public class OrderManagementServiceImp implements OrderManagementService {
     @Transactional(readOnly = true)
     public Page<OrderResponseDto> findAllPaged(final Set<OrderStatus> statuses, final String userKeycloakId, final Pageable pageable) {
         final Set<OrderStatus> effectiveStatuses = (statuses == null || statuses.isEmpty()) ? null : statuses;
-        return orderRepository.findAllByOptionalStatusesAndUserKeycloakId(effectiveStatuses, userKeycloakId, pageable)
-                .map(orderMapper::mapFromEntityToResponseDto);
+        final Page<OrderEntity> page = orderRepository.findAllByOptionalStatusesAndUserKeycloakId(effectiveStatuses, userKeycloakId, pageable);
+        hydrateOrderItemsAndProducts(page.getContent());
+        return page.map(orderMapper::mapFromEntityToResponseDto);
+    }
+
+    /**
+     * Batch-loads {@code orderItemEntities} + {@code productEntity} for the given orders in one
+     * extra query (see {@link OrderRepository#hydrateItemsAndProductsByIdIn}), instead of letting
+     * {@link OrderMapper} trigger a lazy select per order and per item while mapping. A no-op for
+     * an empty page/list.
+     */
+    private void hydrateOrderItemsAndProducts(final List<OrderEntity> orders) {
+        if (orders.isEmpty()) {
+            return;
+        }
+        orderRepository.hydrateItemsAndProductsByIdIn(orders.stream().map(OrderEntity::getId).toList());
     }
 
     private void validateUserBeforeProcessingPayment(final UserEntity userEntity) {

@@ -5,14 +5,19 @@ import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.Type;
 
 import java.math.BigDecimal;
 import java.util.*;
 
+// Batches lazy proxy initialization: when several ProductEntity references are resolved lazily
+// within the same session (e.g. one per CartItemEntity/OrderItemEntity in a listing), Hibernate
+// groups them into IN-clause batches of this size instead of issuing one SELECT per product.
+@BatchSize(size = 20)
 @Entity
-@Setter
 @Getter
+@Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor

@@ -524,6 +524,28 @@
                     <compilerArgs>--enable-preview</compilerArgs>
                 </configuration>
             </plugin>
+            <!--
+                Hibernate bytecode enhancement (hibernate-enhance-maven-plugin) was tried here to
+                get genuine lazy loading on the non-owning side of bidirectional @OneToOne
+                associations (UserEntity.bankCardEntity / .cartEntity — see the comment there) and
+                reverted. Findings for whoever revisits this:
+
+                  1. No plugin release matches hibernate-core 7.2.7.Final (the version this
+                     project's Spring Boot 4.0.4 BOM resolves) — the plugin's groupId moved to
+                     org.hibernate.orm.tooling and its latest release is 7.0.0.Beta1.
+                  2. That plugin's bundled Byte Buddy only officially supports up to Java 23
+                     (bytecode 67); Java 26 (bytecode 70) needs -Dnet.bytebuddy.experimental=true.
+                  3. With that flag on, enhancement silently mis-instruments some entities:
+                     ProductCategorySchemaEntity and DiscountCampaignEntity both threw
+                     `AbstractMethodError: $$_hibernate_getInstanceId()I is abstract` the moment
+                     Hibernate actually touched them against a real database — invisible in unit
+                     tests (no real SessionFactory there) but a hard crash in every Testcontainers
+                     IT and, by the same mechanism, in a real deployment.
+
+                Net: beta plugin + experimental Byte Buddy flag + Java 26 is not a stable
+                combination today. Not worth the risk for a fix scoped to two fields. Revisit once
+                the plugin ships a release built for this Hibernate/JDK combination.
+            -->
             <plugin>
                 <artifactId>maven-resources-plugin</artifactId>
                 <version>3.3.1</version>

@@ -281,7 +281,7 @@ public class CartServiceImp implements CartService {
     @Override
     @Transactional(readOnly = true)
     public Collection<CartResponseDto> getAll() {
-        return cartMapper.mapFromEntityToResponseDto(cartRepository.findAll());
+        return cartMapper.mapFromEntityToResponseDto(cartRepository.findAllWithItemsAndProducts());
     }
 
     @Override
@@ -313,12 +313,6 @@ public class CartServiceImp implements CartService {
                 .orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + cartUuid + " found"));
         assertCallerOwnsCart(cart, cartUuid, keycloakId);
         return cartMapper.mapFromEntityToResponseDto(cart);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Collection<CartResponseDto> getByUUIDs(Collection<UUID> uuids) {
-        return cartMapper.mapFromEntityToResponseDto(cartRepository.findAllByUuidIn(uuids));
     }
 
     @Override
@@ -450,12 +444,6 @@ public class CartServiceImp implements CartService {
         }
 
         cartRepository.deleteByUuid(cartUuid);
-    }
-
-    @Override
-    @Transactional
-    public void deleteByUUIDs(Collection<UUID> uuids) {
-        cartRepository.deleteAllByUuidIn(uuids);
     }
 
     /**

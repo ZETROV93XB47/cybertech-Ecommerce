@@ -13,11 +13,11 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @SuperBuilder
+@NoArgsConstructor
 @AllArgsConstructor
-@RequiredArgsConstructor
-@ToString(callSuper = true)
 @Table(name = "reviewTable")
-@EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true, exclude = {"productEntity", "userEntity"})
+@EqualsAndHashCode(callSuper = true, exclude = {"productEntity", "userEntity"})
 public class ReviewEntity extends BaseEntity<Long> {
 
     @Range(min = 1, max = 5, message = "Rating must be between 1 and 5")
@@ -34,7 +34,7 @@ public class ReviewEntity extends BaseEntity<Long> {
     @JoinColumn(name = "reviewId", nullable = false)
     private ProductEntity productEntity;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "userId", nullable = false)
     private UserEntity userEntity;
 }

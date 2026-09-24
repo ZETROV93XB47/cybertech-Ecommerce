@@ -19,8 +19,8 @@ import java.time.LocalDateTime;
 // DataIntegrityViolationException and turns it into the same ProductAlreadyInWishlist the
 // pre-check throws.
 @Table(name = "wishlistTable", uniqueConstraints = @UniqueConstraint(name = "uk_wishlist_user_product", columnNames = {"userId", "productId"}))
-@ToString(callSuper = true, exclude = {"user","product"})
-@EqualsAndHashCode(callSuper = true, exclude = {"user","product"})
+@ToString(callSuper = true, exclude = {"user", "product"})
+@EqualsAndHashCode(callSuper = true, exclude = {"user", "product"})
 public class WishlistEntity extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY)

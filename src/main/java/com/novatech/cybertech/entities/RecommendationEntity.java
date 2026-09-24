@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "recommendationTable")
-@ToString(callSuper = true, exclude = {"product", "user"})
-@EqualsAndHashCode(callSuper = true, exclude = {"product", "user"})
+@ToString(callSuper = true, exclude = {"user", "product"})
+@EqualsAndHashCode(callSuper = true, exclude = {"user", "product"})
 public class RecommendationEntity extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY)

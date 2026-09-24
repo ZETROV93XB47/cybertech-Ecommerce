@@ -66,8 +66,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       <b>now fixed</b> (lockByUuid + IGNORE merge + ES re-index). Asserted end-to-end here.</li>
  *   <li>{@code search} drops caller {@code Sort} → still open; sort smoke test pins
  *       deterministic-cardinality contract.</li>
- *   <li>Bulk {@code deleteByUUIDs} leaves ES orphans → still open. Single-delete path
- *       (verified) does clean ES.</li>
  *   <li>Anonymous → 401 (TestSecurityConfig wires CustomAuthenticationEntryPoint).</li>
  *   <li>Non-admin → 403 (AuthorizationDeniedException @ExceptionHandler was added).</li>
  * </ul>
@@ -298,11 +296,9 @@ class ProductSearchFlowIT {
 
     // -----------------------------------------------------------------------------------------
     // Test 9 — admin delete of DELL → ES /search?brand=DELL returns 0
-    //          Single-delete path is correct (deleteByUUID hits both stores). Only the bulk
-    //          variant deleteByUUIDs is affected (still open).
     // -----------------------------------------------------------------------------------------
     @Test
-    @DisplayName("admin DELETE removes DELL from MySQL AND ES (single-path is fine)")
+    @DisplayName("admin DELETE removes DELL from MySQL AND ES")
     void adminDeleteRemovesFromBothStores() throws Exception {
         mockMvc.perform(delete(DELETE_ENDPOINT, dellUuid)
                         .with(JwtTestUtils.jwtAdmin(ADMIN_KC))

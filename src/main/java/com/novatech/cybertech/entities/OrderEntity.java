@@ -16,8 +16,8 @@ import java.util.List;
 
 
 @Entity
-@Setter
 @Getter
+@Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -25,8 +25,8 @@ import java.util.List;
         name = "orderTable",
         indexes = @Index(name = "idx_order_status_date", columnList = "status, orderDate")
 )
-@ToString(callSuper = true, exclude = {"orderItemEntities", "paymentAttempts"})
-@EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "paymentAttempts"})
+@ToString(callSuper = true, exclude = {"userEntity", "orderItemEntities", "paymentAttempts"})
+@EqualsAndHashCode(callSuper = true, exclude = {"userEntity", "orderItemEntities", "paymentAttempts"})
 public class OrderEntity extends BaseEntity<Long> {
 
     @Column(name = "orderDate", nullable = false)
@@ -64,7 +64,7 @@ public class OrderEntity extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     private DiscountType discountType;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "userId")
     private UserEntity userEntity;
 

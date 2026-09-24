@@ -79,4 +79,21 @@ public interface OrderRepository extends CrudBaseRepository<OrderEntity, Long> {
             @Param("statuses") Collection<OrderStatus> statuses,
             @Param("userKeycloakId") String userKeycloakId,
             Pageable pageable);
+
+    /**
+     * Batch-hydrates {@code orderItemEntities} and their {@code productEntity} for a set of
+     * already-loaded order ids, in one round trip. Meant to run right after a paginated finder
+     * above (same persistence context / transaction): Hibernate merges the fetched collections
+     * onto the SAME managed {@link OrderEntity} instances the caller already holds, so there is
+     * nothing to reassign — this turns the page's N (items) + N*M (products) lazy-load chain into
+     * exactly one extra query, mirroring {@link #findReviewableOrdersWithItemsByKeycloakIdAndStatusIn}.
+     */
+    @Query("""
+            SELECT DISTINCT o
+            FROM   OrderEntity o
+            LEFT   JOIN FETCH o.orderItemEntities oi
+            LEFT   JOIN FETCH oi.productEntity
+            WHERE  o.id IN :orderIds
+            """)
+    List<OrderEntity> hydrateItemsAndProductsByIdIn(@Param("orderIds") Collection<Long> orderIds);
 }

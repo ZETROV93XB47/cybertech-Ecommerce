@@ -148,12 +148,6 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Collection<BankCardResponseDto> getByUUIDs(Collection<UUID> uuids) {
-        return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.findAllByUuidIn(uuids));
-    }
-
-    @Override
     @Transactional
     public BankCardResponseDto create(BankCardCreationRequestDto dto) {
         // Pour le CRUD générique, on a besoin de lier un user.
@@ -229,12 +223,6 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
                 .orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + uuid));
         assertCallerOwnsCard(card, uuid, keycloakId);
         bankCardRepository.deleteByUuid(uuid);
-    }
-
-    @Override
-    @Transactional
-    public void deleteByUUIDs(Collection<UUID> uuids) {
-        bankCardRepository.deleteAllByUuidIn(uuids);
     }
 
     // --- Default-card surface -------------------------------------------------

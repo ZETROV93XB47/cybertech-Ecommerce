@@ -31,16 +31,16 @@ import java.time.LocalDateTime;
  * @see com.novatech.cybertech.services.implementation.PaymentWebhookServiceImp
  */
 @Entity
-@Setter
 @Getter
+@Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
 @Table(
         name = "processedWebhookEvent",
         uniqueConstraints = @UniqueConstraint(name = "uk_processed_webhook_event_stripeEventId", columnNames = "stripeEventId")
 )
+@ToString(callSuper = true)
 public class ProcessedWebhookEventEntity extends BaseEntity<Long> {
 
     /**

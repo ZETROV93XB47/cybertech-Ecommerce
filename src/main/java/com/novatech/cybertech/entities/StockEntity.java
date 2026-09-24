@@ -17,7 +17,6 @@ import java.util.UUID;
 @Getter
 @Setter
 @SuperBuilder
-@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(
@@ -28,6 +27,8 @@ import java.util.UUID;
                 @Index(name = "idx_stock_product_uuid", columnList = "product_uuid")
         }
 )
+@ToString(callSuper = true)
+@EqualsAndHashCode(callSuper = true)
 public class StockEntity extends BaseEntity<Long> {
 
     @Column(name = "order_uuid", nullable = false)

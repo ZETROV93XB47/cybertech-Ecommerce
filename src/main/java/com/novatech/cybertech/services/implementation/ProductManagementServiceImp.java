@@ -60,12 +60,6 @@ public class ProductManagementServiceImp implements ProductManagementService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Collection<ProductResponseDto> getByUUIDs(Collection<UUID> uuids) {
-        return productMapper.mapFromEntityToResponseDto(productRepository.findAllByUuidIn(uuids));
-    }
-
-    @Override
     @Transactional
     public ProductResponseDto create(ProductCreateRequestDto productCreateRequestDto) {
         productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
@@ -122,15 +116,6 @@ public class ProductManagementServiceImp implements ProductManagementService {
     public void deleteByUUID(UUID uuid) {
         productRepository.deleteByUuid(uuid);
         productSearchRepository.deleteByUuid(uuid);
-    }
-
-    @Override
-    @Transactional
-    public void deleteByUUIDs(Collection<UUID> uuids) {
-        productRepository.deleteAllByUuidIn(uuids);
-        if (uuids != null) {
-            uuids.forEach(productSearchRepository::deleteByUuid);
-        }
     }
 
     @Override

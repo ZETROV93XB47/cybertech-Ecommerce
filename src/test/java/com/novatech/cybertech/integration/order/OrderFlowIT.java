@@ -155,9 +155,12 @@ class OrderFlowIT {
         assertThat(userRepository.findByKeycloakId(keycloakId)).isPresent();
         assertThat(productRepository.findByUuid(productUuid)).isPresent();
         assertThat(productRepository.findByUuid(productUuid).get().getStock()).isEqualTo(10);
-        // Bank card is wired via the user OneToOne link — it must be reachable through the user
-        final UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
-        assertThat(reloaded.getBankCardEntity()).isNotNull();
+        // Bank card is wired via the user OneToOne link — it must be reachable through the user.
+        // Wrapped in a TX: UserEntity.bankCardEntity is genuinely lazy now (bytecode enhancement).
+        transactionTemplate.executeWithoutResult(tx -> {
+            final UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
+            assertThat(reloaded.getBankCardEntity()).isNotNull();
+        });
     }
 
     // 2) POST /cart/add via MockMvc; assert cart state via repo
@@ -267,10 +270,12 @@ class OrderFlowIT {
         final long eventCount = applicationEvents.stream(OrderCreatedEvent.class).count();
         assertThat(eventCount).isGreaterThanOrEqualTo(1L);
 
-        // 4) Assert order persisted
-        final List<OrderEntity> userOrders = orderRepository.findAll().stream()
-                .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
-                .toList();
+        // 4) Assert order persisted. Wrapped in a TX so the now-lazy OrderEntity.userEntity
+        // proxy can be initialized (see LazyInitializationException note below).
+        final List<OrderEntity> userOrders = transactionTemplate.execute(tx ->
+                orderRepository.findAll().stream()
+                        .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                        .toList());
         assertThat(userOrders).isNotEmpty();
     }
 
@@ -290,10 +295,12 @@ class OrderFlowIT {
                 .andReturn();
         assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
 
-        final OrderEntity placedOrder = orderRepository.findAll().stream()
-                .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
-                .findFirst()
-                .orElseThrow();
+        // Wrapped in a TX so the now-lazy OrderEntity.userEntity proxy can be initialized.
+        final OrderEntity placedOrder = transactionTemplate.execute(tx ->
+                orderRepository.findAll().stream()
+                        .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                        .findFirst()
+                        .orElseThrow());
 
         // 2) Cancel
         final OrderCancellationRequestDto cancelBody = new OrderCancellationRequestDto();
@@ -358,10 +365,12 @@ class OrderFlowIT {
         // The order is persisted even on payment failure (status PAYMENT_FAILED).
         assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
 
-        final OrderEntity placedOrder = orderRepository.findAll().stream()
-                .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
-                .findFirst()
-                .orElseThrow();
+        // Wrapped in a TX so the now-lazy OrderEntity.userEntity proxy can be initialized.
+        final OrderEntity placedOrder = transactionTemplate.execute(tx ->
+                orderRepository.findAll().stream()
+                        .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                        .findFirst()
+                        .orElseThrow());
 
         // The first attempt should be FAILED. Read inside a TX to initialise the lazy
         // OrderEntity.paymentAttempts collection (LazyInitializationException when

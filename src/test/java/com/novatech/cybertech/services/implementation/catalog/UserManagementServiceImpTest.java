@@ -210,7 +210,7 @@ class UserManagementServiceImpTest {
 
     // -----------------------------------------------------------------
     @Nested
-    @DisplayName("getAll / getByUUID / getByUUIDs")
+    @DisplayName("getAll / getByUUID")
     class Reads {
 
         @Test
@@ -247,19 +247,6 @@ class UserManagementServiceImpTest {
                     .hasMessageContaining(id.toString());
         }
 
-        @Test
-        @DisplayName("getByUUIDs maps the bulk lookup")
-        void getByUUIDs_happyPath() {
-            UUID a = UUID.randomUUID();
-            UUID b = UUID.randomUUID();
-            List<UUID> ids = List.of(a, b);
-            List<UserEntity> entities = List.of(UserEntityBuilder.aValidUserBuilder().uuid(a).build());
-            List<UserResponseDto> expected = List.of(UserDtoFixtures.aSampleUserResponse());
-            when(userRepository.findAllByUuidIn(ids)).thenReturn(entities);
-            when(userMapper.mapFromEntityToResponseDto(entities)).thenReturn(expected);
-
-            assertThat(service.getByUUIDs(ids)).isEqualTo(expected);
-        }
     }
 
     // -----------------------------------------------------------------
@@ -466,47 +453,6 @@ class UserManagementServiceImpTest {
             verifyNoInteractions(eventPublisher);
         }
 
-        @Test
-        @DisplayName("OUTBOX — deleteByUUIDs runs SQL bulk delete then co-commits one outbox row + one event per user")
-        void deleteByUUIDs_happyPath() {
-            UUID a = UUID.randomUUID();
-            UUID b = UUID.randomUUID();
-            UUID outboxA = UUID.randomUUID();
-            UUID outboxB = UUID.randomUUID();
-            UserEntity ua = UserEntityBuilder.aValidUserBuilder().uuid(a).keycloakId("kc-a").build();
-            UserEntity ub = UserEntityBuilder.aValidUserBuilder().uuid(b).keycloakId("kc-b").build();
-            when(userRepository.findAllByUuidIn(List.of(a, b))).thenReturn(List.of(ua, ub));
-            when(keycloakOutboxService.recordDeletePending("kc-a")).thenReturn(outboxA);
-            when(keycloakOutboxService.recordDeletePending("kc-b")).thenReturn(outboxB);
-
-            service.deleteByUUIDs(List.of(a, b));
-
-            // SQL delete runs first.
-            InOrder order = inOrder(userRepository, eventPublisher);
-            order.verify(userRepository).deleteAllByUuidIn(List.of(a, b));
-
-            // One UserDeletedEvent per resolved user — each carrying its co-committed outbox row uuid.
-            ArgumentCaptor<UserDeletedEvent> events = ArgumentCaptor.forClass(UserDeletedEvent.class);
-            order.verify(eventPublisher, org.mockito.Mockito.times(2)).publishEvent(events.capture());
-            assertThat(events.getAllValues())
-                    .extracting(UserDeletedEvent::getOutboxUuid)
-                    .containsExactly(outboxA, outboxB);
-
-            // The service no longer calls Keycloak directly — that is now the listener's/job's job.
-            verifyNoInteractions(keycloakUserManagementService);
-        }
-
-        @Test
-        @DisplayName("FIX(SAGA-INCONSISTENCY) — empty list still calls SQL bulk delete and publishes no events")
-        void deleteByUUIDs_emptyList() {
-            when(userRepository.findAllByUuidIn(List.of())).thenReturn(List.of());
-
-            service.deleteByUUIDs(List.of());
-
-            verifyNoInteractions(keycloakUserManagementService);
-            verifyNoInteractions(eventPublisher);
-            verify(userRepository).deleteAllByUuidIn(List.of());
-        }
     }
 
     // -----------------------------------------------------------------
