@@ -57,12 +57,3 @@ public class CartItemEntity extends BaseEntity<Long> {
     }
 
 }
-//    public QuantityChangeResult decreaseQuantity(final int amount) {
-//        return switch (amount) {
-//            case int amountToDecrease when amountToDecrease > this.quantity -> new QuantityRejected(AMOUNT_TO_DECREASE_BIGGER_THAN_CURRENT_QUANTITY);
-//            default -> {
-//                this.quantity -= amount;
-//                yield new QuantityUpdated(this.quantity);
-//            }
-//        };
-//    }
