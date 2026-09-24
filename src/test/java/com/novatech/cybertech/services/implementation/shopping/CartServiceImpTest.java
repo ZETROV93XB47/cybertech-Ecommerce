@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -200,11 +201,11 @@ class CartServiceImpTest {
             assertThat(result).isSameAs(cached);
             verify(cartCacheHelper).refreshTtlWithJitter(keycloakId);
             verifyNoInteractions(userRepository, cartRepository);
-            verify(cartCacheHelper, never()).acquireLock(anyString());
+            verify(cartCacheHelper, never()).acquireLockBlocking(anyString(), anyLong());
         }
 
         @Test
-        @DisplayName("cache miss + lock acquired -> DB lookup, cache write, lock release")
+        @DisplayName("cache miss + lock acquired -> double-check misses too, DB lookup, cache write, lock release")
         void cacheMiss_dbLookupAndCachePut() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
@@ -214,15 +215,38 @@ class CartServiceImpTest {
             user.setCartEntity(cart);
 
             final CartResponseDto mapped = stubMappedResponse();
+            // Both the initial probe AND the post-lock double-check miss.
             when(cartCacheHelper.getRaw(keycloakId)).thenReturn(null);
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(true);
+            when(cartCacheHelper.acquireLockBlocking(eq(keycloakId), anyLong())).thenReturn(true);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
             when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(mapped);
 
             final CartResponseDto result = service.getCart(keycloakId);
 
             assertThat(result).isSameAs(mapped);
+            verify(cartCacheHelper, times(2)).getRaw(keycloakId);
             verify(cartCacheHelper).putWithJitter(keycloakId, mapped);
+            verify(cartCacheHelper).releaseLock(keycloakId);
+        }
+
+        @Test
+        @DisplayName("cache miss + lock acquired + another thread already rebuilt while waiting -> reuse their result, no DB hit")
+        void cacheMiss_lockAcquired_rebuiltWhileWaiting_reusesResult() {
+            final CartResponseDto rebuiltByWinner = stubMappedResponse();
+            // First probe misses; by the time this caller finally gets the lock, the double-check
+            // finds the cache already populated by whoever held the lock before it.
+            when(cartCacheHelper.getRaw(keycloakId))
+                    .thenReturn(null)
+                    .thenReturn(rebuiltByWinner);
+            when(cartCacheHelper.acquireLockBlocking(eq(keycloakId), anyLong())).thenReturn(true);
+
+            final CartResponseDto result = service.getCart(keycloakId);
+
+            assertThat(result).isSameAs(rebuiltByWinner);
+            // No redundant DB rebuild — the double-check short-circuited before touching the DB.
+            verifyNoInteractions(userRepository, cartRepository, cartMapper);
+            // Never re-populates the cache — the winner already did.
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any(CartResponseDto.class));
             verify(cartCacheHelper).releaseLock(keycloakId);
         }
 
@@ -231,7 +255,7 @@ class CartServiceImpTest {
         void cacheMiss_noCartOnUser_returnsEmpty() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).cartEntity(null).build();
             when(cartCacheHelper.getRaw(keycloakId)).thenReturn(null);
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(true);
+            when(cartCacheHelper.acquireLockBlocking(eq(keycloakId), anyLong())).thenReturn(true);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             final CartResponseDto result = service.getCart(keycloakId);
@@ -244,13 +268,13 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("cache miss + lock NOT acquired + retry hit -> returns retry DTO without DB")
+        @DisplayName("cache miss + lock NOT acquired within budget + retry hit -> returns retry DTO without DB")
         void cacheMiss_lockBusy_retryHit() {
             final CartResponseDto retried = stubMappedResponse();
             when(cartCacheHelper.getRaw(keycloakId))
                     .thenReturn(null)   // first probe miss
                     .thenReturn(retried); // retry hit
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(false);
+            when(cartCacheHelper.acquireLockBlocking(eq(keycloakId), anyLong())).thenReturn(false);
 
             final CartResponseDto result = service.getCart(keycloakId);
 
@@ -260,12 +284,12 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("cache miss + lock NOT acquired + retry miss -> empty DTO")
+        @DisplayName("cache miss + lock NOT acquired within budget + retry miss -> empty DTO")
         void cacheMiss_lockBusy_retryMiss_returnsEmpty() {
             when(cartCacheHelper.getRaw(keycloakId))
                     .thenReturn(null)
                     .thenReturn(null);
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(false);
+            when(cartCacheHelper.acquireLockBlocking(eq(keycloakId), anyLong())).thenReturn(false);
 
             final CartResponseDto result = service.getCart(keycloakId);
 
@@ -278,7 +302,7 @@ class CartServiceImpTest {
         @DisplayName("user missing during DB rebuild -> exception bubbles, lock STILL released")
         void userMissingDuringRebuild_releasesLock() {
             when(cartCacheHelper.getRaw(keycloakId)).thenReturn(null);
-            when(cartCacheHelper.acquireLock(keycloakId)).thenReturn(true);
+            when(cartCacheHelper.acquireLockBlocking(eq(keycloakId), anyLong())).thenReturn(true);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.getCart(keycloakId))

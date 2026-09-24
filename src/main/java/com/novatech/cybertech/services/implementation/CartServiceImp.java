@@ -56,6 +56,18 @@ public class CartServiceImp implements CartService {
     private static final long CART_ADD_LOCK_WAIT_MS = 4_000L;
 
     /**
+     * Bounded wait for the cache-rebuild lock on a {@link #getCart} cache miss. Short relative
+     * to {@link #CART_ADD_LOCK_WAIT_MS} — a rebuild is a single DB read, not a read-modify-write,
+     * so a concurrent rebuilder should clear quickly. Reused via
+     * {@link CartCacheHelper#acquireLockBlocking} instead of a fixed sleep so a caller queues
+     * only as long as actually needed rather than a worst-case guess, and — combined with the
+     * double-check once the lock is acquired, see {@link #getCart} — a losing reader reuses the
+     * winner's freshly-cached result instead of either returning a wrong empty cart or
+     * redundantly re-reading the DB.
+     */
+    private static final long CART_REBUILD_LOCK_WAIT_MS = 1_500L;
+
+    /**
      * Add items to the authenticated user's cart, serialising concurrent writes for the
      * same user with a per-user <b>Redis distributed lock</b> ({@link CartCacheHelper}, backed by
      * Redisson's {@code RLock}).
@@ -123,8 +135,6 @@ public class CartServiceImp implements CartService {
     @Override
     public CartResponseDto addItemsToCart(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
 
-        log.info("cart request dto : {}", cartCreateRequestDto);
-
         // Layer 1 — acquire the per-user Redis lock (bounded wait).
         final boolean acquired = cartCacheHelper.acquireLockBlocking(keycloakId, CART_ADD_LOCK_WAIT_MS);
         if (!acquired) {
@@ -157,31 +167,43 @@ public class CartServiceImp implements CartService {
             return cached;
         }
 
-        // 2) Cache miss → try to acquire the rebuild lock
-        final boolean acquired = cartCacheHelper.acquireLock(keycloakId);
+        // 2) Cache miss → block briefly for the rebuild lock instead of racing past it with a
+        // single non-blocking probe. Whoever is already rebuilding is doing a single DB read, so
+        // it usually finishes in a handful of ms — a short bounded wait resolves the race
+        // correctly far more often than a one-shot probe, without making every reader wait a
+        // fixed worst-case delay (see CART_REBUILD_LOCK_WAIT_MS).
+        final boolean acquired = cartCacheHelper.acquireLockBlocking(keycloakId, CART_REBUILD_LOCK_WAIT_MS);
 
         if (!acquired) {
-            // Another thread holds the lock and is already rebuilding.
-            // Re-read: if they just populated the cache, return it; otherwise return empty.
+            // Waited the full budget and still couldn't get the lock — genuinely unusual (mirrors
+            // addItemsToCart's own failure mode). Best-effort final read.
             final CartResponseDto retry = cartCacheHelper.getRaw(keycloakId);
             return retry != null ? retry : new CartResponseDto();
         }
 
         try {
-            // 3) We hold the lock — rebuild from DB
+            // 3) Double-check: whoever held the lock before us may have already rebuilt and
+            // populated the cache while we were queued — reuse their result instead of hitting
+            // the DB a second time for nothing.
+            final CartResponseDto rebuiltWhileWaiting = cartCacheHelper.getRaw(keycloakId);
+            if (rebuiltWhileWaiting != null) {
+                return rebuiltWhileWaiting;
+            }
+
+            // 4) Still nothing — we're genuinely the one rebuilding. Load from DB.
             final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
             final CartResponseDto dto = user.getCartEntity() == null
                     ? new CartResponseDto()
                     : cartMapper.mapFromEntityToResponseDto(user.getCartEntity());
 
-            // 4) Populate cache with jitter TTL
+            // 5) Populate cache with jitter TTL
             cartCacheHelper.putWithJitter(keycloakId, dto);
 
             return dto;
 
         } finally {
-            // 5) Always release the lock
+            // 6) Always release the lock
             log.info("Releasing rebuild lock for user {}", keycloakId);
             cartCacheHelper.releaseLock(keycloakId);
         }
