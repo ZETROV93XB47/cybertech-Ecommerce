@@ -229,7 +229,7 @@ class UserRegistrationFlowIT {
     //    `anyRequest().authenticated()` and return 401 via CustomAuthenticationEntryPoint.
     // -----------------------------------------------------------------------------------
     @Test
-    @DisplayName("fix — POST /register/auto/single rejects anonymous (401)")
+    @DisplayName("POST /register/auto/single rejects anonymous (401)")
     void registerAutoSingleRejectsAnonymousAfterBug201Fix() throws Exception {
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
                         .with(csrf())
@@ -242,7 +242,7 @@ class UserRegistrationFlowIT {
     }
 
     @Test
-    @DisplayName("fix — POST /register/auto/single as ROLE_USER returns 403")
+    @DisplayName("POST /register/auto/single as ROLE_USER returns 403")
     void registerAutoSingleAsRoleUserReturns403AfterBug201Fix() throws Exception {
         final String keycloakId = "kc-it-user-" + UUID.randomUUID();
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
@@ -254,7 +254,7 @@ class UserRegistrationFlowIT {
     }
 
     @Test
-    @DisplayName("fix — POST /register/auto/single as ROLE_ADMIN returns 201")
+    @DisplayName("POST /register/auto/single as ROLE_ADMIN returns 201")
     void registerAutoSingleAsRoleAdminReturns201AfterBug201Fix() throws Exception {
         final String adminKeycloakId = "kc-it-admin-" + UUID.randomUUID();
         // Commit 44fb0b9 changed registerAuto's body from UserResponseDto to a
