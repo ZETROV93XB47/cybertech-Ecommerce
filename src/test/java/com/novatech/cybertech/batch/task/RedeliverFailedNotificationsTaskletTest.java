@@ -362,7 +362,7 @@ class RedeliverFailedNotificationsTaskletTest {
             verify(notificationRepository).save(saveCap.capture());
             final NotificationEntity saved = saveCap.getValue();
             assertThat(saved.getStatus()).isEqualTo(NotificationStatus.FAILED);
-            assertThat(saved.getErrorHistory()).isEqualTo("redrive payload missing/corrupted");
+            assertThat(saved.getErrorHistory()).containsExactly("redrive payload missing/corrupted");
             assertThat(saved.getLastAttemptAt()).isNotNull();
         }
 
@@ -386,7 +386,7 @@ class RedeliverFailedNotificationsTaskletTest {
             verify(notificationRepository).save(saveCap.capture());
             final NotificationEntity saved = saveCap.getValue();
             assertThat(saved.getStatus()).isEqualTo(NotificationStatus.FAILED);
-            assertThat(saved.getErrorHistory()).isEqualTo("redrive payload missing/corrupted");
+            assertThat(saved.getErrorHistory()).containsExactly("redrive payload missing/corrupted");
         }
 
         @Test

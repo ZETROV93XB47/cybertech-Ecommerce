@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -105,7 +107,7 @@ public class NotificationOutcomeRecorder {
                 .retryCount(retryCount)
                 .lastAttemptAt(now)
                 .sentAt(status == NotificationStatus.SENT ? now : null)
-                .errorHistory(appendErrorEntry(null, failure))
+                .errorHistory(appendErrorEntry(new ArrayList<>(), failure))
                 .payload(serializedPayload)
                 .build();
 
@@ -185,25 +187,21 @@ public class NotificationOutcomeRecorder {
      * {@code history} unchanged on success ({@code failure == null}) — a notification that
      * eventually sends keeps the record of how many times it failed first, for debugging.
      *
-     * <p>Entry format: {@code [RETRY_<n>_FAILED_AT:<timestamp>]: <message>}, one per line.
-     * {@code <n>} is simply "how many entries already exist, plus one" — self-contained, no need
-     * to thread the in-process attempt budget through from the caller.
+     * <p>Entry format: {@code [RETRY_<n>_FAILED_AT:<timestamp>]: <message>}. {@code <n>} is simply
+     * "how many entries already exist, plus one" — self-contained, no need to thread the
+     * in-process attempt budget through from the caller. Returns a NEW list (never mutates
+     * {@code history} in place) so a caller assigning the result back via a setter reliably
+     * triggers Hibernate's dirty-checking for the {@code @Type(JsonType.class)} column.
      */
-    private static String appendErrorEntry(@Nullable final String history, @Nullable final Throwable failure) {
+    private static List<String> appendErrorEntry(@Nullable final List<String> history, @Nullable final Throwable failure) {
         if (failure == null) {
             return history;
         }
-        final int attemptNumber = countEntries(history) + 1;
+        final List<String> updated = history == null ? new ArrayList<>() : new ArrayList<>(history);
+        final int attemptNumber = updated.size() + 1;
         final String message = truncate(failure.getMessage());
-        final String entry = "[RETRY_%d_FAILED_AT:%s]: %s".formatted(attemptNumber, LocalDateTime.now(), message);
-        return (history == null || history.isBlank()) ? entry : history + System.lineSeparator() + entry;
-    }
-
-    private static int countEntries(@Nullable final String history) {
-        if (history == null || history.isBlank()) {
-            return 0;
-        }
-        return (int) history.lines().filter(line -> !line.isBlank()).count();
+        updated.add("[RETRY_%d_FAILED_AT:%s]: %s".formatted(attemptNumber, LocalDateTime.now(), message));
+        return updated;
     }
 
     private static String truncate(@Nullable final String message) {

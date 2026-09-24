@@ -22,6 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -116,7 +117,7 @@ class NotificationOutcomeRecorderTest {
         assertThat(saved.getRetryCount()).isZero();
         assertThat(saved.getLastAttemptAt()).isNotNull();
         assertThat(saved.getSentAt()).isNotNull();
-        assertThat(saved.getErrorHistory()).isNull();
+        assertThat(saved.getErrorHistory()).isEmpty();
         assertThat(saved.getPayload())
                 .as("payload column carries the JSON-serialised redrive snapshot")
                 .isNotBlank()
@@ -163,7 +164,8 @@ class NotificationOutcomeRecorderTest {
         assertThat(saved.getRetryCount()).isEqualTo(3);
         assertThat(saved.getSentAt()).as("sentAt is null on FAILED").isNull();
         assertThat(saved.getLastAttemptAt()).isNotNull();
-        assertThat(saved.getErrorHistory())
+        assertThat(saved.getErrorHistory()).hasSize(1);
+        assertThat(saved.getErrorHistory().get(0))
                 .as("first entry: [RETRY_1_FAILED_AT:<timestamp>]: <message truncated to 500 chars>")
                 .startsWith("[RETRY_1_FAILED_AT:")
                 .contains("x".repeat(500))
@@ -219,7 +221,8 @@ class NotificationOutcomeRecorderTest {
         assertThat(existing.getRetryCount()).isEqualTo(6);
         assertThat(existing.getStatus()).isEqualTo(NotificationStatus.PENDING_RETRY);
         // First entry on a row with no prior history — numbered 1.
-        assertThat(existing.getErrorHistory())
+        assertThat(existing.getErrorHistory()).hasSize(1);
+        assertThat(existing.getErrorHistory().get(0))
                 .startsWith("[RETRY_1_FAILED_AT:")
                 .contains("still down");
         assertThat(existing.getLastAttemptAt()).isNotNull();
@@ -238,7 +241,7 @@ class NotificationOutcomeRecorderTest {
                 .status(NotificationStatus.PENDING_RETRY)
                 .recipient("jane@example.com")
                 .retryCount(3)
-                .errorHistory("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: connection refused")
+                .errorHistory(List.of("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: connection refused"))
                 .build();
         when(notificationRepository.save(any(NotificationEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -246,14 +249,13 @@ class NotificationOutcomeRecorderTest {
         recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException("timeout"));
 
         assertThat(existing.getErrorHistory())
-                .contains("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: connection refused")
-                .contains("timeout");
-        assertThat(existing.getErrorHistory().lines().filter(l -> !l.isBlank()).count())
-                .as("two distinct entries, one per line")
-                .isEqualTo(2);
-        assertThat(existing.getErrorHistory().lines().toList().get(1))
+                .as("two distinct entries, first one kept as-is")
+                .hasSize(2)
+                .first().isEqualTo("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: connection refused");
+        assertThat(existing.getErrorHistory().get(1))
                 .as("second entry numbered 2")
-                .startsWith("[RETRY_2_FAILED_AT:");
+                .startsWith("[RETRY_2_FAILED_AT:")
+                .contains("timeout");
     }
 
     @Test
@@ -266,7 +268,7 @@ class NotificationOutcomeRecorderTest {
                 .status(NotificationStatus.PENDING_RETRY)
                 .recipient("jane@example.com")
                 .retryCount(6)
-                .errorHistory("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: previous failure")
+                .errorHistory(List.of("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: previous failure"))
                 .payload("{\"original\":\"snapshot\"}")
                 .build();
         when(notificationRepository.save(any(NotificationEntity.class)))
@@ -278,7 +280,7 @@ class NotificationOutcomeRecorderTest {
         assertThat(existing.getSentAt()).isNotNull();
         assertThat(existing.getErrorHistory())
                 .as("history is preserved, not cleared, on eventual success")
-                .isEqualTo("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: previous failure");
+                .containsExactly("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: previous failure");
     }
 
     @Test
@@ -298,7 +300,8 @@ class NotificationOutcomeRecorderTest {
         final String longMessage = "x".repeat(1500);
         recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException(longMessage));
 
-        assertThat(existing.getErrorHistory())
+        assertThat(existing.getErrorHistory()).hasSize(1);
+        assertThat(existing.getErrorHistory().get(0))
                 .contains("x".repeat(500))
                 .doesNotContain("x".repeat(501));
     }

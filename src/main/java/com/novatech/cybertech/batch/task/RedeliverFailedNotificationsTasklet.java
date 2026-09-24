@@ -215,7 +215,7 @@ public class RedeliverFailedNotificationsTasklet extends BaseTasklet {
     private void markCorrupted(final NotificationEntity entity) {
         entity.setStatus(NotificationStatus.FAILED);
         entity.setLastAttemptAt(LocalDateTime.now());
-        entity.setErrorHistory("redrive payload missing/corrupted");
+        entity.setErrorHistory(List.of("redrive payload missing/corrupted"));
         notificationRepository.save(entity);
     }
 }
