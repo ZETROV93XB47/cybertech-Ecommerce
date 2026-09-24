@@ -61,8 +61,21 @@ public class NotificationEntity extends BaseEntity<Long> {
     @Column(name = "sentAt")
     private LocalDateTime sentAt;
 
-    @Column(name = "errorMessage", length = 1000)
-    private String errorMessage;
+    /**
+     * Newline-delimited failure history, one line per failed attempt (a full in-process
+     * Resilience4j exhaustion or a redrive tick), each formatted as
+     * {@code [RETRY_<n>_FAILED_AT:<timestamp>]: <message>}. Untouched on success — a notification
+     * that eventually sends still keeps the record of how many times it failed first.
+     *
+     * <p>{@code TEXT} rather than a length-capped {@code VARCHAR}: at up to 9 cumulative attempts
+     * (default {@code cybertech.notification.redelivery.max-attempts}) this stays small in
+     * practice, but a fixed-length column risked a JPA constraint violation defeating the
+     * recorder's "always persist" contract. Each individual entry is still truncated before being
+     * appended, so one huge exception message can't dominate the log.
+     */
+    @Lob
+    @Column(name = "errorHistory", columnDefinition = "TEXT")
+    private String errorHistory;
 
     /**
      * JSON-serialized {@link com.novatech.cybertech.dto.data.NotificationRedrivePayload}.

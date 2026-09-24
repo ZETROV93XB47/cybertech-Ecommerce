@@ -116,7 +116,7 @@ class NotificationOutcomeRecorderTest {
         assertThat(saved.getRetryCount()).isZero();
         assertThat(saved.getLastAttemptAt()).isNotNull();
         assertThat(saved.getSentAt()).isNotNull();
-        assertThat(saved.getErrorMessage()).isNull();
+        assertThat(saved.getErrorHistory()).isNull();
         assertThat(saved.getPayload())
                 .as("payload column carries the JSON-serialised redrive snapshot")
                 .isNotBlank()
@@ -141,7 +141,7 @@ class NotificationOutcomeRecorderTest {
     }
 
     @Test
-    @DisplayName("failure: persists FAILED row with errorMessage truncated and payload populated")
+    @DisplayName("failure: persists FAILED row with a formatted, truncated errorHistory entry and payload populated")
     void failurePathPersistsFailedRowWithErrorAndPayload() {
         final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
         final UUID orderUuid = UUID.randomUUID();
@@ -149,7 +149,7 @@ class NotificationOutcomeRecorderTest {
         when(notificationRepository.save(any(NotificationEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 
-        // Build a message longer than the 1000-char column cap.
+        // Build a message longer than the 500-char per-entry cap.
         final String longMessage = "x".repeat(1500);
         final RuntimeException failure = new RuntimeException(longMessage);
 
@@ -163,9 +163,11 @@ class NotificationOutcomeRecorderTest {
         assertThat(saved.getRetryCount()).isEqualTo(3);
         assertThat(saved.getSentAt()).as("sentAt is null on FAILED").isNull();
         assertThat(saved.getLastAttemptAt()).isNotNull();
-        assertThat(saved.getErrorMessage())
-                .as("errorMessage truncated to fit @Column(length=1000)")
-                .hasSize(1000);
+        assertThat(saved.getErrorHistory())
+                .as("first entry: [RETRY_1_FAILED_AT:<timestamp>]: <message truncated to 500 chars>")
+                .startsWith("[RETRY_1_FAILED_AT:")
+                .contains("x".repeat(500))
+                .doesNotContain("x".repeat(501));
         assertThat(saved.getPayload()).isNotBlank();
     }
 
@@ -216,7 +218,10 @@ class NotificationOutcomeRecorderTest {
         assertThat(cap.getValue()).isSameAs(existing);
         assertThat(existing.getRetryCount()).isEqualTo(6);
         assertThat(existing.getStatus()).isEqualTo(NotificationStatus.PENDING_RETRY);
-        assertThat(existing.getErrorMessage()).isEqualTo("still down");
+        // First entry on a row with no prior history — numbered 1.
+        assertThat(existing.getErrorHistory())
+                .startsWith("[RETRY_1_FAILED_AT:")
+                .contains("still down");
         assertThat(existing.getLastAttemptAt()).isNotNull();
         assertThat(existing.getSentAt()).as("sentAt stays null on PENDING_RETRY").isNull();
         // payload column untouched — still the original redrive snapshot.
@@ -224,8 +229,36 @@ class NotificationOutcomeRecorderTest {
     }
 
     @Test
-    @DisplayName("updateOutcome: SENT sets sentAt and clears errorMessage")
-    void updateOutcome_sentSetsAndClearsFields() {
+    @DisplayName("updateOutcome: a second failure appends a NEW entry numbered 2, keeping the first")
+    void updateOutcome_appendsSecondEntryWithIncrementedNumber() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final NotificationEntity existing = NotificationEntity.builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChannel(CommunicationChanel.EMAIL)
+                .status(NotificationStatus.PENDING_RETRY)
+                .recipient("jane@example.com")
+                .retryCount(3)
+                .errorHistory("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: connection refused")
+                .build();
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException("timeout"));
+
+        assertThat(existing.getErrorHistory())
+                .contains("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: connection refused")
+                .contains("timeout");
+        assertThat(existing.getErrorHistory().lines().filter(l -> !l.isBlank()).count())
+                .as("two distinct entries, one per line")
+                .isEqualTo(2);
+        assertThat(existing.getErrorHistory().lines().toList().get(1))
+                .as("second entry numbered 2")
+                .startsWith("[RETRY_2_FAILED_AT:");
+    }
+
+    @Test
+    @DisplayName("updateOutcome: SENT leaves the prior errorHistory untouched — a notification that eventually sends still shows how many times it failed first")
+    void updateOutcome_sentPreservesPriorHistory() {
         final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
         final NotificationEntity existing = NotificationEntity.builder()
                 .notificationType(NotificationType.SHIPPING_CONFIRMATION)
@@ -233,7 +266,7 @@ class NotificationOutcomeRecorderTest {
                 .status(NotificationStatus.PENDING_RETRY)
                 .recipient("jane@example.com")
                 .retryCount(6)
-                .errorMessage("previous failure")
+                .errorHistory("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: previous failure")
                 .payload("{\"original\":\"snapshot\"}")
                 .build();
         when(notificationRepository.save(any(NotificationEntity.class)))
@@ -243,11 +276,13 @@ class NotificationOutcomeRecorderTest {
 
         assertThat(existing.getStatus()).isEqualTo(NotificationStatus.SENT);
         assertThat(existing.getSentAt()).isNotNull();
-        assertThat(existing.getErrorMessage()).isNull();
+        assertThat(existing.getErrorHistory())
+                .as("history is preserved, not cleared, on eventual success")
+                .isEqualTo("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: previous failure");
     }
 
     @Test
-    @DisplayName("updateOutcome: error message is truncated to fit @Column(length=1000)")
+    @DisplayName("updateOutcome: each entry's message is truncated to 500 chars, independent of prior history length")
     void updateOutcome_truncatesLongErrorMessage() {
         final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
         final NotificationEntity existing = NotificationEntity.builder()
@@ -263,6 +298,8 @@ class NotificationOutcomeRecorderTest {
         final String longMessage = "x".repeat(1500);
         recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException(longMessage));
 
-        assertThat(existing.getErrorMessage()).hasSize(1000);
+        assertThat(existing.getErrorHistory())
+                .contains("x".repeat(500))
+                .doesNotContain("x".repeat(501));
     }
 }

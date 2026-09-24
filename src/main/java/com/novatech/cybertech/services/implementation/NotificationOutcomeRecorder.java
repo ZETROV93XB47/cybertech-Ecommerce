@@ -43,12 +43,11 @@ import java.util.UUID;
 public class NotificationOutcomeRecorder {
 
     /**
-     * Cap on the audit error message — matches the {@code length=1000} on
-     * {@link NotificationEntity#getErrorMessage()}. Exceeding this would
-     * trigger a JPA constraint violation at flush time, defeating the
-     * recorder's "always persist" contract.
+     * Cap on a single entry appended to {@link NotificationEntity#getErrorHistory()} — the column
+     * itself is unbounded {@code TEXT}, but one huge exception message (e.g. a full stack trace
+     * sneaking into {@code Throwable#getMessage()}) shouldn't be allowed to dominate the log.
      */
-    private static final int ERROR_MESSAGE_MAX_LENGTH = 1000;
+    private static final int ERROR_ENTRY_MAX_LENGTH = 500;
 
     private final NotificationRepository notificationRepository;
     private final ObjectMapper objectMapper;
@@ -65,8 +64,8 @@ public class NotificationOutcomeRecorder {
      *       a partial audit row is preferable to losing it entirely).</li>
      *   <li>{@code lastAttemptAt} is always set to {@link LocalDateTime#now()}.</li>
      *   <li>{@code sentAt} is set iff {@code status == SENT}.</li>
-     *   <li>{@code errorMessage} is set from {@code failure.getMessage()}
-     *       truncated to fit the existing column length.</li>
+     *   <li>On failure, one entry is appended to {@code errorHistory} (see
+     *       {@link #appendErrorEntry}); untouched on success.</li>
      *   <li>The {@link NotificationRedrivePayload} snapshot is JSON-serialized
      *       into the {@code payload} column. If serialization itself throws,
      *       a WARN is logged and the row is persisted with {@code payload=null}.</li>
@@ -106,7 +105,7 @@ public class NotificationOutcomeRecorder {
                 .retryCount(retryCount)
                 .lastAttemptAt(now)
                 .sentAt(status == NotificationStatus.SENT ? now : null)
-                .errorMessage(truncate(failure != null ? failure.getMessage() : null))
+                .errorHistory(appendErrorEntry(null, failure))
                 .payload(serializedPayload)
                 .build();
 
@@ -118,8 +117,9 @@ public class NotificationOutcomeRecorder {
      * redrive tasklet so a sustained outage bumps the SAME row's {@code retryCount} across ticks
      * instead of inserting a fresh row that would itself become independently redrivable (a prior
      * design forked an unbounded number of parallel redrive lineages for a single notification
-     * during a long outage, risking duplicate sends once the outage cleared). Only the latest
-     * error message is kept — no per-attempt history, by design.
+     * during a long outage, risking duplicate sends once the outage cleared). On failure, a new
+     * entry is appended to {@code errorHistory} rather than overwriting it — see
+     * {@link #appendErrorEntry} — so the full failure history survives across redrive ticks.
      *
      * @param existing   the row to update, as loaded by the redrive tasklet — must not be null
      * @param status     the outcome of this attempt
@@ -140,7 +140,7 @@ public class NotificationOutcomeRecorder {
         existing.setRetryCount(retryCount);
         existing.setLastAttemptAt(now);
         existing.setSentAt(status == NotificationStatus.SENT ? now : null);
-        existing.setErrorMessage(truncate(failure != null ? failure.getMessage() : null));
+        existing.setErrorHistory(appendErrorEntry(existing.getErrorHistory(), failure));
         // payload column untouched — it already holds the redrive snapshot from the original
         // insert, still valid for a further redrive if this attempt fails again.
 
@@ -180,12 +180,38 @@ public class NotificationOutcomeRecorder {
         }
     }
 
-    private static String truncate(final String message) {
-        if (message == null) {
-            return null;
+    /**
+     * Appends one formatted entry to {@code history} for {@code failure}, or returns
+     * {@code history} unchanged on success ({@code failure == null}) — a notification that
+     * eventually sends keeps the record of how many times it failed first, for debugging.
+     *
+     * <p>Entry format: {@code [RETRY_<n>_FAILED_AT:<timestamp>]: <message>}, one per line.
+     * {@code <n>} is simply "how many entries already exist, plus one" — self-contained, no need
+     * to thread the in-process attempt budget through from the caller.
+     */
+    private static String appendErrorEntry(@Nullable final String history, @Nullable final Throwable failure) {
+        if (failure == null) {
+            return history;
         }
-        return message.length() <= ERROR_MESSAGE_MAX_LENGTH
+        final int attemptNumber = countEntries(history) + 1;
+        final String message = truncate(failure.getMessage());
+        final String entry = "[RETRY_%d_FAILED_AT:%s]: %s".formatted(attemptNumber, LocalDateTime.now(), message);
+        return (history == null || history.isBlank()) ? entry : history + System.lineSeparator() + entry;
+    }
+
+    private static int countEntries(@Nullable final String history) {
+        if (history == null || history.isBlank()) {
+            return 0;
+        }
+        return (int) history.lines().filter(line -> !line.isBlank()).count();
+    }
+
+    private static String truncate(@Nullable final String message) {
+        if (message == null) {
+            return "(no message)";
+        }
+        return message.length() <= ERROR_ENTRY_MAX_LENGTH
                 ? message
-                : message.substring(0, ERROR_MESSAGE_MAX_LENGTH);
+                : message.substring(0, ERROR_ENTRY_MAX_LENGTH);
     }
 }
