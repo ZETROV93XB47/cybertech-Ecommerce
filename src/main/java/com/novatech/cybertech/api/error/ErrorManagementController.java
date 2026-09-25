@@ -112,6 +112,12 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, CANNOT_CANCEL_ORDER.getResponseStatus());
     }
 
+    @ExceptionHandler(OrderNotFundedException.class)
+    public ResponseEntity<ErrorResponseDto> handleOrderNotFundedException(OrderNotFundedException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_NOT_FUNDED.getResponseStatus().value(), ORDER_NOT_FUNDED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ORDER_NOT_FUNDED.getResponseStatus());
+    }
+
     @ExceptionHandler(ProductNotFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleProductNotFoundException(ProductNotFoundException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PRODUCT_NOT_FOUND.getResponseStatus().value(), PRODUCT_NOT_FOUND.getErrorCodeType());
@@ -200,12 +206,6 @@ public class ErrorManagementController {
     public ResponseEntity<ErrorResponseDto> handleIdempotencyKeyGenerationException(IdempotencyKeyGenerationException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), IDEMPOTENCY_KEY_GENERATION_FAILED.getResponseStatus().value(), IDEMPOTENCY_KEY_GENERATION_FAILED.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, IDEMPOTENCY_KEY_GENERATION_FAILED.getResponseStatus());
-    }
-
-    @ExceptionHandler(NoDefaultBankCartSetException.class)
-    public ResponseEntity<ErrorResponseDto> handleNoDefaultBankCartSetException(NoDefaultBankCartSetException exception) {
-        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), NO_DEFAULT_BANK_CARD_SET.getResponseStatus().value(), NO_DEFAULT_BANK_CARD_SET.getErrorCodeType());
-        return new ResponseEntity<>(errorResponseDto, NO_DEFAULT_BANK_CARD_SET.getResponseStatus());
     }
 
     @ExceptionHandler(NoStrategyFoundForProcessingTheRequest.class)

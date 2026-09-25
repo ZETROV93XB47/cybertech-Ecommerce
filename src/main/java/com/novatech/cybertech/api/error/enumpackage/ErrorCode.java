@@ -21,7 +21,6 @@ public enum ErrorCode {
     CART_IS_EMPTY(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     CART_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     CART_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
-    NO_DEFAULT_BANK_CARD_SET(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
     MALFORMED_JSON(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
     METHOD_ARGUMENT_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
@@ -29,6 +28,7 @@ public enum ErrorCode {
     // Business state conflict, not authorization denial — use 409 instead of 403
     ORDER_ALREADY_SHIPPED(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
+    ORDER_NOT_FUNDED(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     PRODUCT_ALREADY_IN_WISHLIST(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),

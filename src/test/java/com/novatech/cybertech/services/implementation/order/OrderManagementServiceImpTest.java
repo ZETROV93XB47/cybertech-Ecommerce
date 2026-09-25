@@ -27,15 +27,17 @@ import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.events.OrderUpdatedEvent;
+import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.exceptions.CannotCancelOrderException;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.FailedRetryingPayment;
-import com.novatech.cybertech.exceptions.NoDefaultBankCartSetException;
 import com.novatech.cybertech.exceptions.NoPreviousPaymentAttemptException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
+import com.novatech.cybertech.exceptions.PaymentAlreadyCompletedForThisOrderException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
+import com.novatech.cybertech.exceptions.OrderNotFundedException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
@@ -304,15 +306,15 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("user without default bank card throws NoDefaultBankCartSetException before save")
-        void noDefaultCard_throwsNoDefaultBankCart() {
+        @DisplayName("user without a bank card throws BankCardNotFoundException before save")
+        void noBankCard_throwsBankCardNotFound() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
             final UserEntity user = userWithCart(product, 1);
             user.setBankCardEntity(null);
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(NoDefaultBankCartSetException.class);
+                    .isInstanceOf(BankCardNotFoundException.class);
 
             verify(orderRepository, never()).save(any());
             verifyNoInteractions(orderValidator, paymentService);
@@ -639,6 +641,31 @@ class OrderManagementServiceImpTest {
             verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
             verify(paymentService, never()).refund(any(), any(), any(), anyString());
             assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+        }
+
+        @Test
+        @DisplayName("zero-delta on a never-funded order (0 paid, 0 total) -> OrderNotFundedException, no PAID for free")
+        void zeroDeltaNeverFunded_throwsOrderNotFunded() {
+            // Belt-and-suspenders on top of the ProductNotFoundException/@NotEmpty guards above:
+            // even if a zero total legitimately reaches this branch (e.g. a free product), the
+            // order must never flip to PAID unless a prior successful payment actually funds it.
+            final ProductEntity freeProduct = ProductEntityBuilder.aValidProductBuilder().price(BigDecimal.ZERO).build();
+            final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, BigDecimal.ZERO, null);
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(freeProduct));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(BigDecimal.ZERO).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
+
+            assertThatThrownBy(() -> service.updateOrder(requestFor(order.getUuid(), freeProduct, 1), jwt))
+                    .isInstanceOf(OrderNotFundedException.class);
+
+            // Shipping/items were already persisted (step 4/5 of updateOrder) before this guard
+            // runs, but the order must never be flipped to PAID without a funding payment.
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+            verify(stockService, never()).commitStock(any());
         }
 
         @Test
@@ -995,6 +1022,24 @@ class OrderManagementServiceImpTest {
             verify(paymentService).processPayment(eq(order), eq(PaymentType.VISA), moneyCap.capture(), anyString());
             assertThat(moneyCap.getValue()).isEqualTo(originalTotal);
             assertThat(moneyCap.getValue().getAmount()).isEqualByComparingTo("60.00");
+        }
+
+        @Test
+        @DisplayName("a payment already SUCCESS/PROCESSING for this order blocks retry — no double-billing")
+        void paymentAlreadySettled_throwsAndNeverCallsPaymentService() {
+            // Stripe confirms synchronously but order.status only advances via the async webhook,
+            // so order.status can still read a "retryable" state (e.g. AWAITING_PAYMENT) even though
+            // a payment attempt already succeeded. The guard must key off the payment history, not
+            // order.status, to prevent firing a second real Stripe charge.
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.AWAITING_PAYMENT, PaymentType.VISA, new BigDecimal("100.00"));
+            order.getPaymentAttempts().add(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                    new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now()));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(PaymentAlreadyCompletedForThisOrderException.class);
+
+            verifyNoInteractions(paymentService, stockService);
         }
     }
 

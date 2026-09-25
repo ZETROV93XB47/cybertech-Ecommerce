@@ -348,6 +348,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
         if (difference.compareTo(BigDecimal.ZERO) == 0) {
             // Cas 3 : Pas de différence de prix
             // On valide juste le stock et on s'assure que le statut est PAID
+            if (paidAmount.compareTo(BigDecimal.ZERO) == 0) {
+                throw new OrderNotFundedException(
+                        "Cannot mark order " + order.getUuid() + " as PAID without any prior successful payment");
+            }
             stockService.commitStock(order.getUuid());
             if (order.getStatus() != OrderStatus.PAID) {
                 order.setStatus(OrderStatus.PAID);
@@ -414,6 +418,20 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         if (!isOrderInRetryablePaymentStatus(order)) {
             throw new FailedRetryingPayment("Cannot retry payment for order in status: " + order.getStatus() + ". Order must be in PAYMENT_FAILED state.");
+        }
+
+        // Guard against double-debit: Stripe confirms payment SYNCHRONOUSLY (setConfirm(true)) but
+        // order.status only advances to PAID/PAYMENT_FAILED ASYNCHRONOUSLY via the Stripe webhook.
+        // During that window order.status can still read AWAITING_PAYMENT even though a payment
+        // already succeeded (or is currently in flight) — retrying here would fire a second real
+        // Stripe PaymentIntent.
+        final boolean paymentAlreadySettled = order.getPaymentAttempts().stream()
+                .anyMatch(p -> p.getTransactionType() == TransactionType.PAYMENT
+                        && (p.getStatus() == PaymentAttemptStatus.SUCCESS
+                            || p.getStatus() == PaymentAttemptStatus.PROCESSING));
+        if (paymentAlreadySettled) {
+            throw new PaymentAlreadyCompletedForThisOrderException(
+                    "A payment already succeeded or is in flight for order " + orderUuid);
         }
 
         // 1. Vérifier et Réserver le stock (car il a été libéré lors de l'échec précédent)
@@ -670,7 +688,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private void validateUserBeforeProcessingPayment(final UserEntity userEntity) {
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
-                .userDefaultBankCard(Optional.ofNullable(userEntity.getBankCardEntity()).orElseThrow(() -> new NoDefaultBankCartSetException("No bank card set, please, add a bank card and retry ...")))
+                .userDefaultBankCard(Optional.ofNullable(userEntity.getBankCardEntity()).orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ...")))
                 .build();
 
         orderValidatorChain.validate(orderValidationDto);
