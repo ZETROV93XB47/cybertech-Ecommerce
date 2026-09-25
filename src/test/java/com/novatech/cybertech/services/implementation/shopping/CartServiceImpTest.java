@@ -11,9 +11,7 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.exceptions.CannotRemoveItemFromEmptyCartException;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
-import com.novatech.cybertech.exceptions.CartItemNotFoundException;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
-import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.UnauthorizedCartAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.CartEntityBuilder;
@@ -22,7 +20,6 @@ import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.mappers.entity.CartMapper;
 import com.novatech.cybertech.repositories.CartRepository;
-import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.core.CartWriteTransactionalDelegate;
@@ -48,7 +45,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -88,7 +84,6 @@ class CartServiceImpTest {
     @Mock UserRepository userRepository;
     @Mock CartRepository cartRepository;
     @Mock CartCacheHelper cartCacheHelper;
-    @Mock ProductRepository productRepository;
     @Mock CartWriteTransactionalDelegate cartWriteTransactionalDelegate;
 
     @InjectMocks CartServiceImp service;
@@ -143,10 +138,12 @@ class CartServiceImpTest {
 
             assertThat(result).isSameAs(delegated);
             // The commit-before-unlock contract relies on this exact ordering: the delegate (which
-            // owns the @Transactional commit) must run strictly between lock acquire and release.
+            // owns the @Transactional commit) must run strictly between lock acquire and release,
+            // and the cache write happens only after the delegate returned (i.e. after commit).
             final InOrder inOrder = inOrder(cartCacheHelper, cartWriteTransactionalDelegate);
             inOrder.verify(cartCacheHelper).acquireLockBlocking(eq(keycloakId), anyLong());
             inOrder.verify(cartWriteTransactionalDelegate).addItemsWithinTransaction(req, keycloakId);
+            inOrder.verify(cartCacheHelper).putWithJitter(keycloakId, delegated);
             inOrder.verify(cartCacheHelper).releaseLock(eq(keycloakId));
         }
 
@@ -176,6 +173,8 @@ class CartServiceImpTest {
 
             // The Redis lock must never leak, even when the transactional delegate fails.
             verify(cartCacheHelper).releaseLock(eq(keycloakId));
+            // No cache write when the delegate never returned a result to cache.
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
         }
 
         // Negative/zero/null quantity coverage moved to
@@ -313,83 +312,41 @@ class CartServiceImpTest {
     }
 
     // =================================================================
+    // removeItemFromCart / decreaseQuantity / clearCart / updateCart are now thin wrappers around
+    // cartWriteTransactionalDelegate — the read-modify-write logic (empty-cart checks, item lookup,
+    // stock validation, ownership) is covered directly against the delegate in
+    // CartWriteTransactionalDelegateTest. What's left to verify here is the wrapper's own job: call
+    // the delegate, then write the cache with whatever it returned (or skip the cache write when
+    // there's nothing to cache, e.g. clearCart on a user with no cart).
+
     @Nested
     @DisplayName("removeItemFromCart")
     class RemoveItemFromCart {
 
         @Test
-        @DisplayName("happy: removes item, saves cart, caches new state")
-        void happy_removes() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(product).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>(List.of(item))).build();
-            user.setCartEntity(cart);
+        @DisplayName("delegates the removal, then caches the returned cart")
+        void delegatesAndCaches() {
+            final UUID productUuid = UUID.randomUUID();
+            final CartResponseDto delegated = stubMappedResponse();
+            when(cartWriteTransactionalDelegate.removeItemWithinTransaction(productUuid, keycloakId)).thenReturn(delegated);
 
-            final CartResponseDto resp = stubMappedResponse();
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(cartRepository.save(cart)).thenReturn(cart);
-            when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(resp);
+            final CartResponseDto result = service.removeItemFromCart(productUuid, keycloakId);
 
-            final CartResponseDto result = service.removeItemFromCart(product.getUuid(), keycloakId);
-
-            assertThat(result).isSameAs(resp);
-            assertThat(cart.getCartItems()).isEmpty();
-            verify(cartCacheHelper).putWithJitter(keycloakId, resp);
+            assertThat(result).isSameAs(delegated);
+            verify(cartCacheHelper).putWithJitter(keycloakId, delegated);
         }
 
         @Test
-        @DisplayName("last-item path: cart now empty after removing only item")
-        void lastItem_cartBecomesEmpty() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartItemEntity sole = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(product).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>(List.of(sole))).build();
-            user.setCartEntity(cart);
+        @DisplayName("delegate throws -> exception propagates, cache untouched")
+        void delegateThrows_propagatesNoCache() {
+            final UUID productUuid = UUID.randomUUID();
+            when(cartWriteTransactionalDelegate.removeItemWithinTransaction(productUuid, keycloakId))
+                    .thenThrow(new CannotRemoveItemFromEmptyCartException("nope"));
 
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(cartRepository.save(cart)).thenReturn(cart);
-            when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(stubMappedResponse());
-
-            service.removeItemFromCart(product.getUuid(), keycloakId);
-            assertThat(cart.getCartItems()).isEmpty();
-        }
-
-        @Test
-        @DisplayName("removing nonexistent product from non-empty cart throws CannotRemoveItemFromEmptyCartException")
-        void nonexistentInNonEmpty_throws() {
-            final ProductEntity inCartProduct = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(inCartProduct).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>(List.of(item))).build();
-            user.setCartEntity(cart);
-
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            assertThatThrownBy(() -> service.removeItemFromCart(UUID.randomUUID(), keycloakId))
+            assertThatThrownBy(() -> service.removeItemFromCart(productUuid, keycloakId))
                     .isInstanceOf(CannotRemoveItemFromEmptyCartException.class);
-            verify(cartRepository, never()).save(any());
-        }
 
-        @Test
-        @DisplayName("user has no cart -> CannotRemoveItemFromEmptyCartException")
-        void noCart_throws() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).cartEntity(null).build();
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            assertThatThrownBy(() -> service.removeItemFromCart(UUID.randomUUID(), keycloakId))
-                    .isInstanceOf(CannotRemoveItemFromEmptyCartException.class);
-        }
-
-        @Test
-        @DisplayName("user missing -> UserNotFoundException")
-        void userMissing_throws() {
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
-            assertThatThrownBy(() -> service.removeItemFromCart(UUID.randomUUID(), keycloakId))
-                    .isInstanceOf(UserNotFoundException.class);
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
         }
     }
 
@@ -403,100 +360,29 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("happy: decrease keeps a positive remaining quantity, item NOT removed")
-        void decreasePositive_keepsItem() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(product).quantity(5).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>(List.of(item))).build();
-            user.setCartEntity(cart);
+        @DisplayName("delegates the decrease, then caches the returned cart")
+        void delegatesAndCaches() {
+            final CartItemRemoveRequestDto req = removeReq(UUID.randomUUID(), 2);
+            final CartResponseDto delegated = stubMappedResponse();
+            when(cartWriteTransactionalDelegate.decreaseQuantityWithinTransaction(req, keycloakId)).thenReturn(delegated);
 
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(cartRepository.save(cart)).thenReturn(cart);
-            when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(stubMappedResponse());
+            final CartResponseDto result = service.decreaseQuantity(req, keycloakId);
 
-            service.decreaseQuantity(removeReq(product.getUuid(), 2), keycloakId);
-
-            assertThat(cart.getCartItems()).hasSize(1);
-            assertThat(cart.getCartItems().get(0).getQuantity()).isEqualTo(3);
+            assertThat(result).isSameAs(delegated);
+            verify(cartCacheHelper).putWithJitter(keycloakId, delegated);
         }
 
         @Test
-        @DisplayName("decrease-to-zero auto-removes item from cart list")
-        void decreaseToZero_autoRemoves() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(product).quantity(2).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>(List.of(item))).build();
-            user.setCartEntity(cart);
+        @DisplayName("delegate throws -> exception propagates, cache untouched")
+        void delegateThrows_propagatesNoCache() {
+            final CartItemRemoveRequestDto req = removeReq(UUID.randomUUID(), 1);
+            when(cartWriteTransactionalDelegate.decreaseQuantityWithinTransaction(req, keycloakId))
+                    .thenThrow(new CartIsEmptyException("nope"));
 
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(cartRepository.save(cart)).thenReturn(cart);
-            when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(stubMappedResponse());
-
-            service.decreaseQuantity(removeReq(product.getUuid(), 2), keycloakId);
-
-            assertThat(cart.getCartItems()).isEmpty();
-        }
-
-        @Test
-        @DisplayName("over-decrease (amount > current) clamps to 0 then auto-removes")
-        void overDecrease_clampsAndRemoves() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(product).quantity(3).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>(List.of(item))).build();
-            user.setCartEntity(cart);
-
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(cartRepository.save(cart)).thenReturn(cart);
-            when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(stubMappedResponse());
-
-            service.decreaseQuantity(removeReq(product.getUuid(), 99), keycloakId);
-
-            assertThat(cart.getCartItems()).isEmpty();
-        }
-
-        @Test
-        @DisplayName("empty cart -> CartIsEmptyException")
-        void emptyCart_throws() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>()).build();
-            user.setCartEntity(cart);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            assertThatThrownBy(() -> service.decreaseQuantity(removeReq(UUID.randomUUID(), 1), keycloakId))
+            assertThatThrownBy(() -> service.decreaseQuantity(req, keycloakId))
                     .isInstanceOf(CartIsEmptyException.class);
-        }
 
-        @Test
-        @DisplayName("user has no cart -> CartIsEmptyException")
-        void noCart_throws() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).cartEntity(null).build();
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            assertThatThrownBy(() -> service.decreaseQuantity(removeReq(UUID.randomUUID(), 1), keycloakId))
-                    .isInstanceOf(CartIsEmptyException.class);
-        }
-
-        @Test
-        @DisplayName("product not in cart -> CartItemNotFoundException")
-        void productNotInCart_throws() {
-            final ProductEntity inCart = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(inCart).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>(List.of(item))).build();
-            user.setCartEntity(cart);
-
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            assertThatThrownBy(() -> service.decreaseQuantity(removeReq(UUID.randomUUID(), 1), keycloakId))
-                    .isInstanceOf(CartItemNotFoundException.class);
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
         }
     }
 
@@ -506,53 +392,35 @@ class CartServiceImpTest {
     class ClearCart {
 
         @Test
-        @DisplayName("happy: clears items and saves cart")
-        void happy_clearsItems() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder().productEntity(product).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>(List.of(item))).build();
-            user.setCartEntity(cart);
-
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+        @DisplayName("delegates the clear, then caches the returned (emptied) cart")
+        void delegatesAndCaches() {
+            final CartResponseDto delegated = stubMappedResponse();
+            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId)).thenReturn(delegated);
 
             service.clearCart(keycloakId);
 
-            assertThat(cart.getCartItems()).isEmpty();
-            verify(cartRepository).save(cart);
+            verify(cartCacheHelper).putWithJitter(keycloakId, delegated);
         }
 
         @Test
-        @DisplayName("empty cart no-op: clear() called but doesn't throw")
-        void emptyCart_noOp() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder().userEntity(user)
-                    .cartItems(new ArrayList<>()).build();
-            user.setCartEntity(cart);
-
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+        @DisplayName("delegate returns null (no cart to clear) -> cache left untouched")
+        void delegateReturnsNull_skipsCache() {
+            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId)).thenReturn(null);
 
             service.clearCart(keycloakId);
-            verify(cartRepository).save(cart);
+
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
         }
 
         @Test
-        @DisplayName("user with null cart: no save called")
-        void nullCart_noSave() {
-            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).cartEntity(null).build();
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+        @DisplayName("delegate throws -> exception propagates, cache untouched")
+        void delegateThrows_propagatesNoCache() {
+            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId))
+                    .thenThrow(new UserNotFoundException("nope"));
 
-            service.clearCart(keycloakId);
-            verify(cartRepository, never()).save(any());
-        }
-
-        @Test
-        @DisplayName("user missing -> UserNotFoundException")
-        void userMissing_throws() {
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
             assertThatThrownBy(() -> service.clearCart(keycloakId)).isInstanceOf(UserNotFoundException.class);
-            verify(cartRepository, never()).save(any());
+
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
         }
     }
 
@@ -621,168 +489,33 @@ class CartServiceImpTest {
         }
 
         @Test
-        @DisplayName("updateCart(UUID, CartUpdateRequestDto, keycloakId) " +
-                "replaces the cart's items and returns the updated DTO")
-        void updateCart_shouldReplaceItems_BUG026_closed() {
+        @DisplayName("updateCart(UUID, CartUpdateRequestDto, keycloakId) delegates, then caches the result")
+        void updateCart_delegatesAndCaches() {
             final UUID cartUuid = UUID.randomUUID();
-            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().build();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(cartUuid)
-                    .userEntity(owner)
-                    .cartItems(new ArrayList<>())
-                    .build();
-            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
-                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
-                            CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(4).build())))
-                    .build();
-            final CartResponseDto mapped = stubMappedResponse();
-
-            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
-            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
-            when(cartRepository.save(existingCart)).thenReturn(existingCart);
-            when(cartMapper.mapFromEntityToResponseDto(existingCart)).thenReturn(mapped);
-
-            final CartResponseDto result = service.updateCart(cartUuid, dto, keycloakId);
-
-            assertThat(result).isSameAs(mapped);
-            assertThat(existingCart.getCartItems()).hasSize(1);
-            assertThat(existingCart.getCartItems().get(0).getQuantity()).isEqualTo(4);
-            verify(cartCacheHelper).putWithJitter(keycloakId, mapped);
-        }
-
-        @Test
-        @DisplayName("updateCart rejects when requested qty exceeds available stock")
-        void updateCartShouldFailWhenRequestedQtyExceedsAvailableStock() {
-            final UUID cartUuid = UUID.randomUUID();
-            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
-                    .stock(2).reservedStock(0).build();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(cartUuid).userEntity(owner).cartItems(new ArrayList<>()).build();
-            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
-                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
-                            CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(5).build())))
-                    .build();
-
-            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
-            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
-
-            assertThatThrownBy(() -> service.updateCart(cartUuid, dto, keycloakId))
-                    .isInstanceOf(NotEnoughStockException.class);
-
-            verify(cartRepository, never()).save(any());
-            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
-        }
-
-        @Test
-        @DisplayName("updateCart rejects when requested qty exceeds (stock - reservedStock)")
-        void updateCartShouldFailWhenRequestedQtyExceedsStockMinusReservedStock() {
-            // stock=10, reservedStock=8, requested=5 -> 8+5=13 > 10 -> must throw.
-            final UUID cartUuid = UUID.randomUUID();
-            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
-                    .stock(10).reservedStock(8).build();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(cartUuid).userEntity(owner).cartItems(new ArrayList<>()).build();
-            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
-                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
-                            CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(5).build())))
-                    .build();
-
-            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
-            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
-
-            assertThatThrownBy(() -> service.updateCart(cartUuid, dto, keycloakId))
-                    .isInstanceOf(NotEnoughStockException.class);
-
-            verify(cartRepository, never()).save(any());
-        }
-
-        @Test
-        @DisplayName("updateCart succeeds when requested qty equals available stock (boundary)")
-        void updateCartShouldSucceedWhenRequestedQtyEqualsAvailableStock() {
-            // stock=5, reserved=2, requested=3 -> 2+3=5 == stock -> ok.
-            final UUID cartUuid = UUID.randomUUID();
-            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
-                    .stock(5).reservedStock(2).build();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(cartUuid).userEntity(owner).cartItems(new ArrayList<>()).build();
-            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
-                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
-                            CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(3).build())))
-                    .build();
-            final CartResponseDto mapped = stubMappedResponse();
-
-            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
-            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
-            when(cartRepository.save(existingCart)).thenReturn(existingCart);
-            when(cartMapper.mapFromEntityToResponseDto(existingCart)).thenReturn(mapped);
-
-            final CartResponseDto result = service.updateCart(cartUuid, dto, keycloakId);
-
-            assertThat(result).isSameAs(mapped);
-            assertThat(existingCart.getCartItems()).hasSize(1);
-            assertThat(existingCart.getCartItems().get(0).getQuantity()).isEqualTo(3);
-        }
-
-        @Test
-        @DisplayName("UpdateCart fail-fast — when one line fails stock check, cart NOT mutated at all")
-        void updateCartShouldNotMutateOtherItemsWhenOneFails() {
-            // Two lines: line 1 ok, line 2 over stock. Existing cart has a pre-existing
-            // item that must remain in place because the validation must happen BEFORE
-            // the cart is cleared/re-populated.
-            final UUID cartUuid = UUID.randomUUID();
-            final ProductEntity okProduct = ProductEntityBuilder.aValidProductBuilder()
-                    .stock(10).reservedStock(0).build();
-            final ProductEntity overStockProduct = ProductEntityBuilder.aValidProductBuilder()
-                    .stock(2).reservedStock(0).build();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final ProductEntity preExistingProduct = ProductEntityBuilder.aValidProduct();
-            final CartItemEntity preExistingItem = CartItemEntityBuilder.aValidCartItemBuilder()
-                    .productEntity(preExistingProduct).quantity(7).build();
-            final CartEntity existingCart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(cartUuid).userEntity(owner)
-                    .cartItems(new ArrayList<>(List.of(preExistingItem))).build();
-
-            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
-                    .cartItemAddRequestDtos(new ArrayList<>(List.of(
-                            CartItemAddRequestDto.builder().productUuid(okProduct.getUuid()).quantity(2).build(),
-                            CartItemAddRequestDto.builder().productUuid(overStockProduct.getUuid()).quantity(99).build())))
-                    .build();
-
-            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(existingCart));
-            when(productRepository.findAllByUuidIn(anyCollection()))
-                    .thenReturn(List.of(okProduct, overStockProduct));
-
-            assertThatThrownBy(() -> service.updateCart(cartUuid, dto, keycloakId))
-                    .isInstanceOf(NotEnoughStockException.class);
-
-            // The cart must NOT have been mutated: pre-existing item still there with original qty.
-            assertThat(existingCart.getCartItems()).hasSize(1);
-            assertThat(existingCart.getCartItems().get(0).getQuantity()).isEqualTo(7);
-            assertThat(existingCart.getCartItems().get(0).getProductEntity().getUuid())
-                    .isEqualTo(preExistingProduct.getUuid());
-            verify(cartRepository, never()).save(any());
-            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
-        }
-
-        @Test
-        @DisplayName("UpdateCart rejects caller that doesn't own the cart")
-        void updateCart_rejectsNonOwner_BUG026_BUG161_closed() {
-            final UUID cartUuid = UUID.randomUUID();
-            final UserEntity otherOwner = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER_USER").build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(cartUuid).userEntity(otherOwner).cartItems(new ArrayList<>()).build();
-            when(cartRepository.findByUuid(cartUuid)).thenReturn(Optional.of(cart));
-
             final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
                     .cartItemAddRequestDtos(new ArrayList<>()).build();
+            final CartResponseDto delegated = stubMappedResponse();
+            when(cartWriteTransactionalDelegate.updateCartWithinTransaction(cartUuid, dto, keycloakId)).thenReturn(delegated);
+
+            final CartResponseDto result = service.updateCart(cartUuid, dto, keycloakId);
+
+            assertThat(result).isSameAs(delegated);
+            verify(cartCacheHelper).putWithJitter(keycloakId, delegated);
+        }
+
+        @Test
+        @DisplayName("updateCart: delegate throws -> exception propagates, cache untouched")
+        void updateCart_delegateThrows_propagatesNoCache() {
+            final UUID cartUuid = UUID.randomUUID();
+            final CartUpdateRequestDto dto = CartUpdateRequestDto.builder()
+                    .cartItemAddRequestDtos(new ArrayList<>()).build();
+            when(cartWriteTransactionalDelegate.updateCartWithinTransaction(cartUuid, dto, keycloakId))
+                    .thenThrow(new UnauthorizedCartAccessException("nope"));
 
             assertThatThrownBy(() -> service.updateCart(cartUuid, dto, keycloakId))
                     .isInstanceOf(UnauthorizedCartAccessException.class);
-            verify(cartRepository, never()).save(any());
+
+            verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
         }
 
         @Test

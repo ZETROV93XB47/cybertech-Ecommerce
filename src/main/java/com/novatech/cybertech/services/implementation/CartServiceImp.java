@@ -1,19 +1,15 @@
 package com.novatech.cybertech.services.implementation;
 
-import com.github.f4b6a3.uuid.UuidCreator;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemAddRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.entities.CartEntity;
-import com.novatech.cybertech.entities.CartItemEntity;
-import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.CartMapper;
 import com.novatech.cybertech.repositories.CartRepository;
-import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.core.CartService;
@@ -24,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -35,7 +30,6 @@ public class CartServiceImp implements CartService {
     private final UserRepository userRepository;
     private final CartRepository cartRepository;
     private final CartCacheHelper cartCacheHelper;
-    private final ProductRepository productRepository;
 
     /**
      * The transactional inner half of the cart-add design. Held as a separate Spring bean
@@ -148,7 +142,12 @@ public class CartServiceImp implements CartService {
             // commit lands INSIDE this locked region (commit-before-unlock). Crossing the bean
             // boundary is what makes Spring's transaction proxy fire — a self-invoked private method
             // would silently run without a transaction and reopen the lost-update race.
-            return cartWriteTransactionalDelegate.addItemsWithinTransaction(cartCreateRequestDto, keycloakId);
+            final CartResponseDto result = cartWriteTransactionalDelegate.addItemsWithinTransaction(cartCreateRequestDto, keycloakId);
+            // Cache write happens HERE, after the delegate call returned — i.e. after its
+            // transaction actually committed — so Redis can never end up holding a cart state that
+            // got rolled back.
+            cartCacheHelper.putWithJitter(keycloakId, result);
+            return result;
         } finally {
             // Always release the lock — Redisson tracks ownership per-thread, so this is a no-op
             // if the lock already expired and was reacquired by someone else.
@@ -210,71 +209,27 @@ public class CartServiceImp implements CartService {
     }
 
     @Override
-    @Transactional
     public CartResponseDto removeItemFromCart(final UUID productUuid, final String keycloakId) {
-
-        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        final CartEntity cart = user.getCartEntity();
-
-        if (cart != null && cart.getCartItems() != null) {
-            boolean removed = cart.getCartItems().removeIf(item -> item.getProductEntity().getUuid().equals(productUuid));
-
-            if (removed) {
-                CartEntity savedCart = cartRepository.save(cart);
-                CartResponseDto cartResponseDto = cartMapper.mapFromEntityToResponseDto(savedCart);
-
-                cartCacheHelper.putWithJitter(keycloakId, cartResponseDto);
-
-                return cartResponseDto;
-            }
-        }
-        throw new CannotRemoveItemFromEmptyCartException("Cannot remove item already absent from cart.");
+        // See addItemsToCart: the mutation runs in cartWriteTransactionalDelegate's own committed
+        // transaction; the cache is only written once that call has returned.
+        final CartResponseDto result = cartWriteTransactionalDelegate.removeItemWithinTransaction(productUuid, keycloakId);
+        cartCacheHelper.putWithJitter(keycloakId, result);
+        return result;
     }
 
     @Override
-    @Transactional
     public CartResponseDto decreaseQuantity(final CartItemRemoveRequestDto cartItemRemoveRequestDto, final String keycloakId) {
-
-        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        final CartEntity cart = user.getCartEntity();
-
-        if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) {
-            throw new CartIsEmptyException("Cannot decrease quantity from an empty cart.");
-        }
-
-        final CartItemEntity cartItemToDecrease = cart.getCartItems().stream()
-                .filter(item -> item.getProductEntity().getUuid().equals(cartItemRemoveRequestDto.getProductUuid()))
-                .findFirst()
-                .orElseThrow(() -> new CartItemNotFoundException("Product doesn't exist in cart"));
-
-        final Integer updateResult = cartItemToDecrease.decreaseQuantity(cartItemRemoveRequestDto.getQuantity());
-
-        // Le service gère la logique de la collection (suppression de l'item)
-
-        if (updateResult <= 0) {
-            cart.getCartItems().remove(cartItemToDecrease);
-        }
-
-        CartEntity savedCart = cartRepository.save(cart);
-        CartResponseDto cartResponseDto = cartMapper.mapFromEntityToResponseDto(savedCart);
-        cartCacheHelper.putWithJitter(keycloakId, cartResponseDto);
-
-        return cartResponseDto;
+        final CartResponseDto result = cartWriteTransactionalDelegate.decreaseQuantityWithinTransaction(cartItemRemoveRequestDto, keycloakId);
+        cartCacheHelper.putWithJitter(keycloakId, result);
+        return result;
     }
 
     @Override
-    @Transactional
     public void clearCart(final String keycloakId) {
-
-        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        final CartEntity cart = user.getCartEntity();
-
-        if (cart != null && cart.getCartItems() != null) {
-            cart.getCartItems().clear(); // Vide la liste
-            final CartEntity savedCart = cartRepository.save(cart);   // Sauvegarde l'état vide
-            // Replace the helper-keyed cache entry with the cleared cart so the
-            // next read sees the new empty state without hitting the DB.
-            cartCacheHelper.putWithJitter(keycloakId, cartMapper.mapFromEntityToResponseDto(savedCart));
+        final CartResponseDto result = cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId);
+        // null means the user had no cart / an already-empty cart — nothing to persist or cache.
+        if (result != null) {
+            cartCacheHelper.putWithJitter(keycloakId, result);
         }
     }
 
@@ -351,60 +306,10 @@ public class CartServiceImp implements CartService {
      * @throws ProductNotFoundException        when any item points at an unknown product.
      */
     @Override
-    @Transactional
     public CartResponseDto updateCart(final UUID cartUuid, final CartUpdateRequestDto dto, final String keycloakId) {
-        final CartEntity cart = cartRepository.findByUuid(cartUuid)
-                .orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + cartUuid + " found"));
-        assertCallerOwnsCart(cart, cartUuid, keycloakId);
-
-        final List<CartItemAddRequestDto> items = dto.getCartItemAddRequestDtos();
-
-        // Validate every line (product existence + stock availability) BEFORE
-        // mutating the cart. Without this fail-fast pass, updateCart would clear the
-        // existing items and re-add them one by one; if line N had insufficient stock
-        // we would have already wiped the cart and partially rebuilt it. Loading the
-        // products via findAllByUuidIn keeps this on a single DB roundtrip — the same
-        // pattern doAddItemsToCart already uses — so no extra queries are introduced.
-        final Map<UUID, ProductEntity> productMap;
-        if (items != null && !items.isEmpty()) {
-            final List<UUID> productUuids = items.stream()
-                    .map(CartItemAddRequestDto::getProductUuid)
-                    .collect(Collectors.toList());
-            productMap = productRepository.findAllByUuidIn(productUuids).stream()
-                    .collect(Collectors.toMap(ProductEntity::getUuid, p -> p));
-
-            for (final CartItemAddRequestDto line : items) {
-                final ProductEntity product = productMap.get(line.getProductUuid());
-                if (product == null) {
-                    throw new ProductNotFoundException("No product with the UUID : " + line.getProductUuid() + " found");
-                }
-                CartStockValidator.validateStockAvailability(product, line.getQuantity());
-            }
-        } else {
-            productMap = Map.of();
-        }
-
-        if (cart.getCartItems() != null) {
-            cart.getCartItems().clear();
-        }
-
-        if (items != null && !items.isEmpty()) {
-            for (final CartItemAddRequestDto line : items) {
-                final ProductEntity product = productMap.get(line.getProductUuid());
-                final CartItemEntity newItem = CartItemEntity.builder()
-                        .quantity(line.getQuantity())
-                        .productEntity(product)
-                        .cart(cart)
-                        .uuid(UuidCreator.getTimeOrderedEpoch())
-                        .build();
-                cart.getCartItems().add(newItem);
-            }
-        }
-
-        final CartEntity saved = cartRepository.save(cart);
-        final CartResponseDto resp = cartMapper.mapFromEntityToResponseDto(saved);
-        cartCacheHelper.putWithJitter(keycloakId, resp);
-        return resp;
+        final CartResponseDto result = cartWriteTransactionalDelegate.updateCartWithinTransaction(cartUuid, dto, keycloakId);
+        cartCacheHelper.putWithJitter(keycloakId, result);
+        return result;
     }
 
     @Override

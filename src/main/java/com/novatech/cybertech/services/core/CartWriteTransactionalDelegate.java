@@ -1,7 +1,11 @@
 package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
+import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
+import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
+
+import java.util.UUID;
 
 /**
  * Transactional inner half of the cart-add concurrency design.
@@ -56,9 +60,45 @@ public interface CartWriteTransactionalDelegate {
      * time it returns normally, its DB changes are committed (so the lock can be safely released
      * afterwards without exposing pre-commit state to the next waiter).
      *
+     * <p>Does NOT write the cache — the caller does that with the returned DTO, once this method has
+     * returned (i.e. once its transaction has actually committed). See each {@code CartServiceImp}
+     * caller for why: writing the cache from inside this method would put it before the commit that
+     * crossing the bean boundary is meant to guarantee.
+     *
      * @param dto        items to add; each quantity already validated {@code >= 1} by the caller.
      * @param keycloakId Keycloak subject of the cart owner.
-     * @return the updated, persisted-and-cached cart DTO.
+     * @return the updated, persisted cart DTO (not yet cached).
      */
     CartResponseDto addItemsWithinTransaction(CartCreateRequestDto dto, String keycloakId);
+
+    /**
+     * Removes a single product line from the caller's cart inside its own committed transaction.
+     * Cache write is the caller's job, same rationale as {@link #addItemsWithinTransaction}.
+     *
+     * @throws com.novatech.cybertech.exceptions.CannotRemoveItemFromEmptyCartException when the
+     *         product isn't in the cart (or the cart has no items).
+     */
+    CartResponseDto removeItemWithinTransaction(UUID productUuid, String keycloakId);
+
+    /**
+     * Decreases (or removes, if it reaches zero) a cart line's quantity inside its own committed
+     * transaction. Cache write is the caller's job, same rationale as
+     * {@link #addItemsWithinTransaction}.
+     */
+    CartResponseDto decreaseQuantityWithinTransaction(CartItemRemoveRequestDto dto, String keycloakId);
+
+    /**
+     * Empties the caller's cart inside its own committed transaction. Cache write is the caller's
+     * job, same rationale as {@link #addItemsWithinTransaction}.
+     *
+     * @return the cleared cart DTO, or {@code null} if the user has no cart / an already-empty cart
+     *         (nothing to persist or cache in that case).
+     */
+    CartResponseDto clearCartWithinTransaction(String keycloakId);
+
+    /**
+     * Replaces the caller's cart items wholesale inside its own committed transaction. Cache write
+     * is the caller's job, same rationale as {@link #addItemsWithinTransaction}.
+     */
+    CartResponseDto updateCartWithinTransaction(UUID cartUuid, CartUpdateRequestDto dto, String keycloakId);
 }
