@@ -6,6 +6,8 @@ import com.novatech.cybertech.dto.response.order.OrderItemResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.OrderItemEntity;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.entities.valueObjects.Address;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.BeanMapping;
@@ -14,6 +16,8 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 import org.mapstruct.ReportingPolicy;
+
+import java.math.BigDecimal;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface OrderMapper {
@@ -50,6 +54,7 @@ public interface OrderMapper {
     @Mapping(target = "userUuid", expression = "java(orderEntity.getUserEntity().getUuid())")
     @Mapping(target = "orderItems", source = "orderItemEntities")
     @Mapping(target = "totalAmount", source = "totalAmount.amount")
+    @Mapping(target = "refundedAmount", expression = "java(computeRefundedAmount(orderEntity))")
     @Mapping(target = "shippingAddress", expression = "java(mapAddressToString(orderEntity.getShippingAddress()))")
     OrderResponseDto mapFromEntityToResponseDto(final OrderEntity orderEntity);
 
@@ -120,5 +125,19 @@ public interface OrderMapper {
     default String mapAddressToString(Address address) {
         if (address == null) return null;
         return String.format("%s, %s %s, %s", address.getStreet(), address.getZipCode(), address.getCity(), address.getCountry());
+    }
+
+    /**
+     * Total amount actually refunded on this order so far (sum of successful REFUND payment
+     * attempts). Exposed as a plain derived read — no separate "partially refunded" status is
+     * stored: {@code 0 < refundedAmount < totalAmount} means partial, {@code refundedAmount ==
+     * totalAmount} means fully refunded (see {@code OrderPaymentConfirmationEventListener}, which
+     * flips {@code status} to REFUNDED only once the net paid amount reaches zero).
+     */
+    default BigDecimal computeRefundedAmount(OrderEntity orderEntity) {
+        return orderEntity.getPaymentAttempts().stream()
+                .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS && p.getTransactionType() == TransactionType.REFUND)
+                .map(p -> p.getAmount().getAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

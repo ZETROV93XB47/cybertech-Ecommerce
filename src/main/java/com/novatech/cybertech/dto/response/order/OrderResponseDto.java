@@ -26,6 +26,7 @@ public class OrderResponseDto {
     private LocalDate orderDate;
     private OrderStatus status;
     private BigDecimal totalAmount;
+    private BigDecimal refundedAmount;
     private String shippingAddress;
 
     //TODO: mapper correctement ce champ
