@@ -2,13 +2,19 @@ package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.TransactionType;
+import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
+import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
 import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.PaymentDtoFixtures;
 import com.novatech.cybertech.repositories.OrderRepository;
@@ -23,7 +29,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.math.BigDecimal;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -62,6 +70,14 @@ class OrderPaymentConfirmationEventListenerTest {
     private static OrderEntity orderWithStatus(UUID uuid, OrderStatus status) {
         UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-status").build();
         return OrderEntityBuilder.aValidOrderBuilder().uuid(uuid).userEntity(user).status(status).build();
+    }
+
+    private static PaymentEntity successfulAttempt(TransactionType transactionType, BigDecimal amount) {
+        return PaymentEntityBuilder.aValidPaymentBuilder()
+                .transactionType(transactionType)
+                .status(PaymentAttemptStatus.SUCCESS)
+                .amount(new Money(amount, CurrencyCode.EUR))
+                .build();
     }
 
     // ---------- @TransactionalEventListener phase reflection ----------
@@ -138,6 +154,12 @@ class OrderPaymentConfirmationEventListenerTest {
         UUID uuid = UUID.randomUUID();
         // A refund only applies to an order that actually got paid (or was canceled awaiting refund).
         OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
+        // Full refund: a single PAYMENT/SUCCESS of 100 fully offset by a REFUND/SUCCESS of 100
+        // already recorded for this refund -> netPaid == 0, so the order must be fully closed out.
+        order.setPaymentAttempts(List.of(
+                successfulAttempt(TransactionType.PAYMENT, new BigDecimal("100.00")),
+                successfulAttempt(TransactionType.REFUND, new BigDecimal("100.00"))
+        ));
         when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
 
         listener.handleRefund(new PaymentRefundedEvent(eventForOrder(uuid)));
@@ -146,6 +168,28 @@ class OrderPaymentConfirmationEventListenerTest {
         ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
         verify(orderRepository).save(cap.capture());
         assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.REFUNDED);
+        verifyNoInteractions(cartService);
+    }
+
+    @Test
+    void handleRefund_onPartialRefund_shouldNotReleaseStockNorMarkRefunded() {
+        // The customer dropped one item from an already-paid order (OrderManagementServiceImp#updateOrder
+        // refunds only the difference). The confirming charge.refunded webhook must NOT be treated as a
+        // full refund: stock still reserved for the kept items must stay reserved, and the order must
+        // keep its current (non-terminal) status.
+        UUID uuid = UUID.randomUUID();
+        OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
+        order.setPaymentAttempts(List.of(
+                successfulAttempt(TransactionType.PAYMENT, new BigDecimal("100.00")),
+                successfulAttempt(TransactionType.REFUND, new BigDecimal("30.00"))
+        ));
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        listener.handleRefund(new PaymentRefundedEvent(eventForOrder(uuid)));
+
+        verify(stockService, never()).releaseStock(any());
+        verify(orderRepository, never()).save(any());
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
         verifyNoInteractions(cartService);
     }
 

@@ -2,6 +2,8 @@ package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.math.BigDecimal;
 import java.util.EnumSet;
 import java.util.Optional;
 import java.util.Set;
@@ -158,6 +161,24 @@ public class OrderPaymentConfirmationEventListener {
         if (!REFUNDABLE_STATES.contains(order.getStatus())) {
             log.info("Order {} is in {} (not refundable / already refunded) — ignoring stale/duplicate refund event",
                     order.getUuid(), order.getStatus());
+            return;
+        }
+
+        // Net amount still paid/kept on this order (payments minus refunds already recorded).
+        // Mirrors OrderManagementServiceImp#updateOrder's paidAmount calculation so a PARTIAL
+        // refund (e.g. the customer dropped one item from an already-paid order) does not get
+        // treated as a full refund: releasing stock still reserved for the kept items or flipping
+        // the order to the terminal REFUNDED status would be wrong.
+        final BigDecimal netPaid = order.getPaymentAttempts().stream()
+                .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS)
+                .map(p -> p.getTransactionType() == TransactionType.REFUND
+                        ? p.getAmount().getAmount().negate()
+                        : p.getAmount().getAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (netPaid.compareTo(BigDecimal.ZERO) > 0) {
+            log.info("Order {} received a partial refund; {} still paid/kept — leaving status at {} and stock untouched.",
+                    order.getUuid(), netPaid, order.getStatus());
             return;
         }
 
