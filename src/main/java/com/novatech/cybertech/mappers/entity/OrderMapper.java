@@ -135,6 +135,12 @@ public interface OrderMapper {
      * flips {@code status} to REFUNDED only once the net paid amount reaches zero).
      */
     default BigDecimal computeRefundedAmount(OrderEntity orderEntity) {
+        if (orderEntity.getPaymentAttempts() == null) {
+            // @SuperBuilder ignores OrderEntity's field initializer, so a freshly-built order
+            // (e.g. placeOrder, before its first payment attempt is persisted) has a null
+            // collection here rather than an empty one.
+            return BigDecimal.ZERO;
+        }
         return orderEntity.getPaymentAttempts().stream()
                 .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS && p.getTransactionType() == TransactionType.REFUND)
                 .map(p -> p.getAmount().getAmount())
