@@ -224,12 +224,6 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         bankCardRepository.deleteByUuid(uuid);
     }
 
-    @Override
-    @Transactional
-    public void deleteByUUIDs(Collection<UUID> uuids) {
-        bankCardRepository.deleteAllByUuidIn(uuids);
-    }
-
     // --- single-card surface -------------------------------------------------------------
 
     /**
