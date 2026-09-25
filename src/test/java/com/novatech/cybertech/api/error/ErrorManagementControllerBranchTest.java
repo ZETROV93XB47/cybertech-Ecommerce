@@ -17,7 +17,6 @@ import com.novatech.cybertech.exceptions.DiscountTypeCannotBeNullForStrategy;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.FailedRetryingPayment;
 import com.novatech.cybertech.exceptions.NegativeQuantityException;
-import com.novatech.cybertech.exceptions.NoDefaultBankCartSetException;
 import com.novatech.cybertech.exceptions.NoPreviousPaymentAttemptException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
@@ -266,15 +265,6 @@ class ErrorManagementControllerBranchTest {
                                 "no-algo", new java.security.NoSuchAlgorithmException("x")));
 
         assertEnvelope(response, HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL, "no-algo");
-    }
-
-    @Test
-    @DisplayName("NoDefaultBankCartSetException → 403 FUNCTIONAL with passthrough message")
-    void noDefaultBankCartSetReturns403() {
-        final ResponseEntity<ErrorResponseDto> response =
-                controller.handleNoDefaultBankCartSetException(new NoDefaultBankCartSetException("no default"));
-
-        assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "no default");
     }
 
     @Test

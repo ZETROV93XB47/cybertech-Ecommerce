@@ -1,8 +1,8 @@
 package com.novatech.cybertech.exceptions;
 
 /**
- * Thrown when an authenticated user attempts to access or mutate a
- * bank card they do not own (e.g. calling {@code setDefault(cardUuid)} on a
+ * Thrown when an authenticated user attempts to access or mutate a bank card
+ * they do not own (e.g. calling {@code deleteByUUID(cardUuid, keycloakId)} on a
  * card belonging to another user). Modelled on
  * {@link UnauthorizedCartAccessException}.
  */

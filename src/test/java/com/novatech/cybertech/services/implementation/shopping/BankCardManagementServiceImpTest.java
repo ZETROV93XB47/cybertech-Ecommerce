@@ -8,7 +8,6 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.BankCardType;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
-import com.novatech.cybertech.exceptions.NoDefaultBankCartSetException;
 import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
@@ -53,9 +52,10 @@ import static org.mockito.Mockito.when;
 /**
  * Mockito unit tests for {@link BankCardManagementServiceImp}.
  *
- * <p>PAN encryption + masking, the expiry guard, and the
- * default-card surface are now closed. The previously {@code @Disabled} pinning
- * tests are re-enabled and now verify the <i>fixed</i> contract.</p>
+ * <p><b>SA-BankCard-v2:</b> BUG-036 (PAN encryption + masking) and BUG-037 (expiry guard) are
+ * now closed. The previously {@code @Disabled} pinning tests are re-enabled and now verify the
+ * <i>fixed</i> contract. The legacy "default card" concept (isDefault flag / setDefault) has
+ * been removed entirely — the domain model only ever allows one card per user.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class BankCardManagementServiceImpTest {
@@ -219,88 +219,36 @@ class BankCardManagementServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("default-card support")
-    class DefaultCardBug038 {
+    @DisplayName("getDefaultCard — single-card surface")
+    class DefaultCard {
 
         @Test
-        @DisplayName("BankCardManagementServiceImp exposes setDefault + getDefaultCard methods")
-        void defaultCardMethodsExist() {
+        @DisplayName("BankCardManagementServiceImp exposes getDefaultCard method")
+        void defaultCardMethodExists() {
             final List<String> methodNames = Arrays.stream(BankCardManagementServiceImp.class.getDeclaredMethods())
                     .map(Method::getName)
                     .toList();
-            assertThat(methodNames).contains("setDefault", "getDefaultCard");
+            assertThat(methodNames).contains("getDefaultCard");
         }
 
         @Test
-        @DisplayName("BankCardEntity has an `isDefault` field")
-        void hasIsDefaultField() {
-            boolean hasIsDefault = Arrays.stream(BankCardEntity.class.getDeclaredFields())
-                    .anyMatch(f -> f.getName().equalsIgnoreCase("isDefault"));
-            assertThat(hasIsDefault).isTrue();
-        }
-
-        @Test
-        @DisplayName("setDefault: ownership enforced — mismatched keycloakId -> UnauthorizedBankCardAccessException")
-        void setDefault_enforcesOwnership() {
-            final UUID cardUuid = UUID.randomUUID();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId("other-kc").build();
-            final BankCardEntity target = BankCardEntityBuilder.aValidBankCardBuilder().uuid(cardUuid).userEntity(owner).build();
-            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.of(target));
-
-            assertThatThrownBy(() -> service.setDefault(cardUuid, keycloakId))
-                    .isInstanceOf(UnauthorizedBankCardAccessException.class);
-            verify(bankCardRepository, never()).save(any());
-        }
-
-        @Test
-        @DisplayName("setDefault: flips isDefault on target, clears on siblings")
-        void setDefault_flipsFlag() {
-            final UUID targetUuid = UUID.randomUUID();
-            final UUID siblingUuid = UUID.randomUUID();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final BankCardEntity target = BankCardEntityBuilder.aValidBankCardBuilder()
-                    .uuid(targetUuid).userEntity(owner).isDefault(Boolean.FALSE).build();
-            final BankCardEntity sibling = BankCardEntityBuilder.aValidBankCardBuilder()
-                    .uuid(siblingUuid).userEntity(owner).isDefault(Boolean.TRUE).build();
-            when(bankCardRepository.findByUuid(targetUuid)).thenReturn(Optional.of(target));
-            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of(target, sibling));
-
-            service.setDefault(targetUuid, keycloakId);
-
-            assertThat(target.getIsDefault()).isTrue();
-            assertThat(sibling.getIsDefault()).isFalse();
-            verify(bankCardRepository).save(sibling);
-            verify(bankCardRepository).save(target);
-        }
-
-        @Test
-        @DisplayName("setDefault: unknown card -> BankCardNotFoundException")
-        void setDefault_unknownCard_throws() {
-            final UUID cardUuid = UUID.randomUUID();
-            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.setDefault(cardUuid, keycloakId))
-                    .isInstanceOf(BankCardNotFoundException.class);
-        }
-
-        @Test
-        @DisplayName("getDefaultCard: returns masked DTO of the default card")
+        @DisplayName("getDefaultCard: returns masked DTO of the user's card")
         void getDefaultCard_happy() {
-            final BankCardEntity defaultCard = BankCardEntityBuilder.aValidBankCardBuilder().isDefault(Boolean.TRUE).build();
+            final BankCardEntity card = BankCardEntityBuilder.aValidBankCard();
             final BankCardResponseDto dto = new BankCardResponseDto();
-            when(bankCardRepository.findByUserEntity_KeycloakIdAndIsDefaultTrue(keycloakId)).thenReturn(Optional.of(defaultCard));
-            when(bankCardMapper.mapFromEntityToResponseDto(defaultCard)).thenReturn(dto);
+            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of(card));
+            when(bankCardMapper.mapFromEntityToResponseDto(card)).thenReturn(dto);
 
             assertThat(service.getDefaultCard(keycloakId)).isSameAs(dto);
         }
 
         @Test
-        @DisplayName("getDefaultCard: no default -> NoDefaultBankCartSetException")
+        @DisplayName("getDefaultCard: no card -> BankCardNotFoundException")
         void getDefaultCard_noneSet_throws() {
-            when(bankCardRepository.findByUserEntity_KeycloakIdAndIsDefaultTrue(keycloakId)).thenReturn(Optional.empty());
+            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of());
 
             assertThatThrownBy(() -> service.getDefaultCard(keycloakId))
-                    .isInstanceOf(NoDefaultBankCartSetException.class);
+                    .isInstanceOf(BankCardNotFoundException.class);
         }
     }
 

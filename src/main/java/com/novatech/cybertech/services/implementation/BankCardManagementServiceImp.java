@@ -8,7 +8,6 @@ import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
-import com.novatech.cybertech.exceptions.NoDefaultBankCartSetException;
 import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.BankCardMapper;
@@ -225,50 +224,21 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         bankCardRepository.deleteByUuid(uuid);
     }
 
-    // --- Default-card surface -------------------------------------------------
-
-    /**
-     * Promotes a specific card to the user's default.
-     *
-     * <p>Steps:
-     * <ol>
-     *   <li>Load the target card or 404.</li>
-     *   <li>Ownership check against the caller's {@code keycloakId}; mismatched owners
-     *       are rejected with {@link UnauthorizedBankCardAccessException} (IDOR guard).</li>
-     *   <li>Stream over every sibling card for that user, clearing their {@code isDefault}
-     *       flag atomically within the transaction so only one card ends up as default.</li>
-     *   <li>Flip the target to {@code isDefault=true} and persist.</li>
-     * </ol>
-     * </p>
-     */
     @Override
     @Transactional
-    public void setDefault(final UUID cardUuid, final String keycloakId) {
-        final BankCardEntity target = bankCardRepository.findByUuid(cardUuid)
-                .orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + cardUuid));
-
-        assertCallerOwnsCard(target, cardUuid, keycloakId);
-
-        final List<BankCardEntity> siblings = bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId);
-        siblings.stream()
-                .filter(card -> !card.getUuid().equals(cardUuid))
-                .filter(card -> Boolean.TRUE.equals(card.getIsDefault()))
-                .forEach(card -> {
-                    card.setIsDefault(false);
-                    bankCardRepository.save(card);
-                });
-
-        target.setIsDefault(true);
-        bankCardRepository.save(target);
+    public void deleteByUUIDs(Collection<UUID> uuids) {
+        bankCardRepository.deleteAllByUuidIn(uuids);
     }
+
+    // --- single-card surface -------------------------------------------------------------
 
     /**
      * Frontend-gap #4 — list every card owned by the authenticated user.
      *
-     * <p>Backed by the existing {@link BankCardRepository#findAllByUserEntity_KeycloakId(String)}
-     * (also used by {@link #setDefault} to clear sibling defaults), so no new repository method
-     * is needed. Today the list is at most one entry — see {@link BankCardManagementService#findAllMine}
-     * for the rationale around the 1-card-per-user constraint.</p>
+     * <p>Backed by the existing {@link BankCardRepository#findAllByUserEntity_KeycloakId(String)},
+     * so no new repository method is needed. Today the list is at most one entry — see
+     * {@link BankCardManagementService#findAllMine} for the rationale around the
+     * 1-card-per-user constraint.</p>
      */
     @Override
     @Transactional(readOnly = true)
@@ -279,18 +249,18 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     /**
-     * Returns the user's default card, already masked for safe API exposure.
+     * Returns the user's single bank card, already masked for safe API exposure.
      *
-     * @throws NoDefaultBankCartSetException if the user has not flagged any card as default.
+     * @throws BankCardNotFoundException if the user has no bank card.
      */
     @Override
     @Transactional(readOnly = true)
     public BankCardResponseDto getDefaultCard(final String keycloakId) {
-        final BankCardEntity defaultCard = bankCardRepository
-                .findByUserEntity_KeycloakIdAndIsDefaultTrue(keycloakId)
-                .orElseThrow(() -> new NoDefaultBankCartSetException(
-                        "No default bank card set for the user"));
-        return bankCardMapper.mapFromEntityToResponseDto(defaultCard);
+        final BankCardEntity card = bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId).stream()
+                .findFirst()
+                .orElseThrow(() -> new BankCardNotFoundException("No bank card set for the user"));
+
+        return bankCardMapper.mapFromEntityToResponseDto(card);
     }
 
     // --- helpers ----------------------------------------------------------------------
@@ -305,8 +275,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         try {
             expiry = YearMonth.parse(expiryDate, EXPIRY_FORMATTER);
         } catch (final DateTimeParseException e) {
-            throw new IllegalArgumentException(
-                    "Invalid expiryDate format; expected MM/yyyy, got: " + expiryDate, e);
+            throw new IllegalArgumentException("Invalid expiryDate format; expected MM/yyyy, got: " + expiryDate, e);
         }
         if (expiry.isBefore(YearMonth.now())) {
             throw new BankCardExpiredException("Card is expired (expiry=" + expiryDate + ")");
@@ -315,16 +284,15 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
 
     /**
      * Central ownership guard. Throws {@link UnauthorizedBankCardAccessException}
-     * when the caller's Keycloak id does not match the card's owner. Shared by
-     * {@link #setDefault(UUID, String)} and {@link #deleteByUUID(UUID, String)}.
+     * when the caller's Keycloak id does not match the card's owner. Used by
+     * {@link #deleteByUUID(UUID, String)}.
      */
     private void assertCallerOwnsCard(final BankCardEntity card, final UUID cardUuid, final String keycloakId) {
         if (card.getUserEntity() == null
                 || card.getUserEntity().getKeycloakId() == null
                 || !card.getUserEntity().getKeycloakId().equals(keycloakId)) {
             log.warn("Unauthorized bank card access attempt: caller {} on card {}", keycloakId, cardUuid);
-            throw new UnauthorizedBankCardAccessException(
-                    "Caller does not own the bank card: " + cardUuid);
+            throw new UnauthorizedBankCardAccessException("Caller does not own the bank card: " + cardUuid);
         }
     }
 

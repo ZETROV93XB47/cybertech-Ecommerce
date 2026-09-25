@@ -63,16 +63,4 @@ public class BankCardEntity extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     @Column(name = "cardType", nullable = false)
     private BankCardType cardType;
-
-    /**
-     * Marks the user's default bank card. Only one card per user should carry
-     * {@code true}; the service layer enforces this invariant on {@code setDefault}.
-     *
-     * <p>Named {@code isDefault} (Boolean wrapper) so Lombok's generated accessors become
-     * {@code getIsDefault()}/{@code setIsDefault(Boolean)} — this keeps MapStruct happy
-     * (property name stays {@code isDefault}) while remaining non-null in the DB via the
-     * column-level constraint plus builder default.</p>
-     */
-    @Column(name = "isDefault", nullable = false)
-    private Boolean isDefault;
 }

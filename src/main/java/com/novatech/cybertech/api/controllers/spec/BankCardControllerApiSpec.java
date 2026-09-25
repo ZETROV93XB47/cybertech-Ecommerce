@@ -5,7 +5,6 @@ import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,7 +16,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.List;
-import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -59,26 +57,14 @@ public interface BankCardControllerApiSpec {
             })
     ResponseEntity<BankCardResponseDto> updateBankCard(BankCardUpdateRequestDto dto, Jwt jwt);
 
-    // --- Default-card surface -----------------------------------------------
+    // --- single-card surface -------------------------------------------------------------
 
-    @Operation(summary = "Set a bank card as the caller's default",
-            description = "Marks the specified card as the authenticated user's default card, clearing any previous default. Enforces ownership via the JWT subject.",
-            security = @SecurityRequirement(name = "keycloak"),
-            parameters = {@Parameter(name = "cardUuid", description = "UUID of the card to promote to default")},
-            responses = {
-                    @ApiResponse(responseCode = "204", description = "Default card updated"),
-                    @ApiResponse(responseCode = "403", description = "Caller does not own this card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Bank card not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<Void> setDefaultBankCard(UUID cardUuid, Jwt jwt);
-
-    @Operation(summary = "Get the caller's default bank card",
-            description = "Returns the authenticated user's default card as a masked response DTO (no PAN is exposed).",
+    @Operation(summary = "Get the caller's bank card",
+            description = "Returns the authenticated user's bank card as a masked response DTO (no PAN is exposed).",
             security = @SecurityRequirement(name = "keycloak"),
             responses = {
-                    @ApiResponse(responseCode = "200", description = "Default card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "No default bank card set", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "200", description = "Bank card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "No bank card set", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<BankCardResponseDto> getDefaultBankCard(Jwt jwt);

@@ -17,7 +17,6 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.BANK_CARD_CRUD_CONTROLLER_BASE_PATH;
@@ -57,19 +56,7 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
     }
 
     /**
-     * Marks the supplied card as the caller's default. The JWT subject drives
-     * ownership and sibling lookup at the service layer.
-     */
-    @Override
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-    @PatchMapping(value = "/set-default/{cardUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> setDefaultBankCard(@PathVariable UUID cardUuid, @AuthenticationPrincipal Jwt jwt) {
-        bankCardService.setDefault(cardUuid, jwt.getSubject());
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Returns the caller's default card as a masked response DTO.
+     * Returns the caller's single bank card as a masked response DTO.
      */
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")

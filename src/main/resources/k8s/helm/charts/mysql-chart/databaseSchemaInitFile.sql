@@ -121,7 +121,6 @@ CREATE TABLE bankCardTable
     cardNumber     VARCHAR(19)  NOT NULL,
     expiryDate     VARCHAR(7)   NOT NULL, -- MM/YYYY
     cardType       VARCHAR(255) NOT NULL, -- EnumType.STRING
-    isDefault      BOOLEAN      NOT NULL,
 
     -- Relation ManyToOne vers UserEntity
     user_id        BIGINT       NOT NULL,

@@ -30,13 +30,11 @@ public interface BankCardMapper extends BaseMapper<BankCardEntity, BankCardCreat
     @Mapping(target = "userEntity", ignore = true) // Géré manuellement dans le service
     @Mapping(target = "encryptedNumber", ignore = true) // set by the service via CardEncryptionService
     @Mapping(target = "lastFourDigits", ignore = true) // computed by the service, never from the raw DTO
-    @Mapping(target = "isDefault", ignore = true) // never user-settable on creation
     BankCardEntity mapFromCreationRequestToEntity(BankCardCreationRequestDto dto);
 
     @Mapping(target = "uuid", ignore = true)
     @Mapping(target = "userEntity", ignore = true)
     @Mapping(target = "encryptedNumber", ignore = true)
     @Mapping(target = "lastFourDigits", ignore = true)
-    @Mapping(target = "isDefault", ignore = true)
     void updateEntityFromDto(BankCardUpdateRequestDto dto, @MappingTarget BankCardEntity entity);
 }

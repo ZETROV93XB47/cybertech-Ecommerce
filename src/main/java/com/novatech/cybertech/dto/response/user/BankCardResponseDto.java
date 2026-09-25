@@ -43,11 +43,4 @@ public class BankCardResponseDto {
     private String expiryDate;
     private BankCardType cardType;
     private UUID userUuid;
-
-    /**
-     * Exposes whether this is the user's chosen default card for checkout flows.
-     * {@code Boolean} (not primitive) so Jackson serializes it as {@code null} for legacy
-     * rows that pre-date the default-card surface, keeping JSON-strict matchers quiet.
-     */
-    private Boolean isDefault;
 }

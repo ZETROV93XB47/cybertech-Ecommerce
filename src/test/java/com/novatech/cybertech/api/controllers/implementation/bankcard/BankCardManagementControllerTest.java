@@ -8,7 +8,6 @@ import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
-import com.novatech.cybertech.exceptions.NoDefaultBankCartSetException;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import com.novatech.cybertech.services.core.BankCardManagementService;
 import lombok.extern.slf4j.Slf4j;
@@ -164,22 +163,22 @@ class BankCardManagementControllerTest {
     }
 
     @Test
-    void shouldFailDeletingBankCardWhenNoDefaultSet() throws Exception {
-        // NoDefaultBankCartSetException now mapped to 403 NO_DEFAULT_BANK_CARD_SET.
+    void shouldFailDeletingBankCardWhenNoCardSet() throws Exception {
+        // BankCardNotFoundException now mapped to 404 BANK_CARD_NOT_FOUND.
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("No default bank card set for the user")
-                .httpStatusCode(403)
+                .message("No bank card found for this user.")
+                .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        doThrow(new NoDefaultBankCartSetException("No default bank card set for the user"))
+        doThrow(new BankCardNotFoundException("No bank card found for this user."))
                 .when(bankCardService).deleteBankCard(KEYCLOAK_ID);
 
         mockMvc.perform(delete(DELETE_USER)
                         .with(jwtUser(KEYCLOAK_ID))
                         .with(csrf())
                         .accept(APPLICATION_JSON))
-                .andExpect(status().isForbidden())
+                .andExpect(status().isNotFound())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
     }

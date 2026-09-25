@@ -20,22 +20,13 @@ public interface BankCardManagementService extends CrudBaseService<UUID, BankCar
     Page<BankCardResponseDto> getAll(Pageable pageable);
 
     /**
-     * Marks a specific card as the user's default.
-     *
-     * <p>Verifies that the card belongs to the caller (otherwise
-     * {@code UnauthorizedBankCardAccessException}), clears the default flag on every other
-     * card the user owns, and flips {@code isDefault=true} on the target.</p>
-     *
-     * @param cardUuid the card to promote to default.
-     * @param keycloakId the authenticated user's subject identifier, used for ownership.
-     */
-    void setDefault(UUID cardUuid, String keycloakId);
-
-    /**
-     * Returns the user's default card as a masked response DTO.
+     * Returns the authenticated user's bank card as a masked response DTO. The domain model
+     * enforces one card per user ({@code UserEntity.bankCardEntity} is a {@code @OneToOne}),
+     * so this simply resolves the caller's single card, if any.
      *
      * @param keycloakId the authenticated user's subject identifier.
-     * @return the masked DTO of the default card.
+     * @return the masked DTO of the user's card.
+     * @throws com.novatech.cybertech.exceptions.BankCardNotFoundException when the user has no card.
      */
     BankCardResponseDto getDefaultCard(String keycloakId);
 
