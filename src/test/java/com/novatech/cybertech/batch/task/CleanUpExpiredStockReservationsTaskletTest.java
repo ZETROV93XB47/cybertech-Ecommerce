@@ -1,9 +1,13 @@
 package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
+import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.StockEntity;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ReservationStatus;
+import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.StockEntityBuilder;
+import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.StockService;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +30,7 @@ import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +61,9 @@ class CleanUpExpiredStockReservationsTaskletTest {
     @Mock
     private StockService stockService;
 
+    @Mock
+    private OrderRepository orderRepository;
+
     @InjectMocks
     private CleanUpExpiredStockReservationsTasklet tasklet;
 
@@ -78,6 +86,16 @@ class CleanUpExpiredStockReservationsTaskletTest {
 
     private StockEntity stockFor(final UUID orderUuid) {
         return StockEntityBuilder.aValidStockBuilder().orderUuid(orderUuid).build();
+    }
+
+    private static OrderEntity orderWithStatus(final UUID orderUuid, final OrderStatus status) {
+        return OrderEntityBuilder.aValidOrderBuilder().uuid(orderUuid).status(status).build();
+    }
+
+    /** Stubs {@code orderRepository} so {@code orderUuid} resolves to an order not yet paid. */
+    private void stubNotYetPaid(final UUID orderUuid) {
+        when(orderRepository.findByUuid(orderUuid))
+                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
     }
 
     @Nested
@@ -140,6 +158,8 @@ class CleanUpExpiredStockReservationsTaskletTest {
         void releasesStockForEveryDistinctOrder() throws Exception {
             final UUID o1 = UUID.randomUUID();
             final UUID o2 = UUID.randomUUID();
+            stubNotYetPaid(o1);
+            stubNotYetPaid(o2);
             when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
                     .thenReturn(List.of(stockFor(o1), stockFor(o2)));
 
@@ -147,12 +167,14 @@ class CleanUpExpiredStockReservationsTaskletTest {
 
             verify(stockService).releaseStock(o1);
             verify(stockService).releaseStock(o2);
+            verify(stockService, never()).commitStock(any());
         }
 
         @Test
         @DisplayName("deduplicates orderUuid → releaseStock called once per distinct order")
         void deduplicatesByOrderUuid() throws Exception {
             final UUID orderUuid = UUID.randomUUID();
+            stubNotYetPaid(orderUuid);
             when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
                     .thenReturn(List.of(stockFor(orderUuid), stockFor(orderUuid), stockFor(orderUuid)));
 
@@ -164,8 +186,10 @@ class CleanUpExpiredStockReservationsTaskletTest {
         @Test
         @DisplayName("sets ExitStatus.COMPLETED after a successful run")
         void setsCompletedExitStatus() throws Exception {
+            final UUID orderUuid = UUID.randomUUID();
+            stubNotYetPaid(orderUuid);
             when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
-                    .thenReturn(List.of(stockFor(UUID.randomUUID())));
+                    .thenReturn(List.of(stockFor(orderUuid)));
 
             tasklet.execute(stepContribution, stepArguments);
 
@@ -175,12 +199,29 @@ class CleanUpExpiredStockReservationsTaskletTest {
         @Test
         @DisplayName("returns FINISHED RepeatStatus after a successful run")
         void returnsFinished() throws Exception {
+            final UUID orderUuid = UUID.randomUUID();
+            stubNotYetPaid(orderUuid);
             when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
-                    .thenReturn(List.of(stockFor(UUID.randomUUID())));
+                    .thenReturn(List.of(stockFor(orderUuid)));
 
             final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
 
             assertThat(status).isEqualTo(RepeatStatus.FINISHED);
+        }
+
+        @Test
+        @DisplayName("oversell fix: order already PAID+ → commits stock instead of releasing it")
+        void orderAlreadyPaid_commitsStockInsteadOfReleasing() throws Exception {
+            final UUID orderUuid = UUID.randomUUID();
+            when(orderRepository.findByUuid(orderUuid))
+                    .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_SHIPPING)));
+            when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
+                    .thenReturn(List.of(stockFor(orderUuid)));
+
+            tasklet.execute(stepContribution, stepArguments);
+
+            verify(stockService).commitStock(orderUuid);
+            verify(stockService, never()).releaseStock(any());
         }
     }
 
@@ -200,6 +241,12 @@ class CleanUpExpiredStockReservationsTaskletTest {
         void releaseStockThrows_propagatesFromTypedExecute() throws Exception {
             final UUID o1 = UUID.randomUUID();
             final UUID o2 = UUID.randomUUID();
+            // Set iteration order over {o1, o2} is not guaranteed, and the loop aborts after the
+            // first releaseStock failure, so only one of the two orders' findByUuid is ever
+            // invoked — an any() matcher (rather than two per-uuid stubs) keeps this stub used
+            // regardless of which order is processed first.
+            when(orderRepository.findByUuid(any(UUID.class)))
+                    .thenReturn(Optional.of(orderWithStatus(o1, OrderStatus.AWAITING_PAYMENT)));
             when(stockRepository.findByReservationStatusAndCreatedAtBefore(eq(ReservationStatus.ACTIVE), any(LocalDateTime.class)))
                     .thenReturn(List.of(stockFor(o1), stockFor(o2)));
             doThrow(new RuntimeException("redis lock failed")).when(stockService).releaseStock(any(UUID.class));

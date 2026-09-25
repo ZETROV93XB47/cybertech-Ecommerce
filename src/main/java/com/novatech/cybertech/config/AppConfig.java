@@ -4,12 +4,14 @@ import com.novatech.cybertech.annotation.*;
 import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.listener.ProductCategorySchemaCacheInvalidationListener;
 import com.novatech.cybertech.listener.RedisExpirationListener;
+import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.AbstractNotification;
 import com.novatech.cybertech.services.core.NotificationProcessor;
 import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.ShippingProviderService;
+import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import com.novatech.cybertech.validator.implementation.ActiveUserValidator;
@@ -146,11 +148,12 @@ public class AppConfig {
 
     @Bean
     public RedisMessageListenerContainer redisContainer(RedisConnectionFactory connectionFactory, StockRepository reservationRepository, ProductRepository productRepository,
+                                                          OrderRepository orderRepository, StockService stockService,
                                                           ProductCategorySchemaCacheInvalidationListener productCategorySchemaCacheInvalidationListener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
         // Listen to EXPIRED events
-        container.addMessageListener(new RedisExpirationListener(container, reservationRepository, productRepository), new PatternTopic("__keyevent@*__:expired"));
+        container.addMessageListener(new RedisExpirationListener(container, reservationRepository, productRepository, orderRepository, stockService), new PatternTopic("__keyevent@*__:expired"));
         // Cross-instance product-category-schema cache invalidation (see ProductCategorySchemaServiceImp, the publisher)
         container.addMessageListener(productCategorySchemaCacheInvalidationListener, new ChannelTopic(PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL));
 

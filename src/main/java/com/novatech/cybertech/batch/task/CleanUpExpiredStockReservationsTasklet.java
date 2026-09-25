@@ -2,7 +2,9 @@ package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.batch.base.BaseTasklet;
 import com.novatech.cybertech.entities.StockEntity;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ReservationStatus;
+import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.StockService;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ public class CleanUpExpiredStockReservationsTasklet extends BaseTasklet {
 
     private final StockRepository stockRepository;
     private final StockService stockService;
+    private final OrderRepository orderRepository;
 
     /**
      * Runs the cleanup: queries ACTIVE reservations older than the 7-minute threshold and
@@ -73,8 +76,16 @@ public class CleanUpExpiredStockReservationsTasklet extends BaseTasklet {
         log.info("Found {} orders with stuck reservations. Releasing stock...", expiredOrderUuids.size());
 
         for (UUID orderUuid : expiredOrderUuids) {
-            // releaseStock handles DB row cleanup AND the Redis sentinel deletion.
-            stockService.releaseStock(orderUuid);
+            final boolean alreadyPaid = orderRepository.findByUuid(orderUuid)
+                    .map(order -> order.getStatus().getCode() >= OrderStatus.PAID.getCode())
+                    .orElse(false);
+            if (alreadyPaid) {
+                log.warn("Expired reservation for order {} but the order is already {} — committing stock instead of releasing it.", orderUuid, "PAID+");
+                stockService.commitStock(orderUuid);
+            } else {
+                // releaseStock handles DB row cleanup AND the Redis sentinel deletion.
+                stockService.releaseStock(orderUuid);
+            }
         }
 
         stepContribution.setExitStatus(ExitStatus.COMPLETED);

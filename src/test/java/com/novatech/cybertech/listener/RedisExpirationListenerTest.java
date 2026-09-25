@@ -1,13 +1,18 @@
 package com.novatech.cybertech.listener;
 
+import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.StockEntity;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ReservationStatus;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.StockEntityBuilder;
+import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
+import com.novatech.cybertech.services.core.StockService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,12 +46,20 @@ class RedisExpirationListenerTest {
     private StockRepository stockRepository;
     @Mock
     private ProductRepository productRepository;
+    @Mock
+    private OrderRepository orderRepository;
+    @Mock
+    private StockService stockService;
 
     private RedisExpirationListener listener;
 
     @BeforeEach
     void setUp() {
-        listener = new RedisExpirationListener(container, stockRepository, productRepository);
+        listener = new RedisExpirationListener(container, stockRepository, productRepository, orderRepository, stockService);
+    }
+
+    private static OrderEntity orderWithStatus(UUID orderUuid, OrderStatus status) {
+        return OrderEntityBuilder.aValidOrderBuilder().uuid(orderUuid).status(status).build();
     }
 
     private static Message messageOf(String key) {
@@ -62,6 +75,8 @@ class RedisExpirationListenerTest {
         ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
                 .uuid(productUuid).reservedStock(5).build();
 
+        when(orderRepository.findByUuid(orderUuid))
+                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(reservation));
         when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
 
@@ -81,6 +96,8 @@ class RedisExpirationListenerTest {
     @Test
     void onMessage_emptyReservations_shouldShortCircuitWithoutDelete() {
         UUID orderUuid = UUID.randomUUID();
+        when(orderRepository.findByUuid(orderUuid))
+                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of());
 
         listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + orderUuid), null);
@@ -89,6 +106,7 @@ class RedisExpirationListenerTest {
         verify(stockRepository, never()).save(any());
         verify(stockRepository, never()).deleteByOrderUuid(any());
         verifyNoInteractions(productRepository);
+        verifyNoInteractions(stockService);
     }
 
     @Test
@@ -98,6 +116,8 @@ class RedisExpirationListenerTest {
                 .orderUuid(orderUuid)
                 .reservationStatus(ReservationStatus.RELEASED)
                 .build();
+        when(orderRepository.findByUuid(orderUuid))
+                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(inactive));
 
         listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + orderUuid), null);
@@ -105,13 +125,14 @@ class RedisExpirationListenerTest {
         verify(stockRepository, never()).save(any());
         verifyNoInteractions(productRepository);
         verify(stockRepository).deleteByOrderUuid(orderUuid);
+        verifyNoInteractions(stockService);
     }
 
     @Test
     void onMessage_wrongPrefixKey_shouldReturnSilently() {
         listener.onMessage(messageOf("some:other:key:" + UUID.randomUUID()), null);
 
-        verifyNoInteractions(stockRepository, productRepository);
+        verifyNoInteractions(stockRepository, productRepository, orderRepository, stockService);
     }
 
     @Test
@@ -121,6 +142,8 @@ class RedisExpirationListenerTest {
         StockEntity reservation = StockEntityBuilder.aValidStockBuilder()
                 .orderUuid(orderUuid).productUuid(productUuid).quantity(1).build();
 
+        when(orderRepository.findByUuid(orderUuid))
+                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
         when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(reservation));
         when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
 
@@ -135,6 +158,21 @@ class RedisExpirationListenerTest {
         // handler instead of propagating an IllegalArgumentException out to the listener container.
         listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + "not-a-uuid"), null);
 
+        verifyNoInteractions(stockRepository, productRepository, orderRepository, stockService);
+    }
+
+    @Test
+    void onMessage_orderAlreadyPaid_shouldCommitStockInsteadOfReleasing() {
+        // Oversell fix: if the Stripe webhook already flipped the order to PAID+ by the time the
+        // Redis TTL fires, releasing the reservation would let the same units be resold. We must
+        // self-heal by committing the stock (decrementing real inventory) instead of releasing it.
+        UUID orderUuid = UUID.randomUUID();
+        when(orderRepository.findByUuid(orderUuid))
+                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_SHIPPING)));
+
+        listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + orderUuid), null);
+
+        verify(stockService).commitStock(orderUuid);
         verifyNoInteractions(stockRepository, productRepository);
     }
 }

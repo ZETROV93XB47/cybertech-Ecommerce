@@ -2,10 +2,13 @@ package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.StockEntity;
+import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ReservationStatus;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
+import com.novatech.cybertech.services.core.StockService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.listener.KeyExpirationEventMessageListener;
@@ -37,13 +40,19 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
 
     private final StockRepository stockRepository;
     private final ProductRepository productRepository;
+    private final OrderRepository orderRepository;
+    private final StockService stockService;
 
     public RedisExpirationListener(RedisMessageListenerContainer container,
                                    StockRepository stockRepository,
-                                   ProductRepository productRepository) {
+                                   ProductRepository productRepository,
+                                   OrderRepository orderRepository,
+                                   StockService stockService) {
         super(container);
         this.productRepository = productRepository;
         this.stockRepository = stockRepository;
+        this.orderRepository = orderRepository;
+        this.stockService = stockService;
     }
 
     /**
@@ -85,6 +94,15 @@ public class RedisExpirationListener extends KeyExpirationEventMessageListener {
         }
 
         log.warn("Reservation expired for order {}", orderUuid);
+
+        final boolean alreadyPaid = orderRepository.findByUuid(orderUuid)
+                .map(order -> order.getStatus().getCode() >= OrderStatus.PAID.getCode())
+                .orElse(false);
+        if (alreadyPaid) {
+            log.warn("Reservation for order {} expired but the order is already paid — committing stock instead of releasing it.", orderUuid);
+            stockService.commitStock(orderUuid);
+            return;
+        }
 
         final List<StockEntity> reservations = stockRepository.findByOrderUuid(orderUuid);
         if (reservations.isEmpty()) return;
