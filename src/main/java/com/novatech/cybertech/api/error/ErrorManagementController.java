@@ -118,6 +118,12 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, ORDER_NOT_FUNDED.getResponseStatus());
     }
 
+    @ExceptionHandler(OrderRefundFailedException.class)
+    public ResponseEntity<ErrorResponseDto> handleOrderRefundFailedException(OrderRefundFailedException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), ORDER_REFUND_FAILED.getResponseStatus().value(), ORDER_REFUND_FAILED.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, ORDER_REFUND_FAILED.getResponseStatus());
+    }
+
     @ExceptionHandler(ProductNotFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleProductNotFoundException(ProductNotFoundException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PRODUCT_NOT_FOUND.getResponseStatus().value(), PRODUCT_NOT_FOUND.getErrorCodeType());

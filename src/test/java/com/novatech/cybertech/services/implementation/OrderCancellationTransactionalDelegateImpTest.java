@@ -175,6 +175,12 @@ class OrderCancellationTransactionalDelegateImpTest {
             order.setPaymentAttempts(List.of(successfulPayment));
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(orderRepository.save(order)).thenReturn(order);
+            when(paymentService.refund(order, successfulPayment.getPaymentType(),
+                    successfulPayment.getAmount(), successfulPayment.getIdempotencyKey()))
+                    .thenReturn(PaymentEntityBuilder.aValidPaymentBuilder()
+                            .status(PaymentAttemptStatus.SUCCESS)
+                            .transactionType(TransactionType.REFUND)
+                            .build());
 
             final OrderResponseDto result = delegate.cancelWithinTransaction(order.getUuid(), jwt);
 
@@ -184,6 +190,34 @@ class OrderCancellationTransactionalDelegateImpTest {
                     successfulPayment.getAmount(), successfulPayment.getIdempotencyKey());
             verify(stockService).releaseStock(order.getUuid());
             verify(orderRepository).save(order);
+        }
+
+        @Test
+        @DisplayName("Stripe rejects the refund -> OrderRefundFailedException, order left unchanged, stock untouched")
+        void refundRejected_abortsCancellationWithoutMutatingOrder() {
+            final OrderEntity order = orderWithStatus(OrderStatus.PAID);
+            final PaymentEntity successfulPayment = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .transactionType(TransactionType.PAYMENT)
+                    .paymentType(PaymentType.VISA)
+                    .amount(new Money(java.math.BigDecimal.TEN, CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            order.setPaymentAttempts(List.of(successfulPayment));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(paymentService.refund(order, successfulPayment.getPaymentType(),
+                    successfulPayment.getAmount(), successfulPayment.getIdempotencyKey()))
+                    .thenReturn(PaymentEntityBuilder.aValidPaymentBuilder()
+                            .status(PaymentAttemptStatus.FAILED)
+                            .transactionType(TransactionType.REFUND)
+                            .build());
+
+            assertThatThrownBy(() -> delegate.cancelWithinTransaction(order.getUuid(), jwt))
+                    .isInstanceOf(com.novatech.cybertech.exceptions.OrderRefundFailedException.class);
+
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+            verifyNoInteractions(stockService);
+            verify(orderRepository, never()).save(any());
         }
 
         @Test

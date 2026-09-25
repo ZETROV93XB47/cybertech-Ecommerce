@@ -117,6 +117,9 @@ class OrderCancellationTransactionalDelegateTest {
         final UUID uuid = order.getUuid();
         when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
         when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentService.refund(eq(order), eq(PaymentType.VISA), eq(successPayment.getAmount()), anyString()))
+                .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND,
+                        PaymentType.VISA, successPayment.getAmount(), LocalDateTime.now()));
 
         delegate.cancelWithinTransaction(uuid, jwt);
 
@@ -253,6 +256,9 @@ class OrderCancellationTransactionalDelegateTest {
                 .paymentAttempts(new ArrayList<>(List.of(successPayment))).build();
         when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentService.refund(eq(order), eq(PaymentType.VISA), eq(successPayment.getAmount()), anyString()))
+                .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND,
+                        PaymentType.VISA, successPayment.getAmount(), LocalDateTime.now()));
 
         delegate.cancelWithinTransaction(order.getUuid(), jwt);
 

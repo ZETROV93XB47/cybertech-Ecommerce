@@ -8,6 +8,7 @@ import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.exceptions.CannotCancelOrderException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
+import com.novatech.cybertech.exceptions.OrderRefundFailedException;
 import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
@@ -74,12 +75,26 @@ public class OrderCancellationTransactionalDelegateImp implements OrderCancellat
             throw new CannotCancelOrderException("Order is already shipped and can't be cancelled, please consider initiating Return process");
         }
 
-        orderEntity.setStatus(OrderStatus.CANCELED);
-
-        orderEntity.getPaymentAttempts().stream()
+        // Attempt every refund BEFORE touching order status or stock. paymentService.refund(...)
+        // can come back with a non-exceptional FAILED/CANCELED result (e.g. Stripe rejects the
+        // refund — closed card, insufficient merchant balance) without throwing. Ignoring that
+        // result used to let the order become CANCELED (and stock get released) even though the
+        // customer was never actually refunded. .toList() forces every refund to be attempted
+        // (no short-circuit) before we decide whether to proceed.
+        final boolean anyRefundFailed = orderEntity.getPaymentAttempts().stream()
                 .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS)
                 .filter(p -> p.getTransactionType() == TransactionType.PAYMENT)
-                .forEach(paymentAttemptEntity -> paymentService.refund(orderEntity, paymentAttemptEntity.getPaymentType(), paymentAttemptEntity.getAmount(), paymentAttemptEntity.getIdempotencyKey()));
+                .map(p -> paymentService.refund(orderEntity, p.getPaymentType(), p.getAmount(), p.getIdempotencyKey()))
+                .toList()
+                .stream()
+                .anyMatch(refund -> refund.getStatus() != PaymentAttemptStatus.SUCCESS);
+
+        if (anyRefundFailed) {
+            throw new OrderRefundFailedException(
+                    "Refund was rejected while cancelling order " + orderUUID + " — cancellation aborted, order left unchanged");
+        }
+
+        orderEntity.setStatus(OrderStatus.CANCELED);
 
         // Release any reserved stock for the cancelled order — mirrors deleteByUUID(). Handles
         // both an ACTIVE reservation (never committed) and a COMMITTED one (order already PAID):
