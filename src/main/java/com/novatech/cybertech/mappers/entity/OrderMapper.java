@@ -6,9 +6,8 @@ import com.novatech.cybertech.dto.response.order.OrderItemResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.OrderItemEntity;
-import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
-import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.entities.valueObjects.Address;
+import com.novatech.cybertech.utils.OrderPaymentUtils;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
@@ -128,22 +127,13 @@ public interface OrderMapper {
     }
 
     /**
-     * Total amount actually refunded on this order so far (sum of successful REFUND payment
-     * attempts). Exposed as a plain derived read — no separate "partially refunded" status is
+     * Total amount actually refunded on this order so far (sum of accepted REFUND payment
+     * attempts — see {@link OrderPaymentUtils#refundedAmount}). Exposed as a plain derived read — no separate "partially refunded" status is
      * stored: {@code 0 < refundedAmount < totalAmount} means partial, {@code refundedAmount ==
      * totalAmount} means fully refunded (see {@code OrderPaymentConfirmationEventListener}, which
      * flips {@code status} to REFUNDED only once the net paid amount reaches zero).
      */
     default BigDecimal computeRefundedAmount(OrderEntity orderEntity) {
-        if (orderEntity.getPaymentAttempts() == null) {
-            // @SuperBuilder ignores OrderEntity's field initializer, so a freshly-built order
-            // (e.g. placeOrder, before its first payment attempt is persisted) has a null
-            // collection here rather than an empty one.
-            return BigDecimal.ZERO;
-        }
-        return orderEntity.getPaymentAttempts().stream()
-                .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS && p.getTransactionType() == TransactionType.REFUND)
-                .map(p -> p.getAmount().getAmount())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return OrderPaymentUtils.refundedAmount(orderEntity);
     }
 }

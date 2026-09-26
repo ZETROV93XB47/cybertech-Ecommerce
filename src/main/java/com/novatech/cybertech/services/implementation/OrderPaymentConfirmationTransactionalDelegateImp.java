@@ -2,8 +2,6 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
-import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
@@ -11,6 +9,7 @@ import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.services.core.OrderPaymentConfirmationTransactionalDelegate;
 import com.novatech.cybertech.services.core.StockService;
+import com.novatech.cybertech.utils.OrderPaymentUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -144,12 +143,7 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
         // refund (e.g. the customer dropped one item from an already-paid order) does not get
         // treated as a full refund: releasing stock still reserved for the kept items or flipping
         // the order to the terminal REFUNDED status would be wrong.
-        final BigDecimal netPaid = order.getPaymentAttempts().stream()
-                .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS)
-                .map(p -> p.getTransactionType() == TransactionType.REFUND
-                        ? p.getAmount().getAmount().negate()
-                        : p.getAmount().getAmount())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        final BigDecimal netPaid = OrderPaymentUtils.netPaidAmount(order);
 
         if (netPaid.compareTo(BigDecimal.ZERO) > 0) {
             log.info("Order {} received a partial refund; {} still paid/kept — leaving status at {} and stock untouched.",

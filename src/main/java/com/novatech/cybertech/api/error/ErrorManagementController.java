@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.exceptions.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -23,6 +24,8 @@ import static com.novatech.cybertech.api.error.enumpackage.ErrorCode.*;
 @Slf4j
 @ControllerAdvice
 public class ErrorManagementController {
+
+    static final String CONCURRENT_MODIFICATION_MESSAGE = "This resource was modified by another request at the same time, please refresh and retry.";
 
     @ExceptionHandler(AccountNotFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleAccountNotFoundException(AccountNotFoundException exception) {
@@ -242,6 +245,20 @@ public class ErrorManagementController {
     public ResponseEntity<ErrorResponseDto> handlePaymentAlreadyCompletedException(PaymentAlreadyCompletedForThisOrderException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), PAYMENT_ALREADY_COMPLETED.getResponseStatus().value(), PAYMENT_ALREADY_COMPLETED.getErrorCodeType());
         return new ResponseEntity<>(errorResponseDto, PAYMENT_ALREADY_COMPLETED.getResponseStatus());
+    }
+
+    /**
+     * Two requests modified the same row concurrently (JPA {@code @Version} mismatch, or a row
+     * already deleted by the other one) — e.g. a double-clicked "place order" whose second request
+     * finds the cart lines already consumed by the first, or two concurrent writes on the same
+     * cart line. A retryable conflict, not a server fault: 409 with a fixed message, never the
+     * Hibernate one (it leaks entity/row details).
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponseDto> handleOptimisticLockingFailureException(OptimisticLockingFailureException exception) {
+        log.info("Concurrent modification rejected: {}", exception.getMessage());
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(CONCURRENT_MODIFICATION_MESSAGE, CONCURRENT_MODIFICATION.getResponseStatus().value(), CONCURRENT_MODIFICATION.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, CONCURRENT_MODIFICATION.getResponseStatus());
     }
 
     @ExceptionHandler(PaymentFailedException.class)

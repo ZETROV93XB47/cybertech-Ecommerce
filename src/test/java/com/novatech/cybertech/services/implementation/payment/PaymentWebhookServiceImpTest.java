@@ -38,6 +38,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -664,44 +665,27 @@ class PaymentWebhookServiceImpTest {
     class HandleRefund {
 
         @Test
-        @DisplayName("happy path: flips payment to REFUNDED and publishes PaymentRefundedEvent")
-        void happyPathFlipsToRefundedAndPublishes() {
+        @DisplayName("publishes PaymentRefundedEvent and leaves the original payment row untouched (still SUCCESS)")
+        void publishesRefundEvent_originalPaymentRowUntouched() {
+            // charge.refunded also fires for a PARTIAL refund. Flipping the original PAYMENT row to
+            // REFUNDED made it vanish from every "amount paid" computation: a 30-out-of-100 refund
+            // was then treated as a full refund (order REFUNDED, stock of kept items released).
+            // Refunds are tracked by their own REFUND rows — the payment row must stay SUCCESS.
             final String stripePaymentId = "pi_refund_happy";
             final OrderEntity order = OrderEntityBuilder.aValidOrder();
             final String payload = chargeRefundedJson(stripePaymentId, order.getUuid());
             final Event event = toEvent(payload);
 
             when(processedWebhookEventRepository.existsByStripeEventId(event.getId())).thenReturn(false);
-            final PaymentEntity row = paymentRow(stripePaymentId, order, PaymentAttemptStatus.SUCCESS);
-            when(attemptRepository.findByStripePaymentID(stripePaymentId)).thenReturn(Optional.of(row));
-            when(attemptRepository.save(any(PaymentEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
             service.handleEvent(event, payload);
 
-            assertThat(row.getStatus()).isEqualTo(PaymentAttemptStatus.REFUNDED);
-            assertThat(row.getProviderEventId()).isEqualTo(event.getId());
             verify(eventPublisher).publishEvent(any(PaymentRefundedEvent.class));
+            verify(attemptRepository, never()).findByStripePaymentID(anyString());
+            verify(attemptRepository, never()).save(any(PaymentEntity.class));
             // The refund path does NOT publish OrderPaidEvent or PaymentSucceededEvent
             verify(eventPublisher, never()).publishEvent(any(PaymentSucceededEvent.class));
             verify(eventPublisher, never()).publishEvent(any(OrderPaidEvent.class));
-        }
-
-        @Test
-        @DisplayName("missing payment row on refund throws PaymentNotFoundException")
-        void missingPaymentRowOnRefundThrows() {
-            final String stripePaymentId = "pi_orphan_refund";
-            final String payload = chargeRefundedJson(stripePaymentId, UUID.randomUUID());
-            final Event event = toEvent(payload);
-
-            when(processedWebhookEventRepository.existsByStripeEventId(event.getId())).thenReturn(false);
-            when(attemptRepository.findByStripePaymentID(stripePaymentId)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.handleEvent(event, payload))
-                    .isInstanceOf(PaymentNotFoundException.class)
-                    .hasMessageContaining(stripePaymentId);
-
-            verifyNoInteractions(eventPublisher);
-            verify(processedWebhookEventRepository, never()).save(any());
         }
     }
 

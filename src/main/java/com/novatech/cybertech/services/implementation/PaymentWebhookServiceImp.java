@@ -217,9 +217,17 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
     }
 
     /**
-     * Handle {@code charge.refunded}. Flips the payment row to {@link PaymentAttemptStatus#REFUNDED}
-     * and publishes {@link PaymentRefundedEvent} for the listener that updates the order to
-     * {@code REFUNDED} and releases stock.
+     * Handle {@code charge.refunded}. Publishes {@link PaymentRefundedEvent} for the listener that
+     * decides — from the order's own PAYMENT/REFUND rows — whether the order is now fully refunded
+     * (status {@code REFUNDED} + stock release) or only partially.
+     *
+     * <p>The original PAYMENT row is deliberately left {@code SUCCESS}: the money WAS captured, and
+     * refunds are tracked by their own REFUND rows. This event also fires for a PARTIAL refund
+     * (e.g. {@code updateOrder} removing an item); flipping the payment row to {@code REFUNDED}
+     * made every "amount paid" computation drop it, so the listener saw a negative net paid and
+     * treated a 30-out-of-100 refund as a full one (order REFUNDED, kept items' stock released), a
+     * later {@code updateOrder} re-charged the full total, and {@code cancelOrder} found nothing
+     * left to refund.
      *
      * @param event the parsed Stripe {@link Event}
      * @param dto   the rich application-level DTO parsed from the raw payload
@@ -227,8 +235,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
     private void handleRefund(final Event event, final StripeWebhookEventDto dto) {
 
         final Charge charge = (Charge) deserializeDataObject(event);
-
-        updatePaymentStatusGuarded(charge.getPaymentIntent(), PaymentAttemptStatus.REFUNDED, event.getId());
+        log.info("Charge refunded: stripePaymentID={}, amountRefunded={}", charge.getPaymentIntent(), charge.getAmountRefunded());
 
         eventPublisher.publishEvent(new PaymentRefundedEvent(dto));
     }
@@ -266,8 +273,8 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
 
     /**
      * Loads the payment row by Stripe payment id, flips its status, and persists the change. Used
-     * by the success and refund paths. The failure path uses an inline variant because of its
-     * additional terminal-state guard.
+     * by the success path. The failure path uses an inline variant because of its additional
+     * terminal-state guard.
      *
      * @param stripePaymentID the {@code pi_*} identifier from the Stripe event
      * @param status          the new {@link PaymentAttemptStatus}

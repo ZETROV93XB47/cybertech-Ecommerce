@@ -15,4 +15,7 @@ public interface PaymentAttemptRepository extends CrudBaseRepository<PaymentEnti
     boolean existsByOrderEntity_UuidAndStatus(UUID orderUuid, PaymentAttemptStatus status);
     Optional<PaymentEntity> findByStripePaymentID(String stripePaymentID);
     Optional<PaymentEntity> findByProviderEventId(String providerEventId);
+
+    /** Number of refund attempts already recorded against {@code originalPayment} (any status). */
+    long countByOriginalPayment(PaymentEntity originalPayment);
 }

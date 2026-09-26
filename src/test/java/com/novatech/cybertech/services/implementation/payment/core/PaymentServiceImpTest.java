@@ -377,7 +377,7 @@ class PaymentServiceImpTest {
         }
 
         @Test
-        @DisplayName("derived idempotency key is built from orderUuid + ['refund', originalKey]")
+        @DisplayName("derived idempotency key is built from orderUuid + ['refund', originalKey, prior refund count]")
         void keyDerivation() {
             final OrderEntity order = newOrder();
             final String originalKey = "idem-key-deriv";
@@ -401,7 +401,32 @@ class PaymentServiceImpTest {
             verify(idempotencyKeyService).generateKey(orderUuidCap.capture(), contextCap.capture());
 
             assertThat(orderUuidCap.getValue()).isEqualTo(order.getUuid().toString());
-            assertThat(contextCap.getValue()).containsExactly("refund", originalKey);
+            assertThat(contextCap.getValue()).containsExactly("refund", originalKey, "0");
+        }
+
+        @Test
+        @DisplayName("second refund against the same payment (updateOrder partial refund, then cancelOrder) gets a NEW key, not a 409")
+        void secondRefundOnSamePayment_getsDistinctKey() {
+            // Regression: the key used to be derived from the original payment's key alone, so the
+            // cancelOrder refund after an updateOrder partial refund reproduced the first refund's
+            // key and was rejected as "already completed".
+            final OrderEntity order = newOrder();
+            final String originalKey = "idem-key-twice";
+            final PaymentEntity originalAttempt = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .idempotencyKey(originalKey).stripePaymentID("pi_twice").build();
+
+            when(paymentAttemptRepository.findByIdempotencyKey(originalKey)).thenReturn(Optional.of(originalAttempt));
+            when(paymentAttemptRepository.countByOriginalPayment(originalAttempt)).thenReturn(1L);
+            when(idempotencyKeyService.generateKey(anyString(), anyList())).thenReturn("derived-key-2");
+            when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
+            when(processor.refund(any(), any(), any(), any()))
+                    .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "re_2"));
+            wireSaveReturnsArg();
+
+            final PaymentEntity result = service.refund(order, PaymentType.VISA, tenEur(), originalKey);
+
+            assertThat(result.getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
+            verify(idempotencyKeyService).generateKey(order.getUuid().toString(), List.of("refund", originalKey, "1"));
         }
 
         @Test

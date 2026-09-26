@@ -28,6 +28,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class PaymentServiceImp implements PaymentService {
 
+    /** Idempotency-key context token marking a refund — see {@link #refund}. */
+    private static final String REFUND_ACTION = "refund";
+
     private final PaymentStrategyFactory paymentStrategyFactory;
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
@@ -99,13 +102,19 @@ public class PaymentServiceImp implements PaymentService {
         final PaymentEntity paymentEntity = paymentAttemptRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> new PaymentNotFoundException("No payment attempt found for idempotency key: " + idempotencyKey));
         final String stripePaymentID = paymentEntity.getStripePaymentID();
 
-        // Crée attempt de remboursement — clé déterministe basée sur la clé du paiement original
-        final String refundIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), List.of("refund", idempotencyKey));
+        // Crée attempt de remboursement — clé déterministe basée sur la clé du paiement original ET
+        // sur le nombre de remboursements déjà enregistrés contre ce paiement. A payment can be
+        // refunded several times (updateOrder partial refund, then cancelOrder for the rest): with
+        // the original key alone, the second refund reproduced the first one's key and was
+        // rejected as a duplicate (409), and Stripe would have refused the reused key anyway
+        // (different amount). The counter keeps the key deterministic for a genuine repeat of the
+        // SAME refund (double submit / concurrent cancel both count N → same key → deduped below).
+        final long priorRefunds = paymentAttemptRepository.countByOriginalPayment(paymentEntity);
+        final String refundIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(),
+                List.of(REFUND_ACTION, idempotencyKey, String.valueOf(priorRefunds)));
 
-        // Idempotence: the refund key is DETERMINISTIC (derived from the original payment's key),
-        // so a repeat call for the same original payment (cancelOrder invoked twice, a retried
-        // request) legitimately reproduces the same key. Block before creating a duplicate attempt
-        // row — mirrors the equivalent guard in processPayment().
+        // Idempotence: block a repeat of the same refund before creating a duplicate attempt row —
+        // mirrors the equivalent guard in processPayment().
         final Optional<PaymentEntity> existingRefund = paymentAttemptRepository.findByIdempotencyKey(refundIdempotencyKey);
         if (existingRefund.isPresent()) {
             final PaymentAttemptStatus existingStatus = existingRefund.get().getStatus();

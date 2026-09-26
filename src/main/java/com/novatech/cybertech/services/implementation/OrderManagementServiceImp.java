@@ -34,6 +34,7 @@ import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.utils.ControllerSecurityUtils;
+import com.novatech.cybertech.utils.OrderPaymentUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -316,10 +317,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final Money total = Money.of(amount);
 
         // Calcul du montant déjà payé (Paiements - Remboursements)
-        BigDecimal paidAmount = order.getPaymentAttempts().stream()
-                .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS)
-                .map(p -> p.getTransactionType() == TransactionType.REFUND ? p.getAmount().getAmount().negate() : p.getAmount().getAmount())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        final BigDecimal paidAmount = OrderPaymentUtils.netPaidAmount(order);
 
         BigDecimal difference = total.getAmount().subtract(paidAmount);
         log.info("Update Order: New Total: {}, Paid: {}, Difference: {}", total.getAmount(), paidAmount, difference);
@@ -358,8 +356,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 24h — a stable composition-derived key made every new attempt for the same items (even
         // with another card) replay that decline. Double submit is covered by the row lock above.
         // It also can no longer collide with placeOrder's own key for an unchanged item list.
-        // Only used for Cas 1 (new payment): Cas 2 (refund) needs the ORIGINAL payment's own
-        // stored key instead, resolved inside handlePaymentUpdate — see its javadoc.
+        // Only used for Cas 1 (new payment): Cas 2 (refund) needs each ORIGINAL payment's own
+        // stored key instead — see refundDifference.
         final List<String> updatePaymentContext = new ArrayList<>(quantities.entrySet().stream()
                 .map(e -> e.getKey() + ":" + e.getValue())
                 .toList());
@@ -383,24 +381,17 @@ public class OrderManagementServiceImp implements OrderManagementService {
         }
 
 
-        final PaymentEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), updateIdempotencyKey);
-
-        // Complement declined (card refused): abort the WHOLE update. Throwing rolls back this
-        // transaction — new items, new total, the AWAITING_PAYMENT flip and the stock resize —
-        // so the order stays exactly as it was (a PAID order stays PAID with its original items
-        // and its committed stock). Carrying on used to leave a PAID order in AWAITING_PAYMENT,
-        // which the payment_failed webhook then turned into PAYMENT_FAILED with ALL its stock
-        // released, while retryPayment refused to run (a SUCCESS payment already exists).
-        // The late payment_failed webhook is then ignored for a PAID order (not payment-pending).
-        if (difference.signum() > 0 && isDeclined(attempt)) {
-            throw new PaymentFailedException(
-                    "The additional payment for order " + order.getUuid() + " was declined — the order was left unchanged");
-        }
+        // Both helpers throw when Stripe refuses (card declined / refund rejected), which rolls
+        // back this whole transaction — new items, new total, status flip and stock resize — so
+        // the order is left exactly as it was.
+        final PaymentAttemptStatus paymentStatus = difference.signum() > 0
+                ? chargeDifference(order, difference, dto.getPaymentType(), updateIdempotencyKey)
+                : refundDifference(order, difference.abs());
 
         // Explicit save instead of relying on JPA dirty-check
         orderRepository.save(order);
 
-        sendOrderUpdatedEvent(order, order.getUserEntity(), total.getAmount(), attempt.getStatus());
+        sendOrderUpdatedEvent(order, order.getUserEntity(), total.getAmount(), paymentStatus);
 
         return orderMapper.mapFromEntityToResponseDto(order);
     }
@@ -766,10 +757,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
         return orderEntity.getUserEntity().getKeycloakId().equals(keycloakId);
     }
 
-    private static boolean isDeclined(final PaymentEntity attempt) {
-        return attempt.getStatus() == PaymentAttemptStatus.FAILED || attempt.getStatus() == PaymentAttemptStatus.CANCELED;
-    }
-
     private static boolean isOrderInRetryablePaymentStatus(OrderEntity orderEntity) {
         return orderEntity.getStatus() == OrderStatus.PAYMENT_FAILED || orderEntity.getStatus() == OrderStatus.AWAITING_PAYMENT || orderEntity.getStatus() == CREATED;
     }
@@ -811,31 +798,75 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     /**
-     * @param idempotencyKey freshly-computed key for THIS update's item/quantity composition —
-     *                       only meaningful for Cas 1 (a new charge for the updated composition).
-     *                       Cas 2 ignores it: {@link PaymentService#refund} needs the ORIGINAL
-     *                       payment's own stored key to look up which Stripe PaymentIntent to
-     *                       refund against, not a key recomputed from the post-update item list
-     *                       (which would almost never match any stored {@link PaymentEntity} row —
-     *                       see progress.md for the bug this replaced).
+     * Cas 1 : le nouveau montant est plus élevé -> paiement du complément.
+     *
+     * <p>A declined complement throws {@link PaymentFailedException}: carrying on used to leave a
+     * PAID order in AWAITING_PAYMENT, which the payment_failed webhook then turned into
+     * PAYMENT_FAILED with ALL its stock released, while retryPayment refused to run (a SUCCESS
+     * payment already exists). After the rollback the late payment_failed webhook is ignored for a
+     * PAID order (not payment-pending). {@code PROCESSING} is not a decline — the webhook settles it.
+     *
+     * @param idempotencyKey per-attempt key for THIS update (see updateOrder step 7).
      */
-    private PaymentEntity handlePaymentUpdate(OrderEntity order, BigDecimal difference, PaymentType paymentType, String idempotencyKey) {
-        if (difference.compareTo(BigDecimal.ZERO) > 0) {
-            // Cas 1 : Le nouveau montant est plus élevé -> Paiement du complément
-            order.setStatus(OrderStatus.AWAITING_PAYMENT);
-            orderRepository.save(order);
-            return paymentService.processPayment(order, paymentType, Money.of(difference), idempotencyKey);
-        } else {
-            // Cas 2 : Le nouveau montant est moins élevé -> Remboursement de la différence.
-            // Refund against the most recent successful PAYMENT attempt — mirrors
-            // OrderCancellationTransactionalDelegateImp's own lookup pattern.
-            final String originalPaymentIdempotencyKey = order.getPaymentAttempts().stream()
-                    .filter(p -> p.getTransactionType() == TransactionType.PAYMENT && p.getStatus() == PaymentAttemptStatus.SUCCESS)
-                    .max(Comparator.comparing(BaseEntity::getCreatedAt))
-                    .map(PaymentEntity::getIdempotencyKey)
-                    .orElseThrow(() -> new NoPreviousPaymentAttemptException("No successful payment attempt found to refund for order " + order.getUuid()));
-            return paymentService.refund(order, paymentType, Money.of(difference.abs()), originalPaymentIdempotencyKey);
+    private PaymentAttemptStatus chargeDifference(final OrderEntity order, final BigDecimal difference,
+                                                  final PaymentType paymentType, final String idempotencyKey) {
+        order.setStatus(OrderStatus.AWAITING_PAYMENT);
+        orderRepository.save(order);
+        final PaymentEntity attempt = paymentService.processPayment(order, paymentType, Money.of(difference), idempotencyKey);
+        if (OrderPaymentUtils.isRejected(attempt)) {
+            throw new PaymentFailedException(
+                    "The additional payment for order " + order.getUuid() + " was declined — the order was left unchanged");
         }
+        return attempt.getStatus();
+    }
+
+    /**
+     * Cas 2 : le nouveau montant est moins élevé -> remboursement de la différence.
+     *
+     * <p>The amount is spread over the captured payments, newest first, each refunding at most
+     * what is still refundable on it ({@link OrderPaymentUtils#remainingRefundable}) and against
+     * its OWN stored idempotency key (which {@link PaymentService#refund} uses to find the Stripe
+     * PaymentIntent). Refunding everything against the most recent payment only — the previous
+     * behaviour — made Stripe reject any refund larger than that payment, e.g. an order paid 100
+     * then +50 by an earlier update, reduced to 40: refunding 110 against the 50 charge.
+     *
+     * <p>Mirrors {@code OrderCancellationTransactionalDelegateImp}: every refund is attempted, then
+     * a rejected one throws {@link OrderRefundFailedException} so the update is rolled back instead
+     * of shrinking the order while the customer is never refunded.
+     */
+    private PaymentAttemptStatus refundDifference(final OrderEntity order, final BigDecimal amountToRefund) {
+        final List<PaymentEntity> capturedNewestFirst = order.getPaymentAttempts().stream()
+                .filter(OrderPaymentUtils::isCapturedPayment)
+                .sorted(Comparator.comparing(PaymentEntity::getCreatedAt).reversed())
+                .toList();
+        if (capturedNewestFirst.isEmpty()) {
+            throw new NoPreviousPaymentAttemptException("No successful payment attempt found to refund for order " + order.getUuid());
+        }
+
+        // Stateful allocation (what is left to refund shrinks per payment) — a plain loop reads
+        // far clearer here than a stream with a mutable accumulator.
+        final List<PaymentEntity> refunds = new ArrayList<>();
+        BigDecimal left = amountToRefund;
+        for (final PaymentEntity payment : capturedNewestFirst) {
+            if (left.signum() <= 0) {
+                break;
+            }
+            final BigDecimal share = OrderPaymentUtils.remainingRefundable(order, payment).min(left);
+            if (share.signum() <= 0) {
+                continue;
+            }
+            refunds.add(paymentService.refund(order, payment.getPaymentType(),
+                    new Money(share, payment.getAmount().getCurrencyCode()), payment.getIdempotencyKey()));
+            left = left.subtract(share);
+        }
+
+        if (refunds.stream().anyMatch(OrderPaymentUtils::isRejected)) {
+            throw new OrderRefundFailedException(
+                    "Refund was rejected while updating order " + order.getUuid() + " — update aborted, order left unchanged");
+        }
+        return refunds.stream().allMatch(r -> r.getStatus() == PaymentAttemptStatus.SUCCESS)
+                ? PaymentAttemptStatus.SUCCESS
+                : PaymentAttemptStatus.PROCESSING;
     }
 
 }

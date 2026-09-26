@@ -223,6 +223,35 @@ class OrderCancellationTransactionalDelegateImpTest {
         }
 
         @Test
+        @DisplayName("Stripe refund still pending (PROCESSING) -> NOT a failure: order CANCELED, stock released")
+        void pendingRefund_isNotAFailure_cancellationProceeds() {
+            // Regression: a pending refund used to abort the cancellation and roll back its record
+            // while Stripe went on refunding the customer — refunded order left PAID and shippable.
+            final OrderEntity order = orderWithStatus(OrderStatus.PAID);
+            final PaymentEntity successfulPayment = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .transactionType(TransactionType.PAYMENT)
+                    .paymentType(PaymentType.VISA)
+                    .amount(new Money(java.math.BigDecimal.TEN, CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            order.setPaymentAttempts(List.of(successfulPayment));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentService.refund(order, successfulPayment.getPaymentType(),
+                    successfulPayment.getAmount(), successfulPayment.getIdempotencyKey()))
+                    .thenReturn(PaymentEntityBuilder.aValidPaymentBuilder()
+                            .status(PaymentAttemptStatus.PROCESSING)
+                            .transactionType(TransactionType.REFUND)
+                            .build());
+
+            delegate.cancelWithinTransaction(order.getUuid(), jwt);
+
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+            verify(stockService).releaseStock(order.getUuid());
+        }
+
+        @Test
         @DisplayName("only SUCCESS/PAYMENT attempts are refunded — FAILED and REFUND-type attempts are skipped")
         void onlyRefundsSuccessfulPaymentAttempts() {
             final OrderEntity order = orderWithStatus(OrderStatus.PAID);

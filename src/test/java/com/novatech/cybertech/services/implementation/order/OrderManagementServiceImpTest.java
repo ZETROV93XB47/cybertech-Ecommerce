@@ -40,6 +40,7 @@ import com.novatech.cybertech.exceptions.PaymentFailedException;
 import com.novatech.cybertech.exceptions.PaymentProcessingException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.exceptions.OrderNotFundedException;
+import com.novatech.cybertech.exceptions.OrderRefundFailedException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
@@ -640,6 +641,70 @@ class OrderManagementServiceImpTest {
             service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
 
             verify(paymentService).refund(eq(order), eq(PaymentType.VISA), any(Money.class), eq("idem-original-payment-key"));
+        }
+
+        @Test
+        @DisplayName("negative-delta refund rejected by Stripe -> OrderRefundFailedException aborts the update, no event")
+        void negativeDelta_refundRejected_throwsOrderRefundFailed() {
+            // Regression: the refund result used to be ignored — items/total shrank while the
+            // customer was never refunded. Mirrors cancelOrder's guard.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("40.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
+            when(paymentService.refund(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.FAILED, TransactionType.REFUND, PaymentType.VISA,
+                            new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            assertThatThrownBy(() -> service.updateOrder(requestFor(order.getUuid(), product, 1), jwt))
+                    .isInstanceOf(OrderRefundFailedException.class);
+
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("negative-delta larger than the newest payment -> refund split across payments, newest first, each against its own key")
+        void negativeDelta_splitAcrossPayments() {
+            // Order paid 100, then +50 by an earlier update, now reduced to 40: 110 to refund.
+            // Refunding it all against the 50 charge (the old behaviour) is rejected by Stripe.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("40.00")).build();
+            final PaymentEntity original = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS).transactionType(TransactionType.PAYMENT).paymentType(PaymentType.VISA)
+                    .amount(new Money(new BigDecimal("100.00"), CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now().minusDays(2)).idempotencyKey("idem-original").build();
+            final PaymentEntity complement = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS).transactionType(TransactionType.PAYMENT).paymentType(PaymentType.VISA)
+                    .amount(new Money(new BigDecimal("50.00"), CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now().minusDays(1)).idempotencyKey("idem-complement").build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("150.00"), List.of(original, complement));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
+            when(paymentService.refund(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
+                            new Money(new BigDecimal("1.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            final ArgumentCaptor<Money> moneyCap = ArgumentCaptor.forClass(Money.class);
+            final ArgumentCaptor<String> keyCap = ArgumentCaptor.forClass(String.class);
+            verify(paymentService, org.mockito.Mockito.times(2)).refund(eq(order), eq(PaymentType.VISA), moneyCap.capture(), keyCap.capture());
+            assertThat(keyCap.getAllValues()).containsExactly("idem-complement", "idem-original");
+            assertThat(moneyCap.getAllValues().get(0).getAmount()).isEqualByComparingTo("50.00");
+            assertThat(moneyCap.getAllValues().get(1).getAmount()).isEqualByComparingTo("60.00");
         }
 
         @Test

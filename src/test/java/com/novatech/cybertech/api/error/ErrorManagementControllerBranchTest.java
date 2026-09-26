@@ -122,6 +122,15 @@ class ErrorManagementControllerBranchTest {
     }
 
     @Test
+    @DisplayName("ObjectOptimisticLockingFailureException → 409 FUNCTIONAL with a fixed message (no Hibernate details leaked)")
+    void optimisticLockingFailureReturns409() {
+        final ResponseEntity<ErrorResponseDto> response = controller.handleOptimisticLockingFailureException(
+                new org.springframework.orm.ObjectOptimisticLockingFailureException("CartItemEntity", 42L));
+
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, ErrorManagementController.CONCURRENT_MODIFICATION_MESSAGE);
+    }
+
+    @Test
     @DisplayName("CannotCancelOrderException → 409 FUNCTIONAL with passthrough message")
     void cannotCancelOrderReturns409() {
         final ResponseEntity<ErrorResponseDto> response =

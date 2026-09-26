@@ -424,8 +424,7 @@ class PaymentWebhookFlowIT {
 
     @Test
     void chargeRefundedEventPublishesPaymentRefundedEvent() throws Exception {
-        // Pre-condition: payment must be SUCCESS for the refund path (the service simply
-        // updates by stripePaymentID; no business-rule check today).
+        // Pre-condition: a captured (SUCCESS) payment being refunded.
         final PaymentEntity payment = paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow();
         payment.setStatus(PaymentAttemptStatus.SUCCESS);
         paymentAttemptRepository.save(payment);
@@ -443,8 +442,11 @@ class PaymentWebhookFlowIT {
                 assertThat(applicationEvents.stream(PaymentRefundedEvent.class).count()).isEqualTo(1L)
         );
 
+        // The original payment row stays SUCCESS: refunds live in their own REFUND rows, and this
+        // event also fires for PARTIAL refunds — downgrading the payment row made a partial
+        // refund look like a full one to every "amount paid" computation.
         final PaymentEntity reloaded = paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow();
-        assertThat(reloaded.getStatus()).isEqualTo(PaymentAttemptStatus.REFUNDED);
+        assertThat(reloaded.getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
     }
 
     // ===== JSON helpers — minimal Stripe-compatible event envelopes ===================

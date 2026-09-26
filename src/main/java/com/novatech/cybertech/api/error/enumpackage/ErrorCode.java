@@ -46,6 +46,8 @@ public enum ErrorCode {
     NO_STRATEGY_FOUND(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL),
     NOT_ENOUGH_STOCK(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     ORDER_SUMMARY_REPORT_JOB_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL),
+    /** Optimistic-lock conflict: two requests modified the same row concurrently (retryable). */
+    CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     PAYMENT_ALREADY_COMPLETED(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     PAYMENT_FAILED(HttpStatus.PAYMENT_REQUIRED, ErrorCodeType.FUNCTIONAL),
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
