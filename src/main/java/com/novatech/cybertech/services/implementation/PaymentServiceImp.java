@@ -14,10 +14,9 @@ import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.PaymentService;
-import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,23 +28,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class PaymentServiceImp implements PaymentService {
 
-    private static final String SUCCESS_OUTCOME = "success";
-    private static final String FAILURE_OUTCOME = "failure";
-
     private final PaymentStrategyFactory paymentStrategyFactory;
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
-
-    /**
-     * Field-injected (not added to the {@code @RequiredArgsConstructor} constructor) so the
-     * existing {@code @InjectMocks}-based {@code PaymentServiceImpTest} doesn't need to mock a
-     * {@link MeterRegistry} — same pattern as {@code OrderManagementServiceImp#transactionManager}.
-     * Backs {@code cybertech_payments_total{outcome=...}}, already queried by
-     * {@code cybertech-overview.json} (Grafana) and the payment-success-rate alert rule
-     * (prometheus-chart), but never actually emitted until now.
-     */
-    @Autowired(required = false)
-    private MeterRegistry meterRegistry;
 
     @Transactional
     public PaymentEntity processPayment(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
@@ -53,12 +38,11 @@ public class PaymentServiceImp implements PaymentService {
         // Idempotence (retry même requête)
         final Optional<PaymentEntity> existing = paymentAttemptRepository.findByIdempotencyKey(idempotencyKey);
 
-        log.info("existing :: {}", existing);
-
         if (existing.isPresent()) {
-            if (existing.get().getStatus() == PaymentAttemptStatus.SUCCESS) {
-                log.info("Payment already completed for this order");
-                throw new PaymentAlreadyCompletedForThisOrderException("Payment already completed for this order");
+            final PaymentAttemptStatus existingStatus = existing.get().getStatus();
+            if (existingStatus == PaymentAttemptStatus.SUCCESS || existingStatus == PaymentAttemptStatus.PROCESSING) {
+                log.info("Payment already completed or in flight for this order");
+                throw new PaymentAlreadyCompletedForThisOrderException("Payment already completed or in flight for this order");
             }
         }
 
@@ -72,7 +56,17 @@ public class PaymentServiceImp implements PaymentService {
                 .idempotencyKey(idempotencyKey)
                 .build();
 
-        attempt = paymentAttemptRepository.save(attempt);
+        try {
+            attempt = paymentAttemptRepository.save(attempt);
+        } catch (DataIntegrityViolationException e) {
+            // Race-safe second line of defence: the check above is a plain SELECT with no lock, so
+            // two concurrent callers with the same idempotencyKey (double submit, retried request)
+            // can both pass it before either insert commits. The uk_payment_idempotency DB
+            // constraint is what actually prevents the duplicate row in that case — surface it as
+            // the same domain exception the pre-check throws instead of leaking a raw 500.
+            log.info("Concurrent duplicate payment attempt for idempotencyKey={} — caught by the DB constraint", idempotencyKey);
+            throw new PaymentAlreadyCompletedForThisOrderException("Payment already completed or in flight for this order");
+        }
 
         // Appel provider via Strategy
         attempt.setStatus(PaymentAttemptStatus.PROCESSING);
@@ -85,11 +79,6 @@ public class PaymentServiceImp implements PaymentService {
         attempt.setStatus(result.status());
         attempt.setStripePaymentID(result.stripePaymentID());
         log.info("saved Payment id : {}", result.stripePaymentID());
-
-        if (meterRegistry != null) {
-            final String outcome = result.status() == PaymentAttemptStatus.SUCCESS ? SUCCESS_OUTCOME : FAILURE_OUTCOME;
-            meterRegistry.counter("cybertech.payments.total", "outcome", outcome).increment();
-        }
 
         // Webhook-only side-effects: this method persists the attempt outcome and
         // returns — it does NOT publish any domain event. Stock commit / order PAID /
@@ -112,6 +101,20 @@ public class PaymentServiceImp implements PaymentService {
 
         // Crée attempt de remboursement — clé déterministe basée sur la clé du paiement original
         final String refundIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), List.of("refund", idempotencyKey));
+
+        // Idempotence: the refund key is DETERMINISTIC (derived from the original payment's key),
+        // so a repeat call for the same original payment (cancelOrder invoked twice, a retried
+        // request) legitimately reproduces the same key. Block before creating a duplicate attempt
+        // row — mirrors the equivalent guard in processPayment().
+        final Optional<PaymentEntity> existingRefund = paymentAttemptRepository.findByIdempotencyKey(refundIdempotencyKey);
+        if (existingRefund.isPresent()) {
+            final PaymentAttemptStatus existingStatus = existingRefund.get().getStatus();
+            if (existingStatus == PaymentAttemptStatus.SUCCESS || existingStatus == PaymentAttemptStatus.PROCESSING) {
+                log.info("Refund already completed or in flight for this payment");
+                throw new PaymentAlreadyCompletedForThisOrderException("Refund already completed or in flight for this payment");
+            }
+        }
+
         PaymentEntity attempt = PaymentEntity.builder()
                 .orderEntity(order)
                 .amount(amount)
@@ -121,7 +124,13 @@ public class PaymentServiceImp implements PaymentService {
                 .idempotencyKey(refundIdempotencyKey)
                 .build();
 
-        attempt = paymentAttemptRepository.save(attempt);
+        try {
+            attempt = paymentAttemptRepository.save(attempt);
+        } catch (DataIntegrityViolationException e) {
+            // Race-safe second line of defence — see processPayment() for the full rationale.
+            log.info("Concurrent duplicate refund attempt for idempotencyKey={} — caught by the DB constraint", refundIdempotencyKey);
+            throw new PaymentAlreadyCompletedForThisOrderException("Refund already completed or in flight for this payment");
+        }
         attempt.setStatus(PaymentAttemptStatus.PROCESSING);
 
         log.info("Refund attempt created with ID: {}", attempt.getId());

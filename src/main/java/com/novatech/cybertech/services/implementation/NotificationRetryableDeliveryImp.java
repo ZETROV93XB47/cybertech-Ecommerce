@@ -72,8 +72,7 @@ public class NotificationRetryableDeliveryImp implements NotificationRetryableDe
      * the value of the precision. The recorder field semantically means "number of failed
      * attempts before the final outcome was recorded"; on success it is at least defensible to
      * record 0 because the persisted audit row captures the *final* state, not a per-attempt
-     * history. If precise attempt-count telemetry is needed later, the right place to read it is
-     * Micrometer / Actuator (see {@code resilience4j-micrometer}), not this row.
+     * history.
      */
     @Override
     public void deliver(final NotificationContext<?> context) {

@@ -724,6 +724,40 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
+        @DisplayName("negative-delta: refund uses the ORIGINAL payment's stored idempotency key, not one recomputed from the updated item list")
+        void negativeDelta_refundUsesOriginalPaymentIdempotencyKey() {
+            // Regression test for the bug documented in progress.md: refund() looks up the
+            // Stripe PaymentIntent to refund against via findByIdempotencyKey(key) — passing a
+            // freshly recomputed key (from the post-update item list) almost never matches the
+            // stored PaymentEntity row, throwing PaymentNotFoundException instead of refunding.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("40.00")).build();
+            final PaymentEntity originalPayment = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .transactionType(TransactionType.PAYMENT)
+                    .paymentType(PaymentType.VISA)
+                    .amount(new Money(new BigDecimal("100.00"), CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now())
+                    .idempotencyKey("idem-original-payment-key")
+                    .build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"), List.of(originalPayment));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
+            when(paymentService.refund(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
+                            new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            verify(paymentService).refund(eq(order), eq(PaymentType.VISA), any(Money.class), eq("idem-original-payment-key"));
+        }
+
+        @Test
         @DisplayName("not found throws OrderNotFoundException")
         void notFound_throws() {
             final UUID missing = UUID.randomUUID();

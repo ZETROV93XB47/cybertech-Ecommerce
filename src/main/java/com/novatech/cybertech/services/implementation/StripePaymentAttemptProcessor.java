@@ -28,9 +28,13 @@ import java.util.UUID;
 @PaymentTypeHandler({PaymentType.MASTERCARD, PaymentType.VISA})
 public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
 
-    private static final String ORDER_UUID = "orderUuid";
-    private static final String IDEMPOTENCY_KEY = "idempotencyKey";
+    private static final String FAILED = "failed";
+    private static final String CANCELED = "canceled";
+    private static final String SUCCEEDED = "succeeded";
+    private static final String ORDER_UUID = "order_uuid";
+    private static final String IDEMPOTENCY_KEY = "idempotency_key";
     private static final String STRIPE_API_RESILIENCE_INSTANCE = "stripeApi";
+    private static final String REQUIRES_PAYMENT_METHOD = "requires_payment_method";
 
     @Value("${stripe.payment-method:}")
     private String defaultPaymentMethod;
@@ -89,9 +93,7 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
                     e.getMessage()
             );
 
-            throw new PaymentProcessingException(
-                    "Stripe payment failed for order " + orderUuid, e
-            );
+            throw new PaymentProcessingException("Stripe payment failed for order " + orderUuid, e);
         }
     }
 
@@ -100,8 +102,6 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
     @Retry(name = STRIPE_API_RESILIENCE_INSTANCE)
     @CircuitBreaker(name = STRIPE_API_RESILIENCE_INSTANCE, fallbackMethod = "refundFallback")
     public PaymentAttemptResult refund(UUID orderUuid, Money amount, String idempotencyKey, String stripePaymentID) {
-
-        log.info("idempotencykey : {}", idempotencyKey);
 
         RefundCreateParams params = RefundCreateParams.builder()
                 .setPaymentIntent(stripePaymentID)
@@ -144,14 +144,12 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
         final PaymentIntentCreateParams.Builder builder = PaymentIntentCreateParams.builder()
                 .setAmount(amountInMinorUnit)
                 .setCurrency(amount.getCurrencyCode().getCode().toLowerCase())
-                .putMetadata("order_uuid", orderUuid.toString())
-                .putMetadata("idempotency_key", idempotencyKey)
+                .putMetadata(ORDER_UUID, orderUuid.toString())
+                .putMetadata(IDEMPOTENCY_KEY, idempotencyKey)
                 .setAutomaticPaymentMethods(
                         PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
                                 .setEnabled(true)
-                                .setAllowRedirects(
-                                        PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER
-                                )
+                                .setAllowRedirects(PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
                                 .build()
                 )
                 .setConfirm(true);
@@ -163,21 +161,20 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
         return builder.build();
     }
 
-    private PaymentAttemptStatus
-    mapStripeStatus(String stripeStatus) {
+    private PaymentAttemptStatus mapStripeStatus(String stripeStatus) {
 
         return switch (stripeStatus) {
-            case "succeeded" -> PaymentAttemptStatus.SUCCESS;
-            case "requires_payment_method", "canceled" -> PaymentAttemptStatus.FAILED;
+            case SUCCEEDED -> PaymentAttemptStatus.SUCCESS;
+            case REQUIRES_PAYMENT_METHOD, CANCELED -> PaymentAttemptStatus.FAILED;
             default -> PaymentAttemptStatus.PROCESSING;
         };
     }
 
     private PaymentAttemptStatus mapRefundStatus(String refundStatus) {
         return switch (refundStatus) {
-            case "succeeded" -> PaymentAttemptStatus.SUCCESS;
-            case "failed" -> PaymentAttemptStatus.FAILED;
-            case "canceled" -> PaymentAttemptStatus.CANCELED;
+            case SUCCEEDED -> PaymentAttemptStatus.SUCCESS;
+            case FAILED -> PaymentAttemptStatus.FAILED;
+            case CANCELED -> PaymentAttemptStatus.CANCELED;
             default -> PaymentAttemptStatus.PROCESSING;
         };
     }
@@ -194,10 +191,8 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             final String idempotencyKey,
             final Throwable cause
     ) {
-        log.error("Stripe processPayment fallback engaged | order={} | cause={}",
-                orderUuid, cause != null ? cause.getMessage() : "<no cause>");
-        throw new PaymentProcessingException(
-                "Stripe payment unavailable for order " + orderUuid + " (resilience4j fallback)", cause);
+        log.error("Stripe processPayment fallback engaged | order={} | cause={}", orderUuid, cause != null ? cause.getMessage() : "<no cause>");
+        throw new PaymentProcessingException("Stripe payment unavailable for order " + orderUuid + " (resilience4j fallback)", cause);
     }
 
     /**
@@ -212,10 +207,8 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             final String stripePaymentID,
             final Throwable cause
     ) {
-        log.error("Stripe refund fallback engaged | order={} | cause={}",
-                orderUuid, cause != null ? cause.getMessage() : "<no cause>");
-        throw new PaymentProcessingException(
-                "Stripe refund unavailable for order " + orderUuid + " (resilience4j fallback)", cause);
+        log.error("Stripe refund fallback engaged | order={} | cause={}", orderUuid, cause != null ? cause.getMessage() : "<no cause>");
+        throw new PaymentProcessingException("Stripe refund unavailable for order " + orderUuid + " (resilience4j fallback)", cause);
     }
 
 }

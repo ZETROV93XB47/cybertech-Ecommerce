@@ -1,9 +1,9 @@
 # ============================================================
-# GRAFANA — visualisation + alerting UI for the observability stack.
-# Datasources for Prometheus, Loki, Tempo are auto-provisioned via the
-# files-based provisioning model (config/provisioning/{datasources,
-# dashboards}/*.yaml). 4 skeleton dashboards ship as a ConfigMap mounted
-# under /var/lib/grafana/dashboards.
+# GRAFANA — log-browsing UI for the observability stack.
+# The Loki datasource is auto-provisioned via the files-based provisioning
+# model (config/provisioning/{datasources,dashboards}/*.yaml). Dashboards
+# ship as a ConfigMap mounted under /var/lib/grafana/dashboards (currently
+# empty — Prometheus metrics and Tempo tracing dashboards were removed).
 # Admin credentials live in a Secret — REPLACE in real deploy via Vault.
 # ============================================================
 
@@ -18,19 +18,12 @@ service:
   type: ClusterIP
   port: 3000
 
-# In-cluster datasource hostnames. Match the Service names of the other
-# Layer 6 charts.
+# In-cluster datasource hostname. Matches the Service name of the loki chart.
 datasources:
-  prometheus:
-    name: Prometheus
-    url: http://prometheus:9090
-    default: true
   loki:
     name: Loki
     url: http://loki:3100
-  tempo:
-    name: Tempo
-    url: http://tempo:3200
+    default: true
 
 # Admin bootstrap. Hardcoded for portfolio convenience — production deploys
 # should source these from Vault and rotate after first login.

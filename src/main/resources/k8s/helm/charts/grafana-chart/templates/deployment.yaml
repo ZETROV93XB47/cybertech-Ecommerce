@@ -47,8 +47,6 @@ spec:
               value: {{ .Values.auth.anonymousEnabled | quote }}
             - name: GF_PATHS_PROVISIONING
               value: /etc/grafana/provisioning
-            - name: GF_FEATURE_TOGGLES_ENABLE
-              value: "traceqlEditor"
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources

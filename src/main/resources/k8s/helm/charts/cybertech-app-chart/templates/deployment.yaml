@@ -13,9 +13,6 @@ spec:
     metadata:
       labels:
         app: cybertech-app
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "{{ .Values.cybertechApp.port }}"
     spec:
       containers:
         - name: cybertech-app

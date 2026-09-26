@@ -110,9 +110,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
         }
 
         if (!isLivemodeAcceptable(event)) {
-            log.error("SEVERE: Stripe livemode mismatch — dropping event id={}, type={}, eventLivemode={}, expectedLivemode={}. " +
-                            "A misconfigured webhook secret may be sending production events to a test environment (or vice-versa).",
-                    stripeEventId, event.getType(), event.getLivemode(), expectedLivemode);
+            log.error("SEVERE: Stripe livemode mismatch — dropping event id={}, type={}, eventLivemode={}, expectedLivemode={}. " + "A misconfigured webhook secret may be sending production events to a test environment (or vice-versa).", stripeEventId, event.getType(), event.getLivemode(), expectedLivemode);
             return;
         }
 

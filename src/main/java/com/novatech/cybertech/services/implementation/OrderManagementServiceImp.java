@@ -33,10 +33,8 @@ import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.utils.ControllerSecurityUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
-import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
@@ -80,16 +78,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
     private final OrderPriceCalculationService orderPriceCalculationService;
     private final OrderCancellationTransactionalDelegate orderCancellationTransactionalDelegate;
-
-    /**
-     * Field-injected rather than added to {@code @RequiredArgsConstructor} to avoid breaking the
-     * existing {@code @InjectMocks}-based unit tests. Backs the {@code cybertech_orders_total}
-     * counter that {@code cybertech-overview.json} (Grafana) already queries — {@code null} in
-     * unit tests and any context that doesn't wire Micrometer, so every call site guards on it
-     * before incrementing.
-     */
-    @Autowired(required = false)
-    private MeterRegistry meterRegistry;
 
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
@@ -339,11 +327,13 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 6) Réserver le stock pour les nouveaux items
         stockService.reserveStock(order.getUuid(), quantities);
 
-        // 7) Paiement attempt (idempotent)
-        final List<String> updatedProductUuids = dto.getItemUpdateRequestDtoList().stream()
-                .map(i -> i.getProductUuid().toString())
+        // 7) Paiement attempt (idempotent) — quantities are part of the context (see placeOrder).
+        // Only used for Cas 1 (new payment): Cas 2 (refund) needs the ORIGINAL payment's own
+        // stored key instead, resolved inside handlePaymentUpdate — see its javadoc.
+        final List<String> updatedProductUuidsWithQuantities = dto.getItemUpdateRequestDtoList().stream()
+                .map(i -> i.getProductUuid() + ":" + i.getQuantity())
                 .toList();
-        final String updateIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), updatedProductUuids);
+        final String updateIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), updatedProductUuidsWithQuantities);
 
         if (difference.compareTo(BigDecimal.ZERO) == 0) {
             // Cas 3 : Pas de différence de prix
@@ -575,9 +565,12 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 7) Réserver stock (si ça throw -> transaction rollback)
         stockService.reserveStock(orderUuid, quantities);
 
-        // 8) Paiement attempt (idempotent)
-        final List<String> productUuids = cartItems.stream().map(i -> i.getProductEntity().getUuid().toString()).toList();
-        final String idempotencyKey = idempotencyKeyService.generateKey(orderUuid.toString(), productUuids);
+        // 8) Paiement attempt (idempotent) — quantities are part of the context so two orders
+        // for the same products in different quantities never collide on the same key.
+        final List<String> productUuidsWithQuantities = cartItems.stream()
+                .map(i -> i.getProductEntity().getUuid() + ":" + i.getQuantity())
+                .toList();
+        final String idempotencyKey = idempotencyKeyService.generateKey(orderUuid.toString(), productUuidsWithQuantities);
         final PaymentEntity attempt;
 
         attempt = paymentService.processPayment(
@@ -595,10 +588,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
         }
 
         sendOrderCreationEvent(savedOrder, user, totalAmount, attempt.getStatus());
-
-        if (meterRegistry != null) {
-            meterRegistry.counter("cybertech.orders.total").increment();
-        }
 
         return orderMapper.mapFromEntityToResponseDto(savedOrder);
     }
@@ -846,6 +835,15 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .orElseThrow(() -> new UserNotFoundException("JWT subject missing — cannot resolve user"));
     }
 
+    /**
+     * @param idempotencyKey freshly-computed key for THIS update's item/quantity composition —
+     *                       only meaningful for Cas 1 (a new charge for the updated composition).
+     *                       Cas 2 ignores it: {@link PaymentService#refund} needs the ORIGINAL
+     *                       payment's own stored key to look up which Stripe PaymentIntent to
+     *                       refund against, not a key recomputed from the post-update item list
+     *                       (which would almost never match any stored {@link PaymentEntity} row —
+     *                       see progress.md for the bug this replaced).
+     */
     private PaymentEntity handlePaymentUpdate(OrderEntity order, BigDecimal difference, PaymentType paymentType, String idempotencyKey) {
         if (difference.compareTo(BigDecimal.ZERO) > 0) {
             // Cas 1 : Le nouveau montant est plus élevé -> Paiement du complément
@@ -853,8 +851,15 @@ public class OrderManagementServiceImp implements OrderManagementService {
             orderRepository.save(order);
             return paymentService.processPayment(order, paymentType, Money.of(difference), idempotencyKey);
         } else {
-            // Cas 2 : Le nouveau montant est moins élevé -> Remboursement de la différence
-            return paymentService.refund(order, paymentType, Money.of(difference.abs()), idempotencyKey);
+            // Cas 2 : Le nouveau montant est moins élevé -> Remboursement de la différence.
+            // Refund against the most recent successful PAYMENT attempt — mirrors
+            // OrderCancellationTransactionalDelegateImp's own lookup pattern.
+            final String originalPaymentIdempotencyKey = order.getPaymentAttempts().stream()
+                    .filter(p -> p.getTransactionType() == TransactionType.PAYMENT && p.getStatus() == PaymentAttemptStatus.SUCCESS)
+                    .max(Comparator.comparing(BaseEntity::getCreatedAt))
+                    .map(PaymentEntity::getIdempotencyKey)
+                    .orElseThrow(() -> new NoPreviousPaymentAttemptException("No successful payment attempt found to refund for order " + order.getUuid()));
+            return paymentService.refund(order, paymentType, Money.of(difference.abs()), originalPaymentIdempotencyKey);
         }
     }
 

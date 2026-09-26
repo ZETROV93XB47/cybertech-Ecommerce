@@ -30,10 +30,6 @@ public class NotificationDispatcher {
     private final NotificationStrategyFactory notificationStrategyFactory;
     private final NotificationProcessorStrategyFactory notificationProcessorStrategyFactory;
 
-    //We can directly use the two following maps here
-    //private final Map<NotificationType, Notification> notificationStrategies;
-    //private final Map<CommunicationType, NotificationProcessor> processorStrategies;
-
     /**
      * Resolves the notification strategy and processor for the given context, then fires the
      * notification through the bridge ({@link AbstractNotification#sendNotification}).

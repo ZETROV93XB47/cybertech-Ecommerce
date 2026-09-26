@@ -111,8 +111,7 @@ public class StripeWebhookController implements StripeWebhookApiSpec {
             // exponential backoff). For non-retriable downstream faults — orphan PaymentIntent,
             // missing order row, transient DB blip — we WANT to ACK 200 so Stripe stops
             // re-delivering. The error is still logged for the on-call team.
-            log.error("Error processing Stripe event id={}, type={}; ACKing 200 to prevent Stripe retry storm",
-                    event.getId(), event.getType(), e);
+            log.error("Error processing Stripe event id={}, type={}; ACKing 200 to prevent Stripe retry storm", event.getId(), event.getType(), e);
             return ResponseEntity.ok().build();
         }
 

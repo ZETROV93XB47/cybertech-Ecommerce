@@ -7,8 +7,8 @@
 
       * default (dev / test / unspecified):
           Plain text pattern, console-only, mirrors Spring Boot's own default so local
-          builds and `mvn test` output stay readable. MDC keys (traceId, spanId,
-          userKeycloakId, orderUuid) are appended at the end of each line when present.
+          builds and `mvn test` output stay readable. MDC keys (userKeycloakId, orderUuid)
+          are appended at the end of each line when present.
 
       * prod:
           LogstashEncoder JSON output to STDOUT, designed to be ingested by Loki via the
@@ -63,8 +63,6 @@
                 <!-- Canonical fields. timestamp/level/message/logger/thread are emitted
                      by default; we promote MDC keys we care about to top-level JSON
                      properties so Loki can index them as labels via pipeline_stages. -->
-                <includeMdcKeyName>traceId</includeMdcKeyName>
-                <includeMdcKeyName>spanId</includeMdcKeyName>
                 <includeMdcKeyName>userKeycloakId</includeMdcKeyName>
                 <includeMdcKeyName>orderUuid</includeMdcKeyName>
                 <customFields>{"application":"${appName}"}</customFields>

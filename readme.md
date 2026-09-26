@@ -14,7 +14,7 @@ Cybertech est un **backend Spring Boot 4 + frontend Next.js 16** pour une platef
 
 L'architecture est un **monolithe modulaire** organisé en couches (controller → service → repository) avec une séparation par domaine fonctionnel. Les ruptures de charge ont été placées là où elles comptent : **Elasticsearch** pour la recherche, **Redis** pour le cache panier et les locks distribués, **MongoDB** pour les events utilisateur, **Keycloak** pour l'identité, **Stripe** pour le paiement, **LocalStack S3** pour les images. Les flux asynchrones critiques (notifications, expédition, ré-indexation ES) passent par `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` pour garantir la cohérence transactionnelle, et un service Python externe basé sur **toxic-bert** modère le contenu des reviews.
 
-Le projet est **observable** (Prometheus + Loki + Tempo + Grafana en cluster), **testé** (1 681 tests unitaires + Testcontainers ITs + ArchUnit + JaCoCo gate 80 %), **déployable** (Helm charts pour 16 services, Skaffold, Jib, ingress NGINX), et **load-testable** (Gatling 3 avec trois scénarios pré-écrits). Il est dimensionné pour tourner sur **minikube** en projet portfolio mais reste l'expression complète d'un produit prêt pour la production.
+Le projet est **observable** (Loki + Grafana en cluster), **testé** (1 681 tests unitaires + Testcontainers ITs + ArchUnit + JaCoCo gate 80 %), **déployable** (Helm charts pour 16 services, Skaffold, Jib, ingress NGINX), et **load-testable** (Gatling 3 avec trois scénarios pré-écrits). Il est dimensionné pour tourner sur **minikube** en projet portfolio mais reste l'expression complète d'un produit prêt pour la production.
 
 ---
 
@@ -63,7 +63,7 @@ Le projet est **observable** (Prometheus + Loki + Tempo + Grafana en cluster), *
 | Keycloak | keycloak-admin-client | **26.0.4** |
 | MySQL driver | mysql-connector-j | 9.4.0 |
 | UUID | uuid-creator (f4b6a3) | 6.1.1 |
-| Observabilité | micrometer-registry-prometheus, micrometer-tracing-bridge-otel, opentelemetry-exporter-otlp, logstash-logback-encoder | BOM / 8.0 |
+| Observabilité | logstash-logback-encoder (JSON logs → Loki) | 8.0 |
 
 ### Front-end
 
@@ -126,10 +126,9 @@ Le projet est **observable** (Prometheus + Loki + Tempo + Grafana en cluster), *
 | **Helm** | 16 charts (`src/main/resources/k8s/helm/charts/`) |
 | **Skaffold** | Boucle dev k8s |
 | **Jib** | Build OCI sans Dockerfile |
-| **Jenkins** + Docker registry | CI/CD self-hosted (`docker-compose.jenkins.yml`) |
 | **GitHub Actions** | Build / test / Qodana |
 | **Ingress NGINX** | `cybertech.local` (front) + `api.cybertech.local` (back) + `keycloak.cybertech.local` + `grafana.cybertech.local` |
-| **Prometheus / Loki / Tempo / Grafana** | Observabilité full-stack en cluster |
+| **Loki / Grafana** | Logs centralisés en cluster |
 
 ---
 
@@ -171,9 +170,7 @@ flowchart LR
     end
 
     subgraph Observability["Observabilite"]
-        PM[Prometheus]
         LK[Loki]
-        TM[Tempo]
         GF[Grafana]
     end
 
@@ -195,12 +192,8 @@ flowchart LR
     API -->|SMTP| MP
     API -->|KV secrets| VL
 
-    API -->|metrics /actuator/prometheus| PM
     API -->|JSON logs| LK
-    API -->|OTLP traces| TM
-    PM --> GF
     LK --> GF
-    TM --> GF
 ```
 
 ### Couches du back-end
@@ -601,10 +594,8 @@ python app.py    # Flask sur :5000, charge unitary/toxic-bert (~600 MB RAM)
 | `mailpit-chart` | SMTP dev + UI |
 | `moderation-api-chart` | Flask + toxic-bert (200m / 1Gi → 1000m / 2Gi) |
 | `stripe-chart` | Stripe CLI listener |
-| `prometheus-chart` | Métriques scraping |
 | `loki-chart` | Logs JSON via logback-spring.xml |
-| `tempo-chart` | Traces OTLP |
-| `grafana-chart` | Dashboards + ingress `grafana.cybertech.local` |
+| `grafana-chart` | UI de consultation des logs + ingress `grafana.cybertech.local` |
 
 ```bash
 # Démarrer minikube + addons + déployer toute la stack
@@ -618,10 +609,6 @@ kubectl get pods -w
 ```
 
 Voir `src/main/resources/k8s/helm/README.md` pour le runbook minikube complet, et `K8S_ISSUES.md` pour les pièges connus (LocalStack persistence, ES 8 vm.max_map_count, moderation-api Werkzeug reloader, Stripe API key).
-
-### CI/CD Jenkins
-
-Pipeline en 11 stages dans `Jenkinsfile` (Checkout → Backend Compile → UTs → ITs `-Pintegration-test` → JaCoCo Gate → Frontend Build → Backend Image → Frontend Image → Push → Helm Lint → Deploy Staging avec gate manuel sur master). Setup Jenkins-on-docker via `docker-compose.jenkins.yml` (Jenkins LTS + JDK 26 + kubectl + helm + helmfile + registry:2).
 
 ---
 
@@ -638,7 +625,7 @@ Pipeline en 11 stages dans `Jenkinsfile` (Checkout → Backend Compile → UTs �
 - **Spring Batch** : `StockCleanupJob` (réservations expirées), `CybertechOrdersUpdateJob` (cancel + ship via `ShipOrderTransactionalDelegate` REQUIRES_NEW), `RedeliverFailedNotificationsJob`.
 - **AFTER_COMMIT events** partout où la cohérence transactionnelle prime sur l'immédiateté (notifications, shipping, ré-indexation ES, suppression Keycloak).
 - **Testcontainers** sur 5 datastores + ArchUnit pour pinner l'architecture + JaCoCo gate `haltOnFailure=true`.
-- **Observabilité full-stack** : Prometheus scrape `/actuator/prometheus`, JSON logs structurés vers Loki, traces OTLP vers Tempo, dashboards Grafana pré-provisionnés.
+- **Logs centralisés** : JSON logs structurés vers Loki, consultables via Grafana Explore.
 - **API versioning** par header `X-API-VERSION` (1.0 / 2.0 / 3.0), default 1.0.
 - **PCI-DSS / GDPR** : LogSafetyUtils (mask email + UUID + extract domain), runbooks dans `docs/runbooks/`, schéma right-to-erasure documenté.
 

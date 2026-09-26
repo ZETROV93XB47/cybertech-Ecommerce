@@ -26,5 +26,4 @@ public class OrderEventDto implements Serializable {
     private UserContactDto userContactDto;
     private ShippingProvider shippingProvider;
     private PaymentAttemptStatus paymentAttemptStatus;
-    //private Map<UUID, Integer> productsByQuantityMap;
 }

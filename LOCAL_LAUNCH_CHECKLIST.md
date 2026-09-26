@@ -129,10 +129,6 @@ The default `application.properties` is already wired for localhost, so launchin
 
 > Override mechanism: either edit `application.properties`, OR add VM args `-Dapplication.frontend.url=http://localhost:3000 -Dkeycloak.client.user.management.client.secret=...`, OR use `application-local.properties` with `spring.profiles.active=local`.
 
-### C.4 Properties you can IGNORE locally
-
-`management.otlp.tracing.endpoint=http://tempo:4318/v1/traces` and `management.otlp.metrics.export.url=http://prometheus:9090/...` will fail to resolve `tempo` / `prometheus` DNS in local mode. Spring Boot logs a warn and trace export silently drops. Backend still works; just noisy. Set `MANAGEMENT_OTLP_TRACING_ENDPOINT=` (empty) or `management.tracing.sampling.probability=0.0` to silence.
-
 ---
 
 ## Section D — Config frontend (`.env.local`)

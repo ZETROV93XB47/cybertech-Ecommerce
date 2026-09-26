@@ -28,6 +28,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -162,6 +163,40 @@ class PaymentServiceImpTest {
                     .hasMessageContaining("already completed");
 
             verify(paymentAttemptRepository, never()).save(any());
+            verifyNoInteractions(paymentStrategyFactory, processor);
+        }
+
+        @Test
+        @DisplayName("duplicate detection: existing PROCESSING attempt → throws PaymentAlreadyCompletedForThisOrderException")
+        void duplicate_inFlight_throws() {
+            final OrderEntity order = newOrder();
+            final String key = "idem-inflight";
+            final PaymentEntity existing = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.PROCESSING)
+                    .idempotencyKey(key)
+                    .build();
+            when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(existing));
+
+            assertThatThrownBy(() -> service.processPayment(order, PaymentType.VISA, tenEur(), key))
+                    .isInstanceOf(PaymentAlreadyCompletedForThisOrderException.class)
+                    .hasMessageContaining("in flight");
+
+            verify(paymentAttemptRepository, never()).save(any());
+            verifyNoInteractions(paymentStrategyFactory, processor);
+        }
+
+        @Test
+        @DisplayName("concurrent duplicate insert (DB unique constraint) → translated to PaymentAlreadyCompletedForThisOrderException")
+        void concurrentDuplicateInsert_translatedToDomainException() {
+            final OrderEntity order = newOrder();
+            final String key = "idem-race";
+            when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
+            when(paymentAttemptRepository.save(any(PaymentEntity.class)))
+                    .thenThrow(new DataIntegrityViolationException("uk_payment_idempotency"));
+
+            assertThatThrownBy(() -> service.processPayment(order, PaymentType.VISA, tenEur(), key))
+                    .isInstanceOf(PaymentAlreadyCompletedForThisOrderException.class);
+
             verifyNoInteractions(paymentStrategyFactory, processor);
         }
 
@@ -382,6 +417,51 @@ class PaymentServiceImpTest {
 
             verify(paymentAttemptRepository, never()).save(any());
             verifyNoInteractions(paymentStrategyFactory, processor, idempotencyKeyService);
+        }
+
+        @Test
+        @DisplayName("duplicate detection: a refund for this original payment already succeeded → throws")
+        void duplicate_refundAlreadySucceeded_throws() {
+            final OrderEntity order = newOrder();
+            final String originalKey = "idem-orig-dup-refund";
+            final String derivedRefundKey = "idem-orig-dup-refund-derived";
+            final PaymentEntity originalAttempt = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .idempotencyKey(originalKey).stripePaymentID("pi_x").build();
+            final PaymentEntity existingRefund = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .idempotencyKey(derivedRefundKey)
+                    .build();
+            when(paymentAttemptRepository.findByIdempotencyKey(originalKey))
+                    .thenReturn(Optional.of(originalAttempt));
+            when(idempotencyKeyService.generateKey(eq(order.getUuid().toString()), anyList()))
+                    .thenReturn(derivedRefundKey);
+            when(paymentAttemptRepository.findByIdempotencyKey(derivedRefundKey))
+                    .thenReturn(Optional.of(existingRefund));
+
+            assertThatThrownBy(() -> service.refund(order, PaymentType.VISA, tenEur(), originalKey))
+                    .isInstanceOf(PaymentAlreadyCompletedForThisOrderException.class);
+
+            verify(paymentAttemptRepository, never()).save(any());
+            verifyNoInteractions(paymentStrategyFactory, processor);
+        }
+
+        @Test
+        @DisplayName("concurrent duplicate refund insert (DB unique constraint) → translated to PaymentAlreadyCompletedForThisOrderException")
+        void concurrentDuplicateRefundInsert_translatedToDomainException() {
+            final OrderEntity order = newOrder();
+            final String originalKey = "idem-orig-race-refund";
+            final PaymentEntity originalAttempt = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .idempotencyKey(originalKey).stripePaymentID("pi_x").build();
+            when(paymentAttemptRepository.findByIdempotencyKey(originalKey))
+                    .thenReturn(Optional.of(originalAttempt));
+            when(idempotencyKeyService.generateKey(anyString(), anyList())).thenReturn("idem-refund-race");
+            when(paymentAttemptRepository.save(any(PaymentEntity.class)))
+                    .thenThrow(new DataIntegrityViolationException("uk_payment_idempotency"));
+
+            assertThatThrownBy(() -> service.refund(order, PaymentType.VISA, tenEur(), originalKey))
+                    .isInstanceOf(PaymentAlreadyCompletedForThisOrderException.class);
+
+            verifyNoInteractions(paymentStrategyFactory, processor);
         }
 
         @Test

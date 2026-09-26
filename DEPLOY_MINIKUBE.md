@@ -6,8 +6,7 @@ services, 4 observability services — all running in one minikube cluster.
 
 > **Audience:** you, on your laptop. Portfolio scope. ~6 GB RAM, ~4 vCPU.
 > Companion docs: [`src/main/resources/k8s/helm/README.md`](src/main/resources/k8s/helm/README.md)
-> (deep helm/probe reference), [`jenkins/README.md`](jenkins/README.md)
-> (CI pipeline), [`docs/runbooks/`](docs/runbooks/) (incident playbooks).
+> (deep helm/probe reference), [`docs/runbooks/`](docs/runbooks/) (incident playbooks).
 
 ---
 
@@ -179,7 +178,7 @@ What `helmfile apply` actually does, in order:
 | 3 | `keycloak`, `localstack`, `mailpit`, `moderation-api`, `stripe` | Auth + side services |
 | 4 | `cybertech-app` | Spring Boot backend |
 | 5 | `front-app` | Next.js frontend |
-| 6 | `prometheus`, `loki`, `tempo`, `grafana` | Observability |
+| 6 | `loki`, `grafana` | Observability (logs) |
 
 Watch the rollout:
 
@@ -234,62 +233,25 @@ curl -H "Authorization: Bearer $TOKEN" https://api.cybertech.local/api/v1/servic
 
 ## Step 7 — Access observability
 
-Grafana is the single pane of glass for metrics, logs, and traces.
+Grafana is the log-browsing UI, backed by Loki.
 
 ```
 URL:      https://grafana.cybertech.local
 Login:    admin / admin
 ```
 
-Pre-provisioned dashboards:
-- **cybertech-overview** — orders/sec, payment success rate, JVM heap, request rate, error rate
-- **cybertech-jvm** — heap, GC time, threads, classes loaded
-- **cybertech-stripe-webhooks** — webhook 4xx/5xx, dedup ledger, signature failures
-- **cybertech-traces-overview** — Tempo RED dashboard for the backend service
-
-Pre-provisioned datasources:
-- Prometheus → `http://prometheus:9090`
+Pre-provisioned datasource:
 - Loki → `http://loki:3100`
-- Tempo → `http://tempo:3200`
 
-Quick log query in Loki: `{app="cybertech-app"}` shows backend logs in JSON
-format with `traceId`, `spanId`, `userKeycloakId`, `orderUuid` MDC keys.
+Quick log query in Loki (Grafana → Explore): `{app="cybertech-app"}` shows
+backend logs in JSON format with `userKeycloakId`, `orderUuid` MDC keys.
 
-To find a trace in Tempo: copy the `traceId` from any log line, paste it into
-Tempo's search box.
-
----
-
-## Step 8 — Optional: Jenkins CI/CD pipeline
-
-Spin up a local Jenkins controller + Docker registry as a separate compose
-stack (does NOT run in minikube — uses your host Docker):
-
-```bash
-docker compose -f docker-compose.jenkins.yml up -d --build
-```
-
-Wait ~2 min for first boot, then:
-
-```
-Jenkins UI:          http://localhost:8090   (admin / admin via JCasC)
-Docker registry:     localhost:5000
-Registry UI browser: http://localhost:8091
-```
-
-Edit `jenkins/casc.yaml` to point the `cybertech-pipeline` job at your repo
-URL (placeholder is `REPLACE-ME`). Restart Jenkins:
-
-```bash
-docker compose -f docker-compose.jenkins.yml restart jenkins
-```
-
-Trigger the pipeline manually in the UI or wait for the SCM poller (every 5
-min). Full setup details: [`jenkins/README.md`](jenkins/README.md).
+(Metrics dashboards and distributed tracing — Prometheus, Tempo — were
+removed: unused.)
 
 ---
 
-## Step 9 — Optional: Run Gatling load tests
+## Step 8 — Optional: Run Gatling load tests
 
 The simulations live in `src/test/java/com/novatech/cybertech/gatling/` under
 the `loadtest` Maven profile.
@@ -309,7 +271,7 @@ Reports land in `target/gatling/`. Three simulations available — see
 
 ---
 
-## Step 10 — Troubleshooting
+## Step 9 — Troubleshooting
 
 ### Pod stuck `Pending`
 ```bash
@@ -358,7 +320,7 @@ minikube delete
 
 ---
 
-## Step 11 — Teardown
+## Step 10 — Teardown
 
 When you're done:
 
@@ -373,12 +335,6 @@ minikube stop
 minikube delete --all
 ```
 
-If you also brought up Jenkins:
-
-```bash
-docker compose -f docker-compose.jenkins.yml down -v
-```
-
 ---
 
 ## URL cheat sheet
@@ -391,8 +347,6 @@ docker compose -f docker-compose.jenkins.yml down -v
 | Keycloak | `https://keycloak.cybertech.local` | admin / admin |
 | Grafana | `https://grafana.cybertech.local` | admin / admin |
 | Mailpit (in cluster) | `http://mailpit:8025` (port-forward) | none |
-| Jenkins | `http://localhost:8090` | admin / admin |
-| Docker Registry UI | `http://localhost:8091` | none |
 
 For port-forwarding Mailpit so you can read captured emails in a browser:
 
