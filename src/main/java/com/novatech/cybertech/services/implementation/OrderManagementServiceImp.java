@@ -1,7 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
 
-import com.github.f4b6a3.uuid.UuidCreator;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
 import com.novatech.cybertech.dto.data.UserContactDto;
@@ -12,7 +11,6 @@ import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
-import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.entities.valueObjects.Address;
@@ -25,14 +23,7 @@ import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
-import com.novatech.cybertech.services.core.CartService;
-import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
-import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
-import com.novatech.cybertech.services.core.OrderCreationTransactionalDelegate;
-import com.novatech.cybertech.services.core.OrderManagementService;
-import com.novatech.cybertech.services.core.OrderPriceCalculationService;
-import com.novatech.cybertech.services.core.PaymentService;
-import com.novatech.cybertech.services.core.StockService;
+import com.novatech.cybertech.services.core.*;
 import com.novatech.cybertech.utils.ControllerSecurityUtils;
 import com.novatech.cybertech.utils.OrderPaymentUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
@@ -92,7 +83,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final OrderCreationTransactionalDelegate orderCreationTransactionalDelegate;
 
 
-    //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
     @Transactional(readOnly = true)
     public Collection<OrderResponseDto> getAll() {
         final List<OrderEntity> orders = orderRepository.findAll();
@@ -129,8 +119,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * @param uuid       order UUID to fetch.
      * @param keycloakId caller's Keycloak subject; must equal the order's owner (USER role only).
      * @return the order DTO when ownership matches (USER) or unconditionally (ADMIN).
-     * @throws OrderNotFoundException             when no order matches {@code uuid}.
-     * @throws OrderDoesntBelongsToUserException  when a non-admin caller is not the order's initiator.
+     * @throws OrderNotFoundException            when no order matches {@code uuid}.
+     * @throws OrderDoesntBelongsToUserException when a non-admin caller is not the order's initiator.
      */
     @Override
     @Transactional(readOnly = true)
@@ -155,8 +145,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private void assertCallerOwnsOrIsAdmin(final OrderEntity order, final String keycloakId, final UUID uuid) {
         if (!ControllerSecurityUtils.isCurrentCallerAdmin()
                 && (order.getUserEntity() == null
-                    || order.getUserEntity().getKeycloakId() == null
-                    || !order.getUserEntity().getKeycloakId().equals(keycloakId))) {
+                || order.getUserEntity().getKeycloakId() == null
+                || !order.getUserEntity().getKeycloakId().equals(keycloakId))) {
             throw new OrderDoesntBelongsToUserException("Order " + uuid + " does not belong to the current user");
         }
     }
@@ -208,10 +198,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
      *
      * @param uuid order UUID to delete.
      * @param jwt  caller identity; {@code sub} claim must be non-null.
-     * @throws OrderNotFoundException              when no order matches {@code uuid}.
-     * @throws OrderDoesntBelongsToUserException   when the caller is not the order's initiator.
-     * @throws CannotCancelOrderException          when the order is not in a deletable state.
-     * @throws UserNotFoundException               when the JWT subject is missing.
+     * @throws OrderNotFoundException            when no order matches {@code uuid}.
+     * @throws OrderDoesntBelongsToUserException when the caller is not the order's initiator.
+     * @throws CannotCancelOrderException        when the order is not in a deletable state.
+     * @throws UserNotFoundException             when the JWT subject is missing.
      */
     @Override
     @Transactional
@@ -247,10 +237,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
      *
      * @param dto update payload (new items, new shipping, new total).
      * @param jwt caller identity; {@code sub} claim must be non-null.
-     * @throws OrderNotFoundException             when no order matches {@code dto.uuid}.
-     * @throws OrderDoesntBelongsToUserException  when the caller is not the order's initiator.
-     * @throws OrderAlreadyShippedException       when the order has already shipped.
-     * @throws UserNotFoundException              when the JWT subject is missing.
+     * @throws OrderNotFoundException            when no order matches {@code dto.uuid}.
+     * @throws OrderDoesntBelongsToUserException when the caller is not the order's initiator.
+     * @throws OrderAlreadyShippedException      when the order has already shipped.
+     * @throws UserNotFoundException             when the JWT subject is missing.
      */
     @Override
     @Transactional
@@ -422,14 +412,14 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * </ol>
      *
      * @param orderUuid target order UUID.
-     * @param jwt      caller identity; {@code sub} claim must be non-null.
+     * @param jwt       caller identity; {@code sub} claim must be non-null.
      * @return the order mapped to {@link OrderResponseDto}.
-     * @throws OrderNotFoundException              when no order matches {@code orderUuid}.
-     * @throws OrderDoesntBelongsToUserException   when the caller is not the order's initiator.
-     * @throws FailedRetryingPayment               when the order is not in a retryable state.
-     * @throws NoPreviousPaymentAttemptException   when there is no prior attempt to copy the
-     *                                             payment type from.
-     * @throws UserNotFoundException               when the JWT subject is missing.
+     * @throws OrderNotFoundException            when no order matches {@code orderUuid}.
+     * @throws OrderDoesntBelongsToUserException when the caller is not the order's initiator.
+     * @throws FailedRetryingPayment             when the order is not in a retryable state.
+     * @throws NoPreviousPaymentAttemptException when there is no prior attempt to copy the
+     *                                           payment type from.
+     * @throws UserNotFoundException             when the JWT subject is missing.
      */
     @Override
     @Transactional
@@ -453,7 +443,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final boolean paymentAlreadySettled = order.getPaymentAttempts().stream()
                 .anyMatch(p -> p.getTransactionType() == TransactionType.PAYMENT
                         && (p.getStatus() == PaymentAttemptStatus.SUCCESS
-                            || p.getStatus() == PaymentAttemptStatus.PROCESSING));
+                        || p.getStatus() == PaymentAttemptStatus.PROCESSING));
         if (paymentAlreadySettled) {
             throw new PaymentAlreadyCompletedForThisOrderException(
                     "A payment already succeeded or is in flight for order " + orderUuid);
@@ -553,14 +543,14 @@ public class OrderManagementServiceImp implements OrderManagementService {
                     idempotencyKey
             );
 
-            log.info("payment :: {}", attempt);
             resultingStatus = attempt.getStatus();
 
             if (resultingStatus == PaymentAttemptStatus.FAILED) {
                 log.warn("Payment FAILED for order {} — releasing stock reservation.", orderUuid);
                 stockService.releaseStock(orderUuid);
             }
-        } catch (final PaymentProcessingException e) {
+        }
+        catch (final PaymentProcessingException e) {
             // Stripe infrastructure failure (network outage past the @Retry budget, circuit
             // breaker OPEN) rather than a business decline — the order is already committed
             // (see above). Degrade to the same outcome a business decline already gets: release
@@ -713,8 +703,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
 
-
-
     private BigDecimal processOrderTotalPrice(final List<OrderItemCreateRequestDto> orderItemCreateRequestDto, final List<ProductEntity> productEntities) {
 
         final Map<UUID, ProductEntity> productsByUuid = productEntities.stream().collect(Collectors.toMap(ProductEntity::getUuid, product -> product));
@@ -812,11 +800,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
                                                   final PaymentType paymentType, final String idempotencyKey) {
         order.setStatus(OrderStatus.AWAITING_PAYMENT);
         orderRepository.save(order);
+
         final PaymentEntity attempt = paymentService.processPayment(order, paymentType, Money.of(difference), idempotencyKey);
-        if (OrderPaymentUtils.isRejected(attempt)) {
-            throw new PaymentFailedException(
-                    "The additional payment for order " + order.getUuid() + " was declined — the order was left unchanged");
-        }
+        if (OrderPaymentUtils.isRejected(attempt)) throw new PaymentFailedException("The additional payment for order " + order.getUuid() + " was declined — the order was left unchanged");
+
         return attempt.getStatus();
     }
 

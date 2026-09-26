@@ -56,13 +56,11 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         final CartEntity cart = user.getCartEntity();
-        if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) {
-            throw new CartNotFoundException("Cannot place order: Cart is empty");
-        }
+        if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) throw new CartNotFoundException("Cannot place order: Cart is empty");
+
         final List<CartItemEntity> cartItems = cart.getCartItems();
 
-        final Map<UUID, Integer> quantities = cartItems.stream()
-                .collect(Collectors.toMap(item -> item.getProductEntity().getUuid(), CartItemEntity::getQuantity));
+        final Map<UUID, Integer> quantities = cartItems.stream().collect(Collectors.toMap(item -> item.getProductEntity().getUuid(), CartItemEntity::getQuantity));
 
         OrderManagementServiceImp.validateUserBeforeProcessingPayment(orderValidatorChain, user);
 

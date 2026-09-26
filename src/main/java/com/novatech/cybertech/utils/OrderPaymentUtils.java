@@ -35,8 +35,7 @@ public final class OrderPaymentUtils {
 
     /** {@code true} for a REFUND row Stripe has accepted (succeeded or still pending). */
     public static boolean isEffectiveRefund(final PaymentEntity attempt) {
-        return attempt.getTransactionType() == TransactionType.REFUND
-                && (attempt.getStatus() == PaymentAttemptStatus.SUCCESS || attempt.getStatus() == PaymentAttemptStatus.PROCESSING);
+        return attempt.getTransactionType() == TransactionType.REFUND && (attempt.getStatus() == PaymentAttemptStatus.SUCCESS || attempt.getStatus() == PaymentAttemptStatus.PROCESSING);
     }
 
     /** {@code true} for a PAYMENT row whose money was actually captured. */
