@@ -23,6 +23,7 @@ import java.util.UUID;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.RESERVATION_KEY_PREFIX;
 import static com.novatech.cybertech.entities.enums.ReservationStatus.ACTIVE;
 import static com.novatech.cybertech.entities.enums.ReservationStatus.COMMITTED;
+import static com.novatech.cybertech.entities.enums.ReservationStatus.EXPIRED;
 import static com.novatech.cybertech.entities.enums.ReservationStatus.RELEASED;
 
 
@@ -188,6 +189,31 @@ public class StockServiceImp implements StockService {
     /**
      * {@inheritDoc}
      *
+     * <p>Rows are read with a row lock ({@link StockRepository#lockByOrderUuid}) so two handlers of
+     * the same expiry (one per app instance) can't both give the units back. Each {@code ACTIVE}
+     * row is flipped to {@code EXPIRED} before the final bulk delete, so a same-transaction re-read
+     * sees the terminal state (same convention as {@link #releaseStock(UUID)}).
+     */
+    @Override
+    @Transactional
+    public void expireReservation(UUID orderUuid) {
+
+        final List<StockEntity> reservations = stockRepository.lockByOrderUuid(orderUuid);
+
+        if (reservations.isEmpty()) return;
+
+        reservations.stream()
+                .filter(r -> r.getReservationStatus() == ACTIVE)
+                .forEach(this::updateStockForExpiry);
+
+        stockRepository.deleteByOrderUuid(orderUuid);
+
+        log.info("Expired stock reservation released for order {}", orderUuid);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
      * <p>Same DB-level work as calling {@link #releaseStock(UUID)} then {@link #reserveStock}
      * back to back, but the Redis sentinel is touched exactly ONCE, at the very end, only after
      * every DB write (the release AND every new per-product reservation) has succeeded. This
@@ -252,6 +278,21 @@ public class StockServiceImp implements StockService {
         }
         productRepository.save(product);
         r.setReservationStatus(RELEASED);
+        stockRepository.save(r);
+    }
+
+    /**
+     * Gives an expired, never-committed reservation's units back to the available stock
+     * ({@code reservedStock -= qty}; {@code stock} was never decremented) and flips the row to
+     * {@link com.novatech.cybertech.entities.enums.ReservationStatus#EXPIRED}. Takes the product row
+     * lock like every other stock mutation.
+     */
+    private void updateStockForExpiry(StockEntity r) {
+        final ProductEntity product = productRepository.lockByUuid(r.getProductUuid())
+                .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + r.getProductUuid() + " found"));
+        product.setReservedStock(product.getReservedStock() - r.getQuantity());
+        productRepository.save(product);
+        r.setReservationStatus(EXPIRED);
         stockRepository.save(r);
     }
 

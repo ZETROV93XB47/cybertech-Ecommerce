@@ -445,6 +445,73 @@ class StockServiceImpTest {
     }
 
     // ---------------------------------------------------------------------
+    // expireReservation (Redis TTL fired, payment never confirmed)
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("expireReservation: ACTIVE rows give their units back to reservedStock, rows flipped EXPIRED then deleted, Redis untouched")
+    void expireReservation_activeRows_releasesReservedStockAndDeletes() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        ProductEntity product = productWithStock(productUuid, 10, 5);
+        StockEntity row = reservation(orderUuid, productUuid, 3);
+        when(stockRepository.lockByOrderUuid(orderUuid)).thenReturn(List.of(row));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.expireReservation(orderUuid);
+
+        assertThat(product.getReservedStock()).isEqualTo(2);
+        assertThat(product.getStock()).isEqualTo(10);
+        assertThat(row.getReservationStatus()).isEqualTo(ReservationStatus.EXPIRED);
+        final InOrder ord = inOrder(productRepository, stockRepository);
+        ord.verify(productRepository).save(product);
+        ord.verify(stockRepository).save(row);
+        ord.verify(stockRepository).deleteByOrderUuid(orderUuid);
+        // The key already expired — nothing to delete or refresh in Redis.
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    @DisplayName("expireReservation: rows already COMMITTED/RELEASED by a competing path are not given back again")
+    void expireReservation_nonActiveRows_notReleasedTwice() {
+        UUID orderUuid = UUID.randomUUID();
+        StockEntity committed = reservation(orderUuid, UUID.randomUUID(), 2);
+        committed.setReservationStatus(ReservationStatus.COMMITTED);
+        when(stockRepository.lockByOrderUuid(orderUuid)).thenReturn(List.of(committed));
+
+        service.expireReservation(orderUuid);
+
+        verifyNoInteractions(productRepository);
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+    }
+
+    @Test
+    @DisplayName("expireReservation: nothing left (second handler after the first one deleted the rows) -> no-op")
+    void expireReservation_noRows_isNoOp() {
+        UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.lockByOrderUuid(orderUuid)).thenReturn(List.of());
+
+        service.expireReservation(orderUuid);
+
+        verifyNoInteractions(productRepository);
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+    }
+
+    @Test
+    @DisplayName("expireReservation: product missing -> ProductNotFoundException (whole transaction rolls back)")
+    void expireReservation_productMissing_throws() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.lockByOrderUuid(orderUuid)).thenReturn(List.of(reservation(orderUuid, productUuid, 1)));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.expireReservation(orderUuid))
+                .isInstanceOf(ProductNotFoundException.class)
+                .hasMessageContaining(productUuid.toString());
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+    }
+
+    // ---------------------------------------------------------------------
     // releaseStock
     // ---------------------------------------------------------------------
 

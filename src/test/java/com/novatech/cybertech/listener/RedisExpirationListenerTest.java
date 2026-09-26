@@ -1,51 +1,42 @@
 package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.entities.OrderEntity;
-import com.novatech.cybertech.entities.ProductEntity;
-import com.novatech.cybertech.entities.StockEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.entities.enums.ReservationStatus;
-import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
-import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
-import com.novatech.cybertech.fixtures.builders.StockEntityBuilder;
 import com.novatech.cybertech.repositories.OrderRepository;
-import com.novatech.cybertech.repositories.ProductRepository;
-import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.StockService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.connection.DefaultMessage;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.RESERVATION_KEY_PREFIX;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * The listener only routes: all stock work lives behind {@link StockService}'s transactional proxy
+ * (see the class javadoc for why). The DB behaviour of an expiry is covered by
+ * {@code StockServiceImpTest} (expireReservation) and end-to-end by {@code ReservationExpiryIT}.
+ */
 @ExtendWith(MockitoExtension.class)
 class RedisExpirationListenerTest {
 
     @Mock
     private RedisMessageListenerContainer container;
-    @Mock
-    private StockRepository stockRepository;
-    @Mock
-    private ProductRepository productRepository;
     @Mock
     private OrderRepository orderRepository;
     @Mock
@@ -55,7 +46,7 @@ class RedisExpirationListenerTest {
 
     @BeforeEach
     void setUp() {
-        listener = new RedisExpirationListener(container, stockRepository, productRepository, orderRepository, stockService);
+        listener = new RedisExpirationListener(container, orderRepository, stockService);
     }
 
     private static OrderEntity orderWithStatus(UUID orderUuid, OrderStatus status) {
@@ -67,98 +58,25 @@ class RedisExpirationListenerTest {
     }
 
     @Test
-    void onMessageHappyPath_validKey_shouldExpireAndReleaseStock() {
+    void onMessage_unpaidOrder_delegatesToExpireReservation() {
         UUID orderUuid = UUID.randomUUID();
-        UUID productUuid = UUID.randomUUID();
-        StockEntity reservation = StockEntityBuilder.aValidStockBuilder()
-                .orderUuid(orderUuid).productUuid(productUuid).quantity(2).build();
-        ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
-                .uuid(productUuid).reservedStock(5).build();
-
         when(orderRepository.findByUuid(orderUuid))
                 .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
-        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(reservation));
-        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
 
         listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + orderUuid), null);
 
-        ArgumentCaptor<StockEntity> stockCap = ArgumentCaptor.forClass(StockEntity.class);
-        verify(stockRepository).save(stockCap.capture());
-        assertThat(stockCap.getValue().getReservationStatus()).isEqualTo(ReservationStatus.EXPIRED);
-
-        ArgumentCaptor<ProductEntity> prodCap = ArgumentCaptor.forClass(ProductEntity.class);
-        verify(productRepository).save(prodCap.capture());
-        assertThat(prodCap.getValue().getReservedStock()).isEqualTo(3);
-
-        verify(stockRepository).deleteByOrderUuid(orderUuid);
+        verify(stockService).expireReservation(orderUuid);
+        verify(stockService, never()).commitStock(any());
     }
 
     @Test
-    void onMessage_emptyReservations_shouldShortCircuitWithoutDelete() {
+    void onMessage_unknownOrder_stillExpiresTheReservation() {
         UUID orderUuid = UUID.randomUUID();
-        when(orderRepository.findByUuid(orderUuid))
-                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
-        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of());
+        when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.empty());
 
         listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + orderUuid), null);
 
-        verify(stockRepository).findByOrderUuid(orderUuid);
-        verify(stockRepository, never()).save(any());
-        verify(stockRepository, never()).deleteByOrderUuid(any());
-        verifyNoInteractions(productRepository);
-        verifyNoInteractions(stockService);
-    }
-
-    @Test
-    void onMessage_inactiveReservation_shouldBeSkippedButStillDelete() {
-        UUID orderUuid = UUID.randomUUID();
-        StockEntity inactive = StockEntityBuilder.aValidStockBuilder()
-                .orderUuid(orderUuid)
-                .reservationStatus(ReservationStatus.RELEASED)
-                .build();
-        when(orderRepository.findByUuid(orderUuid))
-                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
-        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(inactive));
-
-        listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + orderUuid), null);
-
-        verify(stockRepository, never()).save(any());
-        verifyNoInteractions(productRepository);
-        verify(stockRepository).deleteByOrderUuid(orderUuid);
-        verifyNoInteractions(stockService);
-    }
-
-    @Test
-    void onMessage_wrongPrefixKey_shouldReturnSilently() {
-        listener.onMessage(messageOf("some:other:key:" + UUID.randomUUID()), null);
-
-        verifyNoInteractions(stockRepository, productRepository, orderRepository, stockService);
-    }
-
-    @Test
-    void onMessage_productMissingOnReservedRow_shouldThrowProductNotFound() {
-        UUID orderUuid = UUID.randomUUID();
-        UUID productUuid = UUID.randomUUID();
-        StockEntity reservation = StockEntityBuilder.aValidStockBuilder()
-                .orderUuid(orderUuid).productUuid(productUuid).quantity(1).build();
-
-        when(orderRepository.findByUuid(orderUuid))
-                .thenReturn(Optional.of(orderWithStatus(orderUuid, OrderStatus.AWAITING_PAYMENT)));
-        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(reservation));
-        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + orderUuid), null))
-                .isInstanceOf(ProductNotFoundException.class)
-                .hasMessageContaining(productUuid.toString());
-    }
-
-    @Test
-    void bug121_malformedUuidAfterPrefix_shouldNotPropagateIllegalArgumentException() {
-        // Malformed UUID tails are now caught, logged at WARN, and short-circuit the
-        // handler instead of propagating an IllegalArgumentException out to the listener container.
-        listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + "not-a-uuid"), null);
-
-        verifyNoInteractions(stockRepository, productRepository, orderRepository, stockService);
+        verify(stockService).expireReservation(orderUuid);
     }
 
     @Test
@@ -173,6 +91,30 @@ class RedisExpirationListenerTest {
         listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + orderUuid), null);
 
         verify(stockService).commitStock(orderUuid);
-        verifyNoInteractions(stockRepository, productRepository);
+        verify(stockService, never()).expireReservation(any());
+    }
+
+    @Test
+    void onMessage_wrongPrefixKey_shouldReturnSilently() {
+        listener.onMessage(messageOf("some:other:key:" + UUID.randomUUID()), null);
+
+        verifyNoInteractions(orderRepository, stockService);
+    }
+
+    @Test
+    void bug121_malformedUuidAfterPrefix_shouldNotPropagateIllegalArgumentException() {
+        // Malformed UUID tails are caught, logged at WARN, and short-circuit the handler instead of
+        // propagating an IllegalArgumentException out to the listener container.
+        listener.onMessage(messageOf(RESERVATION_KEY_PREFIX + "not-a-uuid"), null);
+
+        verifyNoInteractions(orderRepository, stockService);
+    }
+
+    @Test
+    void onMessage_isNotAnnotatedTransactional() throws NoSuchMethodException {
+        // The container calls the raw instance, never the Spring proxy: a @Transactional here would
+        // be silently ignored and give a false sense of safety. Transactions belong to StockService.
+        assertThat(RedisExpirationListener.class.getMethod("onMessage", Message.class, byte[].class)
+                .getAnnotation(Transactional.class)).isNull();
     }
 }

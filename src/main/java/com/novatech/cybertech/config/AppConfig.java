@@ -4,14 +4,10 @@ import com.novatech.cybertech.annotation.*;
 import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.listener.ProductCategorySchemaCacheInvalidationListener;
 import com.novatech.cybertech.listener.RedisExpirationListener;
-import com.novatech.cybertech.repositories.OrderRepository;
-import com.novatech.cybertech.repositories.ProductRepository;
-import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.AbstractNotification;
 import com.novatech.cybertech.services.core.NotificationProcessor;
 import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.ShippingProviderService;
-import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import com.novatech.cybertech.validator.implementation.ActiveUserValidator;
@@ -34,7 +30,6 @@ import org.springframework.core.task.TaskDecorator;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.ChannelTopic;
-import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -155,13 +150,12 @@ public class AppConfig {
      * injecting {@link RedisExpirationListener}) — seen during an accidental 4.1.1 bump.
      */
     @Bean
-    public RedisMessageListenerContainer redisMessageListenerContainer(RedisConnectionFactory connectionFactory, StockRepository reservationRepository, ProductRepository productRepository,
-                                                          OrderRepository orderRepository, StockService stockService,
-                                                          ProductCategorySchemaCacheInvalidationListener productCategorySchemaCacheInvalidationListener) {
+    public RedisMessageListenerContainer redisMessageListenerContainer(RedisConnectionFactory connectionFactory,
+                                                                       ProductCategorySchemaCacheInvalidationListener productCategorySchemaCacheInvalidationListener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        // Listen to EXPIRED events
-        container.addMessageListener(new RedisExpirationListener(container, reservationRepository, productRepository, orderRepository, stockService), new PatternTopic("__keyevent@*__:expired"));
+        // Reservation-expiry events: NOT registered here — RedisExpirationListener (a @Component)
+        // subscribes itself on startup. Adding it here too made every expiry run twice.
         // Cross-instance product-category-schema cache invalidation (see ProductCategorySchemaServiceImp, the publisher)
         container.addMessageListener(productCategorySchemaCacheInvalidationListener, new ChannelTopic(PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL));
 
