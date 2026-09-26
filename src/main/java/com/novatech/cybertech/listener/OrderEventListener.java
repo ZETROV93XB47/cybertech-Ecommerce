@@ -54,9 +54,16 @@ public class OrderEventListener {
      * <p>WHY {@link TransactionalEventListener} with {@link TransactionPhase#AFTER_COMMIT}: the
      * confirmation MUST only be sent once the order's row is durably persisted. A pre-commit
      * fire-and-forget would risk telling the user about an order that ultimately rolled back.
+     *
+     * <p>WHY {@code fallbackExecution = true}: {@code placeOrder} is deliberately NOT
+     * {@code @Transactional} — the order is committed by {@code OrderCreationTransactionalDelegate}
+     * before the payment attempt, and the event is published afterwards with no transaction
+     * active. Without the fallback, Spring discards a {@link TransactionalEventListener} event
+     * published outside a transaction, and no confirmation was ever sent. Running immediately
+     * in that case is safe: the order row is already durably committed.
      */
     @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onOrderCreated(final OrderCreatedEvent event) {
         log.info("In order created event listener");
 

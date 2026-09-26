@@ -6,6 +6,7 @@ import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.exceptions.PaymentProcessingException;
 import com.novatech.cybertech.services.implementation.StripePaymentAttemptProcessor;
+import com.stripe.exception.ApiConnectionException;
 import com.stripe.exception.CardException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
@@ -165,10 +166,25 @@ class StripePaymentAttemptProcessorTest {
         }
 
         @Test
-        @DisplayName("StripeException is wrapped in PaymentProcessingException with the order UUID in the message")
+        @DisplayName("card decline (CardException) is a business outcome: returns FAILED instead of throwing")
+        void cardDecline_returnsFailed_doesNotThrow() {
+            try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
+                piMock.when(() -> PaymentIntent.create(
+                                any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
+                        .thenThrow(stripeError("Card declined", "card_declined"));
+
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+
+                assertThat(result.status()).isEqualTo(PaymentAttemptStatus.FAILED);
+                assertThat(result.stripePaymentID()).isNull();
+            }
+        }
+
+        @Test
+        @DisplayName("non-card StripeException (network/API outage) is wrapped in PaymentProcessingException with the order UUID in the message")
         void wrapsStripeExceptionInPaymentProcessingException() {
             try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
-                StripeException boom = stripeError("Card declined", "card_declined");
+                StripeException boom = new ApiConnectionException("Stripe unreachable");
                 piMock.when(() -> PaymentIntent.create(
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenThrow(boom);

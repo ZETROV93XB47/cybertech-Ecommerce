@@ -127,6 +127,18 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
         // Reserve stock (throws -> this transaction rolls back, nothing committed).
         stockService.reserveStock(orderUuid, quantities);
 
+        // The cart has now become this order: empty it in the SAME transaction, so it commits
+        // (or rolls back, e.g. on NotEnoughStockException above) together with the order. It is
+        // no longer cleared by the payment-success webhook, which also fired for an updateOrder
+        // complement and wiped whatever unrelated items the customer had put in their cart since.
+        // Emptying it here also means a second placeOrder racing this one (double click) finds
+        // no items to order: orphanRemoval deletes these rows at commit, and the loser's own
+        // delete of the same rows fails instead of creating and charging a duplicate order.
+        // A declined payment leaves the order retryable (retryPayment/updateOrder work off the
+        // order's own items, not the cart). The Redis cart cache is refreshed by the caller once
+        // this transaction has committed — see OrderManagementServiceImp#placeOrder.
+        cart.getCartItems().clear();
+
         return savedOrder;
     }
 }

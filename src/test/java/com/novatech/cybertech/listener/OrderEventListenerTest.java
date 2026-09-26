@@ -69,6 +69,10 @@ class OrderEventListenerTest {
         TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
         assertThat(ann).isNotNull();
         assertThat(ann.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
+        // placeOrder publishes OrderCreatedEvent OUTSIDE any transaction (order creation commits
+        // on OrderCreationTransactionalDelegate first) — without fallbackExecution Spring silently
+        // drops the event and the confirmation email is never sent.
+        assertThat(ann.fallbackExecution()).isTrue();
     }
 
     @Test

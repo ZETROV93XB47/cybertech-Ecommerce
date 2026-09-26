@@ -9,7 +9,6 @@ import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
 import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
-import com.novatech.cybertech.services.core.CartService;
 import com.novatech.cybertech.services.core.OrderPaymentConfirmationTransactionalDelegate;
 import com.novatech.cybertech.services.core.StockService;
 import lombok.RequiredArgsConstructor;
@@ -59,13 +58,14 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
             EnumSet.of(OrderStatus.PAID, OrderStatus.AWAITING_SHIPPING, OrderStatus.SHIPPED,
                     OrderStatus.DELIVERED, OrderStatus.RETURNED, OrderStatus.CANCELED);
 
-    private final CartService cartService;
     private final StockService stockService;
     private final OrderRepository orderRepository;
 
     /**
-     * Commits the reserved stock, marks the order as {@link OrderStatus#PAID} and clears the
-     * user's cart on a successful Stripe payment.
+     * Commits the reserved stock and marks the order as {@link OrderStatus#PAID} on a successful
+     * Stripe payment. The cart is NOT touched here: it is emptied when the order is created
+     * (see {@code OrderCreationTransactionalDelegateImp}) — clearing it on every payment success
+     * also wiped unrelated items after an {@code updateOrder} complement payment.
      *
      * @throws PaymentNotFoundException when the {@code order_uuid} metadata is missing
      *                                  or no matching order exists
@@ -85,8 +85,6 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
 
         order.setStatus(OrderStatus.PAID);
         orderRepository.save(order);
-
-        cartService.clearCart(order.getUserEntity().getKeycloakId());
 
         // Stock/Redis-touching call LAST — see the interface javadoc for why.
         stockService.commitStock(order.getUuid());

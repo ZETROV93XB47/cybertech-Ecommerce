@@ -18,7 +18,6 @@ import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.PaymentDtoFixtures;
 import com.novatech.cybertech.repositories.OrderRepository;
-import com.novatech.cybertech.services.core.CartService;
 import com.novatech.cybertech.services.core.StockService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,15 +47,13 @@ import static org.mockito.Mockito.when;
  *
  * <p>Migrated from the old {@code OrderPaymentConfirmationEventListenerTest} (the business logic
  * moved here — see the delegate's javadoc), plus new ordering tests for the fix: the order-status
- * save (and cart clear, for a success) must happen BEFORE the stock-service call, so an
+ * save must happen BEFORE the stock-service call, so an
  * {@code OptimisticLockingFailureException} on the save can't leave a deleted Redis TTL sentinel
  * behind for a reservation the rolled-back transaction still considers live.
  */
 @ExtendWith(MockitoExtension.class)
 class OrderPaymentConfirmationTransactionalDelegateImpTest {
 
-    @Mock
-    private CartService cartService;
     @Mock
     private StockService stockService;
     @Mock
@@ -92,7 +89,7 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
     // ---------- happy paths ----------
 
     @Test
-    void handlePaymentSuccessShouldCommitStockMarkPaidAndClearCart() {
+    void handlePaymentSuccessShouldCommitStockAndMarkPaid() {
         final UUID uuid = UUID.randomUUID();
         final OrderEntity order = orderWithKeycloakId(uuid, "kc-1");
         when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
@@ -103,22 +100,23 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
         verify(orderRepository).save(cap.capture());
         assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.PAID);
-        verify(cartService).clearCart("kc-1");
+        // No cart interaction any more: the cart is emptied at order creation (the delegate no
+        // longer even depends on CartService), so an updateOrder complement payment can't wipe
+        // unrelated items the customer added to their cart since.
     }
 
     @Test
-    void handlePaymentSuccess_savesAndClearsCartBeforeTouchingStock() {
-        // The fix: order.save + cartService.clearCart (both DB-transactional) must happen BEFORE
-        // stockService.commitStock (whose Redis write is NOT part of this transaction).
+    void handlePaymentSuccess_savesBeforeTouchingStock() {
+        // The fix: order.save (DB-transactional) must happen BEFORE stockService.commitStock
+        // (whose Redis write is NOT part of this transaction).
         final UUID uuid = UUID.randomUUID();
         final OrderEntity order = orderWithKeycloakId(uuid, "kc-order");
         when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
 
         delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
 
-        final InOrder ord = inOrder(orderRepository, cartService, stockService);
+        final InOrder ord = inOrder(orderRepository, stockService);
         ord.verify(orderRepository).save(any(OrderEntity.class));
-        ord.verify(cartService).clearCart("kc-order");
         ord.verify(stockService).commitStock(uuid);
     }
 
@@ -130,7 +128,7 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         assertThatThrownBy(() -> delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid))))
                 .isInstanceOf(PaymentNotFoundException.class)
                 .hasMessageContaining(uuid.toString());
-        verifyNoInteractions(stockService, cartService);
+        verifyNoInteractions(stockService);
     }
 
     @Test
@@ -145,7 +143,6 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
         verify(orderRepository).save(cap.capture());
         assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
-        verifyNoInteractions(cartService);
     }
 
     @Test
@@ -180,7 +177,6 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
         verify(orderRepository).save(cap.capture());
         assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.REFUNDED);
-        verifyNoInteractions(cartService);
     }
 
     @Test
@@ -221,7 +217,6 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         verify(stockService, never()).releaseStock(any());
         verify(orderRepository, never()).save(any());
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
-        verifyNoInteractions(cartService);
     }
 
     // ---------- status guard: stale / out-of-order webhooks must not regress the order ----------
@@ -238,7 +233,7 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
         verify(orderRepository, never()).save(any());
-        verifyNoInteractions(stockService, cartService);
+        verifyNoInteractions(stockService);
     }
 
     @Test
@@ -266,7 +261,7 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
         verify(orderRepository, never()).save(any());
-        verifyNoInteractions(stockService, cartService);
+        verifyNoInteractions(stockService);
     }
 
     @Test
@@ -279,7 +274,7 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.REFUNDED);
         verify(orderRepository, never()).save(any());
-        verifyNoInteractions(stockService, cartService);
+        verifyNoInteractions(stockService);
     }
 
     @Test
@@ -303,7 +298,7 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         assertThatThrownBy(() -> delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(stripe)))
                 .isInstanceOf(PaymentNotFoundException.class)
                 .hasMessageContaining("order_uuid");
-        verifyNoInteractions(stockService, cartService, orderRepository);
+        verifyNoInteractions(stockService, orderRepository);
     }
 
     @Test
@@ -344,6 +339,6 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         assertThatThrownBy(() -> delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid))))
                 .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
 
-        verifyNoInteractions(stockService, cartService);
+        verifyNoInteractions(stockService);
     }
 }

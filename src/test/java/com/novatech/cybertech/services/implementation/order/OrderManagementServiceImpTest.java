@@ -36,6 +36,7 @@ import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.PaymentAlreadyCompletedForThisOrderException;
+import com.novatech.cybertech.exceptions.PaymentFailedException;
 import com.novatech.cybertech.exceptions.PaymentProcessingException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.exceptions.OrderNotFundedException;
@@ -54,6 +55,7 @@ import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.CartService;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
 import com.novatech.cybertech.services.core.OrderCreationTransactionalDelegate;
@@ -120,6 +122,7 @@ import static org.mockito.Mockito.when;
 class OrderManagementServiceImpTest {
 
     @Mock OrderMapper orderMapper;
+    @Mock CartService cartService;
     @Mock StockService stockService;
     @Mock PaymentService paymentService;
     @Mock UserRepository userRepository;
@@ -268,8 +271,10 @@ class OrderManagementServiceImpTest {
 
             assertThat(resp).isNotNull();
 
-            final InOrder ord = inOrder(orderCreationTransactionalDelegate, paymentService, eventPublisher);
+            final InOrder ord = inOrder(orderCreationTransactionalDelegate, cartService, paymentService, eventPublisher);
             ord.verify(orderCreationTransactionalDelegate).createAndReserveStock(any(OrderPlacingRequestDto.class), eq(keycloakId));
+            // Cart cache refreshed once the creation transaction (which emptied the cart) committed.
+            ord.verify(cartService).clearCart(keycloakId);
             ord.verify(paymentService).processPayment(eq(order), any(), eq(total), anyString());
             ord.verify(eventPublisher).publishEvent(any(OrderCreatedEvent.class));
             verify(stockService, never()).releaseStock(any());
@@ -296,7 +301,7 @@ class OrderManagementServiceImpTest {
             assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
                     .isInstanceOf(CartNotFoundException.class);
 
-            verifyNoInteractions(paymentService, eventPublisher, stockService);
+            verifyNoInteractions(paymentService, eventPublisher, stockService, cartService);
         }
 
         @Test
@@ -483,7 +488,7 @@ class OrderManagementServiceImpTest {
                             .quantity(1)
                             .build()))
                     .build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of());
 
             assertThatThrownBy(() -> service.updateOrder(req, jwt))
@@ -504,7 +509,7 @@ class OrderManagementServiceImpTest {
             final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, new BigDecimal("100.00"),
                     List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
@@ -531,7 +536,7 @@ class OrderManagementServiceImpTest {
             // order must never flip to PAID unless a prior successful payment actually funds it.
             final ProductEntity freeProduct = ProductEntityBuilder.aValidProductBuilder().price(BigDecimal.ZERO).build();
             final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, BigDecimal.ZERO, null);
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(freeProduct));
             when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
                     .thenReturn(PriceCalculationResultDto.builder()
@@ -555,7 +560,7 @@ class OrderManagementServiceImpTest {
             final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
                     List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
@@ -583,7 +588,7 @@ class OrderManagementServiceImpTest {
             final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
                     List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
@@ -620,7 +625,7 @@ class OrderManagementServiceImpTest {
                     .idempotencyKey("idem-original-payment-key")
                     .build();
             final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"), List.of(originalPayment));
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
@@ -638,10 +643,95 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
+        @DisplayName("positive-delta declined (card refused) -> PaymentFailedException aborts the whole update, no event")
+        void positiveDelta_declined_throwsPaymentFailed() {
+            // Throwing is what makes the @Transactional updateOrder roll back the new items/total,
+            // the AWAITING_PAYMENT flip and the stock resize: a PAID order must stay PAID with its
+            // original items instead of being turned into PAYMENT_FAILED by the webhook.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("150.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            assertThatThrownBy(() -> service.updateOrder(requestFor(order.getUuid(), product, 1), jwt))
+                    .isInstanceOf(PaymentFailedException.class)
+                    .hasMessageContaining("declined");
+
+            verifyNoInteractions(eventPublisher);
+            verify(stockService, never()).commitStock(any());
+        }
+
+        @Test
+        @DisplayName("positive-delta still PROCESSING at Stripe -> not treated as a decline, update goes through")
+        void positiveDelta_processing_isNotADecline() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("150.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.PROCESSING, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            verify(eventPublisher).publishEvent(any(OrderUpdatedEvent.class));
+        }
+
+        @Test
+        @DisplayName("complement idempotency key is per-attempt: context = productUuid:qty + update marker + timestamp")
+        void positiveDelta_idempotencyKeyIsPerAttempt() {
+            // A stable composition-only key made Stripe replay a cached decline for 24h on any new
+            // attempt for the same items, and collided with the placeOrder key for unchanged items.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("150.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
+                            .discountType(DiscountType.NO_DISCOUNT).build());
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 2), jwt);
+
+            @SuppressWarnings("unchecked")
+            final ArgumentCaptor<List<String>> contextCap = ArgumentCaptor.forClass(List.class);
+            verify(idempotencyKeyService).generateKey(eq(order.getUuid().toString()), contextCap.capture());
+            assertThat(contextCap.getValue())
+                    .hasSize(3)
+                    .contains(product.getUuid() + ":2", "update");
+        }
+
+        @Test
         @DisplayName("not found throws OrderNotFoundException")
         void notFound_throws() {
             final UUID missing = UUID.randomUUID();
-            when(orderRepository.findByUuid(missing)).thenReturn(Optional.empty());
+            when(orderRepository.lockByUuid(missing)).thenReturn(Optional.empty());
             final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder().uuid(missing).build();
 
             assertThatThrownBy(() -> service.updateOrder(req, jwt))
@@ -653,7 +743,7 @@ class OrderManagementServiceImpTest {
         void wrongUser_throws() {
             final UserEntity foreigner = UserEntityBuilder.aValidUserBuilder().keycloakId("foreign").build();
             final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder().userEntity(foreigner).build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
 
             assertThatThrownBy(() ->
                     service.updateOrder(OrderDtoFixtures.aValidUpdateRequestBuilder().uuid(order.getUuid()).build(), jwt))
@@ -668,7 +758,7 @@ class OrderManagementServiceImpTest {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
             final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
                     .userEntity(user).status(OrderStatus.SHIPPED).build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
 
             assertThatThrownBy(() ->
                     service.updateOrder(OrderDtoFixtures.aValidUpdateRequestBuilder().uuid(order.getUuid()).build(), jwt))
@@ -688,7 +778,7 @@ class OrderManagementServiceImpTest {
                     paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
                             new Money(new BigDecimal("30.00"), CurrencyCode.EUR), LocalDateTime.now()));
             final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("70.00"), attempts);
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
@@ -722,7 +812,7 @@ class OrderManagementServiceImpTest {
                     .totalAmount(new Money(BigDecimal.ZERO, CurrencyCode.EUR))
                     .paymentAttempts(new ArrayList<>())
                     .build();
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of()); // empty!
 
             final OrderItemCreateRequestDto item = OrderItemCreateRequestDto.builder()
@@ -746,7 +836,7 @@ class OrderManagementServiceImpTest {
             final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, new BigDecimal("99.00"),
                     List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("99.00"), CurrencyCode.EUR), LocalDateTime.now())));
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))

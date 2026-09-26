@@ -208,6 +208,27 @@ class OrderCreationTransactionalDelegateImpTest {
 
         assertThatThrownBy(() -> delegate.createAndReserveStock(OrderDtoFixtures.aValidPlaceOrderRequest(), keycloakId))
                 .isInstanceOf(NotEnoughStockException.class);
+
+        // Cart left intact: nothing was ordered, the customer keeps their items.
+        assertThat(user.getCartEntity().getCartItems()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("cart is emptied in the creation transaction, and the order keeps the cart's items")
+    void happyPath_emptiesCart_orderKeepsItems() {
+        final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("50.00")).build();
+        final UserEntity user = userWithCart(product, 2);
+        when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+        when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        final OrderEntity result = delegate.createAndReserveStock(OrderDtoFixtures.aValidPlaceOrderRequest(), keycloakId);
+
+        assertThat(user.getCartEntity().getCartItems()).isEmpty();
+        assertThat(result.getOrderItemEntities()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.getProductEntity()).isEqualTo(product);
+                    assertThat(item.getQuantity()).isEqualTo(2);
+                });
     }
 
     @Test

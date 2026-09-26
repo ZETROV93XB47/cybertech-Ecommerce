@@ -2,8 +2,10 @@ package com.novatech.cybertech.repositories;
 
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -22,6 +25,16 @@ public interface OrderRepository extends CrudBaseRepository<OrderEntity, Long> {
     List<OrderEntity> findByStatusAndOrderDateBefore(OrderStatus status, LocalDateTime date);
 
     List<OrderEntity> findByStatus(OrderStatus status);
+
+    /**
+     * {@code SELECT ... FOR UPDATE} on the order row — mirrors {@link ProductRepository#lockByUuid}.
+     * Used by {@code updateOrder} so two concurrent updates of the same order (double submit) are
+     * serialised: the second one waits, then re-reads the payments the first one recorded, instead
+     * of both charging the customer for the same complement.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM OrderEntity o WHERE o.uuid = :uuid")
+    Optional<OrderEntity> lockByUuid(@Param("uuid") UUID uuid);
 
     /**
      * Loads, in a single SQL round-trip, every order that belongs to the user identified by

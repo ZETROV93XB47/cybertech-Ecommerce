@@ -25,6 +25,7 @@ import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.CartService;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
 import com.novatech.cybertech.services.core.OrderCreationTransactionalDelegate;
@@ -65,8 +66,16 @@ public class OrderManagementServiceImp implements OrderManagementService {
      */
     private static final String RETRY_PAYMENT_ACTION = "retry";
 
+    /**
+     * Idempotency-key context token marking the complement payment of an {@code updateOrder}
+     * (Cas 1). Combined with a capture timestamp so a new attempt after a card decline gets a
+     * DISTINCT key — see {@link #updateOrder(OrderUpdateRequestDto, Jwt)}.
+     */
+    private static final String UPDATE_PAYMENT_ACTION = "update";
+
     private final OrderMapper orderMapper;
 
+    private final CartService cartService;
     private final StockService stockService;
     private final PaymentService paymentService;
 
@@ -250,7 +259,11 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         final String keycloakId = resolveKeycloakIdFromJwt(jwt);
 
-        final OrderEntity order = orderRepository.findByUuid(dto.getUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
+        // Row lock (SELECT ... FOR UPDATE) held until this transaction ends: a concurrent update of
+        // the same order (double submit) waits here, then re-reads the payments recorded by the
+        // first one — its difference comes out as 0 instead of charging the complement twice.
+        // This is what makes the per-attempt complement key below safe.
+        final OrderEntity order = orderRepository.lockByUuid(dto.getUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
         log.info("Order found : {}", order);
 
@@ -338,15 +351,21 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // reservation back to ACTIVE while leaving its Redis auto-expiry sentinel permanently gone.
         stockService.resizeReservation(order.getUuid(), quantities);
 
-        // 7) Paiement attempt (idempotent) — quantities are part of the context (see placeOrder),
-        // derived from the merged `quantities` map so a duplicate product UUID in the request is
-        // reflected once, matching what was actually reserved/priced above.
+        // 7) Paiement attempt — quantities are part of the context (see placeOrder), derived from
+        // the merged `quantities` map so a duplicate product UUID in the request is reflected once.
+        // The key must be unique PER ATTEMPT (mirrors retryPayment): a declined complement rolls
+        // this whole update back, and Stripe caches the decline under the key it was sent with for
+        // 24h — a stable composition-derived key made every new attempt for the same items (even
+        // with another card) replay that decline. Double submit is covered by the row lock above.
+        // It also can no longer collide with placeOrder's own key for an unchanged item list.
         // Only used for Cas 1 (new payment): Cas 2 (refund) needs the ORIGINAL payment's own
         // stored key instead, resolved inside handlePaymentUpdate — see its javadoc.
-        final List<String> updatedProductUuidsWithQuantities = quantities.entrySet().stream()
+        final List<String> updatePaymentContext = new ArrayList<>(quantities.entrySet().stream()
                 .map(e -> e.getKey() + ":" + e.getValue())
-                .toList();
-        final String updateIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), updatedProductUuidsWithQuantities);
+                .toList());
+        updatePaymentContext.add(UPDATE_PAYMENT_ACTION);
+        updatePaymentContext.add(LocalDateTime.now().toString());
+        final String updateIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), updatePaymentContext);
 
         if (difference.compareTo(BigDecimal.ZERO) == 0) {
             // Cas 3 : Pas de différence de prix
@@ -365,6 +384,18 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
 
         final PaymentEntity attempt = handlePaymentUpdate(order, difference, dto.getPaymentType(), updateIdempotencyKey);
+
+        // Complement declined (card refused): abort the WHOLE update. Throwing rolls back this
+        // transaction — new items, new total, the AWAITING_PAYMENT flip and the stock resize —
+        // so the order stays exactly as it was (a PAID order stays PAID with its original items
+        // and its committed stock). Carrying on used to leave a PAID order in AWAITING_PAYMENT,
+        // which the payment_failed webhook then turned into PAYMENT_FAILED with ALL its stock
+        // released, while retryPayment refused to run (a SUCCESS payment already exists).
+        // The late payment_failed webhook is then ignored for a PAID order (not payment-pending).
+        if (difference.signum() > 0 && isDeclined(attempt)) {
+            throw new PaymentFailedException(
+                    "The additional payment for order " + order.getUuid() + " was declined — the order was left unchanged");
+        }
 
         // Explicit save instead of relying on JPA dirty-check
         orderRepository.save(order);
@@ -504,6 +535,11 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final String keycloakId = resolveKeycloakIdFromJwt(jwt);
 
         final OrderEntity savedOrder = orderCreationTransactionalDelegate.createAndReserveStock(req, keycloakId);
+
+        // The delegate emptied the cart inside its (now committed) transaction; clearCart re-reads
+        // that empty cart and writes it to the Redis cache — after the commit, like every other
+        // cart write path — so the customer doesn't keep seeing the ordered items in their cart.
+        cartService.clearCart(keycloakId);
 
         final UserEntity user = savedOrder.getUserEntity();
         final UUID orderUuid = savedOrder.getUuid();
@@ -728,6 +764,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
      */
     static boolean isCurrentUserOrderInitiator(OrderEntity orderEntity, String keycloakId) {
         return orderEntity.getUserEntity().getKeycloakId().equals(keycloakId);
+    }
+
+    private static boolean isDeclined(final PaymentEntity attempt) {
+        return attempt.getStatus() == PaymentAttemptStatus.FAILED || attempt.getStatus() == PaymentAttemptStatus.CANCELED;
     }
 
     private static boolean isOrderInRetryablePaymentStatus(OrderEntity orderEntity) {

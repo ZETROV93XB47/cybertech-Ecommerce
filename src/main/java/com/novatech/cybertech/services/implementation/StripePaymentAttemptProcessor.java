@@ -7,9 +7,11 @@ import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.exceptions.PaymentProcessingException;
 import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
+import com.stripe.exception.CardException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Refund;
+import com.stripe.model.StripeError;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.RefundCreateParams;
@@ -20,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -85,6 +88,27 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
                     intent.getId()
             );
 
+        } catch (CardException e) {
+
+            // A card decline is a BUSINESS outcome, not an infrastructure failure: with
+            // confirm=true Stripe reports it as an HTTP 402 card_error (thrown as CardException)
+            // rather than returning a PaymentIntent in requires_payment_method. Returning FAILED
+            // here — instead of throwing PaymentProcessingException like a real Stripe outage —
+            // keeps the attempt row persisted (retryPayment needs it to find the payment type),
+            // lets callers apply their business-decline handling, and keeps declines out of the
+            // circuit breaker's failure rate (a burst of declined cards must not open the
+            // breaker for every other customer).
+            log.warn("Stripe card declined | order={} | code={} | declineCode={}",
+                    orderUuid,
+                    e.getCode(),
+                    e.getDeclineCode()
+            );
+
+            return new PaymentAttemptResult(
+                    PaymentAttemptStatus.FAILED,
+                    declinedPaymentIntentId(e)
+            );
+
         } catch (StripeException e) {
 
             log.error("Stripe error | order={} | code={} | message={}",
@@ -125,6 +149,17 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             log.error("Error creating Stripe Refund for order {}: {}", orderUuid, e.getMessage());
             throw new PaymentProcessingException("Stripe refund failed for order " + orderUuid + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * The PaymentIntent Stripe created before declining the card, when the error carries it —
+     * {@code null} otherwise (the attempt row simply has no Stripe reference then).
+     */
+    private static String declinedPaymentIntentId(final CardException e) {
+        return Optional.ofNullable(e.getStripeError())
+                .map(StripeError::getPaymentIntent)
+                .map(PaymentIntent::getId)
+                .orElse(null);
     }
 
     private long toMinorUnit(final Money money) {
