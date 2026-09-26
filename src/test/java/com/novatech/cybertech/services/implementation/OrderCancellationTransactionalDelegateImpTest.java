@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -40,6 +41,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -239,6 +241,80 @@ class OrderCancellationTransactionalDelegateImpTest {
             delegate.cancelWithinTransaction(order.getUuid(), jwt);
 
             verifyNoInteractions(paymentService);
+            verify(stockService).releaseStock(order.getUuid());
+        }
+
+        /**
+         * Regression test for the bug documented in progress.md: cancelOrder used to always refund
+         * a payment's FULL original amount, even when part of it had already been refunded via an
+         * earlier {@code updateOrder} partial refund — Stripe rejects a refund exceeding what is
+         * still refundable on a charge, so the whole cancellation used to abort with
+         * {@link com.novatech.cybertech.exceptions.OrderRefundFailedException}. Each payment now
+         * refunds only its own remaining balance, computed via
+         * {@link PaymentEntity#getOriginalPayment()}.
+         */
+        @Test
+        @DisplayName("payment already partially refunded (updateOrder) -> cancel refunds only the remaining balance")
+        void partiallyRefundedPayment_cancelRefundsOnlyRemainingBalance() {
+            final OrderEntity order = orderWithStatus(OrderStatus.PAID);
+            final PaymentEntity originalPayment = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .transactionType(TransactionType.PAYMENT)
+                    .paymentType(PaymentType.VISA)
+                    .amount(new Money(new java.math.BigDecimal("100.00"), CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            // An earlier updateOrder partial refund of 30 EUR, linked back to originalPayment.
+            final PaymentEntity priorPartialRefund = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .transactionType(TransactionType.REFUND)
+                    .amount(new Money(new java.math.BigDecimal("30.00"), CurrencyCode.EUR))
+                    .originalPayment(originalPayment)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            order.setPaymentAttempts(List.of(originalPayment, priorPartialRefund));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+            when(paymentService.refund(eq(order), eq(PaymentType.VISA), any(Money.class), eq(originalPayment.getIdempotencyKey())))
+                    .thenReturn(PaymentEntityBuilder.aValidPaymentBuilder()
+                            .status(PaymentAttemptStatus.SUCCESS)
+                            .transactionType(TransactionType.REFUND)
+                            .build());
+
+            delegate.cancelWithinTransaction(order.getUuid(), jwt);
+
+            // Only 70 EUR left refundable (100 - 30 already refunded), not the full 100.
+            final ArgumentCaptor<Money> amountCaptor = ArgumentCaptor.forClass(Money.class);
+            verify(paymentService).refund(eq(order), eq(PaymentType.VISA), amountCaptor.capture(), eq(originalPayment.getIdempotencyKey()));
+            assertThat(amountCaptor.getValue().getAmount()).isEqualByComparingTo("70.00");
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+        }
+
+        @Test
+        @DisplayName("payment already fully refunded (linked) -> skipped entirely, no pointless Stripe call")
+        void fullyRefundedPayment_isSkipped() {
+            final OrderEntity order = orderWithStatus(OrderStatus.PAID);
+            final PaymentEntity originalPayment = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .transactionType(TransactionType.PAYMENT)
+                    .amount(new Money(new java.math.BigDecimal("50.00"), CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            final PaymentEntity priorFullRefund = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .transactionType(TransactionType.REFUND)
+                    .amount(new Money(new java.math.BigDecimal("50.00"), CurrencyCode.EUR))
+                    .originalPayment(originalPayment)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            order.setPaymentAttempts(List.of(originalPayment, priorFullRefund));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(orderRepository.save(order)).thenReturn(order);
+
+            delegate.cancelWithinTransaction(order.getUuid(), jwt);
+
+            verifyNoInteractions(paymentService);
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
             verify(stockService).releaseStock(order.getUuid());
         }
     }

@@ -19,7 +19,7 @@ import lombok.experimental.SuperBuilder;
         name = "paymentTable",
         uniqueConstraints = @UniqueConstraint(name = "uk_payment_idempotency", columnNames = "idempotencyKey")
 )
-@ToString(callSuper = true, exclude = {"orderEntity"})
+@ToString(callSuper = true, exclude = {"orderEntity", "originalPayment"})
 public class PaymentEntity extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -53,4 +53,16 @@ public class PaymentEntity extends BaseEntity<Long> {
 
     @Column(name = "idempotencyKey", nullable = false, updatable = false, length = 64)
     private String idempotencyKey;
+
+    /**
+     * The {@code PAYMENT}-type attempt this row refunds. Only ever set on a {@code REFUND}-type
+     * row (null on a {@code PAYMENT} row). Lets a caller compute how much of a given payment is
+     * STILL refundable (its {@code amount} minus the sum of {@code SUCCESS} refunds already
+     * linked to it) instead of assuming the whole original amount is always refundable — a
+     * payment can legitimately be partially refunded more than once (e.g. an {@code updateOrder}
+     * partial refund followed later by a full {@code cancelOrder}).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "originalPaymentId")
+    private PaymentEntity originalPayment;
 }

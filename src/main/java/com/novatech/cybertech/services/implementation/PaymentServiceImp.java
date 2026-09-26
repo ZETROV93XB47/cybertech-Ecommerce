@@ -122,6 +122,10 @@ public class PaymentServiceImp implements PaymentService {
                 .transactionType(TransactionType.REFUND)
                 .status(PaymentAttemptStatus.CREATED)
                 .idempotencyKey(refundIdempotencyKey)
+                // Links this refund back to the payment it targets, so a caller (cancelOrder) can
+                // later compute how much of THAT SPECIFIC payment is still refundable instead of
+                // assuming its full original amount always is.
+                .originalPayment(paymentEntity)
                 .build();
 
         try {

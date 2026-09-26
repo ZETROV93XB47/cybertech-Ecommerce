@@ -2,9 +2,11 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.TransactionType;
+import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.exceptions.CannotCancelOrderException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
@@ -20,7 +22,9 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -81,10 +85,23 @@ public class OrderCancellationTransactionalDelegateImp implements OrderCancellat
         // result used to let the order become CANCELED (and stock get released) even though the
         // customer was never actually refunded. .toList() forces every refund to be attempted
         // (no short-circuit) before we decide whether to proceed.
+        //
+        // Each payment refunds only its OWN remaining balance (its amount minus whatever has
+        // already been refunded against it specifically — e.g. a prior updateOrder partial
+        // refund), not its full original amount: Stripe rejects a refund request that exceeds
+        // what is still refundable on a charge, which used to make cancelOrder fail outright for
+        // any order that had already been partially refunded once. A payment with nothing left to
+        // refund is skipped rather than sent to Stripe as a pointless zero/negative request.
         final boolean anyRefundFailed = orderEntity.getPaymentAttempts().stream()
                 .filter(p -> p.getStatus() == PaymentAttemptStatus.SUCCESS)
                 .filter(p -> p.getTransactionType() == TransactionType.PAYMENT)
-                .map(p -> paymentService.refund(orderEntity, p.getPaymentType(), p.getAmount(), p.getIdempotencyKey()))
+                .map(p -> Map.entry(p, remainingRefundable(orderEntity, p)))
+                .filter(entry -> entry.getValue().compareTo(BigDecimal.ZERO) > 0)
+                .map(entry -> paymentService.refund(
+                        orderEntity,
+                        entry.getKey().getPaymentType(),
+                        new Money(entry.getValue(), entry.getKey().getAmount().getCurrencyCode()),
+                        entry.getKey().getIdempotencyKey()))
                 .toList()
                 .stream()
                 .anyMatch(refund -> refund.getStatus() != PaymentAttemptStatus.SUCCESS);
@@ -111,6 +128,25 @@ public class OrderCancellationTransactionalDelegateImp implements OrderCancellat
         stockService.releaseStock(orderUUID);
 
         return orderMapper.mapFromEntityToResponseDto(saved);
+    }
+
+    /**
+     * How much of {@code payment} is still refundable: its original amount minus every
+     * {@code SUCCESS} refund already linked to it via {@link PaymentEntity#getOriginalPayment()}.
+     * A payment that was already fully refunded (e.g. by an earlier {@code updateOrder} partial
+     * refund covering the whole amount) returns zero, not a negative number — floor is not needed
+     * beyond the caller's {@code > 0} filter, but the subtraction itself never goes below what was
+     * actually charged.
+     */
+    private static BigDecimal remainingRefundable(final OrderEntity order, final PaymentEntity payment) {
+        final BigDecimal alreadyRefunded = order.getPaymentAttempts().stream()
+                .filter(r -> r.getTransactionType() == TransactionType.REFUND)
+                .filter(r -> r.getStatus() == PaymentAttemptStatus.SUCCESS)
+                .filter(r -> r.getOriginalPayment() != null
+                        && java.util.Objects.equals(payment.getId(), r.getOriginalPayment().getId()))
+                .map(r -> r.getAmount().getAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return payment.getAmount().getAmount().subtract(alreadyRefunded);
     }
 
     /**
