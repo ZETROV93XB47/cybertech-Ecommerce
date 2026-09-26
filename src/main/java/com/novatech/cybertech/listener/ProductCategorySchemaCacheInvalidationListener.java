@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 /**
  * Cross-instance cache invalidation for {@link ProductCategorySchemaCache}: every instance
  * subscribes to {@code CyberTechAppConstants.PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL} (registered
- * on the shared {@code redisContainer} bean in {@code AppConfig}); the admin service publishes the
+ * on the shared {@code redisMessageListenerContainer} bean in {@code AppConfig}); the admin service publishes the
  * changed {@code categoryKey} after every create/update/delete. A message body is the raw
  * categoryKey string — published via {@code StringRedisTemplate#convertAndSend}, so it's decoded
  * here as plain UTF-8 rather than through Spring's polymorphic-typed serializer.

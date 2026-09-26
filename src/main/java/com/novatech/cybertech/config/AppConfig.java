@@ -146,8 +146,16 @@ public class AppConfig {
         return map;
     }
 
+    /**
+     * Named {@code redisMessageListenerContainer} on purpose: from Spring Boot 4.1, with
+     * {@code spring.threads.virtual.enabled=true}, {@code DataRedisAnnotationDrivenConfiguration}
+     * registers its own virtual-thread container unless a bean with THAT NAME already exists (its
+     * {@code @ConditionalOnMissingBean} matches by name, not by type). Under any other name both
+     * containers coexist and the context fails to start ({@code NoUniqueBeanDefinitionException}
+     * injecting {@link RedisExpirationListener}) — seen during an accidental 4.1.1 bump.
+     */
     @Bean
-    public RedisMessageListenerContainer redisContainer(RedisConnectionFactory connectionFactory, StockRepository reservationRepository, ProductRepository productRepository,
+    public RedisMessageListenerContainer redisMessageListenerContainer(RedisConnectionFactory connectionFactory, StockRepository reservationRepository, ProductRepository productRepository,
                                                           OrderRepository orderRepository, StockService stockService,
                                                           ProductCategorySchemaCacheInvalidationListener productCategorySchemaCacheInvalidationListener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();

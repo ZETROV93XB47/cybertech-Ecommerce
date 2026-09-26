@@ -5,7 +5,9 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
+        <!-- Keep on 4.0.x: Spring Cloud 2025.1.x only supports Boot 4.0.x — its compatibility
+             verifier refuses to start the context on 4.1.x. Bump together with spring-cloud.version. -->
+        <version>4.0.4</version>
     </parent>
     <groupId>com.novatech.cybertech</groupId>
     <artifactId>Cybertech</artifactId>
