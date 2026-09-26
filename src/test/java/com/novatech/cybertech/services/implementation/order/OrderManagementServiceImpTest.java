@@ -36,6 +36,7 @@ import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.PaymentAlreadyCompletedForThisOrderException;
+import com.novatech.cybertech.exceptions.PaymentProcessingException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.exceptions.OrderNotFundedException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
@@ -55,6 +56,7 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
+import com.novatech.cybertech.services.core.OrderCreationTransactionalDelegate;
 import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.PaymentService;
 import com.novatech.cybertech.services.core.StockService;
@@ -128,6 +130,7 @@ class OrderManagementServiceImpTest {
     @Mock IdempotencyKeyServiceGenerator idempotencyKeyService;
     @Mock OrderPriceCalculationService orderPriceCalculationService;
     @Mock OrderCancellationTransactionalDelegate orderCancellationTransactionalDelegate;
+    @Mock OrderCreationTransactionalDelegate orderCreationTransactionalDelegate;
 
     @InjectMocks OrderManagementServiceImp service;
 
@@ -205,24 +208,20 @@ class OrderManagementServiceImpTest {
         return user;
     }
 
-    private UserEntity userWithEmptyCart() {
+    // Represents what OrderCreationTransactionalDelegate.createAndReserveStock would have
+    // returned — used by placeOrder's orchestration-only tests (see PlaceOrder / CrossCutting).
+    private OrderEntity placedOrder(final ProductEntity product, final int quantity, final Money total) {
         final UserEntity user = UserEntityBuilder.aValidUserBuilder()
                 .keycloakId(keycloakId)
                 .bankCardEntity(BankCardEntityBuilder.aValidBankCard())
                 .build();
-        final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
+        final OrderItemEntity item = OrderItemEntityBuilder.aValidOrderItemBuilder()
+                .productEntity(product).quantity(quantity).build();
+        return OrderEntityBuilder.aValidOrderBuilder()
                 .userEntity(user)
-                .cartItems(new ArrayList<>())
-                .build();
-        user.setCartEntity(cart);
-        return user;
-    }
-
-    private UserEntity userNoCart() {
-        return UserEntityBuilder.aValidUserBuilder()
-                .keycloakId(keycloakId)
-                .bankCardEntity(BankCardEntityBuilder.aValidBankCard())
-                .cartEntity(null)
+                .status(OrderStatus.AWAITING_PAYMENT)
+                .totalAmount(total)
+                .orderItemEntities(new ArrayList<>(List.of(item)))
                 .build();
     }
 
@@ -246,147 +245,75 @@ class OrderManagementServiceImpTest {
     @DisplayName("placeOrder")
     class PlaceOrder {
 
-        @Test
-        @DisplayName("happy path saves order, reserves stock, processes payment, publishes event in order")
-        void happyPath_savesReservesPaysAndPublishes_inOrder() {
-            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("50.00")).build();
-            final UserEntity user = userWithCart(product, 2);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+        // OrderManagementServiceImp.placeOrder no longer builds the order itself — it delegates
+        // to OrderCreationTransactionalDelegate (see OrderCreationTransactionalDelegateImpTest for
+        // cart/validator/pricing/stock-reservation coverage) and only orchestrates the payment
+        // attempt + failure compensation + event publishing around whatever order comes back
+        // (see the outer class's placedOrder(...) helper).
 
-            final OrderEntity savedOrder = OrderEntityBuilder.aValidOrderBuilder().userEntity(user).build();
-            when(orderRepository.save(any(OrderEntity.class))).thenReturn(savedOrder);
+        @Test
+        @DisplayName("happy path: delegates order creation, processes payment, publishes event, in order")
+        void happyPath_delegatesProcessesPaysAndPublishes_inOrder() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("50.00")).build();
+            final Money total = new Money(new BigDecimal("100.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 2, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(OrderPlacingRequestDto.class), eq(keycloakId)))
+                    .thenReturn(order);
 
             final PaymentEntity attempt = paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT,
-                    PaymentType.VISA, new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now());
+                    PaymentType.VISA, total, LocalDateTime.now());
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(attempt);
 
             final OrderResponseDto resp = service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
 
             assertThat(resp).isNotNull();
 
-            final InOrder ord = inOrder(orderValidator, orderRepository, stockService, paymentService, eventPublisher);
-            ord.verify(orderValidator).validate(any(OrderValidationDto.class));
-            ord.verify(orderRepository).save(any(OrderEntity.class));
-            ord.verify(stockService).reserveStock(any(UUID.class), any());
-            ord.verify(paymentService).processPayment(any(), any(), any(), anyString());
+            final InOrder ord = inOrder(orderCreationTransactionalDelegate, paymentService, eventPublisher);
+            ord.verify(orderCreationTransactionalDelegate).createAndReserveStock(any(OrderPlacingRequestDto.class), eq(keycloakId));
+            ord.verify(paymentService).processPayment(eq(order), any(), eq(total), anyString());
             ord.verify(eventPublisher).publishEvent(any(OrderCreatedEvent.class));
+            verify(stockService, never()).releaseStock(any());
         }
 
         @Test
-        @DisplayName("user missing in repo throws UserNotFoundException")
-        void userMissing_throwsUserNotFound() {
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
+        @DisplayName("null JWT subject throws UserNotFoundException without ever calling the creation delegate")
+        void placeOrder_nullJwtSubject_shouldThrowUserNotFound() {
+            when(jwt.getSubject()).thenReturn(null);
 
             assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(UserNotFoundException.class);
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining("JWT subject missing");
 
-            verifyNoInteractions(orderRepository, stockService, paymentService, eventPublisher);
+            verifyNoInteractions(orderCreationTransactionalDelegate, paymentService, eventPublisher);
         }
 
         @Test
-        @DisplayName("user with null cart throws CartNotFoundException")
-        void cartMissing_throwsCartNotFound() {
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(userNoCart()));
-
-            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(CartNotFoundException.class);
-
-            verify(orderRepository, never()).save(any());
-        }
-
-        @Test
-        @DisplayName("user with empty cart throws CartNotFoundException")
-        void cartEmpty_throwsCartNotFound() {
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(userWithEmptyCart()));
+        @DisplayName("creation delegate exception (empty cart, no bank card, validator rejects, stock unavailable, ...) propagates untouched")
+        void delegateException_propagates_noPaymentNoEvent() {
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId)))
+                    .thenThrow(new CartNotFoundException("Cannot place order: Cart is empty"));
 
             assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
                     .isInstanceOf(CartNotFoundException.class);
 
-            verify(orderRepository, never()).save(any());
+            verifyNoInteractions(paymentService, eventPublisher, stockService);
         }
 
         @Test
-        @DisplayName("user without a bank card throws BankCardNotFoundException before save")
-        void noBankCard_throwsBankCardNotFound() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            user.setBankCardEntity(null);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(BankCardNotFoundException.class);
-
-            verify(orderRepository, never()).save(any());
-            verifyNoInteractions(orderValidator, paymentService);
-        }
-
-        @Test
-        @DisplayName("validator rejects -> exception bubbles, no save / no payment")
-        void validatorRejects_propagates() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            doThrowOn(orderValidator);
-
-            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(IllegalStateException.class);
-
-            verify(orderRepository, never()).save(any());
-            verifyNoInteractions(paymentService, eventPublisher);
-        }
-
-        private void doThrowOn(final OrderValidator v) {
-            org.mockito.Mockito.doThrow(new IllegalStateException("validator-fail"))
-                    .when(v).validate(any(OrderValidationDto.class));
-        }
-
-        @Test
-        @DisplayName("stock reservation fails -> NotEnoughStockException bubbles, no payment, no event")
-        void stockReservationFails_propagates() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-            org.mockito.Mockito.doThrow(new NotEnoughStockException("nope"))
-                    .when(stockService).reserveStock(any(UUID.class), any());
-
-            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(NotEnoughStockException.class);
-
-            verifyNoInteractions(paymentService);
-            verify(eventPublisher, never()).publishEvent(any());
-        }
-
-        /**
-         * Verifies the payment-failed stock-release fix.
-         * <p>
-         * {@code OrderManagementServiceImp.placeOrder} now calls
-         * {@code stockService.releaseStock(orderUuid)} when {@code paymentService.processPayment}
-         * returns a {@link PaymentEntity} with {@link PaymentAttemptStatus#FAILED}. This test
-         * asserts that compensating action — if the fix is in place, the test PASSES; if reverted,
-         * it FAILS loudly.
-         */
-        @Test
-        @DisplayName("payment FAILED path releases stock reservation")
+        @DisplayName("payment FAILED (business decline) releases stock reservation, event published with FAILED status")
         void paymentFailure_releasesStockReservation() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            final ArgumentCaptor<OrderEntity> savedOrderCap = ArgumentCaptor.forClass(OrderEntity.class);
-            when(orderRepository.save(savedOrderCap.capture())).thenAnswer(inv -> inv.getArgument(0));
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
 
             final PaymentEntity failed = paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT,
-                    PaymentType.VISA, new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now());
+                    PaymentType.VISA, total, LocalDateTime.now());
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(failed);
 
             service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
 
-            final UUID orderUuid = savedOrderCap.getValue().getUuid();
-            // exactly one releaseStock call with the order UUID — only the failure-compensation path.
-            verify(stockService).releaseStock(eq(orderUuid));
-            // Event still published with FAILED status (creation-event always fires).
+            verify(stockService).releaseStock(order.getUuid());
             final ArgumentCaptor<OrderCreatedEvent> evtCap = ArgumentCaptor.forClass(OrderCreatedEvent.class);
             verify(eventPublisher).publishEvent(evtCap.capture());
             assertThat(evtCap.getValue().getOrderEventDto().getPaymentAttemptStatus())
@@ -394,131 +321,84 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("event is published AFTER orderRepository.save (InOrder)")
-        void eventAfterSave_orderingHolds() {
+        @DisplayName("payment SUCCESS does not release stock")
+        void paymentSuccess_doesNotReleaseStock() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
-                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
-                            new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now()));
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA, total, LocalDateTime.now()));
 
             service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
 
-            final InOrder ord = inOrder(orderRepository, eventPublisher);
-            ord.verify(orderRepository).save(any(OrderEntity.class));
-            ord.verify(eventPublisher).publishEvent(any(OrderCreatedEvent.class));
-        }
-
-        @Test
-        @DisplayName("total computed via OrderPriceCalculationService and saved as Money.EUR")
-        void totalAmountIsSumAndEurByDefault() {
-            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("12.50")).build();
-            final UserEntity user = userWithCart(product, 3);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            // Override default stub: price calculation service returns 37.50 (= 3 × 12.50, no discount)
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
-                    .thenReturn(PriceCalculationResultDto.builder()
-                            .baseAmount(new BigDecimal("37.50"))
-                            .discountAmount(BigDecimal.ZERO)
-                            .finalAmount(new BigDecimal("37.50"))
-                            .currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT)
-                            .build());
-
-            final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
-            when(orderRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
-            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
-                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
-                            new Money(new BigDecimal("37.50"), CurrencyCode.EUR), LocalDateTime.now()));
-
-            service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
-
-            final OrderEntity saved = cap.getValue();
-            assertThat(saved.getTotalAmount().getAmount()).isEqualByComparingTo("37.50");
-            assertThat(saved.getTotalAmount().getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
-        }
-
-        @Test
-        @DisplayName("status of the order saved before payment is AWAITING_PAYMENT")
-        void savedOrderStatusIsAwaitingPayment() {
-            final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-
-            final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
-            when(orderRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
-            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
-                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
-                            new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now()));
-
-            service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
-
-            assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
-        }
-
-        @Test
-        @DisplayName("null JWT subject throws UserNotFoundException without NPE and never queries repo")
-        void placeOrder_nullJwtSubject_shouldThrowUserNotFound() {
-            // resolveKeycloakIdFromJwt surfaces a missing sub claim as
-            // UserNotFoundException before any repo call — no NPE, no findByKeycloakId(null).
-            when(jwt.getSubject()).thenReturn(null);
-
-            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(UserNotFoundException.class)
-                    .hasMessageContaining("JWT subject missing");
-            verify(userRepository, never()).findByKeycloakId(null);
+            verify(stockService, never()).releaseStock(any());
         }
 
         /**
-         * SHIPPING-INT contract: placeOrder must forward {@code shippingProvider} and
-         * {@code shippingType} from the {@link OrderPlacingRequestDto} into the
-         * {@link PriceCalculationRequestDto} so the price calculation service can resolve the
-         * correct {@link com.novatech.cybertech.services.core.ShippingProviderService} and fold
-         * the shipping cost into the final amount.
+         * Regression test for the bug documented in progress.md: {@code PaymentServiceImp.processPayment}
+         * is itself {@code @Transactional} and used to PARTICIPATE in {@code placeOrder}'s own
+         * transaction — a {@link PaymentProcessingException} (Stripe infra failure, not a business
+         * decline) marked that shared transaction rollback-only before {@code placeOrder} could ever
+         * react, wiping the order that had just been created. Now that order creation commits on its
+         * own bean ({@link OrderCreationTransactionalDelegate}) before payment is attempted, the same
+         * exception can only degrade the outcome to the same AWAITING_PAYMENT/released-stock state a
+         * business decline already gets — the order itself must survive.
          */
         @Test
-        @DisplayName("SHIPPING-INT: placeOrder forwards shippingProvider + shippingType to OrderPriceCalculationService")
-        void placeOrder_forwardsShippingProviderAndTypeToPriceCalc() {
+        @DisplayName("Stripe infra failure (PaymentProcessingException) does not roll back the order — releases stock, degrades to FAILED, returns normally")
+        void stripeInfraFailure_degradesGracefully_orderSurvives() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
-                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
-                            new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now()));
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenThrow(new PaymentProcessingException("Stripe unavailable", null));
 
-            // Use a non-default (FEDEX / EXPRESS) pair so we can prove the values come from the request.
-            final OrderPlacingRequestDto req = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
-                    .shippingProvider(ShippingProvider.FEDEX)
-                    .shippingType(ShippingType.EXPRESS)
-                    .build();
+            final OrderResponseDto resp = service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
 
-            service.placeOrder(req, jwt);
-
-            final ArgumentCaptor<PriceCalculationRequestDto> cap = ArgumentCaptor.forClass(PriceCalculationRequestDto.class);
-            verify(orderPriceCalculationService).calculate(cap.capture());
-            assertThat(cap.getValue().getShippingProvider()).isEqualTo(ShippingProvider.FEDEX);
-            assertThat(cap.getValue().getShippingType()).isEqualTo(ShippingType.EXPRESS);
+            // Does NOT throw — the already-committed order is returned, not lost.
+            assertThat(resp).isNotNull();
+            verify(stockService).releaseStock(order.getUuid());
+            final ArgumentCaptor<OrderCreatedEvent> evtCap = ArgumentCaptor.forClass(OrderCreatedEvent.class);
+            verify(eventPublisher).publishEvent(evtCap.capture());
+            assertThat(evtCap.getValue().getOrderEventDto().getPaymentAttemptStatus())
+                    .isEqualTo(PaymentAttemptStatus.FAILED);
         }
 
         @Test
-        @DisplayName("currency: total uses EUR by default — no cross-currency Money.add path")
-        void totalAmount_usesEurByDefault_documented() {
+        @DisplayName("a non-PaymentProcessingException from processPayment still propagates (catch is narrowly scoped)")
+        void otherPaymentException_stillPropagates() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenThrow(new PaymentAlreadyCompletedForThisOrderException("already completed"));
 
-            final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
-            when(orderRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
+            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
+                    .isInstanceOf(PaymentAlreadyCompletedForThisOrderException.class);
+
+            verify(stockService, never()).releaseStock(any());
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("idempotency key context includes productUuid:quantity from the order's own persisted items")
+        void idempotencyKey_derivedFromOrderItemsWithQuantity() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().build();
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 3, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
-                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
-                            new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now()));
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA, total, LocalDateTime.now()));
 
             service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
 
-            assertThat(cap.getValue().getTotalAmount().getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
+            @SuppressWarnings("unchecked")
+            final ArgumentCaptor<List<String>> contextCap = ArgumentCaptor.forClass(List.class);
+            verify(idempotencyKeyService).generateKey(eq(order.getUuid().toString()), contextCap.capture());
+            assertThat(contextCap.getValue()).containsExactly(product.getUuid() + ":3");
         }
     }
 
@@ -612,7 +492,8 @@ class OrderManagementServiceImpTest {
             assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
             verifyNoInteractions(paymentService);
             verify(stockService, never()).commitStock(any());
-            verify(stockService, never()).reserveStock(any(), any());
+            verify(stockService, never()).resizeReservation(any(), any());
+            verify(stockService, never()).releaseStock(any());
             verify(orderRepository, never()).save(any());
         }
 
@@ -636,8 +517,7 @@ class OrderManagementServiceImpTest {
             service.updateOrder(req, jwt);
 
             verify(stockService).commitStock(order.getUuid());
-            verify(stockService).releaseStock(order.getUuid()); // pre-clear before re-reserve
-            verify(stockService).reserveStock(eq(order.getUuid()), any());
+            verify(stockService).resizeReservation(eq(order.getUuid()), any());
             verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
             verify(paymentService, never()).refund(any(), any(), any(), anyString());
             assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
@@ -1199,7 +1079,7 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("happy: releases stock and deletes by uuid")
+        @DisplayName("happy: deletes by uuid then releases stock (delete first — see StockService Redis-ordering note)")
         void happy() {
             final OrderEntity o = ownedOrderInStatus(OrderStatus.CREATED);
             when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
@@ -1207,8 +1087,8 @@ class OrderManagementServiceImpTest {
             service.deleteByUUID(o.getUuid(), jwt);
 
             final InOrder ord = inOrder(stockService, orderRepository);
-            ord.verify(stockService).releaseStock(o.getUuid());
             ord.verify(orderRepository).deleteByUuid(o.getUuid());
+            ord.verify(stockService).releaseStock(o.getUuid());
         }
 
         @Test
@@ -1287,12 +1167,11 @@ class OrderManagementServiceImpTest {
         @DisplayName("placeOrder uses the (String, List<String>) idempotency overload with productUuids")
         void placeOrder_usesListOverload() {
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
-            final UserEntity user = userWithCart(product, 1);
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
-            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
-                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
-                            new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now()));
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA, total, LocalDateTime.now()));
 
             service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
 

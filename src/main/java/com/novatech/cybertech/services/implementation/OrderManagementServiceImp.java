@@ -27,6 +27,7 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
+import com.novatech.cybertech.services.core.OrderCreationTransactionalDelegate;
 import com.novatech.cybertech.services.core.OrderManagementService;
 import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.PaymentService;
@@ -78,6 +79,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
     private final OrderPriceCalculationService orderPriceCalculationService;
     private final OrderCancellationTransactionalDelegate orderCancellationTransactionalDelegate;
+    private final OrderCreationTransactionalDelegate orderCreationTransactionalDelegate;
 
 
     //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
@@ -217,8 +219,12 @@ public class OrderManagementServiceImp implements OrderManagementService {
             throw new CannotCancelOrderException("Order is not in Deletable state, order current state : " + orderEntity.getStatus().name());
         }
 
-        stockService.releaseStock(uuid);
+        // Delete BEFORE releasing stock — releaseStock ends with a Redis write that is NOT part
+        // of this transaction. If the delete were to throw after releaseStock ran, the DB portion
+        // of the release would roll back but the Redis TTL sentinel would stay deleted for a
+        // reservation the rollback just restored to ACTIVE/COMMITTED.
         orderRepository.deleteByUuid(uuid);
+        stockService.releaseStock(uuid);
     }
 
     /**
@@ -257,13 +263,13 @@ public class OrderManagementServiceImp implements OrderManagementService {
             throw new OrderAlreadyShippedException("Order already shipped, cannot update");
         }
 
-        // 0) Tu overwrites les items : libère l'ancienne réservation (si existante)
-        //    (safe même si rien n'était réservé)
-        stockService.releaseStock(order.getUuid());
-
-        // 1) Charger les produits + quantités demandées
+        // 1) Charger les produits + quantités demandées. A duplicate product UUID in the request
+        // merges (sums) rather than throwing IllegalStateException from a plain toMap collector —
+        // a client sending the same product twice (double-tap, malformed payload) is treated the
+        // same way the cart already treats a duplicate add, instead of a raw 500.
         final List<ProductEntity> products = getAllProductsFromRequest(dto.getItemUpdateRequestDtoList());
-        final Map<UUID, Integer> quantities = dto.getItemUpdateRequestDtoList().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
+        final Map<UUID, Integer> quantities = dto.getItemUpdateRequestDtoList().stream()
+                .collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity, Integer::sum));
 
         // 2) Validation
         validateUserBeforeProcessingPayment(order.getUserEntity());//TODO: is it really necessary to make this check here ? maybe make it before launching the order placing process
@@ -324,14 +330,21 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         orderRepository.save(order);
 
-        // 6) Réserver le stock pour les nouveaux items
-        stockService.reserveStock(order.getUuid(), quantities);
+        // 6) Resize the stock reservation for the new items. A single atomic release+reserve
+        // (see StockService#resizeReservation) instead of a separate releaseStock() at the top of
+        // this method + reserveStock() here — the old two-call sequence deleted the Redis TTL
+        // sentinel immediately (non-transactional), so ANY failure between the two calls (product
+        // not found, missing bank card, insufficient stock on the new items) rolled the DB
+        // reservation back to ACTIVE while leaving its Redis auto-expiry sentinel permanently gone.
+        stockService.resizeReservation(order.getUuid(), quantities);
 
-        // 7) Paiement attempt (idempotent) — quantities are part of the context (see placeOrder).
+        // 7) Paiement attempt (idempotent) — quantities are part of the context (see placeOrder),
+        // derived from the merged `quantities` map so a duplicate product UUID in the request is
+        // reflected once, matching what was actually reserved/priced above.
         // Only used for Cas 1 (new payment): Cas 2 (refund) needs the ORIGINAL payment's own
         // stored key instead, resolved inside handlePaymentUpdate — see its javadoc.
-        final List<String> updatedProductUuidsWithQuantities = dto.getItemUpdateRequestDtoList().stream()
-                .map(i -> i.getProductUuid() + ":" + i.getQuantity())
+        final List<String> updatedProductUuidsWithQuantities = quantities.entrySet().stream()
+                .map(e -> e.getKey() + ":" + e.getValue())
                 .toList();
         final String updateIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), updatedProductUuidsWithQuantities);
 
@@ -476,118 +489,62 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * discount-adjusted amount (sum of cart-item unit prices × quantities — the cart service is
      * responsible for applying any promotional discount into the unit price before this call).
      * Any subsequent retry via {@link #retryPayment(UUID, Jwt)} forwards this amount verbatim.
+     *
+     * <p><b>No {@code @Transactional} here — deliberately.</b> Order creation + stock reservation
+     * commit in their own transaction on {@link OrderCreationTransactionalDelegate} BEFORE the
+     * payment attempt runs, so a Stripe infrastructure failure ({@link PaymentProcessingException})
+     * can only roll back the payment attempt, never the order itself — see that interface's javadoc
+     * for why wrapping this method in its own transaction would silently re-introduce the bug
+     * (the nested {@code @Transactional} on {@code PaymentServiceImp.processPayment} would poison
+     * a shared transaction before this method's own catch block ever runs).
      */
     @Override
-    @Transactional
     public OrderResponseDto placeOrder(final OrderPlacingRequestDto req, final Jwt jwt) {
 
         final String keycloakId = resolveKeycloakIdFromJwt(jwt);
-        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
-        // 1) Récupération panier
-        final CartEntity cart = user.getCartEntity();
+        final OrderEntity savedOrder = orderCreationTransactionalDelegate.createAndReserveStock(req, keycloakId);
 
-        if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) {
-            throw new CartNotFoundException("Cannot place order: Cart is empty");
-        }
-
-        final List<CartItemEntity> cartItems = cart.getCartItems();
-
-        // 2) Quantités pour stock
-        final Map<UUID, Integer> quantities = cartItems.stream()
-                .collect(Collectors.toMap(
-                        item -> item.getProductEntity().getUuid(),
-                        CartItemEntity::getQuantity
-                ));
-
-        validateUserBeforeProcessingPayment(user);//TODO: is it really necessary to make this check here ? maybe make it before launching the order placing process
-
-        // 3) UUID commande (v7/ordered)
-        final UUID orderUuid = UuidCreator.getTimeOrderedEpoch();
-
-        // 4) Total — delegated to OrderPriceCalculationService for proper discount support.
-        // Price is read live from the product here — the cart itself carries no frozen price
-        // (see CartItemEntity), so this is the moment the price actually gets locked in for the
-        // order, at time of purchase rather than at time of add-to-cart.
-        final List<OrderItemPriceDto> priceDtos = cartItems.stream()
-                .map(item -> OrderItemPriceDto.builder()
-                        .productUuid(item.getProductEntity().getUuid())
-                        .unitPrice(item.getProductEntity().getPrice())
-                        .quantity(item.getQuantity())
-                        .build())
-                .toList();
-
-        final PriceCalculationRequestDto priceRequest = PriceCalculationRequestDto.builder()
-                .items(priceDtos)
-                .discountType(req.getDiscountType())
-                .currencyCode(CurrencyCode.fromCode("EUR"))
-                .shippingProvider(req.getShippingProvider())
-                .shippingType(req.getShippingType())
-                .build();
-
-        final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceRequest);
-        final Money totalMoney = priceResult.asFinalMoney();
+        final UserEntity user = savedOrder.getUserEntity();
+        final UUID orderUuid = savedOrder.getUuid();
+        final Money totalMoney = savedOrder.getTotalAmount();
         final BigDecimal totalAmount = totalMoney.getAmount();
 
-        // 5) Items commande
-        final List<OrderItemEntity> orderItems = cartItems.stream()
-                .map(item -> OrderItemEntity.builder()
-                        .unitPrice(item.getProductEntity().getPrice())
-                        .quantity(item.getQuantity())
-                        .subtotal(item.getProductEntity().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                        .productEntity(item.getProductEntity())
-                        // IMPORTANT: si OrderItemEntity a un champ orderEntity, set-le ici
-                        // .orderEntity(order)
-                        .build())
-                .collect(Collectors.toList());
-
-        // 6) Créer + sauver la commande AVANT paiement (toujours persistée)
-        final OrderEntity order = initOrderEntity(
-                orderUuid,
-                req.getShippingCity(),
-                req.getShippingStreet(),
-                req.getShippingZipCode(),
-                req.getShippingCountry(),
-                req.getShippingType(),
-                req.getShippingProvider(),
-                totalAmount,
-                req.getDiscountType(),
-                orderItems,
-                user
-        );
-
-        // FIX: Lier les items à la commande pour que la clé étrangère orderId soit peuplée lors du save
-        orderItems.forEach(item -> item.setOrderEntity(order));
-
-        order.setStatus(OrderStatus.AWAITING_PAYMENT);
-        final OrderEntity savedOrder = orderRepository.save(order);
-
-        // 7) Réserver stock (si ça throw -> transaction rollback)
-        stockService.reserveStock(orderUuid, quantities);
-
-        // 8) Paiement attempt (idempotent) — quantities are part of the context so two orders
-        // for the same products in different quantities never collide on the same key.
-        final List<String> productUuidsWithQuantities = cartItems.stream()
+        // Idempotency key derived from the persisted order's own items — quantities are part of
+        // the context so two orders for the same products in different quantities never collide.
+        final List<String> productUuidsWithQuantities = savedOrder.getOrderItemEntities().stream()
                 .map(i -> i.getProductEntity().getUuid() + ":" + i.getQuantity())
                 .toList();
         final String idempotencyKey = idempotencyKeyService.generateKey(orderUuid.toString(), productUuidsWithQuantities);
-        final PaymentEntity attempt;
 
-        attempt = paymentService.processPayment(
-                savedOrder,
-                req.getPaymentType(),
-                totalMoney,
-                idempotencyKey
-        );
+        PaymentAttemptStatus resultingStatus;
+        try {
+            final PaymentEntity attempt = paymentService.processPayment(
+                    savedOrder,
+                    req.getPaymentType(),
+                    totalMoney,
+                    idempotencyKey
+            );
 
-        log.info("payment :: {}", attempt);
+            log.info("payment :: {}", attempt);
+            resultingStatus = attempt.getStatus();
 
-        if (attempt.getStatus() == PaymentAttemptStatus.FAILED) {
-            log.warn("Payment FAILED for order {} — releasing stock reservation.", orderUuid);
+            if (resultingStatus == PaymentAttemptStatus.FAILED) {
+                log.warn("Payment FAILED for order {} — releasing stock reservation.", orderUuid);
+                stockService.releaseStock(orderUuid);
+            }
+        } catch (final PaymentProcessingException e) {
+            // Stripe infrastructure failure (network outage past the @Retry budget, circuit
+            // breaker OPEN) rather than a business decline — the order is already committed
+            // (see above). Degrade to the same outcome a business decline already gets: release
+            // the stock hold and leave the order AWAITING_PAYMENT so retryPayment() works once
+            // Stripe recovers, instead of losing the order.
+            log.warn("Payment processing failed for order {} due to a Stripe/infra error — order kept in AWAITING_PAYMENT for retry.", orderUuid, e);
             stockService.releaseStock(orderUuid);
+            resultingStatus = PaymentAttemptStatus.FAILED;
         }
 
-        sendOrderCreationEvent(savedOrder, user, totalAmount, attempt.getStatus());
+        sendOrderCreationEvent(savedOrder, user, totalAmount, resultingStatus);
 
         return orderMapper.mapFromEntityToResponseDto(savedOrder);
     }
@@ -675,43 +632,21 @@ public class OrderManagementServiceImp implements OrderManagementService {
     }
 
     private void validateUserBeforeProcessingPayment(final UserEntity userEntity) {
+        validateUserBeforeProcessingPayment(orderValidatorChain, userEntity);
+    }
+
+    /**
+     * Package-private (not {@code private}): also called by
+     * {@link OrderCreationTransactionalDelegateImp}, which needs the same guard but injects its
+     * own {@link OrderValidator} instance (separate bean).
+     */
+    static void validateUserBeforeProcessingPayment(final OrderValidator orderValidatorChain, final UserEntity userEntity) {
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
                 .userDefaultBankCard(Optional.ofNullable(userEntity.getBankCardEntity()).orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ...")))
                 .build();
 
         orderValidatorChain.validate(orderValidationDto);
-    }
-
-
-    private static OrderEntity initOrderEntity(final UUID orderUuid,
-                                               final String shippingCity,
-                                               final String shippingStreet,
-                                               final String shippingZipCode,
-                                               final String shippingCountry,
-                                               final ShippingType shippingType,
-                                               final ShippingProvider shippingProvider,
-                                               final BigDecimal totalPrice,
-                                               final DiscountType discountType,
-                                               final List<OrderItemEntity> orderItemEntities,
-                                               final UserEntity user) {
-        return OrderEntity.builder()
-                .uuid(orderUuid)
-                .userEntity(user)
-                .orderItemEntities(orderItemEntities)
-                .totalAmount(Money.of(totalPrice))
-                .discountType(discountType)
-                .status(CREATED)
-                .orderDate(LocalDateTime.now())
-                .shippingProvider(shippingProvider)
-                .shippingType(shippingType)
-                .shippingAddress(Address.builder()
-                        .street(shippingStreet)
-                        .city(shippingCity)
-                        .zipCode(shippingZipCode)
-                        .country(shippingCountry)
-                        .build())
-                .build();
     }
 
 

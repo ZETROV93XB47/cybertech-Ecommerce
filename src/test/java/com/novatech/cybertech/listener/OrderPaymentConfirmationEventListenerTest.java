@@ -1,297 +1,120 @@
 package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
-import com.novatech.cybertech.entities.OrderEntity;
-import com.novatech.cybertech.entities.PaymentEntity;
-import com.novatech.cybertech.entities.UserEntity;
-import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
-import com.novatech.cybertech.entities.enums.TransactionType;
-import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
-import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
-import com.novatech.cybertech.exceptions.PaymentNotFoundException;
-import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
-import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
-import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.PaymentDtoFixtures;
-import com.novatech.cybertech.repositories.OrderRepository;
-import com.novatech.cybertech.services.core.CartService;
-import com.novatech.cybertech.services.core.StockService;
+import com.novatech.cybertech.services.core.OrderPaymentConfirmationTransactionalDelegate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import java.math.BigDecimal;
 import java.lang.reflect.Method;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
+/**
+ * Unit tests for {@link OrderPaymentConfirmationEventListener}.
+ *
+ * <p>The listener is now a thin {@code @Retryable}/{@code @TransactionalEventListener} wrapper —
+ * all business logic (state guards, stock side-effects, write ordering) moved to
+ * {@link OrderPaymentConfirmationTransactionalDelegate}, tested in
+ * {@code OrderPaymentConfirmationTransactionalDelegateImpTest}. This class only verifies
+ * delegation and that the annotations survived the refactor.
+ */
 @ExtendWith(MockitoExtension.class)
 class OrderPaymentConfirmationEventListenerTest {
 
     @Mock
-    private CartService cartService;
-    @Mock
-    private StockService stockService;
-    @Mock
-    private OrderRepository orderRepository;
+    private OrderPaymentConfirmationTransactionalDelegate delegate;
 
     @InjectMocks
     private OrderPaymentConfirmationEventListener listener;
 
-    private static StripeWebhookEventDto eventForOrder(UUID orderUuid) {
-        StripeWebhookEventDto event = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+    private static StripeWebhookEventDto eventForOrder(final UUID orderUuid) {
+        final StripeWebhookEventDto event = PaymentDtoFixtures.aValidPaymentSucceededEvent();
         event.getData().getPaymentIntentPayload().getMetadata().put("order_uuid", orderUuid.toString());
         return event;
     }
 
-    private static OrderEntity orderWithKeycloakId(UUID uuid, String keycloakId) {
-        UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-        return OrderEntityBuilder.aValidOrderBuilder().uuid(uuid).userEntity(user).build();
+    @Test
+    void handlePaymentSuccess_delegatesToTransactionalDelegate() {
+        final PaymentSucceededEvent event = new PaymentSucceededEvent(eventForOrder(UUID.randomUUID()));
+
+        listener.handlePaymentSuccess(event);
+
+        verify(delegate).handlePaymentSuccessWithinTransaction(event);
     }
 
-    private static OrderEntity orderWithStatus(UUID uuid, OrderStatus status) {
-        UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-status").build();
-        return OrderEntityBuilder.aValidOrderBuilder().uuid(uuid).userEntity(user).status(status).build();
+    @Test
+    void handlePaymentFailed_delegatesToTransactionalDelegate() {
+        final PaymentFailedEvent event = new PaymentFailedEvent(eventForOrder(UUID.randomUUID()));
+
+        listener.handlePaymentFailed(event);
+
+        verify(delegate).handlePaymentFailedWithinTransaction(event);
     }
 
-    private static PaymentEntity successfulAttempt(TransactionType transactionType, BigDecimal amount) {
-        return PaymentEntityBuilder.aValidPaymentBuilder()
-                .transactionType(transactionType)
-                .status(PaymentAttemptStatus.SUCCESS)
-                .amount(new Money(amount, CurrencyCode.EUR))
-                .build();
+    @Test
+    void handleRefund_delegatesToTransactionalDelegate() {
+        final PaymentRefundedEvent event = new PaymentRefundedEvent(eventForOrder(UUID.randomUUID()));
+
+        listener.handleRefund(event);
+
+        verify(delegate).handleRefundWithinTransaction(event);
     }
 
-    // ---------- @TransactionalEventListener phase reflection ----------
+    // ---------- annotation contracts ----------
 
     @Test
     void handlePaymentSuccessIsAnnotatedTransactionalEventListenerAfterCommit() throws NoSuchMethodException {
-        Method m = OrderPaymentConfirmationEventListener.class.getMethod("handlePaymentSuccess", PaymentSucceededEvent.class);
-        TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
+        final Method m = OrderPaymentConfirmationEventListener.class.getMethod("handlePaymentSuccess", PaymentSucceededEvent.class);
+        final TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
         assertThat(ann).isNotNull();
         assertThat(ann.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
     }
 
     @Test
     void handlePaymentFailedIsAnnotatedTransactionalEventListenerAfterCommit() throws NoSuchMethodException {
-        Method m = OrderPaymentConfirmationEventListener.class.getMethod("handlePaymentFailed", PaymentFailedEvent.class);
-        TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
+        final Method m = OrderPaymentConfirmationEventListener.class.getMethod("handlePaymentFailed", PaymentFailedEvent.class);
+        final TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
         assertThat(ann).isNotNull();
         assertThat(ann.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
     }
 
     @Test
     void handleRefundIsAnnotatedTransactionalEventListenerAfterCommit() throws NoSuchMethodException {
-        Method m = OrderPaymentConfirmationEventListener.class.getMethod("handleRefund", PaymentRefundedEvent.class);
-        TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
+        final Method m = OrderPaymentConfirmationEventListener.class.getMethod("handleRefund", PaymentRefundedEvent.class);
+        final TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
         assertThat(ann).isNotNull();
         assertThat(ann.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
     }
 
-    // ---------- happy paths ----------
-
+    /**
+     * Regression guard for the bug documented in progress.md: this listener's write races
+     * cancelOrder/updateOrder for the same order row, but used to have no retry at all — a lost
+     * race silently dropped the payment confirmation (Stripe never redelivers an AFTER_COMMIT
+     * listener's failure). Each handler must retry on {@link OptimisticLockingFailureException}.
+     */
     @Test
-    void handlePaymentSuccessShouldCommitStockMarkPaidAndClearCart() {
-        UUID uuid = UUID.randomUUID();
-        OrderEntity order = orderWithKeycloakId(uuid, "kc-1");
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-
-        listener.handlePaymentSuccess(new PaymentSucceededEvent(eventForOrder(uuid)));
-
-        verify(stockService).commitStock(uuid);
-        ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
-        verify(orderRepository).save(cap.capture());
-        assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.PAID);
-        verify(cartService).clearCart("kc-1");
-    }
-
-    @Test
-    void handlePaymentSuccessShouldThrowWhenOrderNotFound() {
-        UUID uuid = UUID.randomUUID();
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> listener.handlePaymentSuccess(new PaymentSucceededEvent(eventForOrder(uuid))))
-                .isInstanceOf(PaymentNotFoundException.class)
-                .hasMessageContaining(uuid.toString());
-        verifyNoInteractions(stockService, cartService);
-    }
-
-    @Test
-    void handlePaymentFailedShouldReleaseStockAndMarkPaymentFailed() {
-        UUID uuid = UUID.randomUUID();
-        OrderEntity order = orderWithKeycloakId(uuid, "kc-2");
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-
-        listener.handlePaymentFailed(new PaymentFailedEvent(eventForOrder(uuid)));
-
-        verify(stockService).releaseStock(uuid);
-        ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
-        verify(orderRepository).save(cap.capture());
-        assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
-        verifyNoInteractions(cartService);
-    }
-
-    @Test
-    void handleRefundShouldReleaseStockAndMarkRefunded() {
-        UUID uuid = UUID.randomUUID();
-        // A refund only applies to an order that actually got paid (or was canceled awaiting refund).
-        OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
-        // Full refund: a single PAYMENT/SUCCESS of 100 fully offset by a REFUND/SUCCESS of 100
-        // already recorded for this refund -> netPaid == 0, so the order must be fully closed out.
-        order.setPaymentAttempts(List.of(
-                successfulAttempt(TransactionType.PAYMENT, new BigDecimal("100.00")),
-                successfulAttempt(TransactionType.REFUND, new BigDecimal("100.00"))
-        ));
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-
-        listener.handleRefund(new PaymentRefundedEvent(eventForOrder(uuid)));
-
-        verify(stockService).releaseStock(uuid);
-        ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
-        verify(orderRepository).save(cap.capture());
-        assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.REFUNDED);
-        verifyNoInteractions(cartService);
-    }
-
-    @Test
-    void handleRefund_onPartialRefund_shouldNotReleaseStockNorMarkRefunded() {
-        // The customer dropped one item from an already-paid order (OrderManagementServiceImp#updateOrder
-        // refunds only the difference). The confirming charge.refunded webhook must NOT be treated as a
-        // full refund: stock still reserved for the kept items must stay reserved, and the order must
-        // keep its current (non-terminal) status.
-        UUID uuid = UUID.randomUUID();
-        OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
-        order.setPaymentAttempts(List.of(
-                successfulAttempt(TransactionType.PAYMENT, new BigDecimal("100.00")),
-                successfulAttempt(TransactionType.REFUND, new BigDecimal("30.00"))
-        ));
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-
-        listener.handleRefund(new PaymentRefundedEvent(eventForOrder(uuid)));
-
-        verify(stockService, never()).releaseStock(any());
-        verify(orderRepository, never()).save(any());
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
-        verifyNoInteractions(cartService);
-    }
-
-    // ---------- status guard: stale / out-of-order webhooks must not regress the order ----------
-
-    @Test
-    void handlePaymentSuccess_onCanceledOrder_isIgnored_noResurrection() {
-        // A late payment_intent.succeeded arriving AFTER the user canceled (and got refunded)
-        // must NOT resurrect the order to PAID.
-        UUID uuid = UUID.randomUUID();
-        OrderEntity order = orderWithStatus(uuid, OrderStatus.CANCELED);
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-
-        listener.handlePaymentSuccess(new PaymentSucceededEvent(eventForOrder(uuid)));
-
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
-        verify(orderRepository, never()).save(any());
-        verifyNoInteractions(stockService, cartService);
-    }
-
-    @Test
-    void handlePaymentSuccess_onRetryablePaymentFailedOrder_completesToPaid() {
-        // retryPayment leaves the order in PAYMENT_FAILED; the success webhook must still complete it.
-        UUID uuid = UUID.randomUUID();
-        OrderEntity order = orderWithStatus(uuid, OrderStatus.PAYMENT_FAILED);
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-
-        listener.handlePaymentSuccess(new PaymentSucceededEvent(eventForOrder(uuid)));
-
-        verify(stockService).commitStock(uuid);
-        verify(orderRepository).save(any());
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
-    }
-
-    @Test
-    void handlePaymentFailed_onPaidOrder_isIgnored_noRegression() {
-        // A late payment_intent.payment_failed must NOT regress an already-PAID order.
-        UUID uuid = UUID.randomUUID();
-        OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-
-        listener.handlePaymentFailed(new PaymentFailedEvent(eventForOrder(uuid)));
-
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
-        verify(orderRepository, never()).save(any());
-        verifyNoInteractions(stockService, cartService);
-    }
-
-    @Test
-    void handleRefund_onAlreadyRefundedOrder_isIgnored() {
-        UUID uuid = UUID.randomUUID();
-        OrderEntity order = orderWithStatus(uuid, OrderStatus.REFUNDED);
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
-
-        listener.handleRefund(new PaymentRefundedEvent(eventForOrder(uuid)));
-
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.REFUNDED);
-        verify(orderRepository, never()).save(any());
-        verifyNoInteractions(stockService, cartService);
-    }
-
-    @Test
-    void handlePaymentFailedShouldThrowWhenOrderNotFound() {
-        UUID uuid = UUID.randomUUID();
-        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> listener.handlePaymentFailed(new PaymentFailedEvent(eventForOrder(uuid))))
-                .isInstanceOf(PaymentNotFoundException.class)
-                .hasMessageContaining(uuid.toString());
-    }
-
-    // ---------- No null-guard on metadata.order_uuid ----------
-
-    @Test
-    void bug124_handlePaymentSuccess_nullOrderUuidInMetadata_shouldThrowDomainError() {
-        StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
-        stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
-        // Missing order_uuid is now translated to a domain-level PaymentNotFoundException
-        // (was: raw NullPointerException out of UUID.fromString(null) bubbling to the listener container).
-        assertThatThrownBy(() -> listener.handlePaymentSuccess(new PaymentSucceededEvent(stripe)))
-                .isInstanceOf(PaymentNotFoundException.class)
-                .hasMessageContaining("order_uuid");
-        verifyNoInteractions(stockService, cartService, orderRepository);
-    }
-
-    @Test
-    void bug124_handlePaymentFailed_nullOrderUuidInMetadata_shouldThrowDomainError() {
-        StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
-        stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
-        assertThatThrownBy(() -> listener.handlePaymentFailed(new PaymentFailedEvent(stripe)))
-                .isInstanceOf(PaymentNotFoundException.class)
-                .hasMessageContaining("order_uuid");
-        verifyNoInteractions(stockService, orderRepository);
-    }
-
-    @Test
-    void bug124_handleRefund_nullOrderUuidInMetadata_shouldThrowDomainError() {
-        StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
-        stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
-        assertThatThrownBy(() -> listener.handleRefund(new PaymentRefundedEvent(stripe)))
-                .isInstanceOf(PaymentNotFoundException.class)
-                .hasMessageContaining("order_uuid");
-        verifyNoInteractions(stockService, orderRepository);
+    void allHandlers_retryOnOptimisticLockingFailure() throws NoSuchMethodException {
+        for (final Method m : new Method[]{
+                OrderPaymentConfirmationEventListener.class.getMethod("handlePaymentSuccess", PaymentSucceededEvent.class),
+                OrderPaymentConfirmationEventListener.class.getMethod("handlePaymentFailed", PaymentFailedEvent.class),
+                OrderPaymentConfirmationEventListener.class.getMethod("handleRefund", PaymentRefundedEvent.class)}) {
+            final Retryable retryable = m.getAnnotation(Retryable.class);
+            assertThat(retryable).as("%s should be @Retryable", m.getName()).isNotNull();
+            assertThat(retryable.retryFor()).contains((Class) OptimisticLockingFailureException.class);
+            assertThat(retryable.maxAttempts()).isEqualTo(3);
+        }
     }
 }

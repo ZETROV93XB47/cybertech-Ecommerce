@@ -286,6 +286,73 @@ class StockServiceImpTest {
     }
 
     // ---------------------------------------------------------------------
+    // resizeReservation
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("resizeReservation: happy path — releases old row(s), reserves new product, single Redis SET at the end (no delete)")
+    void resizeReservation_happyPath_singleRedisSetAtEnd() {
+        final UUID orderUuid = UUID.randomUUID();
+        final UUID oldProductUuid = UUID.randomUUID();
+        final UUID newProductUuid = UUID.randomUUID();
+
+        final StockEntity oldReservation = reservation(orderUuid, oldProductUuid, 2);
+        final ProductEntity oldProduct = productWithStock(oldProductUuid, 10, 2);
+        final ProductEntity newProduct = productWithStock(newProductUuid, 10, 0);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(oldReservation));
+        when(productRepository.lockByUuid(oldProductUuid)).thenReturn(Optional.of(oldProduct));
+        when(productRepository.lockByUuid(newProductUuid)).thenReturn(Optional.of(newProduct));
+
+        service.resizeReservation(orderUuid, Map.of(newProductUuid, 5));
+
+        // Old reservation released: reservedStock reverted, row flipped RELEASED.
+        assertThat(oldProduct.getReservedStock()).isZero();
+        assertThat(oldReservation.getReservationStatus()).isEqualTo(ReservationStatus.RELEASED);
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+
+        // New reservation created. stockRepository.save is also called once for the released old
+        // row (status flip to RELEASED), so capture every invocation and find the new one.
+        final ArgumentCaptor<StockEntity> savedRowsCaptor = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository, times(2)).save(savedRowsCaptor.capture());
+        final StockEntity newRow = savedRowsCaptor.getAllValues().stream()
+                .filter(r -> r.getProductUuid().equals(newProductUuid))
+                .findFirst()
+                .orElseThrow();
+        assertThat(newRow.getQuantity()).isEqualTo(5);
+        assertThat(newProduct.getReservedStock()).isEqualTo(5);
+
+        // Redis touched exactly once, a SET (refresh/create) — never a delete.
+        verify(valueOps, times(1)).set(eq(KEY_PREFIX + orderUuid), eq(ReservationStatus.ACTIVE.name()), eq(EXPECTED_TTL));
+        verify(redisTemplate, never()).delete(anyString());
+    }
+
+    @Test
+    @DisplayName("resizeReservation: insufficient stock on the new product — rolls back before touching Redis at all")
+    void resizeReservation_newProductShortfall_neverTouchesRedis() {
+        final UUID orderUuid = UUID.randomUUID();
+        final UUID oldProductUuid = UUID.randomUUID();
+        final UUID newProductUuid = UUID.randomUUID();
+
+        final StockEntity oldReservation = reservation(orderUuid, oldProductUuid, 2);
+        final ProductEntity oldProduct = productWithStock(oldProductUuid, 10, 2);
+        final ProductEntity shortProduct = productWithStock(newProductUuid, 3, 0); // available = 3
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(oldReservation));
+        when(productRepository.lockByUuid(oldProductUuid)).thenReturn(Optional.of(oldProduct));
+        when(productRepository.lockByUuid(newProductUuid)).thenReturn(Optional.of(shortProduct));
+
+        assertThatThrownBy(() -> service.resizeReservation(orderUuid, Map.of(newProductUuid, 5)))
+                .isInstanceOf(NotEnoughStockException.class);
+
+        // This is the whole point of the fix: on failure, Redis must not have been touched at
+        // all (no premature delete of the old TTL sentinel, no partial set) — the caller's
+        // transaction rollback alone is enough to fully undo the attempt.
+        verifyNoInteractions(valueOps);
+        verify(redisTemplate, never()).delete(anyString());
+    }
+
+    // ---------------------------------------------------------------------
     // commitStock
     // ---------------------------------------------------------------------
 

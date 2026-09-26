@@ -96,13 +96,21 @@ public class OrderCancellationTransactionalDelegateImp implements OrderCancellat
 
         orderEntity.setStatus(OrderStatus.CANCELED);
 
+        // Save BEFORE releasing stock — releaseStock ends with a Redis write that is NOT part of
+        // this transaction. If save() throws (e.g. OptimisticLockingFailureException racing the
+        // async OrderPaymentConfirmationEventListener — @Retryable on cancelOrder absorbs that),
+        // nothing has touched Redis yet and the whole transaction rolls back cleanly. Reversing
+        // this order would leave a deleted Redis TTL sentinel behind for a reservation the DB
+        // rollback just restored to ACTIVE/COMMITTED.
+        final OrderEntity saved = orderRepository.save(orderEntity);
+
         // Release any reserved stock for the cancelled order — mirrors deleteByUUID(). Handles
         // both an ACTIVE reservation (never committed) and a COMMITTED one (order already PAID):
         // StockService restores product.stock in the latter case so cancelling a paid order
         // never leaks inventory.
         stockService.releaseStock(orderUUID);
 
-        return orderMapper.mapFromEntityToResponseDto(orderRepository.save(orderEntity));
+        return orderMapper.mapFromEntityToResponseDto(saved);
     }
 
     /**

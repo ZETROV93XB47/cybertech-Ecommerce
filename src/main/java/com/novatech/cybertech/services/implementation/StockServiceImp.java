@@ -186,6 +186,40 @@ public class StockServiceImp implements StockService {
     }
 
     /**
+     * {@inheritDoc}
+     *
+     * <p>Same DB-level work as calling {@link #releaseStock(UUID)} then {@link #reserveStock}
+     * back to back, but the Redis sentinel is touched exactly ONCE, at the very end, only after
+     * every DB write (the release AND every new per-product reservation) has succeeded. This
+     * matters because a plain {@code releaseStock()} immediately deletes the Redis TTL key —
+     * that delete is not transactional, so if a LATER step in the caller's transaction throws
+     * (e.g. {@link com.novatech.cybertech.exceptions.NotEnoughStockException} on one of the new
+     * products) and the transaction rolls back, the DB reservation rows revert to their pre-release
+     * state but the Redis key stays deleted — silently disabling that order's 5-minute
+     * auto-expiry safety net. Deferring the Redis write here closes that window.
+     */
+    @Override
+    @Transactional
+    public void resizeReservation(UUID orderUuid, Map<UUID, Integer> newQuantities) {
+
+        log.info("Resizing stock reservation for order {}", orderUuid);
+
+        final List<StockEntity> existing = stockRepository.findByOrderUuid(orderUuid);
+        existing.stream()
+                .filter(r -> r.getReservationStatus() == ACTIVE || r.getReservationStatus() == COMMITTED)
+                .forEach(this::updateStockForRelease);
+        stockRepository.deleteByOrderUuid(orderUuid);
+
+        final Map<UUID, Integer> ordered = new TreeMap<>(Comparator.comparing(UUID::toString));
+        ordered.putAll(newQuantities);
+        ordered.entrySet().forEach(entry -> lockAndReserveProduct(orderUuid, entry));
+
+        redisTemplate.opsForValue().set(reservationKey(orderUuid), ACTIVE.name(), RESERVATION_TTL);
+
+        log.info("Resized stock reservation for order {}", orderUuid);
+    }
+
+    /**
      * Builds the canonical Redis sentinel key {@code reservation:order:&lt;uuid&gt;} for the
      * given order. Used as both the value and TTL key tracked by
      * {@link com.novatech.cybertech.listener.RedisExpirationListener}.
