@@ -120,7 +120,7 @@ public final class UserDtoFixtures {
         return BankCardResponseDto.builder()
                 .uuid(UUID.randomUUID())
                 .cardHolderName("Jane Doe")
-                .cardNumber("4242424242424242")
+                //.cardNumber("4242424242424242")
                 .expiryDate(LocalDate.now().plusYears(5).format(EXPIRY_FORMAT))
                 .cardType(BankCardType.VISA)
                 .userUuid(UUID.randomUUID());
