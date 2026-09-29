@@ -105,6 +105,31 @@ class ShippingListenerTest {
     }
 
     @Test
+    void onShouldShortCircuitWhenOrderAlreadyHasShippedAtEvenIfStatusIsPaidAgain() {
+        // Simulates updateOrder's charge-difference path regressing an already-shipped order's
+        // status back to PAID (via AWAITING_PAYMENT + the payment webhook) to fund a top-up and
+        // commit the resized stock reservation — shippedAt must stop a second real dispatch.
+        OrderEntity order = paidOrder();
+        order.setShippedAt(java.time.LocalDateTime.now().minusMinutes(10));
+        when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+        listener.on(new OrderPaidEvent(order.getUuid()));
+
+        verifyNoInteractions(shippingDispatcher, eventPublisher);
+        verify(orderRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void onShouldStampShippedAtWhenDispatching() {
+        OrderEntity order = paidOrder();
+        when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+        listener.on(new OrderPaidEvent(order.getUuid()));
+
+        assertThat(order.getShippedAt()).isNotNull();
+    }
+
+    @Test
     void onShouldShortCircuitWhenOrderStatusIsNotPaid() {
         OrderEntity order = paidOrder();
         order.setStatus(OrderStatus.AWAITING_PAYMENT);

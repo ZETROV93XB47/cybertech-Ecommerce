@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
@@ -76,11 +77,24 @@ public class ShippingListener {
 
         if (order.getStatus() != OrderStatus.PAID) return;
 
+        // Guards a narrow but real window: updateOrder's charge-difference path can regress an
+        // AWAITING_SHIPPING order back to AWAITING_PAYMENT (to fund a top-up), then the payment
+        // webhook re-promotes it to PAID and republishes OrderPaidEvent — which would otherwise
+        // land here a second time while THIS order's original dispatch is still in flight (or has
+        // already completed). shippedAt is the durable idempotency marker for the one thing here
+        // that must never repeat: the actual call to the carrier.
+        if (order.getShippedAt() != null) {
+            log.info("Order {} was already handed to the carrier at {} — ignoring a re-promoted OrderPaidEvent instead of dispatching again.", order.getUuid(), order.getShippedAt());
+            return;
+        }
+
         // Atomically claim the order: flip PAID -> AWAITING_SHIPPING and save FIRST so JPA's
         // @Version optimistic locking detects the race against ShipAllPaidOrdersTasklet
         // (which also ships PAID orders). If we lose the race, the OptimisticLockingFailureException
-        // bubbles up and we skip dispatching — preventing the double-ship bug.
+        // bubbles up and we skip dispatching — preventing the double-ship bug. shippedAt is stamped
+        // in the SAME save, so it is claimed under the same optimistic-lock guarantee.
         order.setStatus(OrderStatus.AWAITING_SHIPPING);
+        order.setShippedAt(LocalDateTime.now());
         orderRepository.save(order);
 
         final UserEntity user = order.getUserEntity();

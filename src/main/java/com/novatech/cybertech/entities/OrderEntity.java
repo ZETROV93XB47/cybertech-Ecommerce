@@ -52,6 +52,18 @@ public class OrderEntity extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     private OrderStatus status;
 
+    /**
+     * Set once, the first time this order is actually handed to a shipping provider — by either
+     * {@code ShippingListener} or {@code ShipOrderTransactionalDelegate}. Unlike {@code status},
+     * which {@code updateOrder}'s charge-difference path can legitimately regress from
+     * {@code AWAITING_SHIPPING} back down to {@code AWAITING_PAYMENT} (to let the payment webhook
+     * re-promote it to {@code PAID} and commit the resized stock reservation), this field is never
+     * cleared — it is the idempotency marker that stops that regression from triggering a second,
+     * real dispatch call to the carrier once the webhook republishes {@code OrderPaidEvent}.
+     */
+    @Column(name = "shippedAt")
+    private LocalDateTime shippedAt;
+
     @Column(name = "shippingType", nullable = false)
     @Enumerated(EnumType.STRING)
     private ShippingType shippingType;

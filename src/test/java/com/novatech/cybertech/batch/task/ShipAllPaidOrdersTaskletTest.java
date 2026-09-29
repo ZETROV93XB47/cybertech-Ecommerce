@@ -115,7 +115,7 @@ class ShipAllPaidOrdersTaskletTest {
             shippingDispatcher.dispatch(ctx);
             ord.setStatus(OrderStatus.SHIPPED);
             orderRepository.save(ord);
-            return null;
+            return true;
         }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
     }
 
@@ -227,7 +227,7 @@ class ShipAllPaidOrdersTaskletTest {
                 shippingDispatcher.dispatch(ctx);
                 ord.setStatus(OrderStatus.SHIPPED);
                 orderRepository.save(ord);
-                return null;
+                return true;
             }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
 
             final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
@@ -291,6 +291,22 @@ class ShipAllPaidOrdersTaskletTest {
         }
 
         @Test
+        @DisplayName("delegate returning false (already shipped once) sends no notification")
+        void delegateReportsAlreadyShipped_notificationNotSent() throws Exception {
+            // Mirrors the updateOrder charge-difference scenario: the order was re-promoted to
+            // PAID after already being shipped once, so claimAndShip finds shippedAt already set
+            // and skips dispatching — the tasklet must not send a second confirmation email either.
+            final OrderEntity o1 = paidOrderForUser("a@example.com");
+            when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(o1));
+            when(shipOrderDelegate.claimAndShip(any(OrderEntity.class), any(ShippingContext.class))).thenReturn(false);
+
+            final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
+
+            assertThat(status).isEqualTo(RepeatStatus.FINISHED);
+            verifyNoInteractions(shippingDispatcher, notificationRetryableDelivery);
+        }
+
+        @Test
         @DisplayName("OptimisticLockingFailureException from delegate skips the order without aborting the batch")
         void optimisticLockFailure_skipsOrderWithoutAbortingBatch() throws Exception {
             final OrderEntity o1 = paidOrderForUser("a@example.com");
@@ -311,7 +327,7 @@ class ShipAllPaidOrdersTaskletTest {
                 shippingDispatcher.dispatch(ctx);
                 ord.setStatus(OrderStatus.SHIPPED);
                 orderRepository.save(ord);
-                return null;
+                return true;
             }).when(shipOrderDelegate).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
 
             final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);

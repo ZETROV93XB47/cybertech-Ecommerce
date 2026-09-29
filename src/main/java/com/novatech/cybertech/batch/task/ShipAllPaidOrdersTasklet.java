@@ -98,7 +98,13 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         // OptimisticLockingFailureException, caught per-order in execute(...). The SHIPPED transition
         // now lives inside the delegate too — doing it here on the detached `order` after the
         // delegate already bumped @Version failed the save with a stale-version optimistic lock.
-        shipOrderDelegate.claimAndShip(order, shippingContext);
+        //
+        // A false return means the order was already shipped once (shippedAt already set) and was
+        // re-promoted to PAID by an updateOrder top-up in between — no dispatch happened, so no
+        // shipping-confirmation notification must be sent either.
+        if (!shipOrderDelegate.claimAndShip(order, shippingContext)) {
+            return;
+        }
 
         final ShippingConfirmationPayload payload = ShippingConfirmationPayload.builder()
                 .orderUuid(order.getUuid())
