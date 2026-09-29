@@ -4,6 +4,7 @@ import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
@@ -47,6 +48,11 @@ public class OrderUpdateRequestDto {
 
     // An empty list made updateOrder() compute a zero-amount difference and flip the
     // order to PAID with no payment ever processed (see OrderManagementServiceImp#updateOrder).
+    // @Valid cascades into each OrderItemCreateRequestDto so its own @NotNull/@Min(1) constraints
+    // are actually enforced — without it a zero/negative quantity skipped Bean Validation entirely
+    // and only got caught deep in StockServiceImp's defensive qty<=0 check, as a raw 400
+    // IllegalArgumentException instead of a clean field-level validation error.
+    @Valid
     @NotEmpty(message = "At least one item is required to update an order")
     private List<OrderItemCreateRequestDto> itemUpdateRequestDtoList;
 }

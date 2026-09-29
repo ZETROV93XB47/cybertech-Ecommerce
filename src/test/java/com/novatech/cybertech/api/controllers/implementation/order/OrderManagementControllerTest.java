@@ -6,6 +6,7 @@ import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
@@ -38,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -260,6 +262,32 @@ class OrderManagementControllerTest {
                 .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
                 .andExpect(jsonPath("$.httpStatusCode").value(400))
                 .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailUpdatingOrderWhenItemQuantityIsZero() throws Exception {
+        // Regression: itemUpdateRequestDtoList was missing @Valid, so OrderItemCreateRequestDto's
+        // own @Min(1) on quantity never ran — a zero/negative quantity used to sail past this
+        // controller's Bean Validation entirely and only got caught deep in StockServiceImp as a
+        // raw IllegalArgumentException instead of a clean field-level validation error here.
+        OrderUpdateRequestDto bad = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder()
+                        .productUuid(UUID.randomUUID())
+                        .quantity(0)
+                        .build()))
+                .build();
+
+        mockMvc.perform(post(UPDATE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(bad)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400));
+
+        verifyNoInteractions(orderService);
     }
 
     @Test
