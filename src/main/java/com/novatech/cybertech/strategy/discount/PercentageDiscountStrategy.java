@@ -33,7 +33,7 @@ public class PercentageDiscountStrategy implements DiscountStrategy {
         final BigDecimal percentage = context.percentage();
         if (percentage == null) {
             throw new IllegalStateException(
-                    "Percentage discount requires a non-null percentage in context for " + context.discountType());
+                    "Percentage discount requires a non-null percentage in context for " + context.discountKey());
         }
 
         BigDecimal discount = baseAmount

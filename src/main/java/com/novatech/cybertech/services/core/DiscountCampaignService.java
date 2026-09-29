@@ -1,13 +1,12 @@
 package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.data.DiscountContext;
-import com.novatech.cybertech.entities.enums.DiscountType;
 
 import java.util.List;
 
 public interface DiscountCampaignService {
 
-    DiscountContext getActiveDiscountContext(DiscountType discountType);
+    DiscountContext getActiveDiscountContext(String discountKey);
 
     /**
      * Public-facing list of campaigns the customer can pick at checkout. Returns only

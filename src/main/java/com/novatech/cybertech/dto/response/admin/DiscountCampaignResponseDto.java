@@ -1,7 +1,6 @@
 package com.novatech.cybertech.dto.response.admin;
 
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import lombok.Builder;
 
 import java.math.BigDecimal;
@@ -14,7 +13,7 @@ import java.util.UUID;
 @Builder
 public record DiscountCampaignResponseDto(
         UUID uuid,
-        DiscountType discountType,
+        String discountKey,
         DiscountCalculationType calculationType,
         boolean enabled,
         BigDecimal percentage,

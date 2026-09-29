@@ -1,6 +1,5 @@
 package com.novatech.cybertech.entities;
 
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
@@ -72,9 +71,14 @@ public class OrderEntity extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     private ShippingProvider shippingProvider;
 
+    /**
+     * The {@code discountKey} of the campaign applied at purchase time (or {@link
+     * com.novatech.cybertech.constants.CyberTechAppConstants#NO_DISCOUNT_KEY}). Free-form String,
+     * not an enum — see {@link com.novatech.cybertech.entities.DiscountCampaignEntity#getDiscountKey()}
+     * for why. Column name kept as {@code discountType} (ddl-auto=update caveat, see there).
+     */
     @Column(name = "discountType", nullable = false)
-    @Enumerated(EnumType.STRING)
-    private DiscountType discountType;
+    private String discountKey;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "userId")

@@ -79,7 +79,7 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
 
         final PriceCalculationRequestDto priceRequest = PriceCalculationRequestDto.builder()
                 .items(priceDtos)
-                .discountType(req.getDiscountType())
+                .discountKey(req.getDiscountKey())
                 .currencyCode(CurrencyCode.fromCode("EUR"))
                 .shippingProvider(req.getShippingProvider())
                 .shippingType(req.getShippingType())
@@ -103,7 +103,7 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
                 .userEntity(user)
                 .orderItemEntities(orderItems)
                 .totalAmount(Money.of(totalAmount))
-                .discountType(req.getDiscountType())
+                .discountKey(req.getDiscountKey())
                 .status(OrderStatus.CREATED)
                 .orderDate(LocalDateTime.now())
                 .shippingProvider(req.getShippingProvider())

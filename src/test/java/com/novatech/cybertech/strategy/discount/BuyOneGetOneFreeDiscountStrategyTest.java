@@ -3,7 +3,6 @@ package com.novatech.cybertech.strategy.discount;
 import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +17,7 @@ class BuyOneGetOneFreeDiscountStrategyTest {
     private final BuyOneGetOneFreeDiscountStrategy strategy = new BuyOneGetOneFreeDiscountStrategy();
 
     private final DiscountContext context = DiscountContext.builder()
-            .discountType(DiscountType.BUY_ONE_GET_ONE_FREE)
+            .discountKey("BUY_ONE_GET_ONE_FREE")
             .calculationType(DiscountCalculationType.BUY_ONE_GET_ONE_FREE)
             .build();
 
@@ -90,7 +89,7 @@ class BuyOneGetOneFreeDiscountStrategyTest {
     @DisplayName("maxDiscountAmount caps the BOGO discount")
     void respectsMaxCap() {
         final DiscountContext capped = DiscountContext.builder()
-                .discountType(DiscountType.BUY_ONE_GET_ONE_FREE)
+                .discountKey("BUY_ONE_GET_ONE_FREE")
                 .calculationType(DiscountCalculationType.BUY_ONE_GET_ONE_FREE)
                 .maxDiscountAmount(new BigDecimal("3.00"))
                 .build();

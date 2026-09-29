@@ -16,7 +16,6 @@ import com.novatech.cybertech.entities.OrderItemEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.UserEntity;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
@@ -91,6 +90,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -168,7 +168,7 @@ class OrderManagementServiceImpTest {
                         .shippingCost(new BigDecimal("5.00"))
                         .finalAmount(new BigDecimal("10.00"))
                         .currencyCode(CurrencyCode.EUR)
-                        .discountType(DiscountType.NO_DISCOUNT)
+                        .discountKey(NO_DISCOUNT_KEY)
                         .build());
     }
 
@@ -517,7 +517,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("100.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("100.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
 
             final OrderUpdateRequestDto req = requestFor(order.getUuid(), product, 1);
             service.updateOrder(req, jwt);
@@ -543,7 +543,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
                             .finalAmount(BigDecimal.ZERO).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
 
             assertThatThrownBy(() -> service.updateOrder(requestFor(order.getUuid(), freeProduct, 1), jwt))
                     .isInstanceOf(OrderNotFundedException.class);
@@ -568,7 +568,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
             when(paymentService.processPayment(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -596,7 +596,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
             when(paymentService.refund(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
                             new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -633,7 +633,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
             when(paymentService.refund(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
                             new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -659,7 +659,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
             when(paymentService.refund(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.FAILED, TransactionType.REFUND, PaymentType.VISA,
                             new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -692,7 +692,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
             when(paymentService.refund(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
                             new Money(new BigDecimal("1.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -724,7 +724,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
             when(paymentService.processPayment(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -751,7 +751,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
             when(paymentService.processPayment(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.PROCESSING, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -777,7 +777,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
             when(paymentService.processPayment(any(), any(), any(), anyString()))
                     .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
                             new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
@@ -850,7 +850,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("70.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("70.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
 
             service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
 
@@ -908,7 +908,7 @@ class OrderManagementServiceImpTest {
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("99.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("99.00")).currencyCode(CurrencyCode.EUR)
-                            .discountType(DiscountType.NO_DISCOUNT).build());
+                            .discountKey(NO_DISCOUNT_KEY).build());
 
             final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder()
                     .uuid(order.getUuid())
@@ -1076,7 +1076,7 @@ class OrderManagementServiceImpTest {
             // retrying after a transient payment failure pays exactly the same amount as the original
             // attempt, regardless of discountType.
             final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("60.00"));
-            order.setDiscountType(DiscountType.BLACK_FRIDAY);
+            order.setDiscountKey("BLACK_FRIDAY");
             final Money originalTotal = order.getTotalAmount();
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(

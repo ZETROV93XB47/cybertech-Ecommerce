@@ -5,7 +5,6 @@ import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
@@ -28,6 +27,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -70,26 +70,26 @@ class OrderPriceCalculationServiceImpTest {
                 .build();
     }
 
-    private PriceCalculationRequestDto request(final DiscountType type, final OrderItemPriceDto... items) {
+    private PriceCalculationRequestDto request(final String discountKey, final OrderItemPriceDto... items) {
         return PriceCalculationRequestDto.builder()
                 .items(List.of(items))
-                .discountType(type)
+                .discountKey(discountKey)
                 .currencyCode(CurrencyCode.EUR)
                 .shippingProvider(ShippingProvider.DHL)
                 .shippingType(ShippingType.STANDARD)
                 .build();
     }
 
-    private DiscountContext noneContext(final DiscountType type) {
+    private DiscountContext noneContext(final String discountKey) {
         return DiscountContext.builder()
-                .discountType(type)
+                .discountKey(discountKey)
                 .calculationType(DiscountCalculationType.NONE)
                 .build();
     }
 
-    private DiscountContext percentageContext(final DiscountType type, final BigDecimal percentage) {
+    private DiscountContext percentageContext(final String discountKey, final BigDecimal percentage) {
         return DiscountContext.builder()
-                .discountType(type)
+                .discountKey(discountKey)
                 .calculationType(DiscountCalculationType.PERCENTAGE)
                 .percentage(percentage)
                 .build();
@@ -99,14 +99,14 @@ class OrderPriceCalculationServiceImpTest {
     @DisplayName("NO_DISCOUNT short-circuits: campaign service NOT consulted, factory NOT consulted; shipping cost folded into final")
     void noneSkipsStrategy() {
         final PriceCalculationResultDto result = service.calculate(
-                request(DiscountType.NO_DISCOUNT, item("10.00", 2), item("5.00", 3)));
+                request(NO_DISCOUNT_KEY, item("10.00", 2), item("5.00", 3)));
 
         assertThat(result.getBaseAmount()).isEqualByComparingTo("35.00");
         assertThat(result.getDiscountAmount()).isEqualByComparingTo("0.00");
         assertThat(result.getShippingCost()).isEqualByComparingTo(DEFAULT_SHIPPING_COST);
         // base 35 + shipping 15 = 50
         assertThat(result.getFinalAmount()).isEqualByComparingTo("50.00");
-        assertThat(result.getDiscountType()).isEqualTo(DiscountType.NO_DISCOUNT);
+        assertThat(result.getDiscountKey()).isEqualTo(NO_DISCOUNT_KEY);
         assertThat(result.getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
         verify(discountCampaignService, never()).getActiveDiscountContext(any());
         verify(discountStrategyFactory, never()).getStrategy(any());
@@ -115,14 +115,14 @@ class OrderPriceCalculationServiceImpTest {
     @Test
     @DisplayName("PERCENTAGE: factory resolved by calc type, items + context forwarded to strategy")
     void percentageDelegatesToStrategy() {
-        final DiscountContext ctx = percentageContext(DiscountType.BLACK_FRIDAY, new BigDecimal("40"));
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.BLACK_FRIDAY)).thenReturn(ctx);
+        final DiscountContext ctx = percentageContext("BLACK_FRIDAY", new BigDecimal("40"));
+        when(discountCampaignService.getActiveDiscountContext("BLACK_FRIDAY")).thenReturn(ctx);
         when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(strategy);
         when(strategy.calculateDiscount(any(BigDecimal.class), anyList(), any(DiscountContext.class)))
                 .thenReturn(new BigDecimal("40.00"));
 
         final PriceCalculationResultDto result = service.calculate(
-                request(DiscountType.BLACK_FRIDAY, item("50.00", 2)));
+                request("BLACK_FRIDAY", item("50.00", 2)));
 
         assertThat(result.getBaseAmount()).isEqualByComparingTo("100.00");
         assertThat(result.getDiscountAmount()).isEqualByComparingTo("40.00");
@@ -134,14 +134,14 @@ class OrderPriceCalculationServiceImpTest {
     @Test
     @DisplayName("discount > base clamps discounted subtotal at 0, but shipping is still added on top")
     void finalAmountClampedToZero() {
-        final DiscountContext ctx = percentageContext(DiscountType.BLACK_FRIDAY, new BigDecimal("40"));
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.BLACK_FRIDAY)).thenReturn(ctx);
+        final DiscountContext ctx = percentageContext("BLACK_FRIDAY", new BigDecimal("40"));
+        when(discountCampaignService.getActiveDiscountContext("BLACK_FRIDAY")).thenReturn(ctx);
         when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(strategy);
         when(strategy.calculateDiscount(any(BigDecimal.class), anyList(), any(DiscountContext.class)))
                 .thenReturn(new BigDecimal("20.00"));
 
         final PriceCalculationResultDto result = service.calculate(
-                request(DiscountType.BLACK_FRIDAY, item("10.00", 1)));
+                request("BLACK_FRIDAY", item("10.00", 1)));
 
         // max(10 - 20, 0) + 15 = 0 + 15 = 15
         assertThat(result.getFinalAmount()).isEqualByComparingTo("15.00");
@@ -150,10 +150,10 @@ class OrderPriceCalculationServiceImpTest {
     @Test
     @DisplayName("DiscountCampaignService throws (disabled / out of window) propagates without invoking strategy")
     void inactiveCampaignPropagates() {
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.BLACK_FRIDAY))
+        when(discountCampaignService.getActiveDiscountContext("BLACK_FRIDAY"))
                 .thenThrow(new DiscountTypeNotActiveException("Discount BLACK_FRIDAY is disabled"));
 
-        assertThatThrownBy(() -> service.calculate(request(DiscountType.BLACK_FRIDAY, item("10.00", 1))))
+        assertThatThrownBy(() -> service.calculate(request("BLACK_FRIDAY", item("10.00", 1))))
                 .isInstanceOf(DiscountTypeNotActiveException.class)
                 .hasMessageContaining("BLACK_FRIDAY");
 
@@ -163,11 +163,11 @@ class OrderPriceCalculationServiceImpTest {
     @Test
     @DisplayName("Active context but no strategy wired for calc type throws DiscountTypeNotActiveException")
     void missingStrategyThrows() {
-        final DiscountContext ctx = percentageContext(DiscountType.WINTER_SALES, new BigDecimal("15"));
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.WINTER_SALES)).thenReturn(ctx);
+        final DiscountContext ctx = percentageContext("WINTER_SALES", new BigDecimal("15"));
+        when(discountCampaignService.getActiveDiscountContext("WINTER_SALES")).thenReturn(ctx);
         when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(null);
 
-        assertThatThrownBy(() -> service.calculate(request(DiscountType.WINTER_SALES, item("10.00", 1))))
+        assertThatThrownBy(() -> service.calculate(request("WINTER_SALES", item("10.00", 1))))
                 .isInstanceOf(DiscountTypeNotActiveException.class)
                 .hasMessageContaining("No DiscountStrategy wired");
     }
@@ -176,15 +176,15 @@ class OrderPriceCalculationServiceImpTest {
     @DisplayName("baseAmount < minOrderAmount: discount = 0, strategy not called")
     void belowMinOrderSkipsDiscount() {
         final DiscountContext ctx = DiscountContext.builder()
-                .discountType(DiscountType.BLACK_FRIDAY)
+                .discountKey("BLACK_FRIDAY")
                 .calculationType(DiscountCalculationType.PERCENTAGE)
                 .percentage(new BigDecimal("40"))
                 .minOrderAmount(new BigDecimal("100.00"))
                 .build();
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.BLACK_FRIDAY)).thenReturn(ctx);
+        when(discountCampaignService.getActiveDiscountContext("BLACK_FRIDAY")).thenReturn(ctx);
 
         final PriceCalculationResultDto result = service.calculate(
-                request(DiscountType.BLACK_FRIDAY, item("10.00", 1))); // base = 10, below min 100
+                request("BLACK_FRIDAY", item("10.00", 1))); // base = 10, below min 100
 
         assertThat(result.getBaseAmount()).isEqualByComparingTo("10.00");
         assertThat(result.getDiscountAmount()).isEqualByComparingTo("0.00");
@@ -197,18 +197,18 @@ class OrderPriceCalculationServiceImpTest {
     @DisplayName("baseAmount >= minOrderAmount: discount applies normally")
     void atMinOrderAppliesDiscount() {
         final DiscountContext ctx = DiscountContext.builder()
-                .discountType(DiscountType.BLACK_FRIDAY)
+                .discountKey("BLACK_FRIDAY")
                 .calculationType(DiscountCalculationType.PERCENTAGE)
                 .percentage(new BigDecimal("40"))
                 .minOrderAmount(new BigDecimal("100.00"))
                 .build();
-        when(discountCampaignService.getActiveDiscountContext(DiscountType.BLACK_FRIDAY)).thenReturn(ctx);
+        when(discountCampaignService.getActiveDiscountContext("BLACK_FRIDAY")).thenReturn(ctx);
         when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(strategy);
         when(strategy.calculateDiscount(any(BigDecimal.class), anyList(), any(DiscountContext.class)))
                 .thenReturn(new BigDecimal("40.00"));
 
         final PriceCalculationResultDto result = service.calculate(
-                request(DiscountType.BLACK_FRIDAY, item("100.00", 1))); // base = 100, equals min
+                request("BLACK_FRIDAY", item("100.00", 1))); // base = 100, equals min
 
         assertThat(result.getDiscountAmount()).isEqualByComparingTo("40.00");
     }
@@ -217,7 +217,7 @@ class OrderPriceCalculationServiceImpTest {
     @DisplayName("baseAmount rounded HALF_UP to 2 dp")
     void baseAmountScaleIsTwo() {
         final PriceCalculationResultDto result = service.calculate(
-                request(DiscountType.NO_DISCOUNT, item("3.333", 3)));
+                request(NO_DISCOUNT_KEY, item("3.333", 3)));
 
         assertThat(result.getBaseAmount().scale()).isEqualTo(2);
         // base 9.999 → rounded to 10.00 (NO_DISCOUNT path uses .setScale(HALF_UP)) + shipping 15 = 25.00
@@ -230,7 +230,7 @@ class OrderPriceCalculationServiceImpTest {
         final PriceCalculationResultDto result = service.calculate(
                 PriceCalculationRequestDto.builder()
                         .items(List.of(item("10.00", 1)))
-                        .discountType(DiscountType.NO_DISCOUNT)
+                        .discountKey(NO_DISCOUNT_KEY)
                         .currencyCode(CurrencyCode.USD)
                         .shippingProvider(ShippingProvider.DHL)
                         .shippingType(ShippingType.STANDARD)
@@ -256,7 +256,7 @@ class OrderPriceCalculationServiceImpTest {
         final PriceCalculationResultDto result = service.calculate(
                 PriceCalculationRequestDto.builder()
                         .items(List.of(item("20.00", 1)))
-                        .discountType(DiscountType.NO_DISCOUNT)
+                        .discountKey(NO_DISCOUNT_KEY)
                         .currencyCode(CurrencyCode.EUR)
                         .shippingProvider(ShippingProvider.FEDEX)
                         .shippingType(ShippingType.EXPRESS)
@@ -276,7 +276,7 @@ class OrderPriceCalculationServiceImpTest {
         when(shippingProviderStrategyFactory.getStrategy(ShippingProvider.DHL)).thenReturn(null);
 
         assertThatThrownBy(() -> service.calculate(
-                request(DiscountType.NO_DISCOUNT, item("10.00", 1))))
+                request(NO_DISCOUNT_KEY, item("10.00", 1))))
                 .isInstanceOf(NoStrategyFoundForProcessingTheRequest.class)
                 .hasMessageContaining("DHL");
     }
@@ -285,7 +285,7 @@ class OrderPriceCalculationServiceImpTest {
     @DisplayName("NO_DISCOUNT path: shipping is added exactly once to finalAmount (no double-counting)")
     void shippingCostNotDoubleCountedOnNO_DISCOUNT() {
         final PriceCalculationResultDto result = service.calculate(
-                request(DiscountType.NO_DISCOUNT, item("100.00", 1)));
+                request(NO_DISCOUNT_KEY, item("100.00", 1)));
 
         assertThat(result.getBaseAmount()).isEqualByComparingTo("100.00");
         assertThat(result.getShippingCost()).isEqualByComparingTo(DEFAULT_SHIPPING_COST);

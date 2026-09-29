@@ -10,8 +10,9 @@ import java.lang.annotation.Target;
 /**
  * Marks a {@code DiscountStrategy} bean as the handler for one or more
  * {@link DiscountCalculationType} algorithms (PERCENTAGE / FIXED_AMOUNT / BOGO / NONE).
- * Multiple commercial {@code DiscountType}s (e.g. BLACK_FRIDAY, WINTER_SALES) can share
- * the same strategy via this calculation-type indirection.
+ * Multiple discount campaigns (identified by their free-form {@code discountKey}, e.g.
+ * {@code BLACK_FRIDAY}, {@code WINTER_SALES}) can share the same strategy via this
+ * calculation-type indirection.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

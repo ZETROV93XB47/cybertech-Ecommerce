@@ -1,10 +1,12 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.dto.request.admin.DiscountCampaignCreateRequestDto;
 import com.novatech.cybertech.dto.request.admin.DiscountCampaignUpdateRequestDto;
 import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
+import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
+import com.novatech.cybertech.factory.DiscountStrategyFactory;
 import com.novatech.cybertech.repositories.DiscountCampaignRepository;
 import com.novatech.cybertech.services.core.DiscountCampaignAdminService;
 import lombok.RequiredArgsConstructor;
@@ -29,27 +31,61 @@ public class DiscountCampaignAdminServiceImp implements DiscountCampaignAdminSer
 
     private final DiscountCampaignRepository discountCampaignRepository;
     private final DiscountCampaignServiceImp discountCampaignService;
+    private final DiscountStrategyFactory discountStrategyFactory;
 
     @Override
     @Transactional(readOnly = true)
     public List<DiscountCampaignResponseDto> getAll() {
         return discountCampaignRepository.findAll().stream()
-                .sorted(Comparator.comparing(DiscountCampaignEntity::getDiscountType))
+                .sorted(Comparator.comparing(DiscountCampaignEntity::getDiscountKey))
                 .map(this::toResponse)
                 .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public DiscountCampaignResponseDto getByDiscountType(final DiscountType discountType) {
-        return toResponse(loadOrThrow(discountType));
+    public DiscountCampaignResponseDto getByDiscountKey(final String discountKey) {
+        return toResponse(loadOrThrow(discountKey));
     }
 
     @Override
     @Transactional
-    public DiscountCampaignResponseDto update(final DiscountType discountType,
+    public DiscountCampaignResponseDto create(final DiscountCampaignCreateRequestDto request) {
+        if (discountCampaignRepository.existsByDiscountKey(request.discountKey())) {
+            throw new IllegalArgumentException("A discount campaign '" + request.discountKey() + "' already exists");
+        }
+
+        // Fail fast on an algorithm nothing implements — never persist a campaign price
+        // calculation can never resolve a strategy for. Mirrors ProductCategorySchemaServiceImp's
+        // compile-before-persist guard on jsonSchema.
+        if (discountStrategyFactory.getStrategy(request.calculationType()) == null) {
+            throw new NoStrategyFoundForProcessingTheRequest(
+                    "No DiscountStrategy wired for calculation type " + request.calculationType());
+        }
+
+        final DiscountCampaignEntity saved = discountCampaignRepository.save(DiscountCampaignEntity.builder()
+                .discountKey(request.discountKey())
+                .calculationType(request.calculationType())
+                .enabled(request.enabled() != null && request.enabled())
+                .percentage(request.percentage())
+                .fixedAmount(request.fixedAmount())
+                .minOrderAmount(request.minOrderAmount())
+                .maxDiscountAmount(request.maxDiscountAmount())
+                .startsAt(request.startsAt())
+                .endsAt(request.endsAt())
+                .priority(request.priority())
+                .build());
+
+        log.info("Created discount campaign '{}' (calc={}, enabled={})",
+                saved.getDiscountKey(), saved.getCalculationType(), saved.isEnabled());
+        return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public DiscountCampaignResponseDto update(final String discountKey,
                                               final DiscountCampaignUpdateRequestDto request) {
-        final DiscountCampaignEntity campaign = loadOrThrow(discountType);
+        final DiscountCampaignEntity campaign = loadOrThrow(discountKey);
 
         if (request.enabled() != null) {
             campaign.setEnabled(request.enabled());
@@ -81,25 +117,34 @@ public class DiscountCampaignAdminServiceImp implements DiscountCampaignAdminSer
 
         final DiscountCampaignEntity saved = discountCampaignRepository.save(campaign);
 
-        // Cache key is by DiscountType — evict so the next price calc reads the fresh row.
-        discountCampaignService.evictCache(discountType);
+        // Cache key is the discountKey — evict so the next price calc reads the fresh row.
+        discountCampaignService.evictCache(discountKey);
         log.info("Updated discount campaign {} (enabled={}, calc={}, pct={}, fixed={})",
-                discountType, saved.isEnabled(), saved.getCalculationType(),
+                discountKey, saved.isEnabled(), saved.getCalculationType(),
                 saved.getPercentage(), saved.getFixedAmount());
 
         return toResponse(saved);
     }
 
-    private DiscountCampaignEntity loadOrThrow(final DiscountType discountType) {
-        return discountCampaignRepository.findByDiscountType(discountType)
+    @Override
+    @Transactional
+    public void deleteByDiscountKey(final String discountKey) {
+        final DiscountCampaignEntity campaign = loadOrThrow(discountKey);
+        discountCampaignRepository.delete(campaign);
+        discountCampaignService.evictCache(discountKey);
+        log.info("Deleted discount campaign '{}'", discountKey);
+    }
+
+    private DiscountCampaignEntity loadOrThrow(final String discountKey) {
+        return discountCampaignRepository.findByDiscountKey(discountKey)
                 .orElseThrow(() -> new DiscountTypeNotActiveException(
-                        "Discount campaign for " + discountType + " does not exist"));
+                        "Discount campaign for " + discountKey + " does not exist"));
     }
 
     private DiscountCampaignResponseDto toResponse(final DiscountCampaignEntity entity) {
         return DiscountCampaignResponseDto.builder()
                 .uuid(entity.getUuid())
-                .discountType(entity.getDiscountType())
+                .discountKey(entity.getDiscountKey())
                 .calculationType(entity.getCalculationType())
                 .enabled(entity.isEnabled())
                 .percentage(entity.getPercentage())

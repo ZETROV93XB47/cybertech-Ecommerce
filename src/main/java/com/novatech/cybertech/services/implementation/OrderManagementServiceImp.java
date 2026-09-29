@@ -44,6 +44,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 import static com.novatech.cybertech.entities.enums.OrderStatus.*;
 
 @Slf4j
@@ -297,7 +298,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         final PriceCalculationRequestDto priceReq = PriceCalculationRequestDto.builder()
                 .items(priceDtos)
-                .discountType(DiscountType.NO_DISCOUNT)
+                .discountKey(NO_DISCOUNT_KEY)
                 .currencyCode(CurrencyCode.fromCode("EUR"))
                 .shippingProvider(dto.getShippingProvider())
                 .shippingType(dto.getShippingType())

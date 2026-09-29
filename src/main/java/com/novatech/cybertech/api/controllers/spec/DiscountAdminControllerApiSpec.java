@@ -1,9 +1,9 @@
 package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
+import com.novatech.cybertech.dto.request.admin.DiscountCampaignCreateRequestDto;
 import com.novatech.cybertech.dto.request.admin.DiscountCampaignUpdateRequestDto;
 import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -54,38 +54,68 @@ public interface DiscountAdminControllerApiSpec {
     ResponseEntity<List<DiscountCampaignResponseDto>> getAll();
 
     @Operation(
-            summary = "Get a discount campaign by type (Admin)",
+            summary = "Get a discount campaign by key (Admin)",
             description = """
-                    Fetches a single discount campaign identified by its `DiscountType` enum value
-                    (e.g. `BLACK_FRIDAY`, `PERCENTAGE`, `BUY_ONE_GET_ONE_FREE`).
+                    Fetches a single discount campaign identified by its free-form `discountKey`
+                    (e.g. `BLACK_FRIDAY`, `SUMMER_FLASH_SALE_2027`).
 
                     Requires a valid JWT in the Authorization header AND the `ADMIN` realm role.
                     """,
             security = @SecurityRequirement(name = "keycloak"),
             parameters = {
-                    @Parameter(name = "discountType", description = "The DiscountType enum value identifying the campaign to retrieve", required = true, schema = @Schema(implementation = DiscountType.class))
+                    @Parameter(name = "discountKey", description = "The free-form key identifying the campaign to retrieve", required = true, schema = @Schema(implementation = String.class))
             }
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Discount campaign retrieved successfully",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = DiscountCampaignResponseDto.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid DiscountType value",
+            @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Discount campaign not found for the supplied discountKey",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "500", description = "Internal server error",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    ResponseEntity<DiscountCampaignResponseDto> getByDiscountKey(final String discountKey);
+
+    @Operation(
+            summary = "Register a new discount campaign (Admin)",
+            description = """
+                    Creates a brand-new campaign under a caller-chosen `discountKey` — no code
+                    change or redeploy needed. `calculationType` must be one of the algorithms
+                    already wired to a `DiscountStrategy` bean (PERCENTAGE / FIXED_AMOUNT /
+                    BUY_ONE_GET_ONE_FREE / NONE); the campaign's own identity (`discountKey`) is
+                    free-form. The runtime discount cache is flushed after a successful create.
+
+                    Requires a valid JWT in the Authorization header AND the `ADMIN` realm role.
+                    """,
+            security = @SecurityRequirement(name = "keycloak"),
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Creation payload for the new discount campaign.",
+                    required = true,
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = DiscountCampaignCreateRequestDto.class))
+            )
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Discount campaign created successfully",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = DiscountCampaignResponseDto.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error / discountKey already exists / no strategy wired for calculationType",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
             @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-            @ApiResponse(responseCode = "404", description = "Discount campaign not found for the supplied DiscountType",
-                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-            @ApiResponse(responseCode = "500", description = "Internal server error",
+            @ApiResponse(responseCode = "500", description = "Internal server error during creation",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
     })
-    ResponseEntity<DiscountCampaignResponseDto> getByDiscountType(final DiscountType discountType);
+    ResponseEntity<DiscountCampaignResponseDto> create(final DiscountCampaignCreateRequestDto request);
 
     @Operation(
-            summary = "Update a discount campaign by type (Admin)",
+            summary = "Update a discount campaign by key (Admin)",
             description = """
-                    Patches the campaign identified by `discountType`. Only the fields supplied in
+                    Patches the campaign identified by `discountKey`. Only the fields supplied in
                     the request body are updated. The runtime discount cache is flushed after a
                     successful PATCH so the next price calculation reflects the new state.
 
@@ -93,7 +123,7 @@ public interface DiscountAdminControllerApiSpec {
                     """,
             security = @SecurityRequirement(name = "keycloak"),
             parameters = {
-                    @Parameter(name = "discountType", description = "The DiscountType enum value identifying the campaign to update", required = true, schema = @Schema(implementation = DiscountType.class))
+                    @Parameter(name = "discountKey", description = "The free-form key identifying the campaign to update", required = true, schema = @Schema(implementation = String.class))
             },
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Partial update payload for the targeted discount campaign. Only fields explicitly provided are updated.",
@@ -104,16 +134,42 @@ public interface DiscountAdminControllerApiSpec {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Discount campaign updated successfully",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = DiscountCampaignResponseDto.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error / Invalid DiscountType",
+            @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
             @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-            @ApiResponse(responseCode = "404", description = "Discount campaign not found for the supplied DiscountType",
+            @ApiResponse(responseCode = "404", description = "Discount campaign not found for the supplied discountKey",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
             @ApiResponse(responseCode = "500", description = "Internal server error during update",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
     })
-    ResponseEntity<DiscountCampaignResponseDto> update(final DiscountType discountType, final DiscountCampaignUpdateRequestDto request);
+    ResponseEntity<DiscountCampaignResponseDto> update(final String discountKey, final DiscountCampaignUpdateRequestDto request);
+
+    @Operation(
+            summary = "Delete a discount campaign (Admin)",
+            description = """
+                    Permanently removes the campaign identified by `discountKey`. The runtime
+                    discount cache is flushed after a successful delete.
+
+                    Requires a valid JWT in the Authorization header AND the `ADMIN` realm role.
+                    """,
+            security = @SecurityRequirement(name = "keycloak"),
+            parameters = {
+                    @Parameter(name = "discountKey", description = "The free-form key identifying the campaign to delete", required = true, schema = @Schema(implementation = String.class))
+            }
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Discount campaign deleted successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Discount campaign not found for the supplied discountKey",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "500", description = "Internal server error during deletion",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    ResponseEntity<Void> delete(final String discountKey);
 }

@@ -5,7 +5,6 @@ import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
@@ -20,6 +19,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 
 /**
  * Orchestrates the cart-total → final-total calculation:
@@ -45,7 +46,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
 
     @Override
     public PriceCalculationResultDto calculate(final PriceCalculationRequestDto request) {
-        final DiscountType discountType = request.getDiscountType();
+        final String discountKey = request.getDiscountKey();
 
         final BigDecimal baseAmount = request.getItems().stream()
                 .map(this::lineTotal)
@@ -55,10 +56,10 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
         // Include shipping cost computed via ShippingProviderStrategyFactory in final order price (previously omitted)
         final BigDecimal shippingCost = computeShippingCost(request);
 
-        // Short-circuit for NO_DISCOUNT: avoid touching the discount_campaign table.
+        // Short-circuit for NO_DISCOUNT_KEY: avoid touching the discount_campaign table.
         // A missing NO_DISCOUNT row used to break every placeOrder call with
         // DiscountTypeNotActiveException — there is nothing to look up here.
-        if (discountType == DiscountType.NO_DISCOUNT) {
+        if (NO_DISCOUNT_KEY.equals(discountKey)) {
             final BigDecimal finalAmount = baseAmount.add(shippingCost)
                     .setScale(2, RoundingMode.HALF_UP);
             return PriceCalculationResultDto.builder()
@@ -67,13 +68,13 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                     .shippingCost(shippingCost)
                     .finalAmount(finalAmount)
                     .currencyCode(request.getCurrencyCode())
-                    .discountType(discountType)
+                    .discountKey(discountKey)
                     .build();
         }
 
         // Throws DiscountTypeNotActiveException when the campaign is missing,
         // disabled, or outside its [startsAt, endsAt] window.
-        final DiscountContext context = discountCampaignService.getActiveDiscountContext(discountType);
+        final DiscountContext context = discountCampaignService.getActiveDiscountContext(discountKey);
 
         final BigDecimal discountAmount = computeDiscount(baseAmount, request.getItems(), context);
 
@@ -85,7 +86,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
 
         log.info("Price calculation for {} items — base={} discount={} shipping={} final={} ({} / {} / {} / {})",
                 request.getItems().size(), baseAmount, discountAmount, shippingCost, finalAmount,
-                discountType, request.getCurrencyCode(), request.getShippingProvider(), request.getShippingType());
+                discountKey, request.getCurrencyCode(), request.getShippingProvider(), request.getShippingType());
 
         return PriceCalculationResultDto.builder()
                 .baseAmount(baseAmount)
@@ -93,7 +94,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .shippingCost(shippingCost)
                 .finalAmount(finalAmount)
                 .currencyCode(request.getCurrencyCode())
-                .discountType(discountType)
+                .discountKey(discountKey)
                 .build();
     }
 
@@ -117,7 +118,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
         if (context.minOrderAmount() != null
                 && baseAmount.compareTo(context.minOrderAmount()) < 0) {
             log.debug("Base amount {} below minOrderAmount {} for {} — no discount applied",
-                    baseAmount, context.minOrderAmount(), context.discountType());
+                    baseAmount, context.minOrderAmount(), context.discountKey());
             return zero();
         }
 
@@ -125,7 +126,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
         if (strategy == null) {
             throw new DiscountTypeNotActiveException(
                     "No DiscountStrategy wired for calculation type " + context.calculationType()
-                            + " (campaign=" + context.discountType() + ")");
+                            + " (campaign=" + context.discountKey() + ")");
         }
 
         return strategy.calculateDiscount(baseAmount, items, context);

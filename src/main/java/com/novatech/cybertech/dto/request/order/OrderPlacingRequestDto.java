@@ -1,6 +1,5 @@
 package com.novatech.cybertech.dto.request.order;
 
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
@@ -10,6 +9,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 
 @Data
 @Builder
@@ -40,6 +41,7 @@ public class OrderPlacingRequestDto {
     private String shippingCountry;
 
     @Builder.Default
-    private DiscountType discountType = DiscountType.NO_DISCOUNT;
+    @NotBlank
+    private String discountKey = NO_DISCOUNT_KEY;
 
 }

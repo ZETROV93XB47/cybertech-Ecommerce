@@ -108,7 +108,6 @@ public class RedisConfig {
                 .allowIfSubType(com.novatech.cybertech.dto.data.DiscountContext.class)
                 .allowIfSubType(com.novatech.cybertech.dto.response.product.ProductResponseDto.class)
                 // Domain enums embedded in the DTOs above.
-                .allowIfSubType(com.novatech.cybertech.entities.enums.DiscountType.class)
                 .allowIfSubType(com.novatech.cybertech.entities.enums.DiscountCalculationType.class)
                 // JDK collection / wrapper types referenced by the DTO graphs (CartResponseDto.items
                 // is a List<CartItemResponseDto>, DiscountContext fields are LocalDateTime/BigDecimal,

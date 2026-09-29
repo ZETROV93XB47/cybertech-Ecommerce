@@ -1,7 +1,6 @@
 package com.novatech.cybertech.dto.data;
 
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import lombok.Builder;
 
 import java.io.Serial;
@@ -11,7 +10,7 @@ import java.time.LocalDateTime;
 
 @Builder
 public record DiscountContext(
-        DiscountType discountType,
+        String discountKey,
         DiscountCalculationType calculationType,
         BigDecimal percentage,
         BigDecimal fixedAmount,

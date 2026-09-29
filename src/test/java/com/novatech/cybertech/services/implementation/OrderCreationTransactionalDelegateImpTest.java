@@ -9,7 +9,6 @@ import com.novatech.cybertech.entities.CartItemEntity;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.UserEntity;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
@@ -44,6 +43,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -93,7 +93,7 @@ class OrderCreationTransactionalDelegateImpTest {
                         .discountAmount(BigDecimal.ZERO)
                         .finalAmount(new BigDecimal("10.00"))
                         .currencyCode(CurrencyCode.EUR)
-                        .discountType(DiscountType.NO_DISCOUNT)
+                        .discountKey(NO_DISCOUNT_KEY)
                         .build());
     }
 
@@ -277,7 +277,7 @@ class OrderCreationTransactionalDelegateImpTest {
                         .discountAmount(BigDecimal.ZERO)
                         .finalAmount(new BigDecimal("37.50"))
                         .currencyCode(CurrencyCode.EUR)
-                        .discountType(DiscountType.NO_DISCOUNT)
+                        .discountKey(NO_DISCOUNT_KEY)
                         .build());
 
         final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);

@@ -34,6 +34,15 @@ public class CyberTechAppConstants {
     public static final String DISCOUNT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/discounts";
     public static final String DISCOUNT_PUBLIC_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/discounts";
 
+    /**
+     * Reserved {@code discountKey} meaning "no discount applied" — the only campaign
+     * {@link com.novatech.cybertech.config.DiscountCampaignInitializer} guarantees exists, and the
+     * value {@code OrderPlacingRequestDto}/{@code PriceCalculationRequestDto} default to. Every
+     * other {@code discountKey} is a free-form identifier the admin chooses when creating a
+     * campaign via {@code DiscountCampaignAdminService#create} — no code change/redeploy needed.
+     */
+    public static final String NO_DISCOUNT_KEY = "NO_DISCOUNT";
+
     public static final String PRODUCT_CATEGORY_SCHEMA_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/product-category-schemas";
     public static final String PRODUCT_CATEGORY_SCHEMA_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/product-category-schemas";
 

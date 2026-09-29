@@ -1,7 +1,6 @@
 package com.novatech.cybertech.entities;
 
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -25,9 +24,18 @@ import java.time.LocalDateTime;
 @ToString(callSuper = true)
 public class DiscountCampaignEntity extends BaseEntity<Long> {
 
-    @Enumerated(EnumType.STRING)
+    /**
+     * Free-form campaign identifier chosen by the admin at creation time (e.g. {@code
+     * "BLACK_FRIDAY"}, {@code "SUMMER_FLASH_SALE_2027"}) — replaces the previous hardcoded {@code
+     * DiscountType} enum, so a new campaign is an admin API call, not a redeploy. Mirrors {@link
+     * ProductCategorySchemaEntity#getCategoryKey()}.
+     *
+     * <p>Column name kept as {@code discountType} (not renamed to {@code discountKey}) so {@code
+     * ddl-auto=update} does not orphan the existing column / existing seeded rows — this project
+     * has no migration tool (see {@code progress.md}).
+     */
     @Column(name = "discountType", nullable = false, unique = true, length = 50)
-    private DiscountType discountType;
+    private String discountKey;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "calculationType", nullable = false, length = 50)

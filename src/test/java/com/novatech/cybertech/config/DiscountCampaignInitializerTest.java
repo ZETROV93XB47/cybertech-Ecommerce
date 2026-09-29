@@ -2,7 +2,6 @@ package com.novatech.cybertech.config;
 
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.repositories.DiscountCampaignRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,12 +12,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class DiscountCampaignInitializerTest {
+
+    private static final int STARTER_CAMPAIGN_COUNT = 5; // NO_DISCOUNT, BLACK_FRIDAY, WINTER_SALES, SPRING_SALES, BUY_ONE_GET_ONE_FREE
 
     @Mock
     private DiscountCampaignRepository discountCampaignRepository;
@@ -28,22 +30,22 @@ class DiscountCampaignInitializerTest {
 
     @Test
     void seedsMissingTypes() throws Exception {
-        when(discountCampaignRepository.findByDiscountType(any())).thenReturn(Optional.empty());
+        when(discountCampaignRepository.findByDiscountKey(any())).thenReturn(Optional.empty());
         when(discountCampaignRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         initializer.run(null);
 
-        verify(discountCampaignRepository, times(DiscountType.values().length)).save(any());
+        verify(discountCampaignRepository, times(STARTER_CAMPAIGN_COUNT)).save(any());
     }
 
     @Test
     void skipsExistingTypes() throws Exception {
         final DiscountCampaignEntity existing = DiscountCampaignEntity.builder()
-                .discountType(DiscountType.BLACK_FRIDAY)
+                .discountKey("BLACK_FRIDAY")
                 .calculationType(DiscountCalculationType.PERCENTAGE)
                 .enabled(true)
                 .build();
-        when(discountCampaignRepository.findByDiscountType(any())).thenReturn(Optional.of(existing));
+        when(discountCampaignRepository.findByDiscountKey(any())).thenReturn(Optional.of(existing));
 
         initializer.run(null);
 
@@ -52,7 +54,7 @@ class DiscountCampaignInitializerTest {
 
     @Test
     void noDiscountSeededAsEnabled() throws Exception {
-        when(discountCampaignRepository.findByDiscountType(any())).thenReturn(Optional.empty());
+        when(discountCampaignRepository.findByDiscountKey(any())).thenReturn(Optional.empty());
         when(discountCampaignRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         initializer.run(null);
@@ -61,7 +63,7 @@ class DiscountCampaignInitializerTest {
         verify(discountCampaignRepository, atLeastOnce()).save(captor.capture());
 
         final DiscountCampaignEntity noDiscount = captor.getAllValues().stream()
-                .filter(e -> e.getDiscountType() == DiscountType.NO_DISCOUNT)
+                .filter(e -> e.getDiscountKey().equals(NO_DISCOUNT_KEY))
                 .findFirst()
                 .orElseThrow();
 
@@ -71,7 +73,7 @@ class DiscountCampaignInitializerTest {
 
     @Test
     void blackFridaySeededWithCorrectDefaults() throws Exception {
-        when(discountCampaignRepository.findByDiscountType(any())).thenReturn(Optional.empty());
+        when(discountCampaignRepository.findByDiscountKey(any())).thenReturn(Optional.empty());
         when(discountCampaignRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         initializer.run(null);
@@ -80,7 +82,7 @@ class DiscountCampaignInitializerTest {
         verify(discountCampaignRepository, atLeastOnce()).save(captor.capture());
 
         final DiscountCampaignEntity bf = captor.getAllValues().stream()
-                .filter(e -> e.getDiscountType() == DiscountType.BLACK_FRIDAY)
+                .filter(e -> e.getDiscountKey().equals("BLACK_FRIDAY"))
                 .findFirst()
                 .orElseThrow();
 

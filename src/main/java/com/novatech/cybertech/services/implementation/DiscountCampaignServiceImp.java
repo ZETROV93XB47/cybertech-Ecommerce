@@ -2,7 +2,6 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.repositories.DiscountCampaignRepository;
 import com.novatech.cybertech.services.core.DiscountCampaignService;
@@ -25,31 +24,31 @@ public class DiscountCampaignServiceImp implements DiscountCampaignService {
     private final DiscountCampaignRepository discountCampaignRepository;
 
     @Override
-    @Cacheable(value = DISCOUNT_CAMPAIGNS_CACHE, key = "#discountType.name()")
-    public DiscountContext getActiveDiscountContext(final DiscountType discountType) {
+    @Cacheable(value = DISCOUNT_CAMPAIGNS_CACHE, key = "#discountKey")
+    public DiscountContext getActiveDiscountContext(final String discountKey) {
         final DiscountCampaignEntity campaign = discountCampaignRepository
-                .findByDiscountType(discountType)
+                .findByDiscountKey(discountKey)
                 .orElseThrow(() -> new DiscountTypeNotActiveException(
-                        "Discount " + discountType + " does not exist"));
+                        "Discount " + discountKey + " does not exist"));
 
         if (!campaign.isEnabled()) {
-            throw new DiscountTypeNotActiveException("Discount " + discountType + " is disabled");
+            throw new DiscountTypeNotActiveException("Discount " + discountKey + " is disabled");
         }
 
         final LocalDateTime now = LocalDateTime.now();
 
         if (campaign.getStartsAt() != null && now.isBefore(campaign.getStartsAt())) {
-            throw new DiscountTypeNotActiveException("Discount " + discountType + " has not started yet");
+            throw new DiscountTypeNotActiveException("Discount " + discountKey + " has not started yet");
         }
 
         if (campaign.getEndsAt() != null && now.isAfter(campaign.getEndsAt())) {
-            throw new DiscountTypeNotActiveException("Discount " + discountType + " has expired");
+            throw new DiscountTypeNotActiveException("Discount " + discountKey + " has expired");
         }
 
-        log.debug("Resolved active discount context for {}", discountType);
+        log.debug("Resolved active discount context for {}", discountKey);
 
         return DiscountContext.builder()
-                .discountType(campaign.getDiscountType())
+                .discountKey(campaign.getDiscountKey())
                 .calculationType(campaign.getCalculationType())
                 .percentage(campaign.getPercentage())
                 .fixedAmount(campaign.getFixedAmount())
@@ -72,7 +71,7 @@ public class DiscountCampaignServiceImp implements DiscountCampaignService {
 
     private DiscountContext toContext(final DiscountCampaignEntity campaign) {
         return DiscountContext.builder()
-                .discountType(campaign.getDiscountType())
+                .discountKey(campaign.getDiscountKey())
                 .calculationType(campaign.getCalculationType())
                 .percentage(campaign.getPercentage())
                 .fixedAmount(campaign.getFixedAmount())
@@ -83,9 +82,9 @@ public class DiscountCampaignServiceImp implements DiscountCampaignService {
                 .build();
     }
 
-    @CacheEvict(value = DISCOUNT_CAMPAIGNS_CACHE, key = "#discountType.name()")
-    public void evictCache(final DiscountType discountType) {
-        log.debug("Evicted discount cache for {}", discountType);
+    @CacheEvict(value = DISCOUNT_CAMPAIGNS_CACHE, key = "#discountKey")
+    public void evictCache(final String discountKey) {
+        log.debug("Evicted discount cache for {}", discountKey);
     }
 
     @CacheEvict(value = DISCOUNT_CAMPAIGNS_CACHE, allEntries = true)

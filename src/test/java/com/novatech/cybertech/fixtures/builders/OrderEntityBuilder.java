@@ -1,7 +1,6 @@
 package com.novatech.cybertech.fixtures.builders;
 
 import com.novatech.cybertech.entities.OrderEntity;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
@@ -14,6 +13,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.UUID;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 
 /**
  * Test fixture builder for {@link OrderEntity}. Presets {@code uuid} explicitly because builders bypass
@@ -43,7 +44,7 @@ public final class OrderEntityBuilder {
                 .status(OrderStatus.CREATED)
                 .shippingType(ShippingType.STANDARD)
                 .shippingProvider(ShippingProvider.DHL)
-                .discountType(DiscountType.NO_DISCOUNT)
+                .discountKey(NO_DISCOUNT_KEY)
                 .orderItemEntities(new ArrayList<>())
                 .paymentAttempts(new ArrayList<>());
     }

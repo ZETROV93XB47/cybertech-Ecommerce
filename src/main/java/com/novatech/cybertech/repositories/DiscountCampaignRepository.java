@@ -1,7 +1,6 @@
 package com.novatech.cybertech.repositories;
 
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,13 +11,13 @@ import java.util.Optional;
 @Repository
 public interface DiscountCampaignRepository extends CrudBaseRepository<DiscountCampaignEntity, Long> {
 
-    Optional<DiscountCampaignEntity> findByDiscountType(DiscountType discountType);
+    Optional<DiscountCampaignEntity> findByDiscountKey(String discountKey);
 
-    boolean existsByDiscountType(DiscountType discountType);
+    boolean existsByDiscountKey(String discountKey);
 
     @Modifying
     @Transactional
-    void deleteByDiscountType(DiscountType discountType);
+    void deleteByDiscountKey(String discountKey);
 
     List<DiscountCampaignEntity> findByEnabledTrue();
 }

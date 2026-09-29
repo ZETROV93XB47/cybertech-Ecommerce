@@ -25,7 +25,7 @@ public class FixedAmountDiscountStrategy implements DiscountStrategy {
         final BigDecimal fixedAmount = context.fixedAmount();
         if (fixedAmount == null) {
             throw new IllegalStateException(
-                    "Fixed-amount discount requires a non-null fixedAmount in context for " + context.discountType());
+                    "Fixed-amount discount requires a non-null fixedAmount in context for " + context.discountKey());
         }
 
         BigDecimal discount = fixedAmount.min(baseAmount);

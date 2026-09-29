@@ -1,10 +1,10 @@
 package com.novatech.cybertech.dto.request.order;
 
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -24,8 +24,8 @@ public class PriceCalculationRequestDto {
     @NotEmpty
     private List<OrderItemPriceDto> items;
 
-    @NotNull
-    private DiscountType discountType;
+    @NotBlank
+    private String discountKey;
 
     @NotNull
     private CurrencyCode currencyCode;

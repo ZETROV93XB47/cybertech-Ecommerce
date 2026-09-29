@@ -3,7 +3,6 @@ package com.novatech.cybertech.strategy.discount;
 import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -21,7 +20,7 @@ class PercentageDiscountStrategyTest {
 
     private DiscountContext context(final BigDecimal percentage) {
         return DiscountContext.builder()
-                .discountType(DiscountType.BLACK_FRIDAY)
+                .discountKey("BLACK_FRIDAY")
                 .calculationType(DiscountCalculationType.PERCENTAGE)
                 .percentage(percentage)
                 .build();
@@ -29,7 +28,7 @@ class PercentageDiscountStrategyTest {
 
     private DiscountContext contextWithCap(final BigDecimal percentage, final BigDecimal cap) {
         return DiscountContext.builder()
-                .discountType(DiscountType.BLACK_FRIDAY)
+                .discountKey("BLACK_FRIDAY")
                 .calculationType(DiscountCalculationType.PERCENTAGE)
                 .percentage(percentage)
                 .maxDiscountAmount(cap)

@@ -2,7 +2,6 @@ package com.novatech.cybertech.strategy.discount;
 
 import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +17,7 @@ class FixedAmountDiscountStrategyTest {
 
     private DiscountContext context(final BigDecimal fixedAmount) {
         return DiscountContext.builder()
-                .discountType(DiscountType.NO_DISCOUNT)
+                .discountKey("NO_DISCOUNT")
                 .calculationType(DiscountCalculationType.FIXED_AMOUNT)
                 .fixedAmount(fixedAmount)
                 .build();
@@ -45,7 +44,7 @@ class FixedAmountDiscountStrategyTest {
     @DisplayName("maxDiscountAmount caps the discount")
     void respectsMaxCap() {
         final DiscountContext capped = DiscountContext.builder()
-                .discountType(DiscountType.NO_DISCOUNT)
+                .discountKey("NO_DISCOUNT")
                 .calculationType(DiscountCalculationType.FIXED_AMOUNT)
                 .fixedAmount(new BigDecimal("50.00"))
                 .maxDiscountAmount(new BigDecimal("20.00"))

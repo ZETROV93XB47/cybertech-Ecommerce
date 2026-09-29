@@ -1,6 +1,5 @@
 package com.novatech.cybertech.dto.response.order;
 
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import lombok.AllArgsConstructor;
@@ -36,7 +35,7 @@ public class PriceCalculationResultDto {
 
     private CurrencyCode currencyCode;
 
-    private DiscountType discountType;
+    private String discountKey;
 
     public Money asFinalMoney() {
         return new Money(finalAmount, currencyCode);

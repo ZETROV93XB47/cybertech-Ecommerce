@@ -1,12 +1,15 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.dto.request.admin.DiscountCampaignCreateRequestDto;
 import com.novatech.cybertech.dto.request.admin.DiscountCampaignUpdateRequestDto;
 import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
+import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
+import com.novatech.cybertech.factory.DiscountStrategyFactory;
 import com.novatech.cybertech.repositories.DiscountCampaignRepository;
+import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,14 +36,16 @@ class DiscountCampaignAdminServiceImpTest {
 
     @Mock private DiscountCampaignRepository discountCampaignRepository;
     @Mock private DiscountCampaignServiceImp discountCampaignService;
+    @Mock private DiscountStrategyFactory discountStrategyFactory;
+    @Mock private DiscountStrategy discountStrategy;
 
     @InjectMocks
     private DiscountCampaignAdminServiceImp service;
 
-    private DiscountCampaignEntity entity(final DiscountType type, final DiscountCalculationType calc, final boolean enabled) {
+    private DiscountCampaignEntity entity(final String key, final DiscountCalculationType calc, final boolean enabled) {
         return DiscountCampaignEntity.builder()
                 .uuid(UUID.randomUUID())
-                .discountType(type)
+                .discountKey(key)
                 .calculationType(calc)
                 .enabled(enabled)
                 .percentage(new BigDecimal("20.00"))
@@ -49,48 +54,118 @@ class DiscountCampaignAdminServiceImpTest {
     }
 
     @Test
-    @DisplayName("getAll returns every campaign sorted by DiscountType")
+    @DisplayName("getAll returns every campaign sorted by discountKey")
     void getAllSorted() {
         when(discountCampaignRepository.findAll()).thenReturn(List.of(
-                entity(DiscountType.WINTER_SALES, DiscountCalculationType.PERCENTAGE, true),
-                entity(DiscountType.BLACK_FRIDAY, DiscountCalculationType.PERCENTAGE, false)));
+                entity("WINTER_SALES", DiscountCalculationType.PERCENTAGE, true),
+                entity("BLACK_FRIDAY", DiscountCalculationType.PERCENTAGE, false)));
 
         final List<DiscountCampaignResponseDto> result = service.getAll();
 
         assertThat(result).hasSize(2);
-        // Enum order: BUY_ONE_GET_ONE_FREE, BLACK_FRIDAY, WINTER_SALES, SPRING_SALES, NO_DISCOUNT
-        assertThat(result.get(0).discountType()).isEqualTo(DiscountType.BLACK_FRIDAY);
-        assertThat(result.get(1).discountType()).isEqualTo(DiscountType.WINTER_SALES);
+        assertThat(result.get(0).discountKey()).isEqualTo("BLACK_FRIDAY");
+        assertThat(result.get(1).discountKey()).isEqualTo("WINTER_SALES");
     }
 
     @Test
-    @DisplayName("getByDiscountType returns the matching campaign")
-    void getByDiscountTypeFound() {
-        final DiscountCampaignEntity e = entity(DiscountType.BLACK_FRIDAY, DiscountCalculationType.PERCENTAGE, true);
-        when(discountCampaignRepository.findByDiscountType(DiscountType.BLACK_FRIDAY)).thenReturn(Optional.of(e));
+    @DisplayName("getByDiscountKey returns the matching campaign")
+    void getByDiscountKeyFound() {
+        final DiscountCampaignEntity e = entity("BLACK_FRIDAY", DiscountCalculationType.PERCENTAGE, true);
+        when(discountCampaignRepository.findByDiscountKey("BLACK_FRIDAY")).thenReturn(Optional.of(e));
 
-        final DiscountCampaignResponseDto result = service.getByDiscountType(DiscountType.BLACK_FRIDAY);
+        final DiscountCampaignResponseDto result = service.getByDiscountKey("BLACK_FRIDAY");
 
-        assertThat(result.discountType()).isEqualTo(DiscountType.BLACK_FRIDAY);
+        assertThat(result.discountKey()).isEqualTo("BLACK_FRIDAY");
         assertThat(result.calculationType()).isEqualTo(DiscountCalculationType.PERCENTAGE);
         assertThat(result.enabled()).isTrue();
     }
 
     @Test
-    @DisplayName("getByDiscountType throws when missing")
-    void getByDiscountTypeMissing() {
-        when(discountCampaignRepository.findByDiscountType(DiscountType.BLACK_FRIDAY)).thenReturn(Optional.empty());
+    @DisplayName("getByDiscountKey throws when missing")
+    void getByDiscountKeyMissing() {
+        when(discountCampaignRepository.findByDiscountKey("BLACK_FRIDAY")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.getByDiscountType(DiscountType.BLACK_FRIDAY))
+        assertThatThrownBy(() -> service.getByDiscountKey("BLACK_FRIDAY"))
                 .isInstanceOf(DiscountTypeNotActiveException.class)
                 .hasMessageContaining("BLACK_FRIDAY");
     }
 
     @Test
+    @DisplayName("create persists a new campaign, defaults enabled to false when unset, and evicts nothing extra")
+    void createPersists() {
+        when(discountCampaignRepository.existsByDiscountKey("SUMMER_FLASH_SALE")).thenReturn(false);
+        when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(discountStrategy);
+        when(discountCampaignRepository.save(any(DiscountCampaignEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        final DiscountCampaignCreateRequestDto req = new DiscountCampaignCreateRequestDto(
+                "SUMMER_FLASH_SALE", DiscountCalculationType.PERCENTAGE, null,
+                new BigDecimal("25.00"), null, null, null, null, null, 90);
+
+        final DiscountCampaignResponseDto result = service.create(req);
+
+        final ArgumentCaptor<DiscountCampaignEntity> captor = ArgumentCaptor.forClass(DiscountCampaignEntity.class);
+        verify(discountCampaignRepository).save(captor.capture());
+        assertThat(captor.getValue().getDiscountKey()).isEqualTo("SUMMER_FLASH_SALE");
+        assertThat(captor.getValue().isEnabled()).isFalse();
+        assertThat(captor.getValue().getPercentage()).isEqualByComparingTo("25.00");
+        assertThat(result.discountKey()).isEqualTo("SUMMER_FLASH_SALE");
+    }
+
+    @Test
+    @DisplayName("create honours an explicit enabled=true")
+    void createHonoursEnabledTrue() {
+        when(discountCampaignRepository.existsByDiscountKey("SUMMER_FLASH_SALE")).thenReturn(false);
+        when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(discountStrategy);
+        when(discountCampaignRepository.save(any(DiscountCampaignEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        final DiscountCampaignCreateRequestDto req = new DiscountCampaignCreateRequestDto(
+                "SUMMER_FLASH_SALE", DiscountCalculationType.PERCENTAGE, true,
+                new BigDecimal("25.00"), null, null, null, null, null, 90);
+
+        service.create(req);
+
+        final ArgumentCaptor<DiscountCampaignEntity> captor = ArgumentCaptor.forClass(DiscountCampaignEntity.class);
+        verify(discountCampaignRepository).save(captor.capture());
+        assertThat(captor.getValue().isEnabled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("create rejects a duplicate discountKey without touching the strategy factory or repository save")
+    void createRejectsDuplicate() {
+        when(discountCampaignRepository.existsByDiscountKey("BLACK_FRIDAY")).thenReturn(true);
+
+        final DiscountCampaignCreateRequestDto req = new DiscountCampaignCreateRequestDto(
+                "BLACK_FRIDAY", DiscountCalculationType.PERCENTAGE, true,
+                new BigDecimal("25.00"), null, null, null, null, null, 90);
+
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("BLACK_FRIDAY");
+
+        verify(discountCampaignRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("create rejects a calculationType with no wired strategy")
+    void createRejectsUnwiredCalculationType() {
+        when(discountCampaignRepository.existsByDiscountKey("SUMMER_FLASH_SALE")).thenReturn(false);
+        when(discountStrategyFactory.getStrategy(DiscountCalculationType.FIXED_AMOUNT)).thenReturn(null);
+
+        final DiscountCampaignCreateRequestDto req = new DiscountCampaignCreateRequestDto(
+                "SUMMER_FLASH_SALE", DiscountCalculationType.FIXED_AMOUNT, true,
+                null, new BigDecimal("10.00"), null, null, null, null, 90);
+
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(NoStrategyFoundForProcessingTheRequest.class);
+
+        verify(discountCampaignRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("update applies non-null fields, persists, and evicts the cache")
     void updateAppliesAndEvicts() {
-        final DiscountCampaignEntity existing = entity(DiscountType.BLACK_FRIDAY, DiscountCalculationType.PERCENTAGE, false);
-        when(discountCampaignRepository.findByDiscountType(DiscountType.BLACK_FRIDAY)).thenReturn(Optional.of(existing));
+        final DiscountCampaignEntity existing = entity("BLACK_FRIDAY", DiscountCalculationType.PERCENTAGE, false);
+        when(discountCampaignRepository.findByDiscountKey("BLACK_FRIDAY")).thenReturn(Optional.of(existing));
         when(discountCampaignRepository.save(any(DiscountCampaignEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
         final LocalDateTime starts = LocalDateTime.now();
@@ -105,7 +180,7 @@ class DiscountCampaignAdminServiceImpTest {
                 /* endsAt */ null,
                 /* priority */ 75);
 
-        final DiscountCampaignResponseDto result = service.update(DiscountType.BLACK_FRIDAY, patch);
+        final DiscountCampaignResponseDto result = service.update("BLACK_FRIDAY", patch);
 
         final ArgumentCaptor<DiscountCampaignEntity> saveCap = ArgumentCaptor.forClass(DiscountCampaignEntity.class);
         verify(discountCampaignRepository).save(saveCap.capture());
@@ -119,7 +194,7 @@ class DiscountCampaignAdminServiceImpTest {
         // calculationType was null in patch — left untouched
         assertThat(saved.getCalculationType()).isEqualTo(DiscountCalculationType.PERCENTAGE);
 
-        verify(discountCampaignService).evictCache(DiscountType.BLACK_FRIDAY);
+        verify(discountCampaignService).evictCache("BLACK_FRIDAY");
         assertThat(result.enabled()).isTrue();
         assertThat(result.percentage()).isEqualByComparingTo("35.00");
     }
@@ -127,29 +202,53 @@ class DiscountCampaignAdminServiceImpTest {
     @Test
     @DisplayName("update with all-null fields leaves the entity unchanged but still evicts the cache")
     void updateWithAllNulls() {
-        final DiscountCampaignEntity existing = entity(DiscountType.WINTER_SALES, DiscountCalculationType.PERCENTAGE, true);
-        when(discountCampaignRepository.findByDiscountType(DiscountType.WINTER_SALES)).thenReturn(Optional.of(existing));
+        final DiscountCampaignEntity existing = entity("WINTER_SALES", DiscountCalculationType.PERCENTAGE, true);
+        when(discountCampaignRepository.findByDiscountKey("WINTER_SALES")).thenReturn(Optional.of(existing));
         when(discountCampaignRepository.save(any(DiscountCampaignEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
         final DiscountCampaignUpdateRequestDto patch = new DiscountCampaignUpdateRequestDto(
                 null, null, null, null, null, null, null, null, null);
 
-        service.update(DiscountType.WINTER_SALES, patch);
+        service.update("WINTER_SALES", patch);
 
         verify(discountCampaignRepository).save(existing);
-        verify(discountCampaignService).evictCache(DiscountType.WINTER_SALES);
+        verify(discountCampaignService).evictCache("WINTER_SALES");
     }
 
     @Test
     @DisplayName("update on missing campaign throws DiscountTypeNotActiveException without saving")
     void updateMissing() {
-        when(discountCampaignRepository.findByDiscountType(DiscountType.SPRING_SALES)).thenReturn(Optional.empty());
+        when(discountCampaignRepository.findByDiscountKey("SPRING_SALES")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.update(DiscountType.SPRING_SALES,
+        assertThatThrownBy(() -> service.update("SPRING_SALES",
                 new DiscountCampaignUpdateRequestDto(true, null, null, null, null, null, null, null, null)))
                 .isInstanceOf(DiscountTypeNotActiveException.class);
 
         verify(discountCampaignRepository, never()).save(any());
+        verify(discountCampaignService, never()).evictCache(any());
+    }
+
+    @Test
+    @DisplayName("deleteByDiscountKey deletes the campaign and evicts the cache")
+    void deleteRemovesAndEvicts() {
+        final DiscountCampaignEntity existing = entity("BLACK_FRIDAY", DiscountCalculationType.PERCENTAGE, true);
+        when(discountCampaignRepository.findByDiscountKey("BLACK_FRIDAY")).thenReturn(Optional.of(existing));
+
+        service.deleteByDiscountKey("BLACK_FRIDAY");
+
+        verify(discountCampaignRepository).delete(existing);
+        verify(discountCampaignService).evictCache("BLACK_FRIDAY");
+    }
+
+    @Test
+    @DisplayName("deleteByDiscountKey on missing campaign throws without deleting")
+    void deleteMissing() {
+        when(discountCampaignRepository.findByDiscountKey("BLACK_FRIDAY")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteByDiscountKey("BLACK_FRIDAY"))
+                .isInstanceOf(DiscountTypeNotActiveException.class);
+
+        verify(discountCampaignRepository, never()).delete(any());
         verify(discountCampaignService, never()).evictCache(any());
     }
 }
