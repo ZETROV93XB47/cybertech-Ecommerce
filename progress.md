@@ -8,7 +8,7 @@ _Dernière mise à jour : 2026-09-29 — branche `develop_back`._
 
 Backend Spring Boot 4 / Java 26 d'une plateforme e-commerce (portfolio, pas enterprise-grade). Une review fonctionnelle complète du projet a été menée par domaine (panier, commande, paiement, bankcard, notifications), plusieurs bugs réels ont été corrigés, puis une branche locale divergente (30 commits d'écart avec `origin/develop_back`, plusieurs recouvrant les mêmes fixes) a été reconciliée : les bugs déjà réglés en amont n'ont pas été retouchés, tout le reste a été mergé, et les apports locaux ont été conservés quand ils apportaient un plus par rapport à `origin`.
 
-État de l'arbre : propre, aucun fichier suivi en attente. Un seul fichier non suivi à la racine (`cybertech-realm-export.json`, export Keycloak de référence avec secrets masqués — volontairement non commité).
+État de l'arbre : propre, aucun fichier suivi en attente (le `cybertech-realm-export.json` mentionné dans les anciennes notes de session n'existe plus — le realm Keycloak est désormais importé automatiquement au boot depuis `src/main/resources/keycloak/import/cybertech-realm.json`, committé, secrets de dev en clair assumés).
 
 Dernière validation complète connue (2026-09-27) : `./mvnw verify -Pintegration-test` → BUILD SUCCESS — 2008 tests unitaires, 56 tests d'intégration, 0 échec, gate JaCoCo respectée (`ProductSearchFlowIT` exécute 0 test, comme avant).
 

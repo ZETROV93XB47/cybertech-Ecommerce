@@ -53,8 +53,12 @@ console pages, etc.) keeps Keycloak's default rendering.
      → log in as `admin/admin` → realm `cybertech` → *Realm settings* →
      *Themes* → set **Login theme** to `cybertech` → *Save*), or
 
-   - **Via the realm export** — open `cybertech-realm-export.json` and add
-     `"loginTheme": "cybertech"` at the realm root, then re-import.
+   - **Via the realm import file** — open
+     `src/main/resources/keycloak/import/cybertech-realm.json` and add
+     `"loginTheme": "cybertech"` at the realm root (also update the copy at
+     `src/main/resources/k8s/helm/charts/keycloak-chart/files/cybertech-realm.json`
+     if you want it in the minikube deploy too), then restart Keycloak so it
+     re-imports.
 
 4. **Verify.** Hit any client login URL (e.g. start the front-end, click
    *Sign in with Keycloak*). You should see the dark CTA button, Inter +

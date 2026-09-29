@@ -71,7 +71,7 @@ project context :
     - `api/controllers/{implementation,spec}/` — controllers REST + interfaces OpenAPI
     - `api/error/{enumpackage,model}/` — `ErrorManagementController` (@ControllerAdvice), ErrorCode, ErrorResponseDto
     - `services/{core,implementation}/` — interfaces + impls (toujours interface avant impl)
-    - `entities/{enums,valueObjects,document,attributes,validator}/` — entités JPA héritant de `BaseEntity` (UUID auto via `@PrePersist`)
+    - `entities/{enums,valueObjects,document,validator}/` — entités JPA héritant de `BaseEntity` (UUID auto via `@PrePersist`)
     - `repositories/` — Spring Data JPA + Mongo + Elasticsearch
     - `mappers/{entity,document}/` — MapStruct (impls générés dans `target/generated-sources`)
     - `dto/{request,response}/` — DTOs Jackson 3
