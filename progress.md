@@ -10,7 +10,7 @@ Backend Spring Boot 4 / Java 26 d'une plateforme e-commerce (portfolio, pas ente
 
 État de l'arbre : propre, aucun fichier suivi en attente (le `cybertech-realm-export.json` mentionné dans les anciennes notes de session n'existe plus — le realm Keycloak est désormais importé automatiquement au boot depuis `src/main/resources/keycloak/import/cybertech-realm.json`, committé, secrets de dev en clair assumés).
 
-Dernière validation complète connue (2026-09-27, ITs) : `./mvnw verify -Pintegration-test` → BUILD SUCCESS — 2008 tests unitaires, 56 tests d'intégration, 0 échec, gate JaCoCo respectée (`ProductSearchFlowIT` exécute 0 test, comme avant). Dernière validation unitaire (2026-09-29, après le passage `discountKey`) : `./mvnw test` → 1986 tests, 0 échec — ITs non relancés cette session (Docker non vérifié).
+Dernière validation complète connue (2026-09-29, après le passage `discountKey`) : `./mvnw verify -Pintegration-test` → BUILD SUCCESS (7:02 min) — 2025 tests unitaires, 56 tests d'intégration, 0 échec, gate JaCoCo respectée (`ProductSearchFlowIT` exécute 0 test, comme avant).
 
 Le focus explicite du propriétaire du projet : fiabiliser en priorité le parcours nominal `placeOrder` / `updateOrder` / `cancelOrder`. Tout ce qui est surface admin, nettoyage S3, réconciliation de la saga Keycloak est accepté comme non-critique pour un projet portfolio et volontairement laissé de côté sauf demande explicite.
 
@@ -83,7 +83,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
   - `DiscountCampaignInitializer` : ne boucle plus sur un enum ; seed une `List<String>` de 5 clés de départ (mêmes valeurs qu'avant, pour ne rien casser côté démo/front) — `NO_DISCOUNT_KEY` reste la seule obligatoire.
   - `PriceCalculationRequestDto`/`OrderPlacingRequestDto`/`DiscountContext`/`PriceCalculationResultDto`/`DiscountCampaignResponseDto` : `discountType` → `discountKey` (String). `RedisConfig` : entrée d'allowlist Jackson pour l'enum supprimée (plus nécessaire, String).
   - Un premier agent forké pour adapter la suite de tests a rendu un rapport de complétion trompeur (0 appel d'outil, aucun fichier modifié) — repéré via `git status` avant de faire confiance au rapport, travail refait directement : 12 fichiers de test cassés corrigés, `DiscountTypeEnumTest.java` supprimé (enum disparu), tests ajoutés pour `create`/`delete` (service + controller, cas nominal + doublon + calculationType non wiré + 404/400).
-  - Suite complète : `./mvnw test` → **1986 tests, 0 échec**. ITs non relancés (Docker non vérifié cette session).
+  - Suite complète : `./mvnw test` → **1986 tests, 0 échec**. ITs relancées ensuite (Docker démarré) : `./mvnw verify -Pintegration-test` → **BUILD SUCCESS, 2025 tests unitaires + 56 ITs, 0 échec, gate JaCoCo respectée**.
 
 ### À faire / pistes ouvertes (non traitées, non priorisées)
 
