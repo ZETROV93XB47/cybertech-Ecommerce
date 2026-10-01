@@ -76,7 +76,15 @@ public class SecurityConfig {
             "/auth/register",       // Exemple: Endpoint d'enregistrement
             "/auth/login",          // Exemple: Endpoint de connexion (si géré sans sécurité initiale)
             "/products/list",       // Exemple: Liste publique des produits
+            // springdoc.swagger-ui.path — the actual entry point, which 302-redirects to
+            // /swagger-ui/index.html. It is a SIBLING of /swagger-ui/**, not a sub-path, so the
+            // wildcard below never matches it: without this exact entry, the redirect itself
+            // 401s before the browser ever reaches the (already whitelisted) static UI.
+            "/swagger-ui.html",
             "/swagger-ui/**",       // Accès à Swagger UI (si utilisé)
+            // Same sibling-path gap as above: /v3/api-docs/** does not cover the bare
+            // /v3/api-docs.yaml contract download.
+            "/v3/api-docs.yaml",
             "/v3/api-docs/**",      // Accès à la définition OpenAPI (si utilisé)
             // Narrowed from "/api/v1/services/user/register/**" to the exact
             // human-signup path so /register/auto/** is NO LONGER anonymously reachable.
