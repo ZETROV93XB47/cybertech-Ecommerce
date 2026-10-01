@@ -3,6 +3,7 @@ package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserRoleUpdateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -84,6 +85,34 @@ public interface UserManagementAdminApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<UserResponseDto> updateUser(final UserUpdateRequestDto userUpdateRequestDto, final Jwt jwt);
+
+    @Operation(summary = "Change a User's role (Admin)",
+            description = "Promotes or demotes a user between USER and ADMIN. Propagated to the " +
+                    "Keycloak realm role assignment first, then the local DB, via the same " +
+                    "crash-safe outbox saga as the generic profile update. Bootstrapping the very " +
+                    "first ADMIN account is NOT covered by this endpoint — that one has to be " +
+                    "promoted by hand in the Keycloak admin console, since calling this endpoint " +
+                    "already requires an existing ADMIN JWT.",
+            security = @SecurityRequirement(name = "keycloak"),
+            parameters = {
+                    @Parameter(name = "userUuid", description = "The UUID of the user whose role is being changed", required = true, schema = @Schema(implementation = UUID.class))
+            },
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "The new role.", required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserRoleUpdateRequestDto.class))),
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Role updated successfully",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserResponseDto.class))),
+                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "User not found",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "500", description = "Internal server error",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<UserResponseDto> updateUserRole(final UUID userUuid, final UserRoleUpdateRequestDto userRoleUpdateRequestDto, final Jwt jwt);
 
     @Operation(summary = "Delete a User by UUID (Admin)",
             description = "Deletes a user based on their unique UUID.",

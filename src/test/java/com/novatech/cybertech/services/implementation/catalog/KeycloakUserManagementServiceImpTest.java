@@ -55,6 +55,7 @@ class KeycloakUserManagementServiceImpTest {
     @Mock RoleResource roleResource;
     @Mock RoleMappingResource roleMappingResource;
     @Mock RoleScopeResource roleScopeResource;
+    @Mock RoleResource adminRoleResource;
 
     private KeycloakUserManagementServiceImp service;
 
@@ -344,6 +345,57 @@ class KeycloakUserManagementServiceImpTest {
             assertThat(existing.getLastName()).isEqualTo("New");
             assertThat(existing.getEmail()).isEqualTo("alice@x.com");
             verify(userResource).update(existing);
+        }
+
+        @Test
+        @DisplayName("null role never touches the Keycloak roles API")
+        void updateUser_nullRole_rolesApiUntouched() {
+            UserUpdateRequestDto dto = new UserUpdateRequestDto();
+            dto.setFirstName("Alice");
+
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.get("kc-3")).thenReturn(userResource);
+            when(userResource.toRepresentation()).thenReturn(new UserRepresentation());
+
+            service.updateUser("kc-3", dto);
+
+            verify(realmResource, never()).roles();
+        }
+
+        @Test
+        @DisplayName("non-null role replaces the realm role assignment: removes USER+ADMIN, adds only the target")
+        void updateUser_roleChange_replacesRealmRole() {
+            UserUpdateRequestDto dto = new UserUpdateRequestDto();
+            dto.setRole(Role.ADMIN);
+
+            RoleRepresentation userRole = new RoleRepresentation();
+            userRole.setName("USER");
+            RoleRepresentation adminRole = new RoleRepresentation();
+            adminRole.setName("ADMIN");
+
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.get("kc-3")).thenReturn(userResource);
+            when(userResource.toRepresentation()).thenReturn(new UserRepresentation());
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("USER")).thenReturn(roleResource);
+            when(rolesResource.get("ADMIN")).thenReturn(adminRoleResource);
+            when(roleResource.toRepresentation()).thenReturn(userRole);
+            when(adminRoleResource.toRepresentation()).thenReturn(adminRole);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            service.updateUser("kc-3", dto);
+
+            ArgumentCaptor<List<RoleRepresentation>> removeCaptor = ArgumentCaptor.forClass(List.class);
+            verify(roleScopeResource).remove(removeCaptor.capture());
+            assertThat(removeCaptor.getValue()).extracting(RoleRepresentation::getName)
+                    .containsExactlyInAnyOrder("USER", "ADMIN");
+
+            ArgumentCaptor<List<RoleRepresentation>> addCaptor = ArgumentCaptor.forClass(List.class);
+            verify(roleScopeResource).add(addCaptor.capture());
+            assertThat(addCaptor.getValue()).extracting(RoleRepresentation::getName).containsExactly("ADMIN");
         }
     }
 }

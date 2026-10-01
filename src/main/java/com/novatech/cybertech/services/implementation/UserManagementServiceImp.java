@@ -226,4 +226,25 @@ public class UserManagementServiceImp implements UserManagementService {
 
         return saved;
     }
+
+    /**
+     * Admin-only role change — see {@link UserManagementService#updateRole} for the contract.
+     * Builds a transient {@link UserUpdateRequestDto} carrying only {@code uuid} + {@code role}
+     * and reuses {@link #updateWithOutbox}, so this gets the exact same crash-safety (and the
+     * exact same Keycloak-first-then-DB ordering) as every other profile update for free.
+     */
+    @Override
+    public UserResponseDto updateRole(final UUID userUuid, final Role role, final String callerKeycloakId) {
+        final UserEntity loadedUser = userRepository.findByUuid(userUuid)
+                .orElseThrow(() -> new UserNotFoundException("No user with the UUID: " + userUuid + " found"));
+
+        log.info("ADMIN-AUDIT: admin '{}' changing role of user {} to {}",
+                LogSafetyUtils.maskUuid(callerKeycloakId), userUuid, role);
+
+        final UserUpdateRequestDto roleChange = new UserUpdateRequestDto();
+        roleChange.setUuid(userUuid);
+        roleChange.setRole(role);
+
+        return updateWithOutbox(roleChange, loadedUser);
+    }
 }

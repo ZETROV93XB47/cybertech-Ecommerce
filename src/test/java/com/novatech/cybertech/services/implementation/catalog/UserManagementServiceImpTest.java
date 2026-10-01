@@ -404,6 +404,76 @@ class UserManagementServiceImpTest {
 
     // -----------------------------------------------------------------
     @Nested
+    @DisplayName("updateRole — admin-only promotion/demotion, reuses the update() outbox saga")
+    class UpdateRole {
+
+        @Test
+        @DisplayName("happy path: builds a uuid+role-only patch and routes it through the same Keycloak-then-DB saga as update()")
+        void updateRole_happyPath_reusesOutboxSaga() {
+            UUID userUuid = UUID.randomUUID();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(userUuid).keycloakId("kc-promote").build();
+            UUID outboxUuid = UUID.randomUUID();
+            UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
+
+            when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));
+            when(keycloakOutboxService.recordUpdatePending(eq("kc-promote"), any(UserUpdateRequestDto.class)))
+                    .thenReturn(outboxUuid);
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user))).thenReturn(expected);
+
+            UserResponseDto result = service.updateRole(userUuid, Role.ADMIN, "kc-admin-caller");
+
+            assertThat(result).isSameAs(expected);
+
+            ArgumentCaptor<UserUpdateRequestDto> patchCaptor = ArgumentCaptor.forClass(UserUpdateRequestDto.class);
+            InOrder order = inOrder(keycloakOutboxService, keycloakUserManagementService, userPersistenceService);
+            order.verify(keycloakOutboxService).recordUpdatePending(eq("kc-promote"), patchCaptor.capture());
+            order.verify(keycloakUserManagementService).updateUser(eq("kc-promote"), any(UserUpdateRequestDto.class));
+            order.verify(userPersistenceService).updateUser(any(UserUpdateRequestDto.class), eq(user));
+            order.verify(keycloakOutboxService).markDone(outboxUuid, "kc-promote");
+
+            // The transient patch carries ONLY uuid + role — no other field leaks in.
+            UserUpdateRequestDto patch = patchCaptor.getValue();
+            assertThat(patch.getUuid()).isEqualTo(userUuid);
+            assertThat(patch.getRole()).isEqualTo(Role.ADMIN);
+            assertThat(patch.getFirstName()).isNull();
+            assertThat(patch.getEmail()).isNull();
+        }
+
+        @Test
+        @DisplayName("missing user throws UserNotFoundException — Keycloak and outbox both untouched")
+        void updateRole_notFound_throws() {
+            UUID userUuid = UUID.randomUUID();
+            when(userRepository.findByUuid(userUuid)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.updateRole(userUuid, Role.ADMIN, "kc-admin-caller"))
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining(userUuid.toString());
+
+            verifyNoInteractions(keycloakOutboxService, keycloakUserManagementService, userPersistenceService);
+        }
+
+        @Test
+        @DisplayName("Keycloak rejection aborts before any DB write, same as a plain update()")
+        void updateRole_keycloakFails_dbUntouched() {
+            UUID userUuid = UUID.randomUUID();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().uuid(userUuid).keycloakId("kc-reject").build();
+            UUID outboxUuid = UUID.randomUUID();
+            when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));
+            when(keycloakOutboxService.recordUpdatePending(eq("kc-reject"), any(UserUpdateRequestDto.class)))
+                    .thenReturn(outboxUuid);
+            doThrow(new RuntimeException("kc down"))
+                    .when(keycloakUserManagementService).updateUser(eq("kc-reject"), any(UserUpdateRequestDto.class));
+
+            assertThatThrownBy(() -> service.updateRole(userUuid, Role.ADMIN, "kc-admin-caller"))
+                    .hasMessage("kc down");
+
+            verify(keycloakOutboxService).markFailed(eq(outboxUuid), any());
+            verifyNoInteractions(userPersistenceService);
+        }
+    }
+
+    // -----------------------------------------------------------------
+    @Nested
     @DisplayName("delete")
     class Delete {
 

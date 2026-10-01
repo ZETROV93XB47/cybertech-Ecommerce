@@ -16,6 +16,7 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -134,5 +135,31 @@ public class KeycloakUserManagementServiceImp implements KeycloakUserManagementS
         if (userUpdateRequestDto.getEmail() != null) userRep.setEmail(userUpdateRequestDto.getEmail());
 
         userResource.update(userRep);
+
+        if (userUpdateRequestDto.getRole() != null) {
+            replaceRealmRole(keycloakId, userUpdateRequestDto.getRole());
+        }
+    }
+
+    /**
+     * Swaps the user's single managed realm role for {@code role}. Every {@link Role} value is
+     * removed first — Keycloak silently no-ops removing a role the user doesn't currently hold —
+     * so a user never ends up holding both USER and ADMIN at once, regardless of which one they
+     * started with.
+     */
+    private void replaceRealmRole(final String keycloakId, final Role role) {
+        final var realmRoles = keycloakClient.realm(realm).roles();
+        final List<RoleRepresentation> managedRoles = Arrays.stream(Role.values())
+                .map(r -> realmRoles.get(r.name()).toRepresentation())
+                .toList();
+
+        final var userRealmRoles = keycloakClient.realm(realm).users().get(keycloakId).roles().realmLevel();
+        userRealmRoles.remove(managedRoles);
+
+        final RoleRepresentation target = managedRoles.stream()
+                .filter(r -> r.getName().equals(role.name()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Realm role not found: " + role.name()));
+        userRealmRoles.add(List.of(target));
     }
 }

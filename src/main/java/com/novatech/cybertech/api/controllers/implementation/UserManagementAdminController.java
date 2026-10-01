@@ -3,6 +3,7 @@ package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.spec.UserManagementAdminApiSpec;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserRoleUpdateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.services.core.UserManagementService;
@@ -64,6 +65,15 @@ public class UserManagementAdminController implements UserManagementAdminApiSpec
     @PatchMapping(value = "/update", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<UserResponseDto> updateUser(@Valid @RequestBody final UserUpdateRequestDto userUpdateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
         return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.update(userUpdateRequestDto, jwt.getSubject()));
+    }
+
+    @Override
+    @PatchMapping(value = "/update-role/{userUuid}", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<UserResponseDto> updateUserRole(@PathVariable final UUID userUuid,
+                                                            @Valid @RequestBody final UserRoleUpdateRequestDto userRoleUpdateRequestDto,
+                                                            @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.OK).body(
+                userManagementServiceImp.updateRole(userUuid, userRoleUpdateRequestDto.getRole(), jwt.getSubject()));
     }
 
     @Override

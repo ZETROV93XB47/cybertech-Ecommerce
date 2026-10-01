@@ -1,5 +1,6 @@
 package com.novatech.cybertech.dto.request.user;
 
+import com.novatech.cybertech.entities.enums.Role;
 import com.novatech.cybertech.entities.enums.Sex;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotNull;
@@ -42,4 +43,8 @@ public class UserUpdateRequestDto {
 
     @Past(message = "Birth date must be in the past")
     private LocalDateTime birthDate; // Peut être null si non modifié
+
+    // Never set by the public /register or self-service /me paths — only
+    // UserManagementServiceImp#updateRole (admin-only, dedicated endpoint) ever populates this.
+    private Role role;
 }

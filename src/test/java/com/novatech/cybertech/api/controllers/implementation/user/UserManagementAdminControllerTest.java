@@ -5,8 +5,10 @@ import com.novatech.cybertech.api.controllers.implementation.UserManagementAdmin
 import com.novatech.cybertech.api.error.ErrorManagementController;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserRoleUpdateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
+import com.novatech.cybertech.entities.enums.Role;
 import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
 import com.novatech.cybertech.exceptions.UserNotActiveException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
@@ -70,6 +72,7 @@ class UserManagementAdminControllerTest {
     private static final String GET_ALL_USERS_ENDPOINT = "/api/v1/services/admin/user/get/all";
     private static final String CREATE_USER_ENDPOINT = "/api/v1/services/admin/user/create";
     private static final String UPDATE_USER_ENDPOINT = "/api/v1/services/admin/user/update";
+    private static final String UPDATE_USER_ROLE_ENDPOINT = "/api/v1/services/admin/user/update-role/{userUuid}";
     private static final String DELETE_USER_BY_UUID_ENDPOINT = "/api/v1/services/admin/user/delete/{userUuid}";
     private static final String REGISTER_AUTO_SINGLE_ENDPOINT = "/api/v1/services/admin/user/register/auto/single";
 
@@ -302,6 +305,102 @@ class UserManagementAdminControllerTest {
                         .accept(APPLICATION_JSON)
                         .contentType(APPLICATION_JSON)
                         .content(asJsonString(UserDtoFixtures.aValidUpdateRequest())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    // ---------- PATCH /update-role/{userUuid} ----------
+
+    @Test
+    void shouldUpdateUserRoleAsAdminSuccessfully() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final UserRoleUpdateRequestDto request = UserRoleUpdateRequestDto.builder().role(Role.ADMIN).build();
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder().uuid(uuid).build();
+
+        when(userManagementServiceImp.updateRole(uuid, Role.ADMIN, ADMIN_KEYCLOAK_ID)).thenReturn(response);
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailUpdateUserRoleCauseDtoBadRequestReturning400() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final UserRoleUpdateRequestDto invalid = new UserRoleUpdateRequestDto();
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(invalid)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailUpdateUserRoleWhenNotFoundReturning404() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final String message = "No user with the UUID: " + uuid + " found";
+        final UserRoleUpdateRequestDto request = UserRoleUpdateRequestDto.builder().role(Role.ADMIN).build();
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message(message)
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .build();
+
+        when(userManagementServiceImp.updateRole(uuid, Role.ADMIN, ADMIN_KEYCLOAK_ID))
+                .thenThrow(new UserNotFoundException(message));
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    @Test
+    void shouldRejectUpdateUserRoleWhenAnonymousCauseUnauthorized() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final UserRoleUpdateRequestDto request = UserRoleUpdateRequestDto.builder().role(Role.ADMIN).build();
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldRejectUpdateUserRoleAsRoleUserReturning403() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final UserRoleUpdateRequestDto request = UserRoleUpdateRequestDto.builder().role(Role.ADMIN).build();
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message("Access denied")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .build();
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
                 .andExpect(status().isForbidden())
                 .andExpect(content().json(asJsonString(error), STRICT));
     }
