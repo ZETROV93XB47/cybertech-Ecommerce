@@ -72,7 +72,18 @@ public class CancelAllPendingOrdersByTimeTasklet extends BaseTasklet {
             // PAYMENT_FAILED in the DB and the tasklet would re-process the same orders forever.
             orderRepository.saveAll(successfullyCancelled);
 
+            // Filtering (rather than letting a null userEntity throw mid-stream) matters here:
+            // groupingBy runs AFTER saveAll(successfullyCancelled) above, outside any per-order
+            // try/catch — an unguarded NPE would escape to BaseTasklet's top-level catch and roll
+            // back the whole @Transactional method, including the cancellations that already saved.
             final Map<String, List<UUID>> cancelledOrdersIdsByUserEmail = successfullyCancelled.stream()
+                    .filter(co -> {
+                        if (co.getUserEntity() == null) {
+                            log.error("Order {} was cancelled but has no associated user — skipping its email notification grouping.", co.getUuid());
+                            return false;
+                        }
+                        return true;
+                    })
                     .collect(Collectors.groupingBy(
                             co -> co.getUserEntity().getEmail(),
                             Collectors.mapping(BaseEntity::getUuid, Collectors.toList())

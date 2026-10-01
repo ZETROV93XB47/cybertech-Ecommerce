@@ -98,6 +98,12 @@ public class ShippingListener {
         orderRepository.save(order);
 
         final UserEntity user = order.getUserEntity();
+        if (user == null) {
+            // Structurally possible — userEntity is the only nullable column on orderTable — but
+            // never legitimately reachable (an order cannot be placed without a user). Fail loudly
+            // instead of a bare NPE so the async exception handler's log line is actionable.
+            throw new IllegalStateException("Order " + order.getUuid() + " has no associated user — cannot resolve shipping contact details.");
+        }
 
         final UserContactDto userContactDto = UserContactDto.builder()
                 .email(user.getEmail())

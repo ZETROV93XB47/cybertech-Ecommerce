@@ -4,6 +4,8 @@ import com.novatech.cybertech.dto.request.admin.DiscountCampaignCreateRequestDto
 import com.novatech.cybertech.dto.request.admin.DiscountCampaignUpdateRequestDto;
 import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
+import com.novatech.cybertech.entities.enums.DiscountCalculationType;
+import com.novatech.cybertech.exceptions.DiscountCampaignMissingRequiredFieldException;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
@@ -14,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
 
@@ -62,6 +65,12 @@ public class DiscountCampaignAdminServiceImp implements DiscountCampaignAdminSer
             throw new NoStrategyFoundForProcessingTheRequest(
                     "No DiscountStrategy wired for calculation type " + request.calculationType());
         }
+
+        // Fail fast on a strategy that IS wired but would have nothing to compute against —
+        // without this, an admin could persist e.g. calculationType=PERCENTAGE with no percentage,
+        // and PercentageDiscountStrategy would only discover the gap (via its own defensive,
+        // unmapped IllegalStateException) when a real customer's order priced against this campaign.
+        requireFieldForCalculationType(request.calculationType(), request.percentage(), request.fixedAmount());
 
         final DiscountCampaignEntity saved = discountCampaignRepository.save(DiscountCampaignEntity.builder()
                 .discountKey(request.discountKey())
@@ -115,6 +124,12 @@ public class DiscountCampaignAdminServiceImp implements DiscountCampaignAdminSer
             campaign.setPriority(request.priority());
         }
 
+        // Validate the MERGED state (not just the patch): a PATCH that only touches minOrderAmount
+        // must not silently let a stale percentage=null survive if calculationType is PERCENTAGE —
+        // and conversely, switching calculationType to PERCENTAGE without supplying percentage in
+        // the same call must be caught here too.
+        requireFieldForCalculationType(campaign.getCalculationType(), campaign.getPercentage(), campaign.getFixedAmount());
+
         final DiscountCampaignEntity saved = discountCampaignRepository.save(campaign);
 
         // Cache key is the discountKey — evict so the next price calc reads the fresh row.
@@ -133,6 +148,25 @@ public class DiscountCampaignAdminServiceImp implements DiscountCampaignAdminSer
         discountCampaignRepository.delete(campaign);
         discountCampaignService.evictCache(discountKey);
         log.info("Deleted discount campaign '{}'", discountKey);
+    }
+
+    /**
+     * Mirrors the field each {@code DiscountStrategy} implementation actually dereferences —
+     * {@link com.novatech.cybertech.strategy.discount.PercentageDiscountStrategy} requires
+     * {@code percentage}, {@link com.novatech.cybertech.strategy.discount.FixedAmountDiscountStrategy}
+     * requires {@code fixedAmount}. {@code NONE} and {@code BUY_ONE_GET_ONE_FREE} need neither.
+     */
+    private void requireFieldForCalculationType(final DiscountCalculationType calculationType,
+                                                 final BigDecimal percentage,
+                                                 final BigDecimal fixedAmount) {
+        if (calculationType == DiscountCalculationType.PERCENTAGE && percentage == null) {
+            throw new DiscountCampaignMissingRequiredFieldException(
+                    "calculationType PERCENTAGE requires a non-null percentage");
+        }
+        if (calculationType == DiscountCalculationType.FIXED_AMOUNT && fixedAmount == null) {
+            throw new DiscountCampaignMissingRequiredFieldException(
+                    "calculationType FIXED_AMOUNT requires a non-null fixedAmount");
+        }
     }
 
     private DiscountCampaignEntity loadOrThrow(final String discountKey) {

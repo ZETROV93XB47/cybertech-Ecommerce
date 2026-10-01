@@ -1,5 +1,6 @@
 package com.novatech.cybertech.utils;
 
+import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
@@ -81,5 +82,25 @@ public final class OrderPaymentUtils {
     // null collection rather than an empty one.
     private static List<PaymentEntity> attemptsOf(final OrderEntity order) {
         return Optional.ofNullable(order.getPaymentAttempts()).orElse(List.of());
+    }
+
+    /**
+     * Safely reads one metadata entry off a Stripe webhook event DTO, tolerating a null {@code dto},
+     * {@code data}, {@code data.object} or {@code metadata} at any step — {@link StripeWebhookEventDto}
+     * is Jackson-deserialized straight from the raw webhook body with no non-null guarantee at any
+     * level (a malformed/replayed/future-shape event, or {@code charge.refunded} deserializing a
+     * Charge payload into this PaymentIntent-shaped DTO, can leave any of these null). Shared by
+     * {@link com.novatech.cybertech.services.implementation.PaymentWebhookServiceImp} and
+     * {@link com.novatech.cybertech.services.implementation.OrderPaymentConfirmationTransactionalDelegateImp},
+     * which both used to inline this same unguarded chain.
+     *
+     * @return the metadata value, or {@code null} if absent at any level — never throws.
+     */
+    public static String extractMetadata(final StripeWebhookEventDto dto, final String metadataKey) {
+        if (dto == null || dto.getData() == null || dto.getData().getPaymentIntentPayload() == null
+                || dto.getData().getPaymentIntentPayload().getMetadata() == null) {
+            return null;
+        }
+        return dto.getData().getPaymentIntentPayload().getMetadata().get(metadataKey);
     }
 }

@@ -73,7 +73,7 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handlePaymentSuccessWithinTransaction(final PaymentSucceededEvent event) {
 
-        final UUID orderUuid = extractOrderUuid(event.getStripeEvent().getData().getPaymentIntentPayload().getMetadata().get(ORDER_UUID_METADATA_KEY));
+        final UUID orderUuid = extractOrderUuid(OrderPaymentUtils.extractMetadata(event.getStripeEvent(), ORDER_UUID_METADATA_KEY));
         final OrderEntity order = orderRepository.findByUuid(orderUuid).orElseThrow(() -> new PaymentNotFoundException("Order not found for uuid : " + orderUuid));
 
         if (!PAYMENT_PENDING_STATES.contains(order.getStatus())) {
@@ -101,7 +101,7 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handlePaymentFailedWithinTransaction(final PaymentFailedEvent event) {
-        final UUID orderUuid = extractOrderUuid(event.getStripeEvent().getData().getPaymentIntentPayload().getMetadata().get(ORDER_UUID_METADATA_KEY));
+        final UUID orderUuid = extractOrderUuid(OrderPaymentUtils.extractMetadata(event.getStripeEvent(), ORDER_UUID_METADATA_KEY));
         final OrderEntity order = orderRepository.findByUuid(orderUuid).orElseThrow(() -> new PaymentNotFoundException("Order not found for uuid : " + orderUuid));
 
         if (!PAYMENT_PENDING_STATES.contains(order.getStatus())) {
@@ -129,7 +129,7 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handleRefundWithinTransaction(final PaymentRefundedEvent event) {
-        final UUID orderUuid = extractOrderUuid(event.getStripeEvent().getData().getPaymentIntentPayload().getMetadata().get(ORDER_UUID_METADATA_KEY));
+        final UUID orderUuid = extractOrderUuid(OrderPaymentUtils.extractMetadata(event.getStripeEvent(), ORDER_UUID_METADATA_KEY));
         final OrderEntity order = orderRepository.findByUuid(orderUuid).orElseThrow(() -> new PaymentNotFoundException("Order not found for uuid : " + orderUuid));
 
         if (!REFUNDABLE_STATES.contains(order.getStatus())) {

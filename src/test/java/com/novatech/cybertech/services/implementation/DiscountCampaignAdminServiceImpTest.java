@@ -5,6 +5,7 @@ import com.novatech.cybertech.dto.request.admin.DiscountCampaignUpdateRequestDto
 import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
+import com.novatech.cybertech.exceptions.DiscountCampaignMissingRequiredFieldException;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
@@ -162,6 +163,38 @@ class DiscountCampaignAdminServiceImpTest {
     }
 
     @Test
+    @DisplayName("create rejects calculationType=PERCENTAGE with no percentage")
+    void createRejectsPercentageWithoutPercentage() {
+        when(discountCampaignRepository.existsByDiscountKey("SUMMER_FLASH_SALE")).thenReturn(false);
+        when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(discountStrategy);
+
+        final DiscountCampaignCreateRequestDto req = new DiscountCampaignCreateRequestDto(
+                "SUMMER_FLASH_SALE", DiscountCalculationType.PERCENTAGE, true,
+                null, null, null, null, null, null, 90);
+
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(DiscountCampaignMissingRequiredFieldException.class);
+
+        verify(discountCampaignRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("create rejects calculationType=FIXED_AMOUNT with no fixedAmount")
+    void createRejectsFixedAmountWithoutFixedAmount() {
+        when(discountCampaignRepository.existsByDiscountKey("SUMMER_FLASH_SALE")).thenReturn(false);
+        when(discountStrategyFactory.getStrategy(DiscountCalculationType.FIXED_AMOUNT)).thenReturn(discountStrategy);
+
+        final DiscountCampaignCreateRequestDto req = new DiscountCampaignCreateRequestDto(
+                "SUMMER_FLASH_SALE", DiscountCalculationType.FIXED_AMOUNT, true,
+                null, null, null, null, null, null, 90);
+
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(DiscountCampaignMissingRequiredFieldException.class);
+
+        verify(discountCampaignRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("update applies non-null fields, persists, and evicts the cache")
     void updateAppliesAndEvicts() {
         final DiscountCampaignEntity existing = entity("BLACK_FRIDAY", DiscountCalculationType.PERCENTAGE, false);
@@ -213,6 +246,29 @@ class DiscountCampaignAdminServiceImpTest {
 
         verify(discountCampaignRepository).save(existing);
         verify(discountCampaignService).evictCache("WINTER_SALES");
+    }
+
+    @Test
+    @DisplayName("update rejects switching calculationType to PERCENTAGE without supplying percentage in the same call")
+    void updateRejectsSwitchingToPercentageWithoutPercentage() {
+        final DiscountCampaignEntity existing = DiscountCampaignEntity.builder()
+                .uuid(UUID.randomUUID())
+                .discountKey("BLACK_FRIDAY")
+                .calculationType(DiscountCalculationType.FIXED_AMOUNT)
+                .fixedAmount(new BigDecimal("10.00"))
+                .enabled(true)
+                .priority(50)
+                .build();
+        when(discountCampaignRepository.findByDiscountKey("BLACK_FRIDAY")).thenReturn(Optional.of(existing));
+
+        final DiscountCampaignUpdateRequestDto patch = new DiscountCampaignUpdateRequestDto(
+                null, DiscountCalculationType.PERCENTAGE, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.update("BLACK_FRIDAY", patch))
+                .isInstanceOf(DiscountCampaignMissingRequiredFieldException.class);
+
+        verify(discountCampaignRepository, never()).save(any());
+        verify(discountCampaignService, never()).evictCache(any());
     }
 
     @Test

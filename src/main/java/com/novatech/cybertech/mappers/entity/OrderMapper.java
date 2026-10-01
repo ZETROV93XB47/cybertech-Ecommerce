@@ -50,7 +50,7 @@ public interface OrderMapper {
                 src.getShippingCountry()));
     }
 
-    @Mapping(target = "userUuid", expression = "java(orderEntity.getUserEntity().getUuid())")
+    @Mapping(target = "userUuid", expression = "java(orderEntity.getUserEntity() != null ? orderEntity.getUserEntity().getUuid() : null)")
     @Mapping(target = "orderItems", source = "orderItemEntities")
     @Mapping(target = "totalAmount", source = "totalAmount.amount")
     @Mapping(target = "refundedAmount", expression = "java(computeRefundedAmount(orderEntity))")

@@ -49,6 +49,9 @@ public class KeycloakUserManagementServiceImp implements KeycloakUserManagementS
             }
 
             // L’ID est dans le Location header: .../users/{id}
+            if (resp.getLocation() == null) {
+                throw new IllegalStateException("Keycloak user creation returned 201 but no Location header");
+            }
             locationHeaderValue = resp.getLocation().toString();
 
             String userId = getUserKeycloakId(locationHeaderValue);

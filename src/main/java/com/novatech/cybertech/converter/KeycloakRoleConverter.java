@@ -10,6 +10,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Component
@@ -25,6 +26,7 @@ public class KeycloakRoleConverter implements Converter<Jwt, Collection<GrantedA
         List<String> roles = (List<String>) realmAccess.getOrDefault("roles", List.of());
 
         return roles.stream()
+                .filter(Objects::nonNull)
                 .map(roleName -> new SimpleGrantedAuthority("ROLE_" + roleName.toUpperCase()))
                 .collect(Collectors.toList());
     }

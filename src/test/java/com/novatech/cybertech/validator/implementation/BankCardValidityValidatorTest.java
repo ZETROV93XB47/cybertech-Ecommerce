@@ -4,6 +4,7 @@ import com.novatech.cybertech.dto.data.OrderValidationDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.enums.BankCardType;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
+import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import org.junit.jupiter.api.DisplayName;
@@ -99,12 +100,12 @@ class BankCardValidityValidatorTest {
     }
 
     @Test
-    @DisplayName("Null bank card: throws NullPointerException (no defensive null guard in prod)")
-    void nullBankCardThrowsNpe() {
+    @DisplayName("Null bank card: throws BankCardNotFoundException")
+    void nullBankCardThrowsBankCardNotFoundException() {
         OrderValidationDto dto = dtoWithCard(null);
 
         assertThatThrownBy(() -> validator.validate(dto))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(BankCardNotFoundException.class);
     }
 
     @Test

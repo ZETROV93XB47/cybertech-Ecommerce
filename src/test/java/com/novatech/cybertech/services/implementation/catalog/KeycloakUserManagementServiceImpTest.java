@@ -122,6 +122,24 @@ class KeycloakUserManagementServiceImpTest {
         }
 
         @Test
+        @DisplayName("201 response with no Location header throws IllegalStateException")
+        void createUser_201WithNoLocation_throws() {
+            Response resp = org.mockito.Mockito.mock(Response.class);
+            when(resp.getStatus()).thenReturn(201);
+            when(resp.getLocation()).thenReturn(null);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+
+            assertThatThrownBy(() -> service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Location");
+
+            verify(realmResource, never()).roles();
+            verify(resp).close();
+        }
+
+        @Test
         @DisplayName("UserRepresentation carries email, names, enabled=true, emailVerified=true")
         void createUser_userRepresentationFields() {
             String userId = "u1";

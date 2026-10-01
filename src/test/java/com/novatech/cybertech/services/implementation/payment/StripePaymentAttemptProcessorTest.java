@@ -166,6 +166,21 @@ class StripePaymentAttemptProcessorTest {
         }
 
         @Test
+        @DisplayName("a null Stripe status (SDK gap, not documented non-null) falls back to PROCESSING instead of NPE'ing")
+        void mapsNullStatusToProcessing() {
+            try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
+                PaymentIntent intent = stubPaymentIntent("pi_null_status", null);
+                piMock.when(() -> PaymentIntent.create(
+                                any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
+                        .thenReturn(intent);
+
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+
+                assertThat(result.status()).isEqualTo(PaymentAttemptStatus.PROCESSING);
+            }
+        }
+
+        @Test
         @DisplayName("card decline (CardException) is a business outcome: returns FAILED instead of throwing")
         void cardDecline_returnsFailed_doesNotThrow() {
             try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
@@ -353,6 +368,22 @@ class StripePaymentAttemptProcessorTest {
         void unknownRefundStatusMapsToProcessing() {
             try (MockedStatic<Refund> refundMock = Mockito.mockStatic(Refund.class)) {
                 Refund stub = stubRefund("re_pending_1", "pending");
+                refundMock.when(() -> Refund.create(
+                                any(RefundCreateParams.class), any(RequestOptions.class)))
+                        .thenReturn(stub);
+
+                PaymentAttemptResult result = processor.refund(
+                        orderUuid, amount, idempotencyKey, "pi_to_refund");
+
+                assertThat(result.status()).isEqualTo(PaymentAttemptStatus.PROCESSING);
+            }
+        }
+
+        @Test
+        @DisplayName("a null refund status falls back to PROCESSING instead of NPE'ing")
+        void mapsNullRefundStatusToProcessing() {
+            try (MockedStatic<Refund> refundMock = Mockito.mockStatic(Refund.class)) {
+                Refund stub = stubRefund("re_null_status", null);
                 refundMock.when(() -> Refund.create(
                                 any(RefundCreateParams.class), any(RequestOptions.class)))
                         .thenReturn(stub);

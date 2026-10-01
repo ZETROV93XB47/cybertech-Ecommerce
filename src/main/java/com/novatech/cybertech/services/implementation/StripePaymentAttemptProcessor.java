@@ -201,7 +201,10 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
         return switch (stripeStatus) {
             case SUCCEEDED -> PaymentAttemptStatus.SUCCESS;
             case REQUIRES_PAYMENT_METHOD, CANCELED -> PaymentAttemptStatus.FAILED;
-            default -> PaymentAttemptStatus.PROCESSING;
+            // A plain switch(String) throws its own NPE on a null selector unless `case null` is
+            // explicit — Stripe's SDK types status as a plain String with no documented non-null
+            // guarantee, so fold null into the same PROCESSING fallback as any other unknown status.
+            case null, default -> PaymentAttemptStatus.PROCESSING;
         };
     }
 
@@ -210,7 +213,9 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             case SUCCEEDED -> PaymentAttemptStatus.SUCCESS;
             case FAILED -> PaymentAttemptStatus.FAILED;
             case CANCELED -> PaymentAttemptStatus.CANCELED;
-            default -> PaymentAttemptStatus.PROCESSING;
+            // See mapStripeStatus: a plain switch(String) throws its own NPE on a null selector
+            // unless `case null` is explicit.
+            case null, default -> PaymentAttemptStatus.PROCESSING;
         };
     }
 

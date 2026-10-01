@@ -152,6 +152,22 @@ class ShippingListenerTest {
     }
 
     @Test
+    void onShouldThrowIllegalStateExceptionWhenUserEntityIsNull() {
+        // userEntity is the only nullable column on orderTable — structurally possible even
+        // though no legitimate flow places an order without a user. Must fail loudly with a
+        // clear message instead of a bare NPE once the claim (status + shippedAt) already saved.
+        OrderEntity order = paidOrder();
+        order.setUserEntity(null);
+        when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> listener.on(new OrderPaidEvent(order.getUuid())))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(order.getUuid().toString());
+
+        verifyNoInteractions(shippingDispatcher, eventPublisher);
+    }
+
+    @Test
     void bug122_shippingListenerDoesNotDispatchNotification_notificationGoesViaOrderShippedEvent() {
         // The orphan NotificationContext local was removed. ShippingListener now
         // hands off the notification side-effect to NotificationListener via OrderShippedEvent.

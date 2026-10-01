@@ -34,7 +34,7 @@ public class ProductCategorySchemaCacheImp implements ProductCategorySchemaCache
 
     private static final JsonSchemaFactory SCHEMA_FACTORY = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
     private static final ObjectMapper JSON_SCHEMA_NODE_MAPPER = new ObjectMapper();
-    private static final Duration MISSED_INVALIDATION_SAFETY_NET_TTL = Duration.ofMinutes(20);
+    private static final Duration MISSED_INVALIDATION_SAFETY_NET_TTL = Duration.ofHours(24);
 
     private final ProductCategorySchemaRepository productCategorySchemaRepository;
 
@@ -52,6 +52,13 @@ public class ProductCategorySchemaCacheImp implements ProductCategorySchemaCache
 
     @Override
     public JsonSchema get(final String categoryKey) {
+        // Caffeine's Cache#get rejects a null key with its own NullPointerException before ever
+        // invoking the mapping function — guard here so the interface's "never returns null,
+        // throws a clear business exception instead" contract holds for every caller, not just
+        // the one caller (ProductValidationService) that happens to guard it today.
+        if (categoryKey == null) {
+            throw new UnknownProductCategoryException("Unknown product category: null");
+        }
         return cache.get(categoryKey, this::loadAndCompile);
     }
 

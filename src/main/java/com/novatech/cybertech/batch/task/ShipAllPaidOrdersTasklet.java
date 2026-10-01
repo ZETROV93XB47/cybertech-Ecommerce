@@ -76,6 +76,13 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
 
     private void processShipping(OrderEntity order) {
         final UserEntity user = order.getUserEntity();
+        if (user == null) {
+            // Structurally possible — userEntity is the only nullable column on orderTable — but
+            // never legitimately reachable (an order cannot be placed without a user). Thrown here
+            // so it lands in the per-order catch in execute(...) with a clear, actionable message
+            // instead of a bare NPE.
+            throw new IllegalStateException("Order " + order.getUuid() + " has no associated user — cannot resolve shipping contact details.");
+        }
 
         final UserContactDto userContactDto = UserContactDto.builder()
                 .email(user.getEmail())
@@ -110,7 +117,7 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
                 .orderUuid(order.getUuid())
                 .shippingType(order.getShippingType())
                 .shippingProvider(order.getShippingProvider())
-                .userName(order.getUserEntity().getFirstName())
+                .userName(user.getFirstName())
                 .build();
 
         final NotificationContext notificationContext = NotificationContext.builder()

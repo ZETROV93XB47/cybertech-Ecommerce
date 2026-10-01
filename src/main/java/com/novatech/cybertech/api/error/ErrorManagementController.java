@@ -297,6 +297,12 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, DISCOUNT_TYPE_NOT_ACTIVE.getResponseStatus());
     }
 
+    @ExceptionHandler(DiscountCampaignMissingRequiredFieldException.class)
+    public ResponseEntity<ErrorResponseDto> handleDiscountCampaignMissingRequiredFieldException(DiscountCampaignMissingRequiredFieldException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD.getResponseStatus().value(), DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD.getResponseStatus());
+    }
+
     @ExceptionHandler(DiscountTypeCannotBeNullForStrategy.class)
     public ResponseEntity<ErrorResponseDto> handleDiscountTypeCannotBeNullForStrategy(DiscountTypeCannotBeNullForStrategy exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), NO_STRATEGY_FOUND.getResponseStatus().value(), NO_STRATEGY_FOUND.getErrorCodeType());

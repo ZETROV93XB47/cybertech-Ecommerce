@@ -307,6 +307,27 @@ class ShipAllPaidOrdersTaskletTest {
         }
 
         @Test
+        @DisplayName("an order with no associated user is skipped (IllegalStateException caught per-order) without aborting the batch")
+        void orderWithoutUser_isSkippedWithoutAbortingBatch() throws Exception {
+            final OrderEntity broken = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(UUID.randomUUID())
+                    .status(OrderStatus.PAID)
+                    .userEntity(null)
+                    .build();
+            final OrderEntity o2 = paidOrderForUser("b@example.com");
+            when(orderRepository.findByStatus(OrderStatus.PAID)).thenReturn(List.of(broken, o2));
+            wireDelegateToSimulateClaimAndShip();
+
+            final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
+
+            assertThat(status).isEqualTo(RepeatStatus.FINISHED);
+            assertThat(stepContribution.getExitStatus()).isEqualTo(ExitStatus.COMPLETED);
+            // The broken order throws before ever reaching the delegate; only o2 claims/ships.
+            verify(shipOrderDelegate, times(1)).claimAndShip(any(OrderEntity.class), any(ShippingContext.class));
+            assertThat(o2.getStatus()).isEqualTo(OrderStatus.SHIPPED);
+        }
+
+        @Test
         @DisplayName("OptimisticLockingFailureException from delegate skips the order without aborting the batch")
         void optimisticLockFailure_skipsOrderWithoutAbortingBatch() throws Exception {
             final OrderEntity o1 = paidOrderForUser("a@example.com");

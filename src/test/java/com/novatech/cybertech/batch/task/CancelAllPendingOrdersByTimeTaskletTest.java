@@ -263,6 +263,31 @@ class CancelAllPendingOrdersByTimeTaskletTest {
         }
 
         @Test
+        @DisplayName("a cancelled order with no associated user is excluded from the grouping, not NPE'd")
+        void cancelledOrderWithoutUser_isExcludedFromGrouping() throws Exception {
+            final OrderEntity broken = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(UUID.randomUUID())
+                    .status(OrderStatus.PAYMENT_FAILED)
+                    .userEntity(null)
+                    .build();
+            final OrderEntity o2 = orderForUser("a@example.com");
+            when(orderRepository.findByStatusAndOrderDateBefore(eq(OrderStatus.PAYMENT_FAILED), any(LocalDateTime.class)))
+                    .thenReturn(List.of(broken, o2));
+
+            final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
+
+            assertThat(status).isEqualTo(RepeatStatus.FINISHED);
+            // Both orders are still cancelled — only the email grouping skips the userless one.
+            assertThat(broken.getStatus()).isEqualTo(OrderStatus.CANCELED);
+            assertThat(o2.getStatus()).isEqualTo(OrderStatus.CANCELED);
+            @SuppressWarnings("unchecked")
+            final Map<String, List<UUID>> grouped =
+                    (Map<String, List<UUID>>) jobExecution.getExecutionContext().get(PENDING_ORDERS_MAP_BY_USER_EMAIL);
+            assertThat(grouped).hasSize(1);
+            assertThat(grouped.get("a@example.com")).containsExactly(o2.getUuid());
+        }
+
+        @Test
         @DisplayName("when all orders fail, the resulting empty map is still written to the JobExecutionContext")
         void allFailures_writesEmptyMap() throws Exception {
             final OrderEntity o1 = orderForUser("a@example.com");

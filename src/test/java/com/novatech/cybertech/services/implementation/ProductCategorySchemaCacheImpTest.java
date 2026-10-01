@@ -107,6 +107,15 @@ class ProductCategorySchemaCacheImpTest {
             assertThatThrownBy(() -> cache.get("KEYBOARD"))
                     .isInstanceOf(UnknownProductCategoryException.class);
         }
+
+        @Test
+        @DisplayName("null categoryKey throws UnknownProductCategoryException instead of Caffeine's own NullPointerException")
+        void nullCategoryKeyThrowsUnknownProductCategoryException() {
+            assertThatThrownBy(() -> cache.get(null))
+                    .isInstanceOf(UnknownProductCategoryException.class);
+
+            verify(productCategorySchemaRepository, never()).findByCategoryKey(null);
+        }
     }
 
     @Nested

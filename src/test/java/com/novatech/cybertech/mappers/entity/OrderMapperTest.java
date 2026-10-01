@@ -172,15 +172,14 @@ class OrderMapperTest {
         }
 
         @Test
-        void whenUserEntityNull_thenMappingThrows_documentsBrittleness() {
-            // OrderMapper uses expression `orderEntity.getUserEntity().getUuid()` with no null guard.
-            // Pinned to surface a regression if/when a guard is added.
+        void whenUserEntityNull_thenUserUuidIsNull() {
             OrderEntity entity = OrderEntityBuilder.aValidOrderBuilder()
                     .userEntity(null)
                     .build();
 
-            assertThatThrownBy(() -> mapper.mapFromEntityToResponseDto(entity))
-                    .isInstanceOf(NullPointerException.class);
+            OrderResponseDto dto = mapper.mapFromEntityToResponseDto(entity);
+
+            assertThat(dto.getUserUuid()).isNull();
         }
 
         @Test

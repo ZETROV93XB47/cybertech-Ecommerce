@@ -45,7 +45,16 @@ public class GetAllFailedPaymentOrderTasklet extends BaseTasklet {
 
         final List<OrderEntity> ordersStillAwaitingPaymentRetry = orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED);
 
+        // Filtering (rather than letting a null userEntity throw mid-stream) matters here: an
+        // unguarded NPE would escape this tasklet's execute(...) uncaught and fail the whole step.
         final Map<String, List<UUID>> failedPaymentsMapUserEmailByUserEmail = ordersStillAwaitingPaymentRetry.stream()
+                .filter(o -> {
+                    if (o.getUserEntity() == null) {
+                        log.error("Order {} is PAYMENT_FAILED but has no associated user — skipping its payment-retry reminder grouping.", o.getUuid());
+                        return false;
+                    }
+                    return true;
+                })
                 .collect(Collectors.groupingBy(o -> o.getUserEntity().getEmail(), Collectors.mapping(OrderEntity::getUuid, Collectors.toList())));
 
 

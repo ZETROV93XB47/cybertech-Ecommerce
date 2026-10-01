@@ -244,6 +244,13 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
      * a round-trip to the database for obviously-invalid input.
      */
     private void validateExpiryNotInThePast(final String expiryDate) {
+        // Defense in depth: callers are expected to validate non-blank upstream (@Valid on the
+        // request DTOs), but this method has no local guarantee of that — YearMonth.parse(null, ...)
+        // throws a raw NullPointerException (not DateTimeParseException), which the catch below
+        // would not have caught.
+        if (expiryDate == null || expiryDate.isBlank()) {
+            throw new IllegalArgumentException("Invalid expiryDate format; expected MM/yyyy, got: " + expiryDate);
+        }
         final YearMonth expiry;
         try {
             expiry = YearMonth.parse(expiryDate, EXPIRY_FORMATTER);

@@ -12,6 +12,7 @@ import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import com.novatech.cybertech.repositories.ProcessedWebhookEventRepository;
 import com.novatech.cybertech.services.core.PaymentWebhookService;
+import com.novatech.cybertech.utils.OrderPaymentUtils;
 import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.model.Charge;
 import com.stripe.model.Event;
@@ -323,15 +324,12 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
      */
     private UUID resolveOrderUuid(final PaymentEntity payment, final StripeWebhookEventDto dto) {
 
-        if (dto != null && dto.getData() != null && dto.getData().getPaymentIntentPayload() != null
-                && dto.getData().getPaymentIntentPayload().getMetadata() != null) {
-            final String metaUuid = dto.getData().getPaymentIntentPayload().getMetadata().get(ORDER_UUID_METADATA_KEY);
-            if (metaUuid != null && !metaUuid.isBlank()) {
-                try {
-                    return UUID.fromString(metaUuid);
-                } catch (final IllegalArgumentException ex) {
-                    log.warn("Webhook metadata.order_uuid is not a valid UUID: {}", metaUuid);
-                }
+        final String metaUuid = OrderPaymentUtils.extractMetadata(dto, ORDER_UUID_METADATA_KEY);
+        if (metaUuid != null && !metaUuid.isBlank()) {
+            try {
+                return UUID.fromString(metaUuid);
+            } catch (final IllegalArgumentException ex) {
+                log.warn("Webhook metadata.order_uuid is not a valid UUID: {}", metaUuid);
             }
         }
         if (payment != null && payment.getOrderEntity() != null) {

@@ -174,8 +174,8 @@ class GetAllFailedPaymentOrderTaskletTest {
         }
 
         @Test
-        @DisplayName("an order with a missing user entity NPEs (defensive coverage)")
-        void orderWithoutUserNpe() {
+        @DisplayName("an order with a missing user entity is skipped from the grouping, not NPE'd")
+        void orderWithoutUserIsSkipped() {
             final OrderEntity broken = OrderEntityBuilder.aValidOrderBuilder()
                     .status(OrderStatus.PAYMENT_FAILED)
                     .userEntity(null)
@@ -183,8 +183,10 @@ class GetAllFailedPaymentOrderTaskletTest {
             when(orderRepository.findByStatus(OrderStatus.PAYMENT_FAILED))
                     .thenReturn(List.of(broken));
 
-            assertThatThrownBy(() -> tasklet.execute(stepContribution, stepArguments))
-                    .isInstanceOf(NullPointerException.class);
+            final RepeatStatus status = tasklet.execute(stepContribution, stepArguments);
+
+            assertThat(status).isEqualTo(RepeatStatus.FINISHED);
+            assertThat(stepContribution.getExitStatus().getExitCode()).isEqualTo(NO_FAILED_PAYMENT_ORDER_FOUND);
         }
     }
 }

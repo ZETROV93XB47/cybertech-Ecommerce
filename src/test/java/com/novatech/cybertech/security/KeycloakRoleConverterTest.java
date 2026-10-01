@@ -7,6 +7,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -67,5 +68,24 @@ class KeycloakRoleConverterTest {
 
         // Then
         assertThat(authorities).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Devrait ignorer les entrées null dans la liste des rôles sans lever de NPE")
+    void shouldFilterOutNullRoleEntries() {
+        // Given — realm_access.roles comes from JWT claim JSON; a null entry is structurally
+        // possible even though Keycloak itself never emits one, and .toUpperCase() would NPE.
+        Jwt jwt = Jwt.withTokenValue("fake-token")
+                .header("alg", "none")
+                .claim("realm_access", Map.of("roles", Arrays.asList("user", null)))
+                .build();
+
+        // When
+        Collection<GrantedAuthority> authorities = converter.convert(jwt);
+
+        // Then
+        assertThat(authorities)
+                .extracting(GrantedAuthority::getAuthority)
+                .containsExactly("ROLE_USER");
     }
 }

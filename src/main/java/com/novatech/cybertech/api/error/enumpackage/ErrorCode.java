@@ -60,7 +60,9 @@ public enum ErrorCode {
     /** A product/search request references a categoryKey with no registered schema. */
     UNKNOWN_PRODUCT_CATEGORY(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
     /** Admin submitted a categoryKey/jsonSchema pair that fails to compile as a JSON Schema. */
-    INVALID_PRODUCT_CATEGORY_SCHEMA(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL);
+    INVALID_PRODUCT_CATEGORY_SCHEMA(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
+    /** Admin created/updated a discount campaign missing the field its calculationType requires (e.g. PERCENTAGE with no percentage). */
+    DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;
