@@ -67,7 +67,7 @@ class WishlistMapperTest {
             assertThat(dto.getProduct()).isNotNull();
             assertThat(dto.getProduct().getUuid()).isEqualTo(productUuid.toString());
             assertThat(dto.getProduct().getName()).isEqualTo("Wishlisted product");
-            assertThat(dto.getProduct().getPhotoUrl()).isEqualTo(product.getPhoto());
+            assertThat(dto.getProduct().getPhotoUrls()).isEqualTo(product.getPhotos());
         }
 
         @Test

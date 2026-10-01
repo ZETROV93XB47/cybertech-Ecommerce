@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link ProductMapper}.
  *
- * <p>Verifies the fix mapping entity {@code photo} → response {@code photoUrl} is in place.
+ * <p>Verifies the fix mapping entity {@code photos} → response {@code photoUrls} is in place.
  */
 class ProductMapperTest {
 
@@ -46,7 +46,6 @@ class ProductMapperTest {
                     .price(new BigDecimal("1299.99"))
                     .brand(Brand.HP)
                     .category("COMPUTER")
-                    .photo("https://cdn/x.jpg")
                     .stock(20)
                     .description("desc")
                     .attributes(attrs)
@@ -59,7 +58,11 @@ class ProductMapperTest {
             assertThat(entity.getPrice()).isEqualByComparingTo("1299.99");
             assertThat(entity.getBrand()).isEqualTo(Brand.HP);
             assertThat(entity.getCategory()).isEqualTo("COMPUTER");
-            assertThat(entity.getPhoto()).isEqualTo("https://cdn/x.jpg");
+            // No photo field on ProductCreateRequestDto at all. MapStruct builds the entity via its
+            // @SuperBuilder (no @Builder.Default on `photos`, same pre-existing gap as `attributes`
+            // on this entity), so an unset field stays null rather than the field initializer's
+            // empty list.
+            assertThat(entity.getPhotos()).isNullOrEmpty();
             assertThat(entity.getStock()).isEqualTo(20);
             assertThat(entity.getReservedStock()).isZero();
             assertThat(entity.getDescription()).isEqualTo("desc");
@@ -102,7 +105,7 @@ class ProductMapperTest {
             assertThat(entity.getPrice()).isEqualByComparingTo(dto.getPrice());
             assertThat(entity.getBrand()).isEqualTo(dto.getBrand());
             assertThat(entity.getCategory()).isEqualTo(dto.getCategory());
-            assertThat(entity.getPhoto()).isEqualTo(dto.getPhoto());
+            assertThat(entity.getPhotos()).isEqualTo(dto.getPhotos());
             assertThat(entity.getStock()).isEqualTo(dto.getStock());
             assertThat(entity.getDescription()).isEqualTo(dto.getDescription());
         }
@@ -126,7 +129,7 @@ class ProductMapperTest {
                     .price(new BigDecimal("42.00"))
                     .brand(Brand.ASUS)
                     .category("COMPUTER")
-                    .photo("https://cdn/p.jpg")
+                    .photos(List.of("https://cdn/p.jpg"))
                     .description("d")
                     .build();
 
@@ -138,20 +141,20 @@ class ProductMapperTest {
             assertThat(dto.getPrice()).isEqualByComparingTo("42.00");
             assertThat(dto.getBrand()).isEqualTo(Brand.ASUS.name());
             assertThat(dto.getCategory()).isEqualTo("COMPUTER");
-            assertThat(dto.getPhotoUrl()).isEqualTo("https://cdn/p.jpg");
+            assertThat(dto.getPhotoUrls()).containsExactly("https://cdn/p.jpg");
             assertThat(dto.getDescription()).isEqualTo("d");
         }
 
         @Test
-        void shouldMapPhotoToPhotoUrlFromEntity() {
-            // Verifies the fix. Prior to the fix, photoUrl was null.
+        void shouldMapPhotosToPhotoUrlsFromEntity() {
+            // Verifies the fix. Prior to the fix, photoUrls was null.
             ProductEntity entity = ProductEntityBuilder.aValidProductBuilder()
-                    .photo("https://example.com/img.png")
+                    .photos(List.of("https://example.com/img.png"))
                     .build();
 
             ProductResponseDto dto = mapper.mapFromEntityToResponseDto(entity);
 
-            assertThat(dto.getPhotoUrl()).isEqualTo("https://example.com/img.png");
+            assertThat(dto.getPhotoUrls()).containsExactly("https://example.com/img.png");
         }
 
         @Test
@@ -204,7 +207,7 @@ class ProductMapperTest {
                     .brand(Brand.DELL.name())
                     .category("COMPUTER")
                     .price(new BigDecimal("199.00"))
-                    .photoUrl("https://cdn/doc.jpg")
+                    .photoUrls(List.of("https://cdn/doc.jpg"))
                     .build();
 
             ProductResponseDto dto = mapper.mapFromProductDocumentToProductResponseDto(doc);
@@ -214,7 +217,7 @@ class ProductMapperTest {
             assertThat(dto.getName()).isEqualTo("Doc product");
             assertThat(dto.getBrand()).isEqualTo(Brand.DELL.name());
             assertThat(dto.getCategory()).isEqualTo("COMPUTER");
-            assertThat(dto.getPhotoUrl()).isEqualTo("https://cdn/doc.jpg");
+            assertThat(dto.getPhotoUrls()).containsExactly("https://cdn/doc.jpg");
             assertThat(dto.getPrice()).isEqualByComparingTo("199.00");
         }
 
@@ -235,7 +238,7 @@ class ProductMapperTest {
                     .uuid(uuid)
                     .name("Sample")
                     .price(new BigDecimal("9.99"))
-                    .photo("https://cdn/img.jpg")
+                    .photos(List.of("https://cdn/img.jpg"))
                     .build();
 
             ProductDocument doc = mapper.mapFromProductEntityToProductDocument(entity);
@@ -247,7 +250,7 @@ class ProductMapperTest {
             assertThat(doc.getBrand()).isEqualTo(entity.getBrand().name());
             assertThat(doc.getCategory()).isEqualTo(entity.getCategory());
             assertThat(doc.getPrice()).isEqualByComparingTo("9.99");
-            assertThat(doc.getPhotoUrl()).isEqualTo("https://cdn/img.jpg");
+            assertThat(doc.getPhotoUrls()).containsExactly("https://cdn/img.jpg");
             // attributes now auto-maps (no more per-category Elasticsearch attribute factory).
             assertThat(doc.getAttributes()).isEqualTo(entity.getAttributes());
         }

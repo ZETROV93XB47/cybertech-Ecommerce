@@ -20,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -106,8 +107,8 @@ public interface ProductManagementAdminApiSpec {
     ResponseEntity<Void> deleteProductByUuid(final UUID productUuid, final Jwt jwt);
 
 
-    @Operation(summary = "Create a new Product with an image (Admin)",
-            description = "Creates a new product and uploads an associated image. Requires multipart/form-data.",
+    @Operation(summary = "Create a new Product with photos (Admin)",
+            description = "Creates a new product and uploads 1 or more photos (unbounded, typically 1-5), stored in upload order. Requires multipart/form-data.",
             security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "201", description = "Product created successfully",
@@ -123,6 +124,6 @@ public interface ProductManagementAdminApiSpec {
             })
     ResponseEntity<ProductResponseDto> createProductWithImage(
             @Valid @Parameter(description = "JSON representation of the product to create") ProductCreateRequestDto productCreateRequestDto,
-            @Parameter(description = "Image file for the product") MultipartFile image,
+            @Parameter(description = "Photo files for the product, in display order") List<MultipartFile> images,
             Jwt jwt);
 }

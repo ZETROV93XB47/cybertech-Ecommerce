@@ -10,6 +10,7 @@ import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -50,8 +51,8 @@ public class ProductDocument {
     private BigDecimal price;
 
 
-    @Field(type = FieldType.Text, name = "photoUrl")
-    private String photoUrl;
+    @Field(type = FieldType.Text, name = "photoUrls")
+    private List<String> photoUrls;
 }
 
     // --- Champs dérivés pour la pertinence et le tri ---

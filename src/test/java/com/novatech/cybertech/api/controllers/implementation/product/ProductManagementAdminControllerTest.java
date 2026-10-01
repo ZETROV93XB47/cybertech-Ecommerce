@@ -497,7 +497,7 @@ class ProductManagementAdminControllerTest {
                 asJsonString(createRequestDto).getBytes());
 
         MockMultipartFile imagePart = new MockMultipartFile(
-                "image",
+                "images",
                 "image.jpg",
                 "image/jpeg",
                 "fake-image-bytes".getBytes());
@@ -518,7 +518,7 @@ class ProductManagementAdminControllerTest {
 
     @Test
     void shouldFailCreateProductWithImageWhenImagePartMissing() throws Exception {
-        // Missing required @RequestPart("image") → MissingServletRequestPartException. Spring's
+        // Missing required @RequestPart("images") → MissingServletRequestPartException. Spring's
         // DefaultHandlerExceptionResolver maps it to 400 before the @ControllerAdvice catch-all
         // sees it. No envelope is produced (resolver writes status only), so just assert the
         // status here.
@@ -549,7 +549,7 @@ class ProductManagementAdminControllerTest {
                 asJsonString(createRequestDto).getBytes());
 
         MockMultipartFile imagePart = new MockMultipartFile(
-                "image",
+                "images",
                 "image.jpg",
                 "image/jpeg",
                 "fake-image-bytes".getBytes());
@@ -575,7 +575,7 @@ class ProductManagementAdminControllerTest {
                 asJsonString(createRequestDto).getBytes());
 
         MockMultipartFile imagePart = new MockMultipartFile(
-                "image",
+                "images",
                 "image.jpg",
                 "image/jpeg",
                 "fake-image-bytes".getBytes());

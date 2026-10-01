@@ -21,7 +21,7 @@ public interface ProductMapper extends BaseMapper<ProductEntity, ProductCreateRe
     ProductEntity mapFromCreationRequestToEntity(ProductCreateRequestDto productCreateRequestDto);
 
     @Override
-    @Mapping(target = "photoUrl", source = "photo")
+    @Mapping(target = "photoUrls", source = "photos")
     ProductResponseDto mapFromEntityToResponseDto(ProductEntity entity);
 
     ProductResponseDto mapFromProductDocumentToProductResponseDto(ProductDocument productDocument);
@@ -29,7 +29,7 @@ public interface ProductMapper extends BaseMapper<ProductEntity, ProductCreateRe
     //@Mapping(source = "reviewEntities", target = "averageRating", qualifiedByName = "calculateAverageRating")
     //@Mapping(source = "reviewEntities", target = "reviewCount", qualifiedByName = "calculateReviewCount")
     @Mapping(source = "uuid", target = "id")
-    @Mapping(target = "photoUrl", source = "photo")
+    @Mapping(target = "photoUrls", source = "photos")
     ProductDocument mapFromProductEntityToProductDocument(final ProductEntity entity);
 
     /**

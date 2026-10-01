@@ -9,12 +9,18 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 //TODO: à refactorer plus tard
 public interface ProductManagementService extends CrudBaseService<UUID, ProductCreateRequestDto, ProductUpdateRequestDto, ProductResponseDto, String> {
+    /**
+     * Creates a product and uploads 1 or more photos (unbounded, but realistically 1-5) to S3.
+     * {@code ProductCreateRequestDto} carries no photo field — the resulting URLs are set
+     * directly on the entity, in upload order.
+     */
     @Transactional
-    ProductResponseDto createWithImage(ProductCreateRequestDto productCreateRequestDto, MultipartFile image, String keycloakId);
+    ProductResponseDto createWithImage(ProductCreateRequestDto productCreateRequestDto, List<MultipartFile> images, String keycloakId);
 
     // Added missing method to honor interface-first convention
     /**

@@ -126,12 +126,16 @@ class ProductManagementServiceImpTest {
     class CreateWithImage {
 
         @Test
-        @DisplayName("happy path uploads image then sets photo url before delegating to create")
+        @DisplayName("happy path uploads every image, in order, then sets the photo urls directly on the mapped entity")
         void createWithImage_happyPath_uploadsThenCreates() {
+            // ProductCreateRequestDto carries no photo field at all — the uploaded URLs can only
+            // ever land on the entity mapFromCreationRequestToEntity produces, never on the DTO.
             ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
-            MockMultipartFile file = new MockMultipartFile("photo", "p.jpg", "image/jpeg", new byte[]{1, 2, 3});
+            MockMultipartFile file1 = new MockMultipartFile("images", "p1.jpg", "image/jpeg", new byte[]{1, 2, 3});
+            MockMultipartFile file2 = new MockMultipartFile("images", "p2.jpg", "image/jpeg", new byte[]{4, 5, 6});
 
-            when(s3Service.uploadFile(file, "products")).thenReturn("https://s3/p.jpg");
+            when(s3Service.uploadFile(file1, "products")).thenReturn("https://s3/p1.jpg");
+            when(s3Service.uploadFile(file2, "products")).thenReturn("https://s3/p2.jpg");
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
@@ -139,18 +143,19 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
-            service.createWithImage(req, file, "kc-admin");
+            service.createWithImage(req, List.of(file1, file2), "kc-admin");
 
-            assertThat(req.getPhoto()).isEqualTo("https://s3/p.jpg");
-            verify(s3Service).uploadFile(file, "products");
+            assertThat(mapped.getPhotos()).containsExactly("https://s3/p1.jpg", "https://s3/p2.jpg");
+            verify(s3Service).uploadFile(file1, "products");
+            verify(s3Service).uploadFile(file2, "products");
         }
 
         @Test
-        @DisplayName("null image skips upload and delegates straight to create")
-        void createWithImage_nullImage_skipsUpload() {
+        @DisplayName("null images list skips upload, entity keeps whatever the mapper produced")
+        void createWithImage_nullImages_skipsUpload() {
             ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
-            String original = req.getPhoto();
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
+            List<String> original = mapped.getPhotos();
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
@@ -159,15 +164,14 @@ class ProductManagementServiceImpTest {
 
             service.createWithImage(req, null, "kc-admin");
 
-            assertThat(req.getPhoto()).isEqualTo(original);
+            assertThat(mapped.getPhotos()).isEqualTo(original);
             verifyNoInteractions(s3Service);
         }
 
         @Test
-        @DisplayName("empty image skips upload")
-        void createWithImage_emptyImage_skipsUpload() {
+        @DisplayName("empty images list skips upload")
+        void createWithImage_emptyImages_skipsUpload() {
             ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
-            MockMultipartFile empty = new MockMultipartFile("photo", "p.jpg", "image/jpeg", new byte[0]);
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
@@ -175,9 +179,30 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
-            service.createWithImage(req, empty, "kc-admin");
+            service.createWithImage(req, List.of(), "kc-admin");
 
             verifyNoInteractions(s3Service);
+        }
+
+        @Test
+        @DisplayName("a zero-byte file in the list is filtered out before upload")
+        void createWithImage_filtersOutEmptyFilesInList() {
+            ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
+            MockMultipartFile real = new MockMultipartFile("images", "p1.jpg", "image/jpeg", new byte[]{1, 2, 3});
+            MockMultipartFile empty = new MockMultipartFile("images", "empty.jpg", "image/jpeg", new byte[0]);
+
+            when(s3Service.uploadFile(real, "products")).thenReturn("https://s3/p1.jpg");
+            ProductEntity mapped = ProductEntityBuilder.aValidProduct();
+            ProductEntity saved = ProductEntityBuilder.aValidProduct();
+            when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
+            when(productRepository.save(mapped)).thenReturn(saved);
+            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.createWithImage(req, List.of(real, empty), "kc-admin");
+
+            assertThat(mapped.getPhotos()).containsExactly("https://s3/p1.jpg");
+            verify(s3Service, never()).uploadFile(empty, "products");
         }
     }
 
@@ -236,7 +261,7 @@ class ProductManagementServiceImpTest {
                     .price(new BigDecimal("11.11"))
                     .brand(Brand.HP)
                     .category("MONITOR")
-                    .photo("old-photo")
+                    .photos(List.of("old-photo"))
                     .stock(7)
                     .description("old desc")
                     .build();
@@ -252,7 +277,7 @@ class ProductManagementServiceImpTest {
             assertThat(existing.getPrice()).isEqualByComparingTo(new BigDecimal("11.11"));
             assertThat(existing.getBrand()).isEqualTo(Brand.HP);
             assertThat(existing.getCategory()).isEqualTo("MONITOR");
-            assertThat(existing.getPhoto()).isEqualTo("old-photo");
+            assertThat(existing.getPhotos()).containsExactly("old-photo");
             assertThat(existing.getStock()).isEqualTo(7);
             assertThat(existing.getDescription()).isEqualTo("old desc");
         }
@@ -274,7 +299,7 @@ class ProductManagementServiceImpTest {
             assertThat(existing.getPrice()).isEqualTo(req.getPrice());
             assertThat(existing.getBrand()).isEqualTo(req.getBrand());
             assertThat(existing.getCategory()).isEqualTo(req.getCategory());
-            assertThat(existing.getPhoto()).isEqualTo(req.getPhoto());
+            assertThat(existing.getPhotos()).isEqualTo(req.getPhotos());
             assertThat(existing.getStock()).isEqualTo(req.getStock());
             assertThat(existing.getDescription()).isEqualTo(req.getDescription());
         }

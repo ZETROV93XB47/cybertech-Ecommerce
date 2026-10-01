@@ -42,8 +42,12 @@ public class ProductEntity extends BaseEntity<Long> {
     @Column(name = "category", nullable = false)
     private String category;
 
-    @Column(name = "photo")
-    private String photo;
+    /** URLs of this product's photos in S3, in display order. 1-5 typically, but unbounded.
+     *  A JSON array column rather than an {@code @ElementCollection} — no secondary table, same
+     *  storage approach already used by {@link #attributes} on this entity. */
+    @Type(JsonType.class)
+    @Column(name = "photos", columnDefinition = "json")
+    private List<String> photos = new ArrayList<>();
 
     @Column(name = "stock", nullable = false)
     private Integer stock;

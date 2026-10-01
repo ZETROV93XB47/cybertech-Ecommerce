@@ -80,7 +80,7 @@ public class DataGenerator {
                 .brand(Brand.ASUS)
                 .reservedStock(Math.abs(3))
                 .stock(1000)
-                .photo(FAKER.internet().image())
+                .photos(List.of(FAKER.internet().image()))
                 .orderItemEntities(List.of())
                 .build();
     }
@@ -93,7 +93,6 @@ public class DataGenerator {
                 .price(new BigDecimal("1299.99"))
                 .brand((Brand) computerTypeProductAttributes.get("brand"))
                 .category("COMPUTER")
-                .photo("https://example.com/images/pc.jpg")
                 .stock(15000)
                 .description("Ordinateur portable performant avec processeur Intel et carte graphique NVIDIA.")
                 .attributes(computerTypeProductAttributes)

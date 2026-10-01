@@ -12,8 +12,8 @@ KEYCLOAK_URL = "http://localhost:8080/realms/cybertech/protocol/openid-connect/t
 CLIENT_ID = "cybertech-user-management-client"
 CLIENT_SECRET = "rPKnibr1m14c2Oit4XybU1AhhIbuZVtt"
 
-USERNAME = "melvin.west"
-PASSWORD = "admin"
+USERNAME = "hideyoshi.tanaseda"
+PASSWORD = "P@ssword123"
 
 API_URL = "http://localhost:8081/api/v1/services/admin/management/product/create-with-image"
 
@@ -179,14 +179,15 @@ def get_access_token():
 # 2. Envoi API Spring
 # -----------------------------
 # L'upload S3 est fait côté backend (ProductManagementServiceImp.createWithImage
-# -> S3Service.uploadFile), qui écrase de toute façon le champ "photo" du DTO
-# avec l'URL réelle une fois l'image reçue : pas besoin d'uploader nous-mêmes.
+# -> S3Service.uploadFile, une fois par fichier), qui écrase de toute façon le champ
+# "photos" du DTO avec les URLs réelles une fois les images reçues : pas besoin
+# d'uploader nous-mêmes.
 def send_product_to_api(product, token):
     headers = {
         "Authorization": f"Bearer {token}"
     }
 
-    local_image_path = product["images"][0]
+    image_paths = product["images"]  # 1 à N photos, pas de nombre fixe
     brand = extract_brand(product["name"])
 
     mapped_attributes = map_attributes_ldlc_to_computer(product["attributes"])
@@ -196,7 +197,7 @@ def send_product_to_api(product, token):
         "price": product["price"],
         "brand": brand,
         "category": "COMPUTER",
-        "photo": os.path.basename(local_image_path),  # placeholder, écrasé par le backend
+        "photos": [],  # placeholder, écrasé par le backend avec les URLs S3 réelles
         "stock": 10000,
         "description": product["description"],
         "attributes": mapped_attributes
@@ -204,20 +205,26 @@ def send_product_to_api(product, token):
 
     log.info(f"📄 DTO envoyé : {json.dumps(product_dto)[:300]}...")
 
-    with open(local_image_path, "rb") as img:
-        files = {
-            "image": (os.path.basename(local_image_path), img, "image/jpeg"),
-            "product": ("product", json.dumps(product_dto), "application/json")
-        }
+    # Plusieurs parts multipart partageant le même nom "images" -> liée côté Spring
+    # à List<MultipartFile> images (voir ProductManagementAdminController).
+    opened_files = [open(path, "rb") for path in image_paths]
+    try:
+        files = [
+            ("images", (os.path.basename(path), fh, "image/jpeg"))
+            for path, fh in zip(image_paths, opened_files)
+        ]
+        files.append(("product", ("product", json.dumps(product_dto), "application/json")))
 
-        log.info(f"📦 Envoi produit : {product['name']}")
+        log.info(f"📦 Envoi produit : {product['name']} ({len(image_paths)} photo(s))")
         r = requests.post(API_URL, headers=headers, files=files)
-
 
         if r.status_code not in (200, 201):
             log.error(f"❌ Erreur API : {r.status_code} - {r.text}")
         else:
             log.info(f"✅ Produit créé : {product['name']}")
+    finally:
+        for fh in opened_files:
+            fh.close()
 
 
 # -----------------------------

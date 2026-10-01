@@ -35,10 +35,6 @@ public class ProductCreateRequestDto {
     @NotBlank(message = "Category cannot be blank")
     private String category;
 
-    @NotNull(message = "Connectivity cannot be null")
-    @Size(max = 255, message = "Photo URL/path must be at most 255 characters")
-    private String photo;
-
     @Min(value = 0, message = "Stock cannot be negative")
     private int stock = 0; // Valeur par défaut si non fournie
 

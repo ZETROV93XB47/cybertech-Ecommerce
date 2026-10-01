@@ -10,6 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,8 +35,8 @@ public class ProductUpdateRequestDto {
     // required on every update call regardless, contradicting the partial-update contract).
     private String category;
 
-    @Size(max = 255, message = "Photo URL/path must be at most 255 characters")
-    private String photo;
+    // PATCH semantics: null means "do not change"; an empty list means "clear all photos".
+    private List<String> photos;
 
     @Min(value = 0, message = "Stock cannot be negative")
     private Integer stock; // Utiliser Integer pour permettre la nullité (non mise à jour)

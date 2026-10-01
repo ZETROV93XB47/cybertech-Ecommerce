@@ -7,6 +7,7 @@ import com.novatech.cybertech.entities.enums.Brand;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -30,7 +31,6 @@ public final class ProductDtoFixtures {
                 .price(new BigDecimal("99.99"))
                 .brand(Brand.ASUS)
                 .category("COMPUTER")
-                .photo("https://cdn.example.com/sample.jpg")
                 .stock(10)
                 .description("A sample product for tests")
                 .attributes(new HashMap<>());
@@ -43,7 +43,7 @@ public final class ProductDtoFixtures {
         dto.setPrice(new BigDecimal("149.99"));
         dto.setBrand(Brand.HP);
         dto.setCategory("COMPUTER");
-        dto.setPhoto("https://cdn.example.com/updated.jpg");
+        dto.setPhotos(List.of("https://cdn.example.com/updated.jpg"));
         dto.setStock(5);
         dto.setDescription("Updated description");
         return dto;
@@ -60,7 +60,7 @@ public final class ProductDtoFixtures {
                 .price(new BigDecimal("99.99"))
                 .brand(Brand.ASUS.name())
                 .category("COMPUTER")
-                .photoUrl("https://cdn.example.com/sample.jpg")
+                .photoUrls(List.of("https://cdn.example.com/sample.jpg"))
                 .description("A sample product for tests")
                 .attributes(new HashMap<>());
     }

@@ -21,6 +21,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
@@ -82,9 +83,9 @@ public class ProductManagementAdminController implements ProductManagementAdminA
     @PostMapping(value = "/create-with-image", consumes = MULTIPART_FORM_DATA_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductResponseDto> createProductWithImage(
             @Valid @RequestPart("product") final ProductCreateRequestDto productCreateRequestDto,
-            @RequestPart("image") final MultipartFile image,
+            @RequestPart("images") final List<MultipartFile> images,
             @AuthenticationPrincipal final Jwt jwt) {
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(productService.createWithImage(productCreateRequestDto, image, jwt.getSubject()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(productService.createWithImage(productCreateRequestDto, images, jwt.getSubject()));
     }
 }

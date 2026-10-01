@@ -129,7 +129,7 @@ class DataGeneratorTest {
             assertThat(product.getStock()).isEqualTo(1000);
             assertThat(product.getReservedStock()).isEqualTo(3);
             assertThat(product.getOrderItemEntities()).isNotNull().isEmpty();
-            assertThat(product.getPhoto()).isNotBlank();
+            assertThat(product.getPhotos()).isNotEmpty();
         }
 
         @Test

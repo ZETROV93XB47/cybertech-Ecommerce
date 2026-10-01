@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 
@@ -57,22 +58,41 @@ public class ProductManagementServiceImp implements ProductManagementService {
     public ProductResponseDto create(final ProductCreateRequestDto productCreateRequestDto, final String keycloakId) {
         productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
 
-        final ProductEntity savedProductEntity = productRepository.save(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
+        return persistAndIndex(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
+    }
+
+    /**
+     * {@code ProductCreateRequestDto} carries no photo field at all — on this path the caller
+     * sends raw image files, not URLs, so there is nothing meaningful a DTO field could hold.
+     * The uploaded URLs are set directly on the freshly-mapped entity instead.
+     */
+    @Override
+    @Transactional
+    public ProductResponseDto createWithImage(final ProductCreateRequestDto productCreateRequestDto, final List<MultipartFile> images, final String keycloakId) {
+        productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
+
+        final ProductEntity entity = productMapper.mapFromCreationRequestToEntity(productCreateRequestDto);
+
+        if (images != null && !images.isEmpty()) {
+            final List<String> uploadedUrls = images.stream()
+                    .filter(image -> image != null && !image.isEmpty())
+                    .map(image -> s3Service.uploadFile(image, PRODUCTS_S3_BUCKET_NAME))
+                    .toList();
+            if (!uploadedUrls.isEmpty()) {
+                entity.setPhotos(uploadedUrls);
+            }
+        }
+
+        return persistAndIndex(entity);
+    }
+
+    private ProductResponseDto persistAndIndex(final ProductEntity entity) {
+        final ProductEntity savedProductEntity = productRepository.save(entity);
 
         final ProductDocument productDocument = productMapper.mapFromProductEntityToProductDocument(savedProductEntity);
         productSearchRepository.save(productDocument);
 
         return productMapper.mapFromEntityToResponseDto(savedProductEntity);
-    }
-
-    @Override
-    @Transactional
-    public ProductResponseDto createWithImage(final ProductCreateRequestDto productCreateRequestDto, final MultipartFile image, final String keycloakId) {
-        if (image != null && !image.isEmpty()) {
-            productCreateRequestDto.setPhoto(s3Service.uploadFile(image, PRODUCTS_S3_BUCKET_NAME));
-        }
-
-        return create(productCreateRequestDto, keycloakId);
     }
 
     @Override
@@ -86,7 +106,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
         if (productUpdateRequestDto.getPrice() != null) existing.setPrice(productUpdateRequestDto.getPrice());
         if (productUpdateRequestDto.getBrand() != null) existing.setBrand(productUpdateRequestDto.getBrand());
         if (productUpdateRequestDto.getCategory() != null) existing.setCategory(productUpdateRequestDto.getCategory());
-        if (productUpdateRequestDto.getPhoto() != null) existing.setPhoto(productUpdateRequestDto.getPhoto());
+        if (productUpdateRequestDto.getPhotos() != null) existing.setPhotos(productUpdateRequestDto.getPhotos());
         if (productUpdateRequestDto.getStock() != null) existing.setStock(productUpdateRequestDto.getStock());
         if (productUpdateRequestDto.getDescription() != null) existing.setDescription(productUpdateRequestDto.getDescription());
         if (productUpdateRequestDto.getAttributes() != null) {

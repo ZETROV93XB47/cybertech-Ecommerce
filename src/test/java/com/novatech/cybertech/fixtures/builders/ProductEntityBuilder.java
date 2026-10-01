@@ -5,6 +5,7 @@ import com.novatech.cybertech.entities.enums.Brand;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -27,7 +28,7 @@ public final class ProductEntityBuilder {
                 .price(new BigDecimal("99.99"))
                 .brand(Brand.ASUS)
                 .category("COMPUTER")
-                .photo("https://cdn.example.com/sample.jpg")
+                .photos(List.of("https://cdn.example.com/sample.jpg"))
                 .stock(10)
                 .reservedStock(0)
                 .description("A sample product for tests")
