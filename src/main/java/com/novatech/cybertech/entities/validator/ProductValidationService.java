@@ -3,6 +3,7 @@ package com.novatech.cybertech.entities.validator;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.ValidationMessage;
 import com.novatech.cybertech.exceptions.ProductConstraintsViolationException;
+import com.novatech.cybertech.exceptions.UnknownProductCategoryException;
 import com.novatech.cybertech.services.core.ProductCategorySchemaCache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +37,24 @@ public class ProductValidationService {
     private final ObjectMapper objectMapper;
 
     public void validateAttributes(final String categoryKey, final Map<String, Object> attributes) {
+        // Guard BEFORE the cache call: Caffeine's Cache#get(key, mappingFunction) rejects a null
+        // key with its own raw NullPointerException, never even reaching
+        // ProductCategorySchemaCacheImp#loadAndCompile — so a null categoryKey would otherwise
+        // surface as an unmapped 500 instead of the clean 4xx ErrorManagementController already
+        // wires up for UnknownProductCategoryException.
+        if (categoryKey == null) {
+            throw new UnknownProductCategoryException("Unknown product category: " + categoryKey);
+        }
+
         final JsonSchema schema = productCategorySchemaCache.get(categoryKey);
+        if (schema == null) {
+            // Defensive only: ProductCategorySchemaCache#get is documented to never return null
+            // for a non-null key (it throws UnknownProductCategoryException itself instead) — this
+            // guards against a future implementation of the interface breaking that contract
+            // rather than a path reachable through the current ProductCategorySchemaCacheImp.
+            throw new UnknownProductCategoryException("Unknown product category: " + categoryKey);
+        }
+
         final com.fasterxml.jackson.databind.JsonNode node = toJackson2Node(attributes);
 
         final Set<ValidationMessage> violations = schema.validate(node);

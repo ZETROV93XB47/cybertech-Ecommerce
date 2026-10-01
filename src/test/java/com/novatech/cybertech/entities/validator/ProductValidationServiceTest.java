@@ -239,10 +239,28 @@ class ProductValidationServiceTest {
         }
 
         @Test
-        @DisplayName("Null category throws NullPointerException (Caffeine rejects a null key)")
-        void nullCategoryThrowsNpe() {
+        @DisplayName("Null category throws UnknownProductCategoryException, not a raw NullPointerException")
+        void nullCategoryThrowsUnknownProductCategoryException() {
+            // Closed: previously Caffeine's Cache#get(key, mappingFunction) rejected the null key
+            // with its own NullPointerException before ever reaching ProductCategorySchemaCacheImp,
+            // surfacing as an unmapped 500 instead of the clean 4xx this exception maps to.
             assertThatThrownBy(() -> service.validateAttributes(null, validComputerAttributes()))
-                    .isInstanceOf(NullPointerException.class);
+                    .isInstanceOf(UnknownProductCategoryException.class)
+                    .hasMessageContaining("Unknown product category");
+        }
+
+        @Test
+        @DisplayName("A cache implementation that returns null (contract violation) is still turned into UnknownProductCategoryException, not an NPE from schema.validate(...)")
+        void nullSchemaFromCacheThrowsUnknownProductCategoryException() {
+            final com.novatech.cybertech.services.core.ProductCategorySchemaCache brokenCache =
+                    org.mockito.Mockito.mock(com.novatech.cybertech.services.core.ProductCategorySchemaCache.class);
+            org.mockito.Mockito.when(brokenCache.get("COMPUTER")).thenReturn(null);
+            final ProductValidationService serviceWithBrokenCache =
+                    new ProductValidationService(brokenCache, JsonMapper.builder().build());
+
+            assertThatThrownBy(() -> serviceWithBrokenCache.validateAttributes("COMPUTER", validComputerAttributes()))
+                    .isInstanceOf(UnknownProductCategoryException.class)
+                    .hasMessageContaining("COMPUTER");
         }
     }
 
