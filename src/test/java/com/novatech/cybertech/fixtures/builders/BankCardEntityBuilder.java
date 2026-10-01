@@ -31,7 +31,6 @@ public final class BankCardEntityBuilder {
         return BankCardEntity.builder()
                 .uuid(UUID.randomUUID())
                 .cardHolderName("Jane Doe")
-                .cardNumber("4242424242424242")
                 .encryptedNumber("ENC:placeholder")
                 .lastFourDigits("4242")
                 .expiryDate(LocalDate.now().plusYears(5).format(EXPIRY_FORMAT))

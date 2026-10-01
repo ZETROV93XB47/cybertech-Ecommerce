@@ -46,7 +46,6 @@ class BankCardMapperTest {
 
             assertThat(entity).isNotNull();
             assertThat(entity.getCardHolderName()).isEqualTo("John Doe");
-            assertThat(entity.getCardNumber()).isEqualTo("4242424242424242");
             assertThat(entity.getExpiryDate()).isEqualTo("12/2099");
             assertThat(entity.getCardType()).isEqualTo(BankCardType.MASTERCARD);
             // userEntity is explicitly @Mapping(target = "userEntity", ignore = true).
@@ -146,7 +145,6 @@ class BankCardMapperTest {
             BankCardEntity entity = BankCardEntityBuilder.aValidBankCardBuilder()
                     .userEntity(user)
                     .cardHolderName("Holder")
-                    .cardNumber("4242424242424242")
                     .expiryDate("12/2099")
                     .cardType(BankCardType.VISA)
                     .build();

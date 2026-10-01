@@ -13,7 +13,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "bankCardTable")
-@ToString(callSuper = true, exclude = {"userEntity", "encryptedNumber", "cardNumber"})
+@ToString(callSuper = true, exclude = {"userEntity", "encryptedNumber"})
 @EqualsAndHashCode(callSuper = true, exclude = {"userEntity"})
 public class BankCardEntity extends BaseEntity<Long> {
 
@@ -23,21 +23,6 @@ public class BankCardEntity extends BaseEntity<Long> {
 
     @Column(name = "cardHolderName", nullable = false, length = 100)
     private String cardHolderName;
-
-    /**
-     * <b>PCI-DSS — legacy column, kept for backward compatibility only.</b>
-     *
-     * <p>Populated only by legacy rows and historical test fixtures; new code writes the PAN
-     * through {@link #encryptedNumber} instead and never copies the plaintext here. Kept as a
-     * nullable column so existing database rows do not trip the schema validator and so
-     * fixtures that pre-date the fix still compile.</p>
-     *
-     * @deprecated Do not write to this field from new code. Use {@link #encryptedNumber} +
-     *             {@link #lastFourDigits} for all new persistence paths.
-     */
-    @Deprecated
-    @Column(name = "cardNumber", length = 25)
-    private String cardNumber;
 
     /**
      * At-rest AES/GCM ciphertext of the PAN (base64-encoded IV + ciphertext + tag).

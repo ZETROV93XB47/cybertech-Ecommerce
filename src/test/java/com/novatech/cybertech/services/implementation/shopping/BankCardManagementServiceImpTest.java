@@ -181,11 +181,11 @@ class BankCardManagementServiceImpTest {
     class CardMaskingBug036 {
 
         /**
-         * Re-enabled: the saved entity carries an encrypted envelope plus the last four
-         * digits — and the legacy {@code cardNumber} column is NOT populated with the raw PAN.
+         * The saved entity carries only the encrypted envelope plus the last four digits —
+         * no plaintext PAN field exists on {@link BankCardEntity} at all.
          */
         @Test
-        @DisplayName("saved entity is encrypted + masked (last4 + encryptedNumber), legacy cardNumber blanked")
+        @DisplayName("saved entity is encrypted + masked (last4 + encryptedNumber)")
         void cardNumberShouldBeMaskedAndEncrypted() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(null).build();
             final BankCardCreationRequestDto dto = creationDto("12/2030");
@@ -200,8 +200,6 @@ class BankCardManagementServiceImpTest {
             final ArgumentCaptor<BankCardEntity> captor = ArgumentCaptor.forClass(BankCardEntity.class);
             verify(bankCardRepository).save(captor.capture());
             final BankCardEntity persisted = captor.getValue();
-            // No full PAN in the legacy column.
-            assertThat(persisted.getCardNumber()).isNull();
             // Encrypted envelope present.
             assertThat(persisted.getEncryptedNumber()).isEqualTo("ENC(base64-blob)");
             // Only last four digits retained for display.
@@ -467,7 +465,6 @@ class BankCardManagementServiceImpTest {
                     .build();
 
             final BankCardEntity entity = BankCardEntity.builder()
-                    .cardNumber("4111111111111111")
                     .expiryDate("12/2099")
                     .build();
 
@@ -480,11 +477,10 @@ class BankCardManagementServiceImpTest {
             // Act
             service.create(dto, keycloakId);
 
-            // Assert: encryption service was called, last 4 digits stored, cardNumber cleared
+            // Assert: encryption service was called, last 4 digits stored
             verify(cardEncryptionService).encrypt("4111111111111111");
             assertThat(entity.getEncryptedNumber()).isEqualTo("ENCRYPTED_PAN");
             assertThat(entity.getLastFourDigits()).isEqualTo("1111");
-            assertThat(entity.getCardNumber()).isNull();
         }
 
         @Test
@@ -505,7 +501,6 @@ class BankCardManagementServiceImpTest {
                     .build();
 
             final BankCardEntity entity = BankCardEntity.builder()
-                    .cardNumber("4111111111111111")
                     .build();
 
             when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));

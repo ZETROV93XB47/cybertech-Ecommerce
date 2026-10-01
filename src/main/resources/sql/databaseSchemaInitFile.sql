@@ -126,7 +126,6 @@ CREATE TABLE bankCardTable
 
     -- Champs spécifiques à BankCardEntity
     cardHolderName VARCHAR(100) NOT NULL,
-    cardNumber     VARCHAR(100) NOT NULL,
     expiryDate     VARCHAR(7)   NOT NULL, -- MM/YYYY
     cardType       VARCHAR(255) NOT NULL, -- EnumType.STRING
 

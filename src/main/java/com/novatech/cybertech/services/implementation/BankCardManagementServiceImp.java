@@ -260,10 +260,8 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
      *
      * <ul>
      *   <li>{@code encryptedNumber} gets the AES/GCM ciphertext envelope — the only place
-     *       the PAN is persisted going forward.</li>
+     *       the PAN is persisted.</li>
      *   <li>{@code lastFourDigits} caches the last 4 digits for display masking.</li>
-     *   <li>The legacy {@code cardNumber} column is blanked so new rows never hold a
-     *       plaintext PAN, even though the column survives for historical rows.</li>
      * </ul>
      */
     private void applyPciStorageRules(final BankCardEntity entity, final String rawPan) {
@@ -272,6 +270,5 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         }
         entity.setEncryptedNumber(cardEncryptionService.encrypt(rawPan));
         entity.setLastFourDigits(rawPan.substring(rawPan.length() - 4));
-        entity.setCardNumber(null);
     }
 }
