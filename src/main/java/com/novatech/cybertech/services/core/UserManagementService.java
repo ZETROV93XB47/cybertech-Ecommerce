@@ -9,7 +9,7 @@ import org.springframework.data.domain.Pageable;
 
 import java.util.UUID;
 
-public interface UserManagementService extends CrudBaseService<UUID, UserCreateRequestDto, UserUpdateRequestDto, UserResponseDto> {
+public interface UserManagementService extends CrudBaseService<UUID, UserCreateRequestDto, UserUpdateRequestDto, UserResponseDto, String> {
 
     // Added missing method to honor interface-first convention
     /**

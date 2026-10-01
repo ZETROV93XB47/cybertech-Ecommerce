@@ -22,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Collection;
 import java.util.UUID;
 
 
@@ -43,25 +42,19 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
     @Override
     @Transactional(readOnly = true)
-    public Collection<ProductResponseDto> getAll() {
-        return productMapper.mapFromEntityToResponseDto(productRepository.findAll());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public Page<ProductResponseDto> getAll(final Pageable pageable) {
         return productRepository.findAll(pageable).map(productMapper::mapFromEntityToResponseDto);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public ProductResponseDto getByUUID(UUID uuid) {
+    public ProductResponseDto getByUUID(final UUID uuid, final String keycloakId) {
         return productMapper.mapFromEntityToResponseDto(productRepository.findByUuid(uuid).orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + uuid + " found")));
     }
 
     @Override
     @Transactional
-    public ProductResponseDto create(ProductCreateRequestDto productCreateRequestDto) {
+    public ProductResponseDto create(final ProductCreateRequestDto productCreateRequestDto, final String keycloakId) {
         productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
 
         final ProductEntity savedProductEntity = productRepository.save(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
@@ -74,17 +67,17 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
     @Override
     @Transactional
-    public ProductResponseDto createWithImage(final ProductCreateRequestDto productCreateRequestDto, final MultipartFile image) {
+    public ProductResponseDto createWithImage(final ProductCreateRequestDto productCreateRequestDto, final MultipartFile image, final String keycloakId) {
         if (image != null && !image.isEmpty()) {
             productCreateRequestDto.setPhoto(s3Service.uploadFile(image, PRODUCTS_S3_BUCKET_NAME));
         }
 
-        return create(productCreateRequestDto);
+        return create(productCreateRequestDto, keycloakId);
     }
 
     @Override
     @Transactional
-    public ProductResponseDto update(final ProductUpdateRequestDto productUpdateRequestDto) {
+    public ProductResponseDto update(final ProductUpdateRequestDto productUpdateRequestDto, final String keycloakId) {
         final UUID uuid = productUpdateRequestDto.getProductUuid();
         final ProductEntity existing = productRepository.lockByUuid(uuid)
                 .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + uuid + " found"));
@@ -113,7 +106,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
     @Override
     @Transactional
-    public void deleteByUUID(UUID uuid) {
+    public void deleteByUUID(final UUID uuid, final String keycloakId) {
         productRepository.deleteByUuid(uuid);
         productSearchRepository.deleteByUuid(uuid);
     }

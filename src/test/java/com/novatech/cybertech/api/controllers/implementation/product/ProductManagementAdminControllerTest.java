@@ -33,6 +33,7 @@ import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -123,7 +124,7 @@ class ProductManagementAdminControllerTest {
         ProductCreateRequestDto createRequestDto = ProductDtoFixtures.aValidCreateRequest();
         ProductResponseDto productResponseDto = ProductDtoFixtures.aSampleProductResponse();
 
-        when(productService.create(any(ProductCreateRequestDto.class))).thenReturn(productResponseDto);
+        when(productService.create(any(ProductCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID))).thenReturn(productResponseDto);
 
         mockMvc.perform(post(CREATE_PRODUCT_ENDPOINT)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -162,7 +163,7 @@ class ProductManagementAdminControllerTest {
                 .errorCodeType(TECHNICAL)
                 .build();
 
-        when(productService.create(any(ProductCreateRequestDto.class)))
+        when(productService.create(any(ProductCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
                 .thenThrow(new ProductConstraintsViolationException("attributes invalid"));
 
         mockMvc.perform(post(CREATE_PRODUCT_ENDPOINT)
@@ -223,7 +224,7 @@ class ProductManagementAdminControllerTest {
                 .uuid(productUuid.toString())
                 .build();
 
-        when(productService.update(any(ProductUpdateRequestDto.class))).thenReturn(productResponseDto);
+        when(productService.update(any(ProductUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID))).thenReturn(productResponseDto);
 
         mockMvc.perform(patch(UPDATE_PRODUCT_ENDPOINT, productUuid)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -319,7 +320,7 @@ class ProductManagementAdminControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(productService.update(any(ProductUpdateRequestDto.class)))
+        when(productService.update(any(ProductUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
                 .thenThrow(new ProductNotFoundException("No product with the UUID : " + productUuid + " found"));
 
         mockMvc.perform(patch(UPDATE_PRODUCT_ENDPOINT, productUuid)
@@ -400,7 +401,7 @@ class ProductManagementAdminControllerTest {
     @Test
     void shouldDeleteProductByUuidAsAdminSuccessfully() throws Exception {
         UUID productUuid = UUID.randomUUID();
-        doNothing().when(productService).deleteByUUID(productUuid);
+        doNothing().when(productService).deleteByUUID(productUuid, ADMIN_KEYCLOAK_ID);
 
         mockMvc.perform(delete(DELETE_PRODUCT_ENDPOINT, productUuid)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -408,7 +409,7 @@ class ProductManagementAdminControllerTest {
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isNoContent());
 
-        verify(productService).deleteByUUID(productUuid);
+        verify(productService).deleteByUUID(productUuid, ADMIN_KEYCLOAK_ID);
     }
 
     @Test
@@ -422,7 +423,7 @@ class ProductManagementAdminControllerTest {
 
         doThrow(new ProductNotFoundException("No product with the UUID : " + productUuid + " found"))
                 .when(productService)
-                .deleteByUUID(productUuid);
+                .deleteByUUID(productUuid, ADMIN_KEYCLOAK_ID);
 
         mockMvc.perform(delete(DELETE_PRODUCT_ENDPOINT, productUuid)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -501,7 +502,7 @@ class ProductManagementAdminControllerTest {
                 "image/jpeg",
                 "fake-image-bytes".getBytes());
 
-        when(productService.createWithImage(any(ProductCreateRequestDto.class), any()))
+        when(productService.createWithImage(any(ProductCreateRequestDto.class), any(), eq(ADMIN_KEYCLOAK_ID)))
                 .thenReturn(productResponseDto);
 
         mockMvc.perform(multipart(CREATE_PRODUCT_WITH_IMAGE_ENDPOINT)

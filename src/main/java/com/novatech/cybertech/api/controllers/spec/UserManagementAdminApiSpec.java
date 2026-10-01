@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.Map;
 import java.util.UUID;
@@ -62,7 +63,7 @@ public interface UserManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<UserResponseDto> createUser(final UserCreateRequestDto userCreateRequestDto);
+    ResponseEntity<UserResponseDto> createUser(final UserCreateRequestDto userCreateRequestDto, final Jwt jwt);
 
     @Operation(summary = "Update an existing User by UUID (Admin)",
             description = "Updates an existing user's details based on their unique UUID.",
@@ -82,7 +83,7 @@ public interface UserManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<UserResponseDto> updateUser(final UserUpdateRequestDto userUpdateRequestDto);
+    ResponseEntity<UserResponseDto> updateUser(final UserUpdateRequestDto userUpdateRequestDto, final Jwt jwt);
 
     @Operation(summary = "Delete a User by UUID (Admin)",
             description = "Deletes a user based on their unique UUID.",
@@ -103,7 +104,7 @@ public interface UserManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Void> deleteUserByUuid(final UUID userUuid);
+    ResponseEntity<Void> deleteUserByUuid(final UUID userUuid, final Jwt jwt);
 
     @Operation(summary = "Register an auto-generated synthetic user (Admin debug helper)",
             description = "Admin-only developer / load-test utility that mints a synthetic user (Keycloak + DB) from random data via the data generator. Returns a compact map including the generated keycloakId (which UserResponseDto @JsonIgnores) so the admin caller can identify the synthetic user.",
@@ -113,5 +114,5 @@ public interface UserManagementAdminApiSpec {
                     @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Map<String, Object>> registerAuto();
+    ResponseEntity<Map<String, Object>> registerAuto(final Jwt jwt);
 }

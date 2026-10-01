@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.UUID;
 
@@ -50,7 +51,7 @@ public interface BankCardAdminControllerApiSpec {
                     @ApiResponse(responseCode = "404", description = "Bank card not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<BankCardResponseDto> getBankCardByUuid(UUID uuid);
+    ResponseEntity<BankCardResponseDto> getBankCardByUuid(UUID uuid, Jwt jwt);
 
     @Operation(summary = "Create a bank card (Admin)",
             description = "Creates a bank card directly linked to a user UUID.",
@@ -64,7 +65,7 @@ public interface BankCardAdminControllerApiSpec {
                     @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<BankCardResponseDto> createBankCard(BankCardCreationRequestDto dto);
+    ResponseEntity<BankCardResponseDto> createBankCard(BankCardCreationRequestDto dto, Jwt jwt);
 
     @Operation(summary = "Update a bank card (Admin)",
             description = "Updates a bank card by UUID (UUID carried in the request body).",
@@ -80,7 +81,7 @@ public interface BankCardAdminControllerApiSpec {
                     @ApiResponse(responseCode = "404", description = "Bank card not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<BankCardResponseDto> updateBankCardAdmin(BankCardUpdateRequestDto dto);
+    ResponseEntity<BankCardResponseDto> updateBankCardAdmin(BankCardUpdateRequestDto dto, Jwt jwt);
 
     @Operation(summary = "Delete a bank card by UUID (Admin)",
             description = "Deletes a bank card by its UUID.",
@@ -95,5 +96,5 @@ public interface BankCardAdminControllerApiSpec {
                     @ApiResponse(responseCode = "404", description = "Bank card not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Void> deleteBankCardByUuid(UUID uuid);
+    ResponseEntity<Void> deleteBankCardByUuid(UUID uuid, Jwt jwt);
 }

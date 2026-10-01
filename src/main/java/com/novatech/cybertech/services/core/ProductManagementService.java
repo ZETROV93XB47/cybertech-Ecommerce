@@ -12,9 +12,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.UUID;
 
 //TODO: à refactorer plus tard
-public interface ProductManagementService extends CrudBaseService<UUID, ProductCreateRequestDto, ProductUpdateRequestDto, ProductResponseDto> {
+public interface ProductManagementService extends CrudBaseService<UUID, ProductCreateRequestDto, ProductUpdateRequestDto, ProductResponseDto, String> {
     @Transactional
-    ProductResponseDto createWithImage(ProductCreateRequestDto productCreateRequestDto, MultipartFile image);
+    ProductResponseDto createWithImage(ProductCreateRequestDto productCreateRequestDto, MultipartFile image, String keycloakId);
 
     // Added missing method to honor interface-first convention
     /**

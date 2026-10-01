@@ -8,14 +8,12 @@ import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
-import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.BankCardMapper;
 import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.BankCardManagementService;
 import com.novatech.cybertech.services.core.CardEncryptionService;
-import com.novatech.cybertech.utils.ControllerSecurityUtils;
 import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -128,19 +125,13 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
 
     @Override
     @Transactional(readOnly = true)
-    public Collection<BankCardResponseDto> getAll() {
-        return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.findAll());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public Page<BankCardResponseDto> getAll(final Pageable pageable) {
         return bankCardRepository.findAll(pageable).map(bankCardMapper::mapFromEntityToResponseDto);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public BankCardResponseDto getByUUID(UUID uuid) {
+    public BankCardResponseDto getByUUID(final UUID uuid, final String keycloakId) {
         BankCardEntity entity = bankCardRepository.findByUuid(uuid)
                 .orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + uuid));
         return bankCardMapper.mapFromEntityToResponseDto(entity);
@@ -148,7 +139,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
 
     @Override
     @Transactional
-    public BankCardResponseDto create(BankCardCreationRequestDto dto) {
+    public BankCardResponseDto create(final BankCardCreationRequestDto dto, final String keycloakId) {
         // Pour le CRUD générique, on a besoin de lier un user.
         // On suppose que le DTO contient l'UUID du user (ajouté précédemment).
         if (dto.getUserUuid() == null) {
@@ -178,7 +169,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
      */
     @Override
     @Transactional
-    public BankCardResponseDto update(BankCardUpdateRequestDto dto) {
+    public BankCardResponseDto update(final BankCardUpdateRequestDto dto, final String keycloakId) {
         BankCardEntity entity = bankCardRepository.findByUuid(dto.getUuid()).orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + dto.getUuid()));
 
         if (dto.getExpiryDate() != null && !dto.getExpiryDate().isBlank()) {
@@ -193,35 +184,23 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     /**
      * Admin delete path: an admin has full authority over any user's data by design. We do NOT
      * gate this on ownership, but we DO emit a PCI audit trail recording which admin removed which
-     * user's card, so the destructive write on PCI data has a traceable actor.
+     * user's card, so the destructive write on PCI data has a traceable actor — {@code keycloakId}
+     * is now the acting admin's identity, passed in rather than re-read from the security context.
      */
     @Override
     @Transactional
-    public void deleteByUUID(UUID uuid) {
+    public void deleteByUUID(final UUID uuid, final String keycloakId) {
         bankCardRepository.findByUuid(uuid).ifPresentOrElse(
                 card -> {
                     final String ownerKeycloakId = card.getUserEntity() == null ? null : card.getUserEntity().getKeycloakId();
                     log.info("ADMIN-AUDIT: admin '{}' deleting bank card {} owned by user '{}'",
-                            LogSafetyUtils.maskUuid(ControllerSecurityUtils.currentCallerName()),
+                            LogSafetyUtils.maskUuid(keycloakId),
                             uuid,
                             LogSafetyUtils.maskUuid(ownerKeycloakId));
                     bankCardRepository.deleteByUuid(uuid);
                 },
                 () -> log.warn("ADMIN-AUDIT: admin '{}' attempted to delete non-existent bank card {}",
-                        LogSafetyUtils.maskUuid(ControllerSecurityUtils.currentCallerName()), uuid));
-    }
-
-    /**
-     * Ownership-checked variant. Loads the card, verifies the caller owns it,
-     * and only then deletes. Mirrors {@code CartServiceImp#deleteByUUID(UUID, String)}.
-     */
-    @Override
-    @Transactional
-    public void deleteByUUID(final UUID uuid, final String keycloakId) {
-        final BankCardEntity card = bankCardRepository.findByUuid(uuid)
-                .orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + uuid));
-        assertCallerOwnsCard(card, uuid, keycloakId);
-        bankCardRepository.deleteByUuid(uuid);
+                        LogSafetyUtils.maskUuid(keycloakId), uuid));
     }
 
     // --- single-card surface -------------------------------------------------------------
@@ -273,20 +252,6 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         }
         if (expiry.isBefore(YearMonth.now())) {
             throw new BankCardExpiredException("Card is expired (expiry=" + expiryDate + ")");
-        }
-    }
-
-    /**
-     * Central ownership guard. Throws {@link UnauthorizedBankCardAccessException}
-     * when the caller's Keycloak id does not match the card's owner. Used by
-     * {@link #deleteByUUID(UUID, String)}.
-     */
-    private void assertCallerOwnsCard(final BankCardEntity card, final UUID cardUuid, final String keycloakId) {
-        if (card.getUserEntity() == null
-                || card.getUserEntity().getKeycloakId() == null
-                || !card.getUserEntity().getKeycloakId().equals(keycloakId)) {
-            log.warn("Unauthorized bank card access attempt: caller {} on card {}", keycloakId, cardUuid);
-            throw new UnauthorizedBankCardAccessException("Caller does not own the bank card: " + cardUuid);
         }
     }
 

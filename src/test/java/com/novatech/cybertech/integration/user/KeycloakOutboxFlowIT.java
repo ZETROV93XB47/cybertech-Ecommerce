@@ -178,7 +178,7 @@ class KeycloakOutboxFlowIT {
                 .keycloakId("kc-it-del-" + UUID.randomUUID())
                 .build());
 
-        userManagementService.deleteByUUID(user.getUuid());
+        userManagementService.deleteByUUID(user.getUuid(), "kc-admin-actor");
 
         assertThat(userRepository.findByUuid(user.getUuid())).isEmpty();
         verify(keycloakUserManagementService).deleteUser(user.getKeycloakId());

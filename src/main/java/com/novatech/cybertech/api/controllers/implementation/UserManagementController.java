@@ -84,7 +84,7 @@ public class UserManagementController implements UserControllerApiSpec {
     public ResponseEntity<UserResponseDto> getUserByUuid(@PathVariable("userUuid") final UUID userUuid,
                                                           @AuthenticationPrincipal final Jwt jwt,
                                                           final Authentication authentication) {
-        final UserResponseDto loadedUser = userManagementServiceImp.getByUUID(userUuid);
+        final UserResponseDto loadedUser = userManagementServiceImp.getByUUID(userUuid, jwt.getSubject());
 
         if (!isAdmin(authentication) && !loadedUser.getKeycloakId().equals(jwt.getSubject())) {
             throw new AccessDeniedException(ACCESS_DENIED_OWN_PROFILE_ONLY);
@@ -111,7 +111,9 @@ public class UserManagementController implements UserControllerApiSpec {
      */
     @PostMapping("/register")
     public ResponseEntity<Map<?, ?>> register(@Valid @RequestBody UserCreateRequestDto userCreateRequestDto) {
-        final UserResponseDto created = userManagementServiceImp.create(userCreateRequestDto);
+        // Public, anonymous endpoint (whitelisted in SecurityConfig#PUBLIC_URLS) — the account
+        // being created IS the caller's future identity, so no caller identity exists yet.
+        final UserResponseDto created = userManagementServiceImp.create(userCreateRequestDto, null);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 RESPONSE_KEY_ID, created.getUuid(),

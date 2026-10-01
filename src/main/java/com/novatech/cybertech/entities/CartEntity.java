@@ -25,6 +25,7 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true, exclude = {"cartItems", "userEntity"})
 public class CartEntity extends BaseEntity<Long> {
 
+    @Setter // only settable field on this entity — needed to bind a freshly-mapped cart to its owner (see CartServiceImp#create)
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "userId", nullable = false, unique = true) // C'est Cart qui porte la clé étrangère (voir SQL)
     private UserEntity userEntity;

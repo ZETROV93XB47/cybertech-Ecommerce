@@ -16,6 +16,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -50,27 +52,28 @@ public class ProductManagementAdminController implements ProductManagementAdminA
 
     @Override
     @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<ProductResponseDto> createProduct(@Valid @RequestBody ProductCreateRequestDto productCreateRequestDto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(productService.create(productCreateRequestDto));
+    public ResponseEntity<ProductResponseDto> createProduct(@Valid @RequestBody ProductCreateRequestDto productCreateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(productService.create(productCreateRequestDto, jwt.getSubject()));
     }
 
     @Override
     @PatchMapping(value = "/update/{productUuid}", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductResponseDto> updateProduct(
             @PathVariable final UUID productUuid,
-            @Valid @RequestBody final ProductUpdateRequestDto productUpdateRequestDto) {
+            @Valid @RequestBody final ProductUpdateRequestDto productUpdateRequestDto,
+            @AuthenticationPrincipal final Jwt jwt) {
         if (productUpdateRequestDto.getProductUuid() == null) {
             productUpdateRequestDto.setProductUuid(productUuid);
         } else if (!productUpdateRequestDto.getProductUuid().equals(productUuid)) {
             throw new IllegalArgumentException("Path UUID and body UUID do not match");
         }
-        return ResponseEntity.status(HttpStatus.OK).body(productService.update(productUpdateRequestDto));
+        return ResponseEntity.status(HttpStatus.OK).body(productService.update(productUpdateRequestDto, jwt.getSubject()));
     }
 
     @Override
     @DeleteMapping(value = "/delete/{productUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deleteProductByUuid(@PathVariable UUID productUuid) {
-        productService.deleteByUUID(productUuid);
+    public ResponseEntity<Void> deleteProductByUuid(@PathVariable UUID productUuid, @AuthenticationPrincipal final Jwt jwt) {
+        productService.deleteByUUID(productUuid, jwt.getSubject());
         return ResponseEntity.noContent().build();
     }
 
@@ -79,8 +82,9 @@ public class ProductManagementAdminController implements ProductManagementAdminA
     @PostMapping(value = "/create-with-image", consumes = MULTIPART_FORM_DATA_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductResponseDto> createProductWithImage(
             @Valid @RequestPart("product") final ProductCreateRequestDto productCreateRequestDto,
-            @RequestPart("image") final MultipartFile image) {
+            @RequestPart("image") final MultipartFile image,
+            @AuthenticationPrincipal final Jwt jwt) {
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(productService.createWithImage(productCreateRequestDto, image));
+        return ResponseEntity.status(HttpStatus.CREATED).body(productService.createWithImage(productCreateRequestDto, image, jwt.getSubject()));
     }
 }

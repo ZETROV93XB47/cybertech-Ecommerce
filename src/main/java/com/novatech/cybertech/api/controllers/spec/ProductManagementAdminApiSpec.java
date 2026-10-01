@@ -17,6 +17,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
@@ -61,7 +62,7 @@ public interface ProductManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during Product creation",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<ProductResponseDto> createProduct(final ProductCreateRequestDto productCreateRequestDto);
+    ResponseEntity<ProductResponseDto> createProduct(final ProductCreateRequestDto productCreateRequestDto, final Jwt jwt);
 
     @Operation(summary = "Update an existing Product by UUID (Admin)",
             description = "Updates an existing product's details based on their unique UUID. Fields not provided will not be updated.",
@@ -81,7 +82,7 @@ public interface ProductManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during product update",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<ProductResponseDto> updateProduct(final UUID productUuid, final ProductUpdateRequestDto productUpdateRequestDto);
+    ResponseEntity<ProductResponseDto> updateProduct(final UUID productUuid, final ProductUpdateRequestDto productUpdateRequestDto, final Jwt jwt);
 
     @Operation(summary = "Delete a Product by UUID (Admin)",
             description = "Deletes a product based on their unique UUID.",
@@ -102,7 +103,7 @@ public interface ProductManagementAdminApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during product deletion",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<Void> deleteProductByUuid(final UUID productUuid);
+    ResponseEntity<Void> deleteProductByUuid(final UUID productUuid, final Jwt jwt);
 
 
     @Operation(summary = "Create a new Product with an image (Admin)",
@@ -122,5 +123,6 @@ public interface ProductManagementAdminApiSpec {
             })
     ResponseEntity<ProductResponseDto> createProductWithImage(
             @Valid @Parameter(description = "JSON representation of the product to create") ProductCreateRequestDto productCreateRequestDto,
-            @Parameter(description = "Image file for the product") MultipartFile image);
+            @Parameter(description = "Image file for the product") MultipartFile image,
+            Jwt jwt);
 }

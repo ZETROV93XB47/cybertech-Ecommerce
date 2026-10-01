@@ -79,7 +79,7 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(expected);
 
-            ProductResponseDto result = service.create(req);
+            ProductResponseDto result = service.create(req, "kc-admin");
 
             assertThat(result).isSameAs(expected);
             InOrder inOrder = inOrder(productValidationService, productRepository, productSearchRepository);
@@ -95,7 +95,7 @@ class ProductManagementServiceImpTest {
             org.mockito.Mockito.doThrow(new IllegalArgumentException("bad"))
                     .when(productValidationService).validateAttributes(any(), any());
 
-            assertThatThrownBy(() -> service.create(req)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> service.create(req, "kc-admin")).isInstanceOf(IllegalArgumentException.class);
 
             verifyNoInteractions(productRepository);
             verifyNoInteractions(productSearchRepository);
@@ -114,7 +114,7 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
             when(productSearchRepository.save(doc)).thenThrow(new RuntimeException("ES down"));
 
-            assertThatThrownBy(() -> service.create(req))
+            assertThatThrownBy(() -> service.create(req, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("ES down");
             verify(productRepository).save(mapped);
@@ -139,7 +139,7 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
-            service.createWithImage(req, file);
+            service.createWithImage(req, file, "kc-admin");
 
             assertThat(req.getPhoto()).isEqualTo("https://s3/p.jpg");
             verify(s3Service).uploadFile(file, "products");
@@ -157,7 +157,7 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
-            service.createWithImage(req, null);
+            service.createWithImage(req, null, "kc-admin");
 
             assertThat(req.getPhoto()).isEqualTo(original);
             verifyNoInteractions(s3Service);
@@ -175,7 +175,7 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
-            service.createWithImage(req, empty);
+            service.createWithImage(req, empty, "kc-admin");
 
             verifyNoInteractions(s3Service);
         }
@@ -199,7 +199,7 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(expected);
 
-            ProductResponseDto result = service.update(req);
+            ProductResponseDto result = service.update(req, "kc-admin");
 
             assertThat(result).isSameAs(expected);
             InOrder inOrder = inOrder(productRepository, productSearchRepository);
@@ -215,7 +215,7 @@ class ProductManagementServiceImpTest {
             ProductUpdateRequestDto req = ProductDtoFixtures.aValidUpdateRequest();
             when(productRepository.lockByUuid(req.getProductUuid())).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.update(req))
+            assertThatThrownBy(() -> service.update(req, "kc-admin"))
                     .isInstanceOf(ProductNotFoundException.class)
                     .hasMessageContaining(req.getProductUuid().toString());
 
@@ -246,7 +246,7 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
-            service.update(req);
+            service.update(req, "kc-admin");
 
             assertThat(existing.getName()).isEqualTo("New Name");
             assertThat(existing.getPrice()).isEqualByComparingTo(new BigDecimal("11.11"));
@@ -268,7 +268,7 @@ class ProductManagementServiceImpTest {
             when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
-            service.update(req);
+            service.update(req, "kc-admin");
 
             assertThat(existing.getName()).isEqualTo(req.getName());
             assertThat(existing.getPrice()).isEqualTo(req.getPrice());
@@ -288,7 +288,7 @@ class ProductManagementServiceImpTest {
         @DisplayName("happy path deletes from SQL and ES")
         void deleteByUUID_happyPath_bothSinks() {
             UUID id = UUID.randomUUID();
-            service.deleteByUUID(id);
+            service.deleteByUUID(id, "kc-admin");
 
             InOrder inOrder = inOrder(productRepository, productSearchRepository);
             inOrder.verify(productRepository).deleteByUuid(id);
@@ -302,7 +302,7 @@ class ProductManagementServiceImpTest {
             org.mockito.Mockito.doThrow(new RuntimeException("ES boom"))
                     .when(productSearchRepository).deleteByUuid(id);
 
-            assertThatThrownBy(() -> service.deleteByUUID(id)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> service.deleteByUUID(id, "kc-admin")).isInstanceOf(RuntimeException.class);
             verify(productRepository).deleteByUuid(id);
         }
     }
@@ -321,7 +321,7 @@ class ProductManagementServiceImpTest {
             when(productRepository.findByUuid(id)).thenReturn(Optional.of(entity));
             when(productMapper.mapFromEntityToResponseDto(entity)).thenReturn(expected);
 
-            assertThat(service.getByUUID(id)).isSameAs(expected);
+            assertThat(service.getByUUID(id, "kc-admin")).isSameAs(expected);
         }
 
         @Test
@@ -330,34 +330,31 @@ class ProductManagementServiceImpTest {
             UUID id = UUID.randomUUID();
             when(productRepository.findByUuid(id)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.getByUUID(id))
+            assertThatThrownBy(() -> service.getByUUID(id, "kc-admin"))
                     .isInstanceOf(ProductNotFoundException.class)
                     .hasMessageContaining(id.toString());
         }
     }
 
     @Nested
-    @DisplayName("getAll")
+    @DisplayName("getAll(Pageable)")
     class GetAll {
 
         @Test
-        @DisplayName("returns mapped collection from repository.findAll()")
+        @DisplayName("returns mapped page from repository.findAll(Pageable)")
         void getAll_happyPath() {
-            List<ProductEntity> entities = List.of(ProductEntityBuilder.aValidProduct(), ProductEntityBuilder.aValidProduct());
-            List<ProductResponseDto> responses = List.of(ProductDtoFixtures.aSampleProductResponse(), ProductDtoFixtures.aSampleProductResponse());
-            when(productRepository.findAll()).thenReturn(entities);
-            when(productMapper.mapFromEntityToResponseDto(entities)).thenReturn(responses);
+            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 10);
+            ProductEntity entity = ProductEntityBuilder.aValidProduct();
+            ProductResponseDto resp = ProductDtoFixtures.aSampleProductResponse();
+            org.springframework.data.domain.Page<ProductEntity> page =
+                    new org.springframework.data.domain.PageImpl<>(List.of(entity), pageable, 1);
 
-            assertThat(service.getAll()).isEqualTo(responses);
-        }
+            when(productRepository.findAll(pageable)).thenReturn(page);
+            when(productMapper.mapFromEntityToResponseDto(entity)).thenReturn(resp);
 
-        @Test
-        @DisplayName("returns empty list when repository is empty")
-        void getAll_empty() {
-            when(productRepository.findAll()).thenReturn(List.of());
-            when(productMapper.mapFromEntityToResponseDto(List.<ProductEntity>of())).thenReturn(List.of());
+            org.springframework.data.domain.Page<ProductResponseDto> result = service.getAll(pageable);
 
-            assertThat(service.getAll()).isEmpty();
+            assertThat(result.getContent()).containsExactly(resp);
         }
     }
 

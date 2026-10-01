@@ -233,27 +233,9 @@ public class CartServiceImp implements CartService {
         }
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public Collection<CartResponseDto> getAll() {
-        return cartMapper.mapFromEntityToResponseDto(cartRepository.findAllWithItemsAndProducts());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public CartResponseDto getByUUID(UUID uuid) {
-        return cartMapper.mapFromEntityToResponseDto(cartRepository.findByUuid(uuid).orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + uuid + " found")));
-    }
-
     /**
-     * Ownership-checked read-by-UUID.
-     * <p>
-     * Loads the cart, asserts the caller's Keycloak subject matches
-     * {@code cart.userEntity.keycloakId}, then maps. The single-arg
-     * {@link #getByUUID(UUID)} stays in place because several places still rely
-     * on the {@link com.novatech.cybertech.services.core.CrudBaseService}
-     * contract — adding an overload rather than changing the signature keeps the
-     * blast radius of the fix scoped to the cart cluster.
+     * Ownership-checked read-by-UUID — the {@code CrudBaseService} contract's caller-identity
+     * parameter IS the ownership check now, so there is no separate no-identity overload anymore.
      *
      * @param cartUuid   cart to read.
      * @param keycloakId Keycloak subject of the caller.
@@ -270,15 +252,33 @@ public class CartServiceImp implements CartService {
         return cartMapper.mapFromEntityToResponseDto(cart);
     }
 
+    /**
+     * Generic CRUD create. {@code CartCreateRequestDto} carries no owner reference of its own
+     * (it is normally used as an items-to-add payload for {@link #addItemsToCart}), so the
+     * caller identity is what ties the freshly-created cart to its owner — without it, this
+     * endpoint used to persist an orphan cart with no {@code userEntity}.
+     *
+     * @throws UserNotFoundException when no user matches {@code keycloakId}.
+     */
     @Override
     @Transactional
-    public CartResponseDto create(CartCreateRequestDto cartCreateRequestDto) {
-        return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cartMapper.mapFromCreationRequestToEntity(cartCreateRequestDto)));
+    public CartResponseDto create(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
+        final UserEntity owner = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+        final CartEntity entity = cartMapper.mapFromCreationRequestToEntity(cartCreateRequestDto);
+        entity.setUserEntity(owner);
+        return cartMapper.mapFromEntityToResponseDto(cartRepository.save(entity));
     }
 
+    /**
+     * Historical generic CRUD update — superseded by {@link #updateCart(UUID, CartUpdateRequestDto, String)}
+     * for every real call site; the caller identity is accepted to satisfy the
+     * {@code CrudBaseService} contract but there is no cart reference in
+     * {@link CartItemRemoveRequestDto} to check ownership against.
+     */
     @Override
     @Transactional
-    public CartResponseDto update(final CartItemRemoveRequestDto cartCreateRequestDto) {
+    public CartResponseDto update(final CartItemRemoveRequestDto cartCreateRequestDto, final String keycloakId) {
         return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cartMapper.mapFromUpdateRequestToEntity(cartCreateRequestDto)));
     }
 
@@ -312,18 +312,10 @@ public class CartServiceImp implements CartService {
         return result;
     }
 
-    @Override
-    @Transactional
-    public void deleteByUUID(UUID uuid) {
-        cartRepository.deleteByUuid(uuid);
-    }
-
     /**
      * Ownership-checked delete-by-UUID.
      * <p>
-     * Loads the cart, asserts ownership, then delegates to the repository. The
-     * single-arg {@link #deleteByUUID(UUID)} is kept for the
-     * {@link com.novatech.cybertech.services.core.CrudBaseService} contract.
+     * Loads the cart, asserts ownership, then delegates to the repository.
      *
      * @param cartUuid   cart to delete.
      * @param keycloakId caller identity.

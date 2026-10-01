@@ -59,7 +59,7 @@ public interface CartManagementControllerApiSpec {
                     @ApiResponse(responseCode = "500", description = "Internal server error during Cart creation",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<CartResponseDto> createCart(final CartCreateRequestDto cartCreateRequestDto);
+    ResponseEntity<CartResponseDto> createCart(final CartCreateRequestDto cartCreateRequestDto, final Jwt jwt);
 
 
     @Operation(summary = "Update an existing Cart by UUID",

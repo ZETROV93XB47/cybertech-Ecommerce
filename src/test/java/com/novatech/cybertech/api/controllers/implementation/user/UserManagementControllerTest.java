@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -85,7 +86,7 @@ class UserManagementControllerTest {
                 .keycloakId(KEYCLOAK_ID)
                 .build();
 
-        when(userManagementServiceImp.getByUUID(userUuid)).thenReturn(response);
+        when(userManagementServiceImp.getByUUID(userUuid, KEYCLOAK_ID)).thenReturn(response);
 
         mockMvc.perform(get(GET_USER_BY_UUID_ENDPOINT, userUuid)
                         .with(jwtUser(KEYCLOAK_ID))
@@ -104,7 +105,7 @@ class UserManagementControllerTest {
                 .keycloakId("some-other-user-keycloak-id")
                 .build();
 
-        when(userManagementServiceImp.getByUUID(userUuid)).thenReturn(response);
+        when(userManagementServiceImp.getByUUID(userUuid, "admin-id")).thenReturn(response);
 
         mockMvc.perform(get(GET_USER_BY_UUID_ENDPOINT, userUuid)
                         .with(jwtAdmin("admin-id"))
@@ -123,7 +124,7 @@ class UserManagementControllerTest {
                 .keycloakId("a-different-keycloak-id")
                 .build();
 
-        when(userManagementServiceImp.getByUUID(userUuid)).thenReturn(response);
+        when(userManagementServiceImp.getByUUID(userUuid, KEYCLOAK_ID)).thenReturn(response);
 
         mockMvc.perform(get(GET_USER_BY_UUID_ENDPOINT, userUuid)
                         .with(jwtUser(KEYCLOAK_ID))
@@ -140,7 +141,7 @@ class UserManagementControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(userManagementServiceImp.getByUUID(userUuid))
+        when(userManagementServiceImp.getByUUID(userUuid, KEYCLOAK_ID))
                 .thenThrow(new UserNotFoundException("No user with the UUID: " + userUuid + " found"));
 
         mockMvc.perform(get(GET_USER_BY_UUID_ENDPOINT, userUuid)
@@ -176,7 +177,7 @@ class UserManagementControllerTest {
                 .username("jane.doe")
                 .build();
 
-        when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), isNull())).thenReturn(created);
 
         // /register is whitelisted in TestSecurityConfig → reachable without auth.
         mockMvc.perform(post(REGISTER_ENDPOINT)
@@ -201,7 +202,7 @@ class UserManagementControllerTest {
         final UserResponseDto created = UserDtoFixtures.aSampleUserResponseBuilder()
                 .keycloakId("keycloak-secret-id")
                 .build();
-        when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), isNull())).thenReturn(created);
 
         mockMvc.perform(post(REGISTER_ENDPOINT)
                         .with(csrf())
@@ -239,7 +240,7 @@ class UserManagementControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(userManagementServiceImp.create(any(UserCreateRequestDto.class)))
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), isNull()))
                 .thenThrow(new UserAlreadyExistsException("User already exists"));
 
         mockMvc.perform(post(REGISTER_ENDPOINT)

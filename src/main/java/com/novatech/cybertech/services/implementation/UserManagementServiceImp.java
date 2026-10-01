@@ -23,8 +23,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collection;
-import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -60,7 +58,7 @@ public class UserManagementServiceImp implements UserManagementService {
      * job then sees Keycloak + DB both populated and closes it DONE without compensating.
      */
     @Override
-    public UserResponseDto create(final UserCreateRequestDto req) {
+    public UserResponseDto create(final UserCreateRequestDto req, final String callerKeycloakId) {
         log.info("user creation request received for email domain '{}'", LogSafetyUtils.extractEmailDomain(req.getEmail()));
 
         final UUID outboxUuid = keycloakOutboxService.recordCreatePending(req.getEmail());
@@ -97,19 +95,13 @@ public class UserManagementServiceImp implements UserManagementService {
 
     @Override
     @Transactional(readOnly = true)
-    public Collection<UserResponseDto> getAll() {
-        return userMapper.mapFromEntityToResponseDto(userRepository.findAll());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public Page<UserResponseDto> getAll(final Pageable pageable) {
         return userRepository.findAll(pageable).map(userMapper::mapFromEntityToResponseDto);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public UserResponseDto getByUUID(final UUID uuid) {
+    public UserResponseDto getByUUID(final UUID uuid, final String keycloakId) {
         final UserEntity user = userRepository.findByUuid(uuid).orElseThrow(() -> new UserNotFoundException("No user with the UUID: " + uuid + " found"));
         return userMapper.mapFromEntityToResponseDto(user);
     }
@@ -122,7 +114,7 @@ public class UserManagementServiceImp implements UserManagementService {
      * <p>See {@link #updateWithOutbox} for the phase choreography.
      */
     @Override
-    public UserResponseDto update(final UserUpdateRequestDto userUpdateRequestDto) {
+    public UserResponseDto update(final UserUpdateRequestDto userUpdateRequestDto, final String keycloakId) {
         final UserEntity loadedUser = userRepository.findByUuid(userUpdateRequestDto.getUuid())
                 .orElseThrow(() -> new UserNotFoundException("No user with the UUID: " + userUpdateRequestDto.getUuid() + " found"));
 
@@ -187,7 +179,7 @@ public class UserManagementServiceImp implements UserManagementService {
      */
     @Override
     @Transactional
-    public void deleteByUUID(final UUID uuid) {
+    public void deleteByUUID(final UUID uuid, final String callerKeycloakId) {
         final UserEntity user = userRepository.findByUuid(uuid).orElseThrow(() -> new UserNotFoundException("No user with the UUID: " + uuid + " found"));
         final String keycloakId = user.getKeycloakId();
 

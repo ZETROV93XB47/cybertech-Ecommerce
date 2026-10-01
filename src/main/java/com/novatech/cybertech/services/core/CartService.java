@@ -16,11 +16,11 @@ import java.util.UUID;
  * {@link CartItemRemoveRequestDto} as the update argument purely to keep that
  * base contract — the new {@link #updateCart(UUID, CartUpdateRequestDto, String)}
  * overload below is the <em>correct</em> update entrypoint introduced to carry
- * a new argument type and caller identity for ownership enforcement. The
- * inherited {@code update(CartItemRemoveRequestDto)} remains untouched so the
- * base CRUD contract stays wired.
+ * a new argument type. {@link CrudBaseService}'s {@code J} caller-identity
+ * parameter is what {@code getByUUID}/{@code deleteByUUID} use for ownership
+ * enforcement below — no separate ad hoc overload needed anymore.
  */
-public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto, CartItemRemoveRequestDto, CartResponseDto> {
+public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto, CartItemRemoveRequestDto, CartResponseDto, String> {
     /**
      * Remove every line-item from the authenticated user's cart.
      *
@@ -83,27 +83,8 @@ public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto,
      */
     CartResponseDto updateCart(final UUID cartUuid, final CartUpdateRequestDto dto, final String keycloakId);
 
-    /**
-     * Ownership-checked variant of {@link #getByUUID(UUID)}.
-     * <p>
-     * Loads the cart, verifies {@code cart.userEntity.keycloakId} matches the
-     * caller, and returns the DTO. On a mismatch, throws
-     * {@link UnauthorizedCartAccessException}. The single-arg {@link #getByUUID(UUID)}
-     * is left in place to preserve the {@link CrudBaseService} contract.
-     *
-     * @param cartUuid   cart to read.
-     * @param keycloakId Keycloak subject of the caller.
-     * @return the cart DTO.
-     * @throws UnauthorizedCartAccessException when the caller does not own the cart.
-     */
-    CartResponseDto getByUUID(final UUID cartUuid, final String keycloakId);
-
-    /**
-     * Ownership-checked variant of {@link #deleteByUUID(UUID)}.
-     *
-     * @param cartUuid   cart to delete.
-     * @param keycloakId Keycloak subject of the caller.
-     * @throws UnauthorizedCartAccessException when the caller does not own the cart.
-     */
-    void deleteByUUID(final UUID cartUuid, final String keycloakId);
+    // getByUUID(UUID, String) and deleteByUUID(UUID, String) are now the inherited
+    // CrudBaseService methods themselves — the caller-identity parameter IS the
+    // ownership check, so no separate overload is declared here anymore. See
+    // CartServiceImp for the ownership-enforcing implementations.
 }

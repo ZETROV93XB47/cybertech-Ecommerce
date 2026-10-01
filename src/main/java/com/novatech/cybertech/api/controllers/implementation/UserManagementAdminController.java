@@ -17,6 +17,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -54,27 +56,27 @@ public class UserManagementAdminController implements UserManagementAdminApiSpec
 
     @Override
     @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<UserResponseDto> createUser(@Valid @RequestBody UserCreateRequestDto userCreateRequestDto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.create(userCreateRequestDto));
+    public ResponseEntity<UserResponseDto> createUser(@Valid @RequestBody UserCreateRequestDto userCreateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.create(userCreateRequestDto, jwt.getSubject()));
     }
 
     @Override
     @PatchMapping(value = "/update", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<UserResponseDto> updateUser(@Valid @RequestBody final UserUpdateRequestDto userUpdateRequestDto) {
-        return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.update(userUpdateRequestDto));
+    public ResponseEntity<UserResponseDto> updateUser(@Valid @RequestBody final UserUpdateRequestDto userUpdateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.update(userUpdateRequestDto, jwt.getSubject()));
     }
 
     @Override
     @DeleteMapping(value = "/delete/{userUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deleteUserByUuid(@PathVariable final UUID userUuid) {
-        userManagementServiceImp.deleteByUUID(userUuid);
+    public ResponseEntity<Void> deleteUserByUuid(@PathVariable final UUID userUuid, @AuthenticationPrincipal final Jwt jwt) {
+        userManagementServiceImp.deleteByUUID(userUuid, jwt.getSubject());
         return ResponseEntity.noContent().build();
     }
 
     @Override
     @PostMapping(value = "/register/auto/single", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> registerAuto() {
-        final UserResponseDto created = userManagementServiceImp.create(generateUserCreateRequestDto());
+    public ResponseEntity<Map<String, Object>> registerAuto(@AuthenticationPrincipal final Jwt jwt) {
+        final UserResponseDto created = userManagementServiceImp.create(generateUserCreateRequestDto(), jwt.getSubject());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 RESPONSE_KEY_ID, created.getUuid(),
                 RESPONSE_KEY_KEYCLOAK_ID, created.getKeycloakId(),

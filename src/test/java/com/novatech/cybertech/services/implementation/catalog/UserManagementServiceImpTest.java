@@ -82,7 +82,7 @@ class UserManagementServiceImpTest {
             UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
             when(userPersistenceService.saveNewUser(req, kcId)).thenReturn(expected);
 
-            UserResponseDto result = service.create(req);
+            UserResponseDto result = service.create(req, "kc-admin");
 
             assertThat(result).isSameAs(expected);
             InOrder order = inOrder(keycloakUserManagementService, userPersistenceService);
@@ -100,7 +100,7 @@ class UserManagementServiceImpTest {
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
             when(userPersistenceService.saveNewUser(any(), eq(kcId))).thenReturn(UserDtoFixtures.aSampleUserResponse());
 
-            service.create(req);
+            service.create(req, "kc-admin");
 
             verify(keycloakUserManagementService).createUser(req.getEmail(), req.getFirstName(),
                     req.getLastName(), req.getPassword(), Role.USER);
@@ -114,7 +114,7 @@ class UserManagementServiceImpTest {
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn(kcId);
             when(userPersistenceService.saveNewUser(req, kcId)).thenThrow(new RuntimeException("db down"));
 
-            assertThatThrownBy(() -> service.create(req))
+            assertThatThrownBy(() -> service.create(req, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("db down");
 
@@ -128,7 +128,7 @@ class UserManagementServiceImpTest {
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any()))
                     .thenThrow(new RuntimeException("kc 500"));
 
-            assertThatThrownBy(() -> service.create(req))
+            assertThatThrownBy(() -> service.create(req, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("kc 500");
 
@@ -146,7 +146,7 @@ class UserManagementServiceImpTest {
             doThrow(new RuntimeException("kc delete 500"))
                     .when(keycloakUserManagementService).deleteUser(kcId);
 
-            assertThatThrownBy(() -> service.create(req))
+            assertThatThrownBy(() -> service.create(req, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("db down");
 
@@ -165,7 +165,7 @@ class UserManagementServiceImpTest {
             UserResponseDto mapped = UserDtoFixtures.aSampleUserResponse();
             when(userPersistenceService.saveNewUser(req, "kc-1")).thenReturn(mapped);
 
-            UserResponseDto result = service.create(req);
+            UserResponseDto result = service.create(req, "kc-admin");
 
             assertThat(result).isSameAs(mapped);
             InOrder inOrder = inOrder(keycloakOutboxService, keycloakUserManagementService, userPersistenceService);
@@ -185,7 +185,7 @@ class UserManagementServiceImpTest {
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any())).thenReturn("kc-2");
             when(userPersistenceService.saveNewUser(req, "kc-2")).thenThrow(new RuntimeException("dup"));
 
-            assertThatThrownBy(() -> service.create(req)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> service.create(req, "kc-admin")).isInstanceOf(RuntimeException.class);
 
             verify(keycloakUserManagementService).deleteUser("kc-2"); // compensation
             verify(keycloakOutboxService).markFailed(eq(outboxUuid), any());
@@ -201,7 +201,7 @@ class UserManagementServiceImpTest {
             when(keycloakUserManagementService.createUser(any(), any(), any(), any(), any()))
                     .thenThrow(new RuntimeException("kc 500"));
 
-            assertThatThrownBy(() -> service.create(req)).hasMessage("kc 500");
+            assertThatThrownBy(() -> service.create(req, "kc-admin")).hasMessage("kc 500");
 
             verify(keycloakOutboxService).markFailed(eq(outboxUuid), any());
             verify(keycloakOutboxService, never()).markDone(any(), any());
@@ -210,18 +210,24 @@ class UserManagementServiceImpTest {
 
     // -----------------------------------------------------------------
     @Nested
-    @DisplayName("getAll / getByUUID")
+    @DisplayName("getAll(Pageable) / getByUUID")
     class Reads {
 
         @Test
-        @DisplayName("getAll maps repository.findAll() through the mapper")
+        @DisplayName("getAll(Pageable) maps repository.findAll(Pageable) through the mapper")
         void getAll_happyPath() {
-            List<UserEntity> entities = List.of(UserEntityBuilder.aValidUser(), UserEntityBuilder.aValidUser());
-            List<UserResponseDto> expected = List.of(UserDtoFixtures.aSampleUserResponse(), UserDtoFixtures.aSampleUserResponse());
-            when(userRepository.findAll()).thenReturn(entities);
-            when(userMapper.mapFromEntityToResponseDto(entities)).thenReturn(expected);
+            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 10);
+            UserEntity entity = UserEntityBuilder.aValidUser();
+            UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
+            org.springframework.data.domain.Page<UserEntity> page =
+                    new org.springframework.data.domain.PageImpl<>(List.of(entity), pageable, 1);
 
-            assertThat(service.getAll()).isEqualTo(expected);
+            when(userRepository.findAll(pageable)).thenReturn(page);
+            when(userMapper.mapFromEntityToResponseDto(entity)).thenReturn(expected);
+
+            org.springframework.data.domain.Page<UserResponseDto> result = service.getAll(pageable);
+
+            assertThat(result.getContent()).containsExactly(expected);
         }
 
         @Test
@@ -233,7 +239,7 @@ class UserManagementServiceImpTest {
             when(userRepository.findByUuid(id)).thenReturn(Optional.of(entity));
             when(userMapper.mapFromEntityToResponseDto(entity)).thenReturn(expected);
 
-            assertThat(service.getByUUID(id)).isSameAs(expected);
+            assertThat(service.getByUUID(id, "kc-admin")).isSameAs(expected);
         }
 
         @Test
@@ -242,7 +248,7 @@ class UserManagementServiceImpTest {
             UUID id = UUID.randomUUID();
             when(userRepository.findByUuid(id)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.getByUUID(id))
+            assertThatThrownBy(() -> service.getByUUID(id, "kc-admin"))
                     .isInstanceOf(UserNotFoundException.class)
                     .hasMessageContaining(id.toString());
         }
@@ -267,7 +273,7 @@ class UserManagementServiceImpTest {
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
             when(userPersistenceService.updateUser(dto, user)).thenReturn(expected);
 
-            UserResponseDto result = service.update(dto);
+            UserResponseDto result = service.update(dto, "kc-admin");
 
             assertThat(result).isSameAs(expected);
             InOrder order = inOrder(keycloakUserManagementService, userPersistenceService);
@@ -281,7 +287,7 @@ class UserManagementServiceImpTest {
             UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.update(dto))
+            assertThatThrownBy(() -> service.update(dto, "kc-admin"))
                     .isInstanceOf(UserNotFoundException.class)
                     .hasMessageContaining(dto.getUuid().toString());
 
@@ -299,7 +305,7 @@ class UserManagementServiceImpTest {
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
             when(userPersistenceService.updateUser(dto, user)).thenReturn(UserDtoFixtures.aSampleUserResponse());
 
-            service.update(dto);
+            service.update(dto, "kc-admin");
 
             ArgumentCaptor<UserUpdateRequestDto> dtoCaptor = ArgumentCaptor.forClass(UserUpdateRequestDto.class);
             verify(keycloakUserManagementService).updateUser(org.mockito.ArgumentMatchers.eq("kc-9"), dtoCaptor.capture());
@@ -315,7 +321,7 @@ class UserManagementServiceImpTest {
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
             doThrow(new RuntimeException("kc down")).when(keycloakUserManagementService).updateUser("kc-1", dto);
 
-            assertThatThrownBy(() -> service.update(dto))
+            assertThatThrownBy(() -> service.update(dto, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("kc down");
 
@@ -330,7 +336,7 @@ class UserManagementServiceImpTest {
             when(userRepository.findByUuid(dto.getUuid())).thenReturn(Optional.of(user));
             when(userPersistenceService.updateUser(dto, user)).thenThrow(new RuntimeException("db down"));
 
-            assertThatThrownBy(() -> service.update(dto))
+            assertThatThrownBy(() -> service.update(dto, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("db down");
 
@@ -350,7 +356,7 @@ class UserManagementServiceImpTest {
             when(keycloakOutboxService.recordUpdatePending("kc-ob", dto)).thenReturn(outboxUuid);
             when(userPersistenceService.updateUser(dto, user)).thenReturn(UserDtoFixtures.aSampleUserResponse());
 
-            service.update(dto);
+            service.update(dto, "kc-admin");
 
             InOrder order = inOrder(keycloakOutboxService, keycloakUserManagementService, userPersistenceService);
             order.verify(keycloakOutboxService).recordUpdatePending("kc-ob", dto);
@@ -370,7 +376,7 @@ class UserManagementServiceImpTest {
             when(keycloakOutboxService.recordUpdatePending("kc-rej", dto)).thenReturn(outboxUuid);
             doThrow(new RuntimeException("duplicate realm email")).when(keycloakUserManagementService).updateUser("kc-rej", dto);
 
-            assertThatThrownBy(() -> service.update(dto)).hasMessage("duplicate realm email");
+            assertThatThrownBy(() -> service.update(dto, "kc-admin")).hasMessage("duplicate realm email");
 
             verify(keycloakOutboxService).markFailed(eq(outboxUuid), any());
             verify(keycloakOutboxService, never()).markDone(any(), any());
@@ -387,7 +393,7 @@ class UserManagementServiceImpTest {
             when(keycloakOutboxService.recordUpdatePending("kc-div", dto)).thenReturn(outboxUuid);
             when(userPersistenceService.updateUser(dto, user)).thenThrow(new RuntimeException("db down"));
 
-            assertThatThrownBy(() -> service.update(dto)).hasMessage("db down");
+            assertThatThrownBy(() -> service.update(dto, "kc-admin")).hasMessage("db down");
 
             // THE pinned contract: this is the divergence window the outbox exists to close.
             // No terminal markFailed, no markDone — the PENDING row lets the job converge the DB side.
@@ -410,7 +416,7 @@ class UserManagementServiceImpTest {
             when(userRepository.findByUuid(id)).thenReturn(Optional.of(user));
             when(keycloakOutboxService.recordDeletePending("kc-d")).thenReturn(outboxUuid);
 
-            service.deleteByUUID(id);
+            service.deleteByUUID(id, "kc-admin");
 
             InOrder order = inOrder(userRepository, keycloakOutboxService, eventPublisher);
             order.verify(userRepository).deleteByUuid(id);
@@ -430,7 +436,7 @@ class UserManagementServiceImpTest {
             when(userRepository.findByUuid(id)).thenReturn(Optional.of(user));
             doThrow(new RuntimeException("FK violation")).when(userRepository).deleteByUuid(id);
 
-            assertThatThrownBy(() -> service.deleteByUUID(id))
+            assertThatThrownBy(() -> service.deleteByUUID(id, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessage("FK violation");
 
@@ -445,7 +451,7 @@ class UserManagementServiceImpTest {
             UUID id = UUID.randomUUID();
             when(userRepository.findByUuid(id)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.deleteByUUID(id))
+            assertThatThrownBy(() -> service.deleteByUUID(id, "kc-admin"))
                     .isInstanceOf(UserNotFoundException.class)
                     .hasMessageContaining(id.toString());
 

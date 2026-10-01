@@ -33,7 +33,9 @@ public class ProductSearchController implements ProductSearchApiSpec {
     @Override
     @GetMapping(value = "/get/{productUuid}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductResponseDto> getProductByUuid(@PathVariable("productUuid") UUID productUuid) {
-        return ResponseEntity.status(HttpStatus.OK).body(productService.getByUUID(productUuid));
+        // Public, anonymous endpoint (whitelisted under /api/v1/services/product/** in
+        // SecurityConfig#PUBLIC_URLS) — no caller identity exists to pass here.
+        return ResponseEntity.status(HttpStatus.OK).body(productService.getByUUID(productUuid, null));
     }
 
     @Override

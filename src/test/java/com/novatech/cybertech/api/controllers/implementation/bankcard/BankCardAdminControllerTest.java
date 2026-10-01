@@ -29,6 +29,7 @@ import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -112,7 +113,7 @@ class BankCardAdminControllerTest {
         UUID cardUuid = UUID.randomUUID();
         BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponseBuilder().uuid(cardUuid).build();
 
-        when(bankCardService.getByUUID(cardUuid)).thenReturn(response);
+        when(bankCardService.getByUUID(cardUuid, KEYCLOAK_ID)).thenReturn(response);
 
         mockMvc.perform(get(GET_BY_UUID, cardUuid)
                         .with(jwtAdmin(KEYCLOAK_ID))
@@ -131,7 +132,7 @@ class BankCardAdminControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(bankCardService.getByUUID(cardUuid))
+        when(bankCardService.getByUUID(cardUuid, KEYCLOAK_ID))
                 .thenThrow(new BankCardNotFoundException("Bank card not found by UUID"));
 
         mockMvc.perform(get(GET_BY_UUID, cardUuid)
@@ -174,7 +175,7 @@ class BankCardAdminControllerTest {
         BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
         BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponse();
 
-        when(bankCardService.create(any(BankCardCreationRequestDto.class))).thenReturn(response);
+        when(bankCardService.create(any(BankCardCreationRequestDto.class), eq(KEYCLOAK_ID))).thenReturn(response);
 
         mockMvc.perform(post(CREATE)
                         .with(jwtAdmin(KEYCLOAK_ID))
@@ -232,7 +233,7 @@ class BankCardAdminControllerTest {
         BankCardUpdateRequestDto request = UserDtoFixtures.aValidBankCardUpdateRequest();
         BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponse();
 
-        when(bankCardService.update(any(BankCardUpdateRequestDto.class))).thenReturn(response);
+        when(bankCardService.update(any(BankCardUpdateRequestDto.class), eq(KEYCLOAK_ID))).thenReturn(response);
 
         mockMvc.perform(patch(UPDATE)
                         .with(jwtAdmin(KEYCLOAK_ID))
@@ -271,7 +272,7 @@ class BankCardAdminControllerTest {
     @Test
     void shouldDeleteBankCardByUuidAdminSuccessfully() throws Exception {
         UUID cardUuid = UUID.randomUUID();
-        doNothing().when(bankCardService).deleteByUUID(cardUuid);
+        doNothing().when(bankCardService).deleteByUUID(cardUuid, KEYCLOAK_ID);
 
         mockMvc.perform(delete(DELETE_BY_UUID, cardUuid)
                         .with(jwtAdmin(KEYCLOAK_ID))
@@ -279,7 +280,7 @@ class BankCardAdminControllerTest {
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isNoContent());
 
-        verify(bankCardService).deleteByUUID(cardUuid);
+        verify(bankCardService).deleteByUUID(cardUuid, KEYCLOAK_ID);
     }
 
     @Test
@@ -292,7 +293,7 @@ class BankCardAdminControllerTest {
                 .build();
 
         doThrow(new BankCardNotFoundException("Bank card not found for delete"))
-                .when(bankCardService).deleteByUUID(cardUuid);
+                .when(bankCardService).deleteByUUID(cardUuid, KEYCLOAK_ID);
 
         mockMvc.perform(delete(DELETE_BY_UUID, cardUuid)
                         .with(jwtAdmin(KEYCLOAK_ID))

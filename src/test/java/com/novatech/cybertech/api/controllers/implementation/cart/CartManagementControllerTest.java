@@ -122,7 +122,7 @@ class CartManagementControllerTest {
             CartCreateRequestDto request = CartDtoFixtures.aValidCartCreateRequest();
             CartResponseDto response = CartDtoFixtures.aSampleCartResponse();
 
-            when(cartService.create(any(CartCreateRequestDto.class))).thenReturn(response);
+            when(cartService.create(any(CartCreateRequestDto.class), eq(KEYCLOAK_ID))).thenReturn(response);
 
             mockMvc.perform(post(CREATE_CART_ENDPOINT)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))

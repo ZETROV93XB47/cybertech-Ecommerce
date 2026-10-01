@@ -32,6 +32,7 @@ import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -130,7 +131,7 @@ class UserManagementAdminControllerTest {
         final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequest();
         final UserResponseDto response = UserDtoFixtures.aSampleUserResponse();
 
-        when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(response);
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID))).thenReturn(response);
 
         mockMvc.perform(post(CREATE_USER_ENDPOINT)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -170,7 +171,7 @@ class UserManagementAdminControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(userManagementServiceImp.create(any(UserCreateRequestDto.class)))
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
                 .thenThrow(new UserAlreadyExistsException("User already exists"));
 
         mockMvc.perform(post(CREATE_USER_ENDPOINT)
@@ -210,7 +211,7 @@ class UserManagementAdminControllerTest {
         final UserUpdateRequestDto request = UserDtoFixtures.aValidUpdateRequest();
         final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder().uuid(request.getUuid()).build();
 
-        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class))).thenReturn(response);
+        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID))).thenReturn(response);
 
         mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -251,7 +252,7 @@ class UserManagementAdminControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class)))
+        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
                 .thenThrow(new UserNotFoundException(message));
 
         mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
@@ -274,7 +275,7 @@ class UserManagementAdminControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class)))
+        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
                 .thenThrow(new UserNotActiveException("User is not active"));
 
         mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
@@ -310,7 +311,7 @@ class UserManagementAdminControllerTest {
     @Test
     void shouldDeleteUserByUuidAsAdminReturning204() throws Exception {
         final UUID uuid = UUID.randomUUID();
-        doNothing().when(userManagementServiceImp).deleteByUUID(uuid);
+        doNothing().when(userManagementServiceImp).deleteByUUID(uuid, ADMIN_KEYCLOAK_ID);
 
         mockMvc.perform(delete(DELETE_USER_BY_UUID_ENDPOINT, uuid)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -318,7 +319,7 @@ class UserManagementAdminControllerTest {
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isNoContent());
 
-        verify(userManagementServiceImp).deleteByUUID(uuid);
+        verify(userManagementServiceImp).deleteByUUID(uuid, ADMIN_KEYCLOAK_ID);
     }
 
     @Test
@@ -331,7 +332,7 @@ class UserManagementAdminControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        doThrow(new UserNotFoundException(message)).when(userManagementServiceImp).deleteByUUID(uuid);
+        doThrow(new UserNotFoundException(message)).when(userManagementServiceImp).deleteByUUID(uuid, ADMIN_KEYCLOAK_ID);
 
         mockMvc.perform(delete(DELETE_USER_BY_UUID_ENDPOINT, uuid)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -390,7 +391,7 @@ class UserManagementAdminControllerTest {
         // (mirrors the /register endpoint) so the synthetic user's keycloakId is exposed —
         // the @JsonIgnore on UserResponseDto.keycloakId would have suppressed it otherwise.
         final UserResponseDto created = UserDtoFixtures.aSampleUserResponse();
-        when(userManagementServiceImp.create(any(UserCreateRequestDto.class))).thenReturn(created);
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID))).thenReturn(created);
 
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))

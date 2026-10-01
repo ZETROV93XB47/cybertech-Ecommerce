@@ -9,7 +9,7 @@ import org.springframework.data.domain.Pageable;
 import java.util.List;
 import java.util.UUID;
 
-public interface BankCardManagementService extends CrudBaseService<UUID, BankCardCreationRequestDto, BankCardUpdateRequestDto, BankCardResponseDto> {
+public interface BankCardManagementService extends CrudBaseService<UUID, BankCardCreationRequestDto, BankCardUpdateRequestDto, BankCardResponseDto, String> {
 
     BankCardResponseDto addBankCard(String keycloakId, BankCardCreationRequestDto bankCardCreationRequestDto);
 
@@ -30,20 +30,9 @@ public interface BankCardManagementService extends CrudBaseService<UUID, BankCar
      */
     BankCardResponseDto getDefaultCard(String keycloakId);
 
-    /**
-     * Ownership-checked delete-by-UUID for non-admin callers.
-     *
-     * <p>Loads the card, asserts the caller's keycloakId matches the card owner,
-     * then deletes. Mirrors {@code CartServiceImp#deleteByUUID(UUID, String)}.
-     * The single-arg {@link #deleteByUUID(java.util.UUID)} is kept for the
-     * {@link CrudBaseService} contract and admin-only call sites.</p>
-     *
-     * @param uuid       card to delete.
-     * @param keycloakId caller identity (JWT subject).
-     * @throws com.novatech.cybertech.exceptions.BankCardNotFoundException        when no card with that UUID exists.
-     * @throws com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException when the caller does not own the card.
-     */
-    void deleteByUUID(java.util.UUID uuid, String keycloakId);
+    // deleteByUUID(UUID, String) is now the inherited CrudBaseService method itself — the admin
+    // caller's identity rides along for the audit trail (see BankCardManagementServiceImp), it is
+    // not an ownership check: admin callers may delete any user's card by design.
 
     /**
      * Frontend-gap #4 — list every bank card belonging to the authenticated user.

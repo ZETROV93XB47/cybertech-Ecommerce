@@ -14,6 +14,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -57,26 +59,26 @@ public class BankCardAdminController implements BankCardAdminControllerApiSpec {
 
     @Override
     @GetMapping(value = "/get/{uuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<BankCardResponseDto> getBankCardByUuid(@PathVariable UUID uuid) {
-        return ResponseEntity.ok(bankCardService.getByUUID(uuid));
+    public ResponseEntity<BankCardResponseDto> getBankCardByUuid(@PathVariable UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.ok(bankCardService.getByUUID(uuid, jwt.getSubject()));
     }
 
     @Override
     @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<BankCardResponseDto> createBankCard(@Valid @RequestBody BankCardCreationRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(bankCardService.create(dto));
+    public ResponseEntity<BankCardResponseDto> createBankCard(@Valid @RequestBody BankCardCreationRequestDto dto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(bankCardService.create(dto, jwt.getSubject()));
     }
 
     @Override
     @PatchMapping(value = "/update", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<BankCardResponseDto> updateBankCardAdmin(@Valid @RequestBody BankCardUpdateRequestDto dto) {
-        return ResponseEntity.ok(bankCardService.update(dto));
+    public ResponseEntity<BankCardResponseDto> updateBankCardAdmin(@Valid @RequestBody BankCardUpdateRequestDto dto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.ok(bankCardService.update(dto, jwt.getSubject()));
     }
 
     @Override
     @DeleteMapping(value = "/delete/{uuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deleteBankCardByUuid(@PathVariable UUID uuid) {
-        bankCardService.deleteByUUID(uuid);
+    public ResponseEntity<Void> deleteBankCardByUuid(@PathVariable UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
+        bankCardService.deleteByUUID(uuid, jwt.getSubject());
         return ResponseEntity.noContent().build();
     }
 }

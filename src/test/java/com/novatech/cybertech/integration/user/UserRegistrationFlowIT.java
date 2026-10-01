@@ -35,6 +35,7 @@ import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -179,7 +180,7 @@ class UserRegistrationFlowIT {
                 .build();
 
         doThrow(new UserAlreadyExistsException("User already exists"))
-                .when(userManagementServiceImp).create(any(UserCreateRequestDto.class));
+                .when(userManagementServiceImp).create(any(UserCreateRequestDto.class), isNull());
 
         mockMvc.perform(post(REGISTER_ENDPOINT)
                         .with(csrf())
@@ -269,7 +270,7 @@ class UserRegistrationFlowIT {
         final UserResponseDto stubbed = UserDtoFixtures.aSampleUserResponseBuilder()
                 .username("synthetic.admin")
                 .build();
-        doReturn(stubbed).when(userManagementServiceImp).create(any(UserCreateRequestDto.class));
+        doReturn(stubbed).when(userManagementServiceImp).create(any(UserCreateRequestDto.class), any());
 
         mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
                         .with(jwtAdmin(adminKeycloakId))

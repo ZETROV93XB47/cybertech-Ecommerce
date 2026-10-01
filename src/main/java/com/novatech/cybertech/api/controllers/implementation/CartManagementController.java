@@ -50,8 +50,8 @@ public class CartManagementController implements CartManagementControllerApiSpec
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<CartResponseDto> createCart(@Valid @RequestBody CartCreateRequestDto cartCreateRequestDto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(cartService.create(cartCreateRequestDto));
+    public ResponseEntity<CartResponseDto> createCart(@Valid @RequestBody CartCreateRequestDto cartCreateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(cartService.create(cartCreateRequestDto, jwt.getSubject()));
     }
 
     /**

@@ -71,7 +71,7 @@ class ProductSearchControllerTest {
                 .uuid(productUuid.toString())
                 .build();
 
-        when(productService.getByUUID(productUuid)).thenReturn(productResponseDto);
+        when(productService.getByUUID(productUuid, null)).thenReturn(productResponseDto);
 
         mockMvc.perform(get(GET_PRODUCT_BY_UUID_ENDPOINT, productUuid)
                         .with(jwtAnonymous())
@@ -88,7 +88,7 @@ class ProductSearchControllerTest {
                 .uuid(productUuid.toString())
                 .build();
 
-        when(productService.getByUUID(productUuid)).thenReturn(productResponseDto);
+        when(productService.getByUUID(productUuid, null)).thenReturn(productResponseDto);
 
         mockMvc.perform(get(GET_PRODUCT_BY_UUID_ENDPOINT, productUuid)
                         .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
@@ -107,7 +107,7 @@ class ProductSearchControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(productService.getByUUID(productUuid))
+        when(productService.getByUUID(productUuid, null))
                 .thenThrow(new ProductNotFoundException("No product with the UUID : " + productUuid + " found"));
 
         mockMvc.perform(get(GET_PRODUCT_BY_UUID_ENDPOINT, productUuid)

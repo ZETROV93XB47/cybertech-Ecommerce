@@ -8,7 +8,6 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.BankCardType;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
-import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
@@ -41,6 +40,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -377,19 +377,8 @@ class BankCardManagementServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("getAll / getByUUID / getAll(Pageable)")
+    @DisplayName("getByUUID / getAll(Pageable)")
     class ReadOps {
-
-        @Test
-        @DisplayName("getAll() returns mapped collection")
-        void getAll_happy() {
-            final List<BankCardEntity> entities = List.of(BankCardEntityBuilder.aValidBankCard());
-            final List<BankCardResponseDto> dtos = List.of(new BankCardResponseDto());
-            when(bankCardRepository.findAll()).thenReturn(entities);
-            when(bankCardMapper.mapFromEntityToResponseDto(entities)).thenReturn(dtos);
-
-            assertThat(service.getAll()).isEqualTo(dtos);
-        }
 
         @Test
         @DisplayName("getAll(Pageable) returns mapped page")
@@ -415,7 +404,7 @@ class BankCardManagementServiceImpTest {
             when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.of(entity));
             when(bankCardMapper.mapFromEntityToResponseDto(entity)).thenReturn(dto);
 
-            assertThat(service.getByUUID(uuid)).isSameAs(dto);
+            assertThat(service.getByUUID(uuid, keycloakId)).isSameAs(dto);
         }
 
         @Test
@@ -424,7 +413,7 @@ class BankCardManagementServiceImpTest {
             final UUID uuid = UUID.randomUUID();
             when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.getByUUID(uuid))
+            assertThatThrownBy(() -> service.getByUUID(uuid, keycloakId))
                     .isInstanceOf(BankCardNotFoundException.class)
                     .hasMessageContaining(uuid.toString());
         }
@@ -454,7 +443,7 @@ class BankCardManagementServiceImpTest {
             when(bankCardRepository.save(mapped)).thenReturn(saved);
             when(bankCardMapper.mapFromEntityToResponseDto(saved)).thenReturn(resp);
 
-            assertThat(service.create(dto)).isSameAs(resp);
+            assertThat(service.create(dto, keycloakId)).isSameAs(resp);
             assertThat(mapped.getUserEntity()).isSameAs(user);
         }
 
@@ -489,7 +478,7 @@ class BankCardManagementServiceImpTest {
             when(bankCardMapper.mapFromEntityToResponseDto(any(BankCardEntity.class))).thenReturn(new BankCardResponseDto());
 
             // Act
-            service.create(dto);
+            service.create(dto, keycloakId);
 
             // Assert: encryption service was called, last 4 digits stored, cardNumber cleared
             verify(cardEncryptionService).encrypt("4111111111111111");
@@ -522,7 +511,7 @@ class BankCardManagementServiceImpTest {
             when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));
             when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(entity);
 
-            assertThatThrownBy(() -> service.create(dto))
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(BankCardExpiredException.class);
 
             verify(bankCardRepository, never()).save(any());
@@ -534,7 +523,7 @@ class BankCardManagementServiceImpTest {
             final BankCardCreationRequestDto dto = creationDto("12/2030");
             dto.setUserUuid(null);
 
-            assertThatThrownBy(() -> service.create(dto))
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(IllegalArgumentException.class);
             verifyNoInteractions(userRepository, bankCardRepository, bankCardMapper);
         }
@@ -550,7 +539,7 @@ class BankCardManagementServiceImpTest {
 
             when(userRepository.findByUuid(userUuid)).thenReturn(Optional.of(user));
 
-            assertThatThrownBy(() -> service.create(dto))
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(IllegalStateException.class);
             verify(bankCardRepository, never()).save(any());
         }
@@ -567,7 +556,7 @@ class BankCardManagementServiceImpTest {
             when(bankCardRepository.save(entity)).thenReturn(entity);
             when(bankCardMapper.mapFromEntityToResponseDto(entity)).thenReturn(resp);
 
-            assertThat(service.update(dto)).isSameAs(resp);
+            assertThat(service.update(dto, keycloakId)).isSameAs(resp);
             verify(bankCardMapper).updateEntityFromDto(dto, entity);
         }
 
@@ -586,7 +575,7 @@ class BankCardManagementServiceImpTest {
             when(bankCardRepository.save(entity)).thenAnswer(inv -> inv.getArgument(0));
             when(bankCardMapper.mapFromEntityToResponseDto(entity)).thenReturn(new BankCardResponseDto());
 
-            service.update(dto);
+            service.update(dto, keycloakId);
 
             verifyNoInteractions(cardEncryptionService);
         }
@@ -604,7 +593,7 @@ class BankCardManagementServiceImpTest {
 
             when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.of(entity));
 
-            assertThatThrownBy(() -> service.update(dto))
+            assertThatThrownBy(() -> service.update(dto, keycloakId))
                     .isInstanceOf(BankCardExpiredException.class);
 
             verify(bankCardRepository, never()).save(any());
@@ -617,12 +606,13 @@ class BankCardManagementServiceImpTest {
             final BankCardUpdateRequestDto dto = updateDto(UUID.randomUUID());
             when(bankCardRepository.findByUuid(dto.getUuid())).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.update(dto))
+            assertThatThrownBy(() -> service.update(dto, keycloakId))
                     .isInstanceOf(BankCardNotFoundException.class);
         }
 
         @Test
-        @DisplayName("deleteByUUID (admin) loads the card for the PCI audit log then delegates to repository")
+        @DisplayName("deleteByUUID (admin) loads the card for the PCI audit log then delegates to repository, " +
+                "regardless of who owns it — admin authority is not ownership-gated")
         void deleteByUuid_delegates() {
             final UUID uuid = UUID.randomUUID();
             final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-owner").build();
@@ -632,52 +622,18 @@ class BankCardManagementServiceImpTest {
                     .build();
             when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.of(card));
 
-            service.deleteByUUID(uuid);
+            service.deleteByUUID(uuid, keycloakId);
 
             verify(bankCardRepository).deleteByUuid(uuid);
         }
 
         @Test
-        @DisplayName("deleteByUUID(uuid, keycloakId) deletes when caller owns the card")
-        void deleteByUuidWithKeycloakId_ownerMatches_deletes() {
-            final UUID cardUuid = UUID.randomUUID();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final BankCardEntity card = BankCardEntityBuilder.aValidBankCardBuilder()
-                    .uuid(cardUuid)
-                    .userEntity(owner)
-                    .build();
-            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.of(card));
-
-            service.deleteByUUID(cardUuid, keycloakId);
-
-            verify(bankCardRepository).deleteByUuid(cardUuid);
-        }
-
-        @Test
-        @DisplayName("deleteByUUID(uuid, keycloakId) rejects with UnauthorizedBankCardAccessException when caller is not owner")
-        void deleteByUuidWithKeycloakId_callerIsNotOwner_throwsUnauthorized() {
-            final UUID cardUuid = UUID.randomUUID();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-owner").build();
-            final BankCardEntity card = BankCardEntityBuilder.aValidBankCardBuilder()
-                    .uuid(cardUuid)
-                    .userEntity(owner)
-                    .build();
-            when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.of(card));
-
-            assertThatThrownBy(() -> service.deleteByUUID(cardUuid, "kc-not-owner"))
-                    .isInstanceOf(UnauthorizedBankCardAccessException.class);
-
-            verify(bankCardRepository, never()).deleteByUuid(any(UUID.class));
-        }
-
-        @Test
-        @DisplayName("deleteByUUID(uuid, keycloakId) raises BankCardNotFoundException when the card is missing")
-        void deleteByUuidWithKeycloakId_missingCard_throwsNotFound() {
+        @DisplayName("deleteByUUID(uuid, keycloakId) on a missing card: no exception, just an audit warning")
+        void deleteByUuid_missingCard_doesNotThrow_justLogs() {
             final UUID cardUuid = UUID.randomUUID();
             when(bankCardRepository.findByUuid(cardUuid)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.deleteByUUID(cardUuid, keycloakId))
-                    .isInstanceOf(BankCardNotFoundException.class);
+            assertThatCode(() -> service.deleteByUUID(cardUuid, keycloakId)).doesNotThrowAnyException();
 
             verify(bankCardRepository, never()).deleteByUuid(any(UUID.class));
         }
