@@ -3,7 +3,6 @@ import os
 import re
 import json
 import requests
-import boto3
 import logging
 
 # -----------------------------
@@ -18,18 +17,7 @@ PASSWORD = "admin"
 
 API_URL = "http://localhost:8081/api/v1/services/admin/management/product/create-with-image"
 
-BUCKET = "cybertech-products"
-S3_PREFIX = "products/images/"
 PRODUCTS_JSON = "products.json"
-
-# LocalStack S3 client
-s3 = boto3.client(
-    "s3",
-    endpoint_url="http://localhost:4566",
-    aws_access_key_id="test",
-    aws_secret_access_key="test",
-    region_name="us-east-1"
-)
 
 # -----------------------------
 # LOGGING
@@ -44,12 +32,6 @@ log = logging.getLogger()
 # -----------------------------
 # UTILS
 # -----------------------------
-def sanitize_filename(name: str) -> str:
-    name = name.strip().upper()
-    name = re.sub(r"[^A-Z0-9]+", "_", name)
-    return name[:60]
-
-
 def extract_brand(product_name):
     name_upper = product_name.upper()
 
@@ -63,9 +45,10 @@ def extract_brand(product_name):
     return "ASUS"  # fallback safe
 
 
-def map_attributes_ldlc_to_computer(raw, product_brand):
+def map_attributes_ldlc_to_computer(raw):
     """
-    Convertit les attributs LDLC en ComputerAttributes conformes.
+    Convertit les attributs LDLC en attributs conformes au JSON Schema
+    de la catégorie COMPUTER (ProductCategorySchemaEntity).
     """
     def extract_int(value):
         if not value:
@@ -155,9 +138,6 @@ def map_attributes_ldlc_to_computer(raw, product_brand):
             or raw.get("memory")
         )
 
-    def map_brand(product_brand):
-        return product_brand
-
 
     return {
         "cpu": map_cpu(raw),
@@ -167,7 +147,6 @@ def map_attributes_ldlc_to_computer(raw, product_brand):
         "connectivity": map_connectivity(raw),
         "displayType": map_display_type(raw),
         "memory": map_memory(raw),
-        "brand": map_brand(product_brand)
     }
 
 
@@ -197,49 +176,27 @@ def get_access_token():
 
 
 # -----------------------------
-# 2. Bucket S3
+# 2. Envoi API Spring
 # -----------------------------
-def ensure_bucket():
-    try:
-        s3.create_bucket(Bucket=BUCKET)
-        log.info(f"🪣 Bucket créé : {BUCKET}")
-    except Exception:
-        log.info(f"🪣 Bucket déjà existant : {BUCKET}")
-
-
-# -----------------------------
-# 3. Upload S3
-# -----------------------------
-def upload_image_to_s3(local_path, filename):
-    key = S3_PREFIX + filename
-    log.info(f"⬆️ Upload S3 : {key}")
-
-    s3.upload_file(local_path, BUCKET, key)
-
-    return f"http://localhost:4566/{BUCKET}/{key}"
-
-
-# -----------------------------
-# 4. Envoi API Spring
-# -----------------------------
+# L'upload S3 est fait côté backend (ProductManagementServiceImp.createWithImage
+# -> S3Service.uploadFile), qui écrase de toute façon le champ "photo" du DTO
+# avec l'URL réelle une fois l'image reçue : pas besoin d'uploader nous-mêmes.
 def send_product_to_api(product, token):
     headers = {
         "Authorization": f"Bearer {token}"
     }
 
     local_image_path = product["images"][0]
-    s3_photo = product["s3Images"][0]
     brand = extract_brand(product["name"])
 
-    # Mapping attributes LDLC → ComputerAttributes
-    mapped_attributes = map_attributes_ldlc_to_computer(product["attributes"], brand)
+    mapped_attributes = map_attributes_ldlc_to_computer(product["attributes"])
 
     product_dto = {
         "name": product["name"],
         "price": product["price"],
         "brand": brand,
         "category": "COMPUTER",
-        "photo": s3_photo,
+        "photo": os.path.basename(local_image_path),  # placeholder, écrasé par le backend
         "stock": 10000,
         "description": product["description"],
         "attributes": mapped_attributes
@@ -270,7 +227,6 @@ def main():
     log.info("🚀 Démarrage ingestion complète")
 
     token = get_access_token()
-    ensure_bucket()
 
     with open(PRODUCTS_JSON, "r", encoding="utf-8") as f:
         products = json.load(f)
@@ -279,16 +235,6 @@ def main():
         log.info("\n==============================")
         log.info(f"🖥️  Traitement : {p['name']}")
         log.info("==============================")
-
-        new_image_urls = []
-        base_slug = sanitize_filename(p["name"])
-
-        for i, img_path in enumerate(p["images"]):
-            filename = f"{base_slug}_{i}.jpg"
-            s3_url = upload_image_to_s3(img_path, filename)
-            new_image_urls.append(s3_url)
-
-        p["s3Images"] = new_image_urls
 
         send_product_to_api(p, token)
 
