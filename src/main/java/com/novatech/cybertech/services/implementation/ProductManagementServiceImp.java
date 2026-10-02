@@ -31,7 +31,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ProductManagementServiceImp implements ProductManagementService {
 
-    public static final String PRODUCTS_S3_BUCKET_NAME = "products";
+    public static final String PRODUCTS_S3_BUCKET_NAME = "cybertech-products";
 
     private final S3Service s3Service;
     private final ProductMapper productMapper;

@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static com.novatech.cybertech.services.implementation.ProductManagementServiceImp.PRODUCTS_S3_BUCKET_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -134,8 +135,8 @@ class ProductManagementServiceImpTest {
             MockMultipartFile file1 = new MockMultipartFile("images", "p1.jpg", "image/jpeg", new byte[]{1, 2, 3});
             MockMultipartFile file2 = new MockMultipartFile("images", "p2.jpg", "image/jpeg", new byte[]{4, 5, 6});
 
-            when(s3Service.uploadFile(file1, "products")).thenReturn("https://s3/p1.jpg");
-            when(s3Service.uploadFile(file2, "products")).thenReturn("https://s3/p2.jpg");
+            when(s3Service.uploadFile(file1, PRODUCTS_S3_BUCKET_NAME)).thenReturn("https://s3/p1.jpg");
+            when(s3Service.uploadFile(file2, PRODUCTS_S3_BUCKET_NAME)).thenReturn("https://s3/p2.jpg");
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
@@ -146,8 +147,8 @@ class ProductManagementServiceImpTest {
             service.createWithImage(req, List.of(file1, file2), "kc-admin");
 
             assertThat(mapped.getPhotos()).containsExactly("https://s3/p1.jpg", "https://s3/p2.jpg");
-            verify(s3Service).uploadFile(file1, "products");
-            verify(s3Service).uploadFile(file2, "products");
+            verify(s3Service).uploadFile(file1, PRODUCTS_S3_BUCKET_NAME);
+            verify(s3Service).uploadFile(file2, PRODUCTS_S3_BUCKET_NAME);
         }
 
         @Test
@@ -191,7 +192,7 @@ class ProductManagementServiceImpTest {
             MockMultipartFile real = new MockMultipartFile("images", "p1.jpg", "image/jpeg", new byte[]{1, 2, 3});
             MockMultipartFile empty = new MockMultipartFile("images", "empty.jpg", "image/jpeg", new byte[0]);
 
-            when(s3Service.uploadFile(real, "products")).thenReturn("https://s3/p1.jpg");
+            when(s3Service.uploadFile(real, PRODUCTS_S3_BUCKET_NAME)).thenReturn("https://s3/p1.jpg");
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
@@ -202,7 +203,7 @@ class ProductManagementServiceImpTest {
             service.createWithImage(req, List.of(real, empty), "kc-admin");
 
             assertThat(mapped.getPhotos()).containsExactly("https://s3/p1.jpg");
-            verify(s3Service, never()).uploadFile(empty, "products");
+            verify(s3Service, never()).uploadFile(empty, PRODUCTS_S3_BUCKET_NAME);
         }
     }
 

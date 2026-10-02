@@ -60,8 +60,8 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
         // A missing NO_DISCOUNT row used to break every placeOrder call with
         // DiscountTypeNotActiveException — there is nothing to look up here.
         if (NO_DISCOUNT_KEY.equals(discountKey)) {
-            final BigDecimal finalAmount = baseAmount.add(shippingCost)
-                    .setScale(2, RoundingMode.HALF_UP);
+            final BigDecimal finalAmount = baseAmount.add(shippingCost).setScale(2, RoundingMode.HALF_UP);
+
             return PriceCalculationResultDto.builder()
                     .baseAmount(baseAmount)
                     .discountAmount(zero())
@@ -101,11 +101,10 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
     private BigDecimal computeShippingCost(final PriceCalculationRequestDto request) {
         final ShippingProviderService shippingStrategy = shippingProviderStrategyFactory.getStrategy(request.getShippingProvider());
         if (shippingStrategy == null) {
-            throw new NoStrategyFoundForProcessingTheRequest(
-                    NO_SHIPPING_STRATEGY_MESSAGE_PREFIX + request.getShippingProvider());
+            throw new NoStrategyFoundForProcessingTheRequest(NO_SHIPPING_STRATEGY_MESSAGE_PREFIX + request.getShippingProvider());
         }
-        return shippingStrategy.calculateShippingCost(request.getShippingType())
-                .setScale(2, RoundingMode.HALF_UP);
+
+        return shippingStrategy.calculateShippingCost(request.getShippingType()).setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal computeDiscount(final BigDecimal baseAmount,

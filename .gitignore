@@ -34,3 +34,6 @@ build/
 
 ### Secrets ###
 .env
+
+### Docker local runtime volumes ###
+src/main/resources/docker/mailpit-data/
