@@ -48,8 +48,11 @@ public class KeycloakOutboxServiceImp implements KeycloakOutboxService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public UUID recordCreatePending(final String email) {
         final KeycloakOutboxEntity row = KeycloakOutboxEntity.builder()
-                .operationType(OutboxOperationType.CREATE).status(OutboxStatus.PENDING)
-                .email(email).attempts(0).build();
+                .operationType(OutboxOperationType.CREATE)
+                .status(OutboxStatus.PENDING)
+                .email(email)
+                .attempts(0)
+                .build();
         return outboxRepository.save(row).getUuid();
     }
 

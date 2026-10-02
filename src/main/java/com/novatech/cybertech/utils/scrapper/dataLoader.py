@@ -13,7 +13,7 @@ CLIENT_ID = "cybertech-user-management-client"
 CLIENT_SECRET = "rPKnibr1m14c2Oit4XybU1AhhIbuZVtt"
 
 USERNAME = "hideyoshi.tanaseda"
-PASSWORD = "P@ssword123"
+PASSWORD = "password"
 
 API_URL = "http://localhost:8081/api/v1/services/admin/management/product/create-with-image"
 

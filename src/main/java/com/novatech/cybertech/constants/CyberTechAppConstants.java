@@ -2,10 +2,6 @@ package com.novatech.cybertech.constants;
 
 public class CyberTechAppConstants {
 
-    public static final String REGISTRATION_CONTROLLER_BASE_PATH = "/register";
-
-    public static final String AUTHORIZATION_HEADER = "Authorization";
-
     public static final String API_BASE_PATH = "/api/v1";
 
     public static final String USER_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/user";
@@ -13,7 +9,6 @@ public class CyberTechAppConstants {
     public static final String CART_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/cart";
     public static final String USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/user";
     public static final String PRODUCT_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/management/product";
-    public static final String ORDER_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/order";
     public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/review";
     public static final String BANK_CARD_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/bank-card";
     /** Admin-only bank-card back-office. Mirrors the USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH convention. */

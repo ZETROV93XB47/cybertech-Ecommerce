@@ -70,7 +70,6 @@ public class UserManagementServiceImp implements UserManagementService {
             keycloakOutboxService.markFailed(outboxUuid, keycloakFailure.getMessage());
             throw keycloakFailure;
         }
-        log.info("Keycloak id : {}", keycloakId);
 
         // Phase 2 — DB persistence in its own REQUIRES_NEW transaction; compensate if it fails.
         final UserResponseDto saved;
@@ -80,8 +79,7 @@ public class UserManagementServiceImp implements UserManagementService {
             try {
                 keycloakUserManagementService.deleteUser(keycloakId);
             } catch (RuntimeException compensationFailure) {
-                log.error("Compensation failed for keycloakId={} — outbox job will reconcile",
-                        keycloakId, compensationFailure);
+                log.error("Compensation failed for keycloakId={} — outbox job will reconcile", keycloakId, compensationFailure);
             }
             keycloakOutboxService.markFailed(outboxUuid, e.getMessage());
             throw e;
@@ -220,6 +218,7 @@ public class UserManagementServiceImp implements UserManagementService {
         // Phone number isn't on UserUpdateRequestDto — patch directly when supplied. No
         // Keycloak side effect: phone is not synced through KeycloakUserManagementService.
         if (dto.getPhoneNumber() != null) {
+
             loadedUser.setPhoneNumber(dto.getPhoneNumber());
             userRepository.save(loadedUser);
         }
