@@ -1,6 +1,6 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : 2026-09-29 — branche `develop_back`._
+_Dernière mise à jour : 2026-10-02 — branche `develop_back`._
 
 ---
 
@@ -8,7 +8,9 @@ _Dernière mise à jour : 2026-09-29 — branche `develop_back`._
 
 Backend Spring Boot 4 / Java 26 d'une plateforme e-commerce (portfolio, pas enterprise-grade). Une review fonctionnelle complète du projet a été menée par domaine (panier, commande, paiement, bankcard, notifications), plusieurs bugs réels ont été corrigés, puis une branche locale divergente (30 commits d'écart avec `origin/develop_back`, plusieurs recouvrant les mêmes fixes) a été reconciliée : les bugs déjà réglés en amont n'ont pas été retouchés, tout le reste a été mergé, et les apports locaux ont été conservés quand ils apportaient un plus par rapport à `origin`.
 
-État de l'arbre : propre, aucun fichier suivi en attente (le `cybertech-realm-export.json` mentionné dans les anciennes notes de session n'existe plus — le realm Keycloak est désormais importé automatiquement au boot depuis `src/main/resources/keycloak/import/cybertech-realm.json`, committé, secrets de dev en clair assumés).
+État de l'arbre (2026-10-02) : 4 fichiers modifiés localement par le propriétaire, volontairement non committés (`CyberTechAppConstants`, `KeycloakOutboxServiceImp`, `UserManagementServiceImp`, `dataLoader.py`), ainsi que `cybertech-realm-export.json`, non suivi et à ne pas committer. Le realm Keycloak est importé automatiquement au boot depuis `src/main/resources/keycloak/import/cybertech-realm.json`.
+
+Dernière session (2026-10-02) : panier sans CRUD, trace de requête + logs métier, fix `AppConfig` sur les proxies. 2049 tests unitaires verts, `CartFlowIT` + `OrderFlowIT` verts ; la suite IT complète n'a pas été relancée.
 
 Dernière validation complète connue (2026-09-29, après le passage `discountKey`) : `./mvnw verify -Pintegration-test` → BUILD SUCCESS (7:02 min) — 2025 tests unitaires, 56 tests d'intégration, 0 échec, gate JaCoCo respectée (`ProductSearchFlowIT` exécute 0 test, comme avant).
 
@@ -19,6 +21,12 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ## 2. Tâches faites / tâches suivantes
 
 ### Faites (cette phase de travail)
+
+- **2026-10-02 — Panier sans CRUD** (`45e1a2b`) : `POST /cart/create` enregistrait un panier vide (le mapping MapStruct `BaseMapper` ne sait pas transformer `cartItemAddRequestDtos` en lignes et l'ignorait en silence). `/cart/create`, `DELETE /cart/delete/{uuid}` et `GET /cart/get/{uuid}` ont été supprimés, puisque `/cart/add` crée le panier au premier ajout et que `/cart/clear` + `/cart/get` couvrent le reste. `CartService` n'étend plus `CrudBaseService` et `CartMapper` n'étend plus `BaseMapper`. Postman, la spec OpenAPI et les tests (dont `CartFlowIT`, dont l'IDOR cible maintenant `PATCH /cart/update/{uuid}`) ont été mis à jour.
+- **2026-10-02 — Trace de requête lisible** (`351a09e`) : `LoggingFilter` passe en tête de chaîne (avant Spring Security). Il écrit une ligne `→` en entrée et une ligne `← status (ms) user=` en sortie, utilise un `requestId` court (8 caractères) et renvoie le header `X-Request-Id`. Le nouvel aspect `logger/RequestTraceAspect` produit l'arbre d'appels indenté `▶`/`◀` (controllers, services, delegates, validators, listeners, dispatchers, clients, batch) avec les durées. Une erreur est loggée une seule fois, au frame qui l'a levée, et le verdict du handler d'erreur tient sur une ligne `✖ status type — Exception: message`. Les jobs et listeners hors requête reçoivent un id `bg-xxxxxxxx`. `@NotTraced` exclut la plomberie. `LogTraceUtils` affiche les ids, jamais le contenu des DTO. Logback place le `requestId` juste après le niveau en dev et l'exporte en JSON en prod.
+- **2026-10-02 — Bug latent corrigé dans `AppConfig`** : les maps de stratégies lisaient l'annotation via `bean.getClass().getAnnotation(..)`, qui renvoie `null` sur un proxy CGLIB. `StripePaymentAttemptProcessor` (proxifié par Resilience4j) sortait donc vraisemblablement de `paymentServiceMap` en prod. Les ITs ne le voyaient pas parce qu'ils surchargent cette map. Le lookup passe maintenant par `AopUtils.getTargetClass` + `AnnotationUtils.findAnnotation`, couvert par `AppConfigStrategyMapTest`.
+- **2026-10-02 — Logs métier** (`1d1c32e`) : panier, commande, produit, wishlist, carte bancaire et reviews ont des lignes « ce qui s'est passé » (quantités, totaux, statuts de paiement). Les keycloakIds sont masqués partout, les dumps de DTO/entités ont été retirés (le controller de commande loggait l'adresse de livraison). Au passage, un même produit envoyé deux fois dans `/cart/add` renvoyait un 500 (`Collectors.toMap`) : les quantités sont maintenant additionnées.
+- Validation : 2049 tests unitaires verts, `CartFlowIT` + `OrderFlowIT` verts avec l'aspect actif (contexte Spring réel). La suite IT complète n'a pas été relancée.
 
 - **Double-débit sur `retryPayment`** : garde ajoutée contre un nouveau paiement si un `PaymentAttempt` `SUCCESS`/`PROCESSING` existe déjà pour la commande (`OrderManagementServiceImp`, exception `PaymentAlreadyCompletedForThisOrderException`).
 - **`updateOrder` pouvait passer en `PAID` gratuitement** : garde `OrderNotFundedException` ajoutée sur la branche zéro-delta avant `stockService.commitStock`.
@@ -87,6 +95,13 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### À faire / pistes ouvertes (non traitées, non priorisées)
 
+- **Audit `CrudBaseService` (2026-10-02), en attente de décision du propriétaire** :
+  - `BankCardManagementService` : les 4 méthodes CRUD ne servent qu'à `BankCardAdminController` (`/admin/.../bank-card/*`). `create` (un admin qui saisit le PAN d'un client) et `update` n'ont pas de cas d'usage légitime ; `getAll`, `getByUUID` et `deleteByUUID` (audit PCI) en ont un. `findAllMine` et `getDefaultCard` font doublon (1 carte par user). Proposition : retirer `create`/`update` admin et l'héritage `CrudBaseService`.
+  - `ProductManagementService` : les 4 méthodes sont pertinentes (catalogue admin). `/create` (JSON) et `/create-with-image` font doublon : on peut rendre `images` optionnel et ne garder qu'un endpoint. La vérification « UUID du path = UUID du body » vit dans le controller (contraire à la règle « controllers propres »).
+  - `UserManagementService` : les 4 méthodes sont utilisées et pertinentes. Points annexes : le contrôle d'accès « owner ou admin » de `GET /user/get/{uuid}` est dans le controller, il n'existe pas de `GET /user/me`, `/user/ok` est un ping de debug et `/admin/.../register/auto/single` un helper de dev.
+- `S3ServiceImp` : la clé S3 est préfixée par le nom du bucket (`cybertech-products/<uuid>_<nom>.jpg` dans le bucket `cybertech-products`), ce qui est redondant.
+- `dataLoader.py` / `laptopScrapper.py` : les noms d'images ne dépendent que du titre, donc deux produits au même titre s'écrasent les photos et le loader les envoie deux fois (constaté le 2026-10-02, non corrigé).
+
 
 - **Limite connue, non traitée** : un remboursement `pending` qui échoue ENSUITE chez Stripe (événement `charge.refund.updated` / `refund.failed`) n'est pas écouté — la ligne `REFUND` reste `PROCESSING` et compte comme remboursée. Rare pour des cartes.
 
@@ -110,6 +125,9 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ---
 
 ## 3. Remarques
+
+- **Request trace : pièges Spring AOP rencontrés (2026-10-02)** : (1) la syntaxe `within(pkg..)` ne matche rien, il faut `within(pkg..*)` ; (2) un aspect en `HIGHEST_PRECEDENCE` passe avant l'`ExposeInvocationInterceptor`, et un `@AfterReturning` y lève « No MethodInvocation found ». Avec l'advice sur `ErrorManagementController`, tous les `@ExceptionHandler` échouaient. D'où `TRACE_ORDER = HIGHEST_PRECEDENCE + 2` ; (3) toute classe dans un package tracé devient un proxy CGLIB, donc ne jamais lire ses annotations via `bean.getClass()` ; (4) un bean ré-exposé sous un second nom (`orderValidatorChain`) est proxifié deux fois, et l'aspect ignore le proxy externe. Pour couper la trace : `logging.level.com.novatech.cybertech.logger.RequestTraceAspect=WARN`.
+- **Lire les logs** : `grep <requestId>` donne toute l'histoire d'une requête, de `→` à `←`, threads `@Async` compris (le MDC est copié par le `TaskDecorator`). Le requestId est aussi renvoyé dans le header `X-Request-Id`, ce qui permet de partir d'une réponse Postman. Les `?` dans la sortie Maven sous Windows sont un artefact d'encodage de la console : logback écrit bien de l'UTF-8 (`▶ ◀ ✖ → ←`).
 
 - **Philosophie de merge utilisée** : ne jamais retoucher un bug déjà résolu côté `origin`, merger le reste, garder les apports locaux uniquement quand ils dépassent ce qu'`origin` proposait. À reproduire si une nouvelle divergence de branche survient.
 - **Panier / cohérence transactionnelle** : la vraie raison de garder le panier en MySQL (plutôt qu'un KV/DynamoDB plus simple pour l'incrément atomique) est que `placeOrder` lit le panier via `user.getCartEntity()` dans la même transaction JPA que la création de commande et le décrément de stock (`OrderManagementServiceImp` ~ligne 498). Sortir le panier de MySQL introduirait un problème de cohérence cross-store exactement au point du système où la rigueur compte le plus. Ne pas relancer cette discussion sans revérifier ce couplage.
