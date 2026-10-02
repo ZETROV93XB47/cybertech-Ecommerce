@@ -8,7 +8,7 @@ _Dernière mise à jour : 2026-10-02 — branche `develop_back`._
 
 Backend Spring Boot 4 / Java 26 d'une plateforme e-commerce (portfolio, pas enterprise-grade). Une review fonctionnelle complète du projet a été menée par domaine (panier, commande, paiement, bankcard, notifications), plusieurs bugs réels ont été corrigés, puis une branche locale divergente (30 commits d'écart avec `origin/develop_back`, plusieurs recouvrant les mêmes fixes) a été reconciliée : les bugs déjà réglés en amont n'ont pas été retouchés, tout le reste a été mergé, et les apports locaux ont été conservés quand ils apportaient un plus par rapport à `origin`.
 
-État de l'arbre (2026-10-02) : 4 fichiers modifiés localement par le propriétaire, volontairement non committés (`CyberTechAppConstants`, `KeycloakOutboxServiceImp`, `UserManagementServiceImp`, `dataLoader.py`), ainsi que `cybertech-realm-export.json`, non suivi et à ne pas committer. Le realm Keycloak est importé automatiquement au boot depuis `src/main/resources/keycloak/import/cybertech-realm.json`.
+État de l'arbre (2026-10-02) : propre. Seul `cybertech-realm-export.json` reste non suivi, volontairement non committé. Le realm Keycloak est importé automatiquement au boot depuis `src/main/resources/keycloak/import/cybertech-realm.json`.
 
 Dernière session (2026-10-02) : panier sans CRUD, trace de requête + logs métier, fix `AppConfig` sur les proxies. 2049 tests unitaires verts, `CartFlowIT` + `OrderFlowIT` verts ; la suite IT complète n'a pas été relancée.
 
