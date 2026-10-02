@@ -27,7 +27,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  * and is mounted under {@code /api/v1/services/admin/discounts}. Every endpoint is
  * guarded server-side by {@code @PreAuthorize("hasRole('ADMIN')")}.
  */
-@Tag(name = "DiscountAdminController", description = "Admin discount/campaign management endpoints")
+@Tag(name = "Discount Admin", description = "Admin discount/campaign management endpoints")
 public interface DiscountAdminControllerApiSpec {
 
     @Operation(

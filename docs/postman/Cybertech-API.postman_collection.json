@@ -112,7 +112,7 @@
               "status": "Created",
               "code": 201,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"id\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"keycloakId\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\"\n}"
+              "body": "{\n  \"id\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"email\": \"jane.doe@example.com\",\n  \"username\": \"jane.doe\"\n}"
             },
             {
               "name": "409 Email already exists",
@@ -125,7 +125,7 @@
               "status": "Conflict",
               "code": 409,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"errorCode\": \"USER_ALREADY_EXISTS\",\n  \"message\": \"A user with email taken@example.com already exists\",\n  \"timestamp\": \"2026-04-25T10:00:00\"\n}"
+              "body": "{\n  \"message\": \"A user with email taken@example.com already exists\",\n  \"httpStatusCode\": 409,\n  \"errorCodeType\": \"FUNCTIONAL\"\n}"
             }
           ]
         },
@@ -207,9 +207,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"phoneNumber\": \"+33611111111\",\n  \"address\": \"42 rue Selfservice\"\n}"
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"phoneNumber\": \"+33611111111\",\n  \"street\": \"42 rue Selfservice\",\n  \"city\": \"Lyon\",\n  \"zipCode\": \"69001\",\n  \"country\": \"France\"\n}"
             },
-            "description": "Self-service profile patch (Frontend-gap #3). Only firstName/lastName/phoneNumber/address are mutable here — email, role and status are Keycloak/admin-owned and off-limits by design (see UserSelfUpdateRequestDto). Caller identity is resolved from the JWT subject, not the body.\n\n- Roles: USER or ADMIN\n- Success: 200 with the refreshed `UserResponseDto`."
+            "description": "Self-service profile patch (Frontend-gap #3). Only firstName/lastName/phoneNumber and the address (street/city/zipCode/country) are mutable here — email, role and status are Keycloak/admin-owned and off-limits by design (see UserSelfUpdateRequestDto). Caller identity is resolved from the JWT subject, not the body.\n\n- Roles: USER or ADMIN\n- Success: 200 with the refreshed `UserResponseDto`."
           },
           "event": [
             {
@@ -303,9 +303,44 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"uuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"sex\": \"F\",\n  \"email\": \"jane.smith@example.com\",\n  \"address\": \"22 Rue de Rivoli\",\n  \"birthDate\": \"1995-04-15T00:00:00\"\n}"
+              "raw": "{\n  \"uuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"sex\": \"F\",\n  \"email\": \"jane.smith@example.com\",\n  \"street\": \"22 Rue de Rivoli\",\n  \"city\": \"Paris\",\n  \"zipCode\": \"75001\",\n  \"country\": \"France\",\n  \"birthDate\": \"1995-04-15T00:00:00\"\n}"
             },
             "description": "PATCH user fields. Only the fields supplied are updated.\n\n- Role: ADMIN\n- Success: 200 with the refreshed `UserResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Change user role (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/user/update-role/:userUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "user", "update-role", ":userUuid"],
+              "variable": [
+                { "key": "userUuid", "value": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"ADMIN\"\n}"
+            },
+            "description": "Promote / demote a user (USER <-> ADMIN). Keycloak is updated first, then the DB, through the same outbox saga as the admin user update.\n\n- Role: ADMIN\n- Success: 200 with the refreshed `UserResponseDto`.\n- Errors: 404 unknown user."
           },
           "event": [
             {
@@ -526,7 +561,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Dell XPS 15\",\n  \"price\": 2499.99,\n  \"brand\": \"DELL\",\n  \"category\": \"COMPUTER\",\n  \"photo\": \"https://images.cybertech.local/xps15.jpg\",\n  \"stock\": 50,\n  \"description\": \"15-inch OLED, 32GB RAM, 1TB SSD, RTX 4070\",\n  \"attributes\": {\n    \"cpu\": \"Intel Core i9-13900H\",\n    \"gpu\": \"NVIDIA RTX 4070\",\n    \"ram\": 32,\n    \"os\": \"Windows 11\",\n    \"connectivity\": \"WiFi 6E/Bluetooth 5.3\",\n    \"displayType\": \"OLED\",\n    \"memory\": 1024\n  }\n}"
+              "raw": "{\n  \"name\": \"Dell XPS 15\",\n  \"price\": 2499.99,\n  \"brand\": \"DELL\",\n  \"category\": \"COMPUTER\",\n  \"stock\": 50,\n  \"description\": \"15-inch OLED, 32GB RAM, 1TB SSD, RTX 4070\",\n  \"attributes\": {\n    \"cpu\": \"Intel Core i9-13900H\",\n    \"gpu\": \"NVIDIA RTX 4070\",\n    \"ram\": 32,\n    \"os\": \"Windows 11\",\n    \"connectivity\": \"WiFi 6E/Bluetooth 5.3\",\n    \"displayType\": \"OLED\",\n    \"memory\": 1024\n  }\n}"
             },
             "description": "Create a new product. `attributes` is validated against the `COMPUTER` category's JSON Schema (see the Product Category Schemas folder) — indexed in Elasticsearch on commit.\n\n- Role: ADMIN\n- Success: 201 with `ProductResponseDto`.\n- Errors: 400 if `attributes` fails the category's schema (`ProductConstraintsViolationException`)."
           },
@@ -561,7 +596,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n  \"name\": \"Dell XPS 15 (2026 refresh)\",\n  \"price\": 2399.00,\n  \"brand\": \"DELL\",\n  \"category\": \"COMPUTER\",\n  \"photo\": \"https://images.cybertech.local/xps15.jpg\",\n  \"stock\": 60,\n  \"description\": \"Refreshed XPS 15 with Intel Core Ultra 9.\"\n}"
+              "raw": "{\n  \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n  \"name\": \"Dell XPS 15 (2026 refresh)\",\n  \"price\": 2399.00,\n  \"brand\": \"DELL\",\n  \"category\": \"COMPUTER\",\n  \"photos\": [\"https://images.cybertech.local/xps15.jpg\"],\n  \"stock\": 60,\n  \"description\": \"Refreshed XPS 15 with Intel Core Ultra 9.\"\n}"
             },
             "description": "PATCH product. Path UUID and body UUID must match (the controller throws `IllegalArgumentException` otherwise).\n\n- Role: ADMIN\n- Success: 200 with `ProductResponseDto`.\n- Errors: 400 if UUIDs mismatch."
           },
@@ -861,7 +896,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"paymentType\": \"VISA\",\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"shippingStreet\": \"21 Rue du Test\",\n  \"shippingCity\": \"Paris\",\n  \"shippingZipCode\": \"75001\",\n  \"shippingCountry\": \"France\",\n  \"discountType\": \"NO_DISCOUNT\"\n}"
+              "raw": "{\n  \"paymentType\": \"VISA\",\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"shippingStreet\": \"21 Rue du Test\",\n  \"shippingCity\": \"Paris\",\n  \"shippingZipCode\": \"75001\",\n  \"shippingCountry\": \"France\",\n  \"discountKey\": \"NO_DISCOUNT\"\n}"
             },
             "description": "Place an order from the user's existing cart. Identity comes from the JWT subject (no `userUuid` accepted).\n\n- Roles: USER or ADMIN\n- Success: 201 with `OrderResponseDto`.\n- Errors: 400 empty cart, 402 payment failure, 409 stock conflict."
           },
@@ -887,7 +922,7 @@
               "status": "Created",
               "code": 201,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"uuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\",\n  \"status\": \"PENDING\",\n  \"totalAmount\": 2499.99,\n  \"paymentType\": \"VISA\",\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"discountType\": \"NO_DISCOUNT\",\n  \"clientSecret\": \"pi_3O...secret_abc\"\n}"
+              "body": "{\n  \"uuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\",\n  \"userUuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"orderDate\": \"2026-10-02\",\n  \"status\": \"PAID\",\n  \"totalAmount\": 2514.99,\n  \"refundedAmount\": 0,\n  \"shippingAddress\": \"21 Rue du Test, 75001 Paris, France\",\n  \"orderItems\": [\n    {\n      \"orderItemUuid\": \"01a0fd1e-fc5c-772c-b23c-51af471b3da9\",\n      \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n      \"productName\": \"Dell XPS 15\",\n      \"quantity\": 1,\n      \"unitPrice\": 2499.99,\n      \"lineItemTotalPrice\": 2499.99\n    }\n  ]\n}"
             }
           ]
         },
@@ -1707,21 +1742,21 @@
           "response": []
         },
         {
-          "name": "Admin: get campaign by DiscountType",
+          "name": "Admin: get campaign by key",
           "request": {
             "method": "GET",
             "header": [
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/admin/discounts/:discountType",
+              "raw": "{{base_url}}/api/v1/services/admin/discounts/:discountKey",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "admin", "discounts", ":discountType"],
+              "path": ["api", "v1", "services", "admin", "discounts", ":discountKey"],
               "variable": [
-                { "key": "discountType", "value": "BLACK_FRIDAY" }
+                { "key": "discountKey", "value": "BLACK_FRIDAY" }
               ]
             },
-            "description": "ADMIN: load one campaign. Allowed values: `BUY_ONE_GET_ONE_FREE`, `BLACK_FRIDAY`, `WINTER_SALES`, `SPRING_SALES`, `NO_DISCOUNT`.\n\n- Role: ADMIN\n- Success: 200."
+            "description": "ADMIN: load one campaign by its key. Keys are free-form (created via POST); seeded ones: `NO_DISCOUNT`, `BLACK_FRIDAY`, `WINTER_SALES`, `SPRING_SALES`, `BUY_ONE_GET_ONE_FREE`.\n\n- Role: ADMIN\n- Success: 200."
           },
           "event": [
             {
@@ -1745,11 +1780,11 @@
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/admin/discounts/:discountType",
+              "raw": "{{base_url}}/api/v1/services/admin/discounts/:discountKey",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "admin", "discounts", ":discountType"],
+              "path": ["api", "v1", "services", "admin", "discounts", ":discountKey"],
               "variable": [
-                { "key": "discountType", "value": "BLACK_FRIDAY" }
+                { "key": "discountKey", "value": "BLACK_FRIDAY" }
               ]
             },
             "body": {
@@ -1757,6 +1792,104 @@
               "raw": "{\n  \"enabled\": true,\n  \"calculationType\": \"PERCENTAGE\",\n  \"percentage\": 25.00,\n  \"fixedAmount\": null,\n  \"minOrderAmount\": 100.00,\n  \"maxDiscountAmount\": 500.00,\n  \"startsAt\": \"2026-11-25T00:00:00\",\n  \"endsAt\": \"2026-11-30T23:59:59\",\n  \"priority\": 10\n}"
             },
             "description": "ADMIN: PATCH a campaign. All fields are optional — null means \"do not change\". Cache flushes after a successful write so the next price calculation picks up the new state.\n\n- Role: ADMIN\n- Success: 200 with refreshed `DiscountCampaignResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: create campaign",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/discounts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "discounts"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"discountKey\": \"SUMMER_SALES\",\n  \"calculationType\": \"PERCENTAGE\",\n  \"enabled\": true,\n  \"percentage\": 15.00,\n  \"minOrderAmount\": 50.00,\n  \"maxDiscountAmount\": 200.00,\n  \"startsAt\": \"2027-06-21T00:00:00\",\n  \"endsAt\": \"2027-07-21T23:59:59\",\n  \"priority\": 5\n}"
+            },
+            "description": "ADMIN: register a new discount campaign under a free-form key (no redeploy needed). `discountKey` and `calculationType` are required; the key must not already exist.\n\n- Role: ADMIN\n- Success: 201 with `DiscountCampaignResponseDto`.\n- Errors: 400 invalid payload or key already used."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: delete campaign",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/discounts/:discountKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "discounts", ":discountKey"],
+              "variable": [
+                { "key": "discountKey", "value": "SUMMER_SALES" }
+              ]
+            },
+            "description": "ADMIN: delete a campaign by key.\n\n- Role: ADMIN\n- Success: 204.\n- Errors: 400 unknown key (the service throws `DiscountTypeNotActiveException`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Recommendations",
+      "description": "Personalised product recommendations (Gorse).",
+      "item": [
+        {
+          "name": "My recommendations",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/recommendations/my-recommendations?n=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "recommendations", "my-recommendations"],
+              "query": [
+                { "key": "n", "value": "10" }
+              ]
+            },
+            "description": "Products recommended to the caller by Gorse, resolved to full product DTOs. `n` = how many (default 10).\n\n- Roles: any authenticated user\n- Success: 200 with a list of `ProductResponseDto` (possibly empty)."
           },
           "event": [
             {

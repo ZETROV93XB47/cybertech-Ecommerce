@@ -19,7 +19,7 @@ import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
-@Tag(name = "Bank Card Admin", description = "Admin-only endpoints for bank card CRUD")
+@Tag(name = "Bank Card Admin", description = "Admin-only endpoints to list, read and delete any user's bank card")
 public interface BankCardAdminControllerApiSpec {
 
     @Operation(summary = "Get all bank cards (Admin)",

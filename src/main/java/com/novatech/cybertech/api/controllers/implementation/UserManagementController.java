@@ -9,7 +9,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,7 +55,6 @@ import static org.springframework.http.ResponseEntity.ok;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = USER_CRUD_CONTROLLER_BASE_PATH)
-@Tag(name = "UserController", description = "API for user management")
 public class UserManagementController implements UserControllerApiSpec {
 
     private static final String ACCESS_DENIED_OWN_PROFILE_ONLY = "Access denied: user can only fetch their own profile";
@@ -109,6 +107,7 @@ public class UserManagementController implements UserControllerApiSpec {
      * anonymous-public response is now stripped — it is an identity-system internal that an
      * attacker probing signup must not be able to harvest.</p>
      */
+    @Override
     @PostMapping("/register")
     public ResponseEntity<Map<?, ?>> register(@Valid @RequestBody UserCreateRequestDto userCreateRequestDto) {
         // Public, anonymous endpoint (whitelisted in SecurityConfig#PUBLIC_URLS) — the account

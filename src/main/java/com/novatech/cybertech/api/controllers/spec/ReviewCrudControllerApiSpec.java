@@ -4,6 +4,7 @@ import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
+import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -101,4 +103,16 @@ public interface ReviewCrudControllerApiSpec {
             })
     ResponseEntity<Void> deleteReviewByUuid(final UUID reviewUuid, final Jwt jwt);
 
+    @Operation(summary = "List the products the caller can review",
+            description = "Products the authenticated user has bought (order PAID, SHIPPED or DELIVERED) and not reviewed yet, with the order to reference in POST /create.",
+            security = @SecurityRequirement(name = "keycloak"),
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Reviewable products (possibly empty)",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ReviewableProductDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - USER role required",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<List<ReviewableProductDto>> getReviewableProducts(final Jwt jwt);
 }

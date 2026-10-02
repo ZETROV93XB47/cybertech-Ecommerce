@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
-@Tag(name = "UserEventController", description = "Ingestion of user interaction events")
+@Tag(name = "User Events", description = "Ingestion of user interaction events")
 public interface UserEventControllerApiSpec {
 
     @Operation(summary = "Ingest a user event",

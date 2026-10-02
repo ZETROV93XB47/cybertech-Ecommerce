@@ -5,7 +5,6 @@ import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.services.core.ProductManagementService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +34,6 @@ import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = PRODUCT_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH)
-@Tag(name = "ProductAdminController", description = "API for Product management (Admin)")
 @PreAuthorize("hasRole('ADMIN')")
 public class ProductManagementAdminController implements ProductManagementAdminApiSpec {
 

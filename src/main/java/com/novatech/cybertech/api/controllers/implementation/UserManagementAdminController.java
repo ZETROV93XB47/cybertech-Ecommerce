@@ -7,7 +7,6 @@ import com.novatech.cybertech.dto.request.user.UserRoleUpdateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import com.novatech.cybertech.services.core.UserManagementService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +40,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 @RequestMapping(version = APP_API_VERSION, value = USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH)
-@Tag(name = "UserAdminController", description = "API for User management (Admin)")
 public class UserManagementAdminController implements UserManagementAdminApiSpec {
 
     // Inject service interface instead of concrete impl per project convention

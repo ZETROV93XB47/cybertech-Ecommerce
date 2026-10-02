@@ -1,6 +1,7 @@
 package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
+import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserSelfUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.UserResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,12 +16,32 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
-@Tag(name = "User", description = "User self-service: signup and read profile by UUID")
+@Tag(name = "User", description = "User self-service: signup, read a profile by UUID and update one's own profile")
 public interface UserControllerApiSpec {
+
+    @Operation(summary = "Public signup",
+            description = """
+                    Anonymous endpoint (whitelisted in SecurityConfig#PUBLIC_URLS). Creates the Keycloak
+                    account and the local user in one saga; the optional nested bank card is stored
+                    encrypted. The response only carries id, email and username — the Keycloak id is
+                    deliberately not exposed to an anonymous caller.
+                    """,
+            security = {},
+            requestBody = @RequestBody(
+                    description = "Signup payload",
+                    required = true,
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserCreateRequestDto.class))),
+            responses = {
+                    @ApiResponse(responseCode = "201", description = "User created — body: {id, email, username}", content = @Content(mediaType = APPLICATION_JSON_VALUE)),
+                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = "A user with this email / username already exists", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<Map<?, ?>> register(final UserCreateRequestDto userCreateRequestDto);
 
     @Operation(summary = "Request a User by UUID",
             description = "Fetches a user's details based on their unique UUID. Non-admin callers may only read their own profile.",

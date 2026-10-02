@@ -17,7 +17,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  * Public (non-admin) contract for reading one category's JSON Schema — e.g. so an admin
  * product-creation form can render its fields dynamically instead of hardcoding them per category.
  */
-@Tag(name = "ProductCategorySchemaController", description = "Public read access to product category JSON Schemas")
+@Tag(name = "Product Category Schema", description = "Public read access to product category JSON Schemas")
 public interface ProductCategorySchemaApiSpec {
 
     @Operation(

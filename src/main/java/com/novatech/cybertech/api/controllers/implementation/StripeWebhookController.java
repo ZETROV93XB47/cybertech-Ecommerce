@@ -5,7 +5,6 @@ import com.novatech.cybertech.services.core.PaymentWebhookService;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.net.Webhook;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,7 +45,6 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.STRIPE_WEBH
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = STRIPE_WEBHOOKS_BASE_PATH)
-@Tag(name = "StripeWebhookController", description = "Stripe Webhook API")
 public class StripeWebhookController implements StripeWebhookApiSpec {
 
     private static final String STRIPE_SIGNATURE_HEADER = "Stripe-Signature";

@@ -22,7 +22,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  * {@code SecurityConfig#PUBLIC_URLS} so anonymous storefront browsing can render the
  * banner / discount picker without an auth token.
  */
-@Tag(name = "DiscountController", description = "Public discount/campaign read endpoints")
+@Tag(name = "Discount", description = "Public discount/campaign read endpoints")
 public interface DiscountControllerApiSpec {
 
     @Operation(

@@ -8,7 +8,6 @@ import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.services.core.OrderManagementService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -34,7 +33,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = ORDER_MANAGEMENT_CONTROLLER_BASE_PATH)
-@Tag(name = "OrderManagementController", description = "API for managing Orders")
 public class OrderManagementController implements OrderManagementControllerApiSpec {
 
     // Inject service interface instead of concrete impl, per project convention.

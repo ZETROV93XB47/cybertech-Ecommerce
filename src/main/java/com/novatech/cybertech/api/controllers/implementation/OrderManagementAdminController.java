@@ -4,7 +4,6 @@ import com.novatech.cybertech.api.controllers.spec.OrderManagementAdminControlle
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.services.core.OrderManagementService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -47,7 +46,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 @RequestMapping(version = APP_API_VERSION, value = ORDER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH)
-@Tag(name = "OrderAdminController", description = "API for Order management (Admin)")
 public class OrderManagementAdminController implements OrderManagementAdminControllerApiSpec {
 
     // Inject service interface instead of concrete impl per project convention

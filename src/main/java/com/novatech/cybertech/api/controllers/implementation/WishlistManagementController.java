@@ -3,7 +3,6 @@ package com.novatech.cybertech.api.controllers.implementation;
 import com.novatech.cybertech.api.controllers.spec.WishlistManagementApiSpec;
 import com.novatech.cybertech.dto.response.wishlist.WishlistResponseDto;
 import com.novatech.cybertech.services.core.WishlistService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,7 +28,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = USER_WISHLIST_CONTROLLER_BASE_PATH)
-@Tag(name = "WishlistController", description = "API for Wishlist management")
 public class WishlistManagementController implements WishlistManagementApiSpec {
 
     private final WishlistService wishlistService;

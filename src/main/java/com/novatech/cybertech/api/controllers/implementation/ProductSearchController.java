@@ -4,7 +4,6 @@ import com.novatech.cybertech.api.controllers.spec.ProductSearchApiSpec;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.services.core.ProductManagementService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -22,7 +21,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = PRODUCT_CRUD_CONTROLLER_BASE_PATH)
-@Tag(name = "ProductSearchController", description = "API for Product Search")
 public class ProductSearchController implements ProductSearchApiSpec {
 
     // Inject service interface instead of concrete impl per project convention

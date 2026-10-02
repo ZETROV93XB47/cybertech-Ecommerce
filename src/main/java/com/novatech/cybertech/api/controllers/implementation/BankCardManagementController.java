@@ -5,7 +5,6 @@ import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.services.core.BankCardManagementService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +24,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = BANK_CARD_CRUD_CONTROLLER_BASE_PATH)
-@Tag(name = "BankCardManagementController", description = "API for managing Bank Cards")
 public class BankCardManagementController implements BankCardControllerApiSpec {
 
     private final BankCardManagementService bankCardService;

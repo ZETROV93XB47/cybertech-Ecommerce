@@ -3,7 +3,6 @@ package com.novatech.cybertech.api.controllers.implementation;
 import com.novatech.cybertech.api.controllers.spec.RecommendationControllerApiSpec;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.services.core.RecommendationService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -26,7 +25,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = RECOMMENDATION_CONTROLLER_BASE_PATH)
-@Tag(name = "RecommendationController", description = "API to read personalized product recommendations")
 public class RecommendationController implements RecommendationControllerApiSpec {
 
     private final RecommendationService recommendationService;

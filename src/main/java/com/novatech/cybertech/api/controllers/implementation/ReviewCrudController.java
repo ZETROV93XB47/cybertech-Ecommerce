@@ -6,7 +6,6 @@ import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
 import com.novatech.cybertech.services.core.ReviewManagementService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +28,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = REVIEW_CRUD_CONTROLLER_BASE_PATH)
-@Tag(name = "ReviewController", description = "API for Review management")
 public class ReviewCrudController implements ReviewCrudControllerApiSpec {
 
     private final ReviewManagementService reviewService;
@@ -70,6 +68,7 @@ public class ReviewCrudController implements ReviewCrudControllerApiSpec {
      * but has not yet reviewed. Each entry carries the {@code orderUuid} the frontend needs
      * to forward in {@code POST /create}.
      */
+    @Override
     @PreAuthorize("hasRole('USER')")
     @GetMapping(value = "/reviewable", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<List<ReviewableProductDto>> getReviewableProducts(@AuthenticationPrincipal final Jwt jwt) {

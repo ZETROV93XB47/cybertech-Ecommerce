@@ -5,7 +5,6 @@ import com.novatech.cybertech.dto.request.product.ProductCategorySchemaCreateReq
 import com.novatech.cybertech.dto.request.product.ProductCategorySchemaUpdateRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductCategorySchemaResponseDto;
 import com.novatech.cybertech.services.core.ProductCategorySchemaService;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +29,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = PRODUCT_CATEGORY_SCHEMA_ADMIN_CONTROLLER_BASE_PATH)
-@Tag(name = "ProductCategorySchemaAdminController", description = "Admin management of product category JSON Schemas")
 @PreAuthorize("hasRole('ADMIN')")
 public class ProductCategorySchemaAdminController implements ProductCategorySchemaAdminApiSpec {
 

@@ -26,7 +26,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  * time via a Caffeine cache kept in sync across instances by Redis Pub/Sub. Every endpoint is
  * guarded server-side by {@code @PreAuthorize("hasRole('ADMIN')")}.
  */
-@Tag(name = "ProductCategorySchemaAdminController", description = "Admin management of product category JSON Schemas")
+@Tag(name = "Product Category Schema Admin", description = "Admin management of product category JSON Schemas")
 public interface ProductCategorySchemaAdminApiSpec {
 
     @Operation(
