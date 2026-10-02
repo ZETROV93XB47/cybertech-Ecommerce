@@ -101,13 +101,15 @@ public interface DiscountAdminControllerApiSpec {
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Discount campaign created successfully",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = DiscountCampaignResponseDto.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error / discountKey already exists / no strategy wired for calculationType",
+            @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error / field required by the calculationType missing",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
             @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-            @ApiResponse(responseCode = "500", description = "Internal server error during creation",
+            @ApiResponse(responseCode = "409", description = "A discount campaign already exists under this discountKey",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "500", description = "Internal server error during creation (e.g. no strategy wired for the calculationType)",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     ResponseEntity<DiscountCampaignResponseDto> create(final DiscountCampaignCreateRequestDto request);

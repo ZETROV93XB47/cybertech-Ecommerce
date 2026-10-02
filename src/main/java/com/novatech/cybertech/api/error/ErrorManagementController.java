@@ -296,6 +296,18 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, DISCOUNT_TYPE_NOT_ACTIVE.getResponseStatus());
     }
 
+    @ExceptionHandler(DiscountCampaignNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleDiscountCampaignNotFoundException(DiscountCampaignNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), DISCOUNT_CAMPAIGN_NOT_FOUND.getResponseStatus().value(), DISCOUNT_CAMPAIGN_NOT_FOUND.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, DISCOUNT_CAMPAIGN_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(DiscountCampaignAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponseDto> handleDiscountCampaignAlreadyExistsException(DiscountCampaignAlreadyExistsException exception) {
+        final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), DISCOUNT_CAMPAIGN_ALREADY_EXISTS.getResponseStatus().value(), DISCOUNT_CAMPAIGN_ALREADY_EXISTS.getErrorCodeType());
+        return new ResponseEntity<>(errorResponseDto, DISCOUNT_CAMPAIGN_ALREADY_EXISTS.getResponseStatus());
+    }
+
     @ExceptionHandler(DiscountCampaignMissingRequiredFieldException.class)
     public ResponseEntity<ErrorResponseDto> handleDiscountCampaignMissingRequiredFieldException(DiscountCampaignMissingRequiredFieldException exception) {
         final ErrorResponseDto errorResponseDto = new ErrorResponseDto(exception.getMessage(), DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD.getResponseStatus().value(), DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD.getErrorCodeType());

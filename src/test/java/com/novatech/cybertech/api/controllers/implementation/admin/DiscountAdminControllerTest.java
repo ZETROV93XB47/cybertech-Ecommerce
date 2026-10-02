@@ -6,7 +6,8 @@ import com.novatech.cybertech.dto.request.admin.DiscountCampaignCreateRequestDto
 import com.novatech.cybertech.dto.request.admin.DiscountCampaignUpdateRequestDto;
 import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
-import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
+import com.novatech.cybertech.exceptions.DiscountCampaignAlreadyExistsException;
+import com.novatech.cybertech.exceptions.DiscountCampaignNotFoundException;
 import com.novatech.cybertech.services.core.DiscountCampaignAdminService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -96,14 +97,14 @@ class DiscountAdminControllerTest {
     }
 
     @Test
-    void getByDiscountKey_missing_returns400() throws Exception {
+    void getByDiscountKey_missing_returns404() throws Exception {
         when(discountCampaignAdminService.getByDiscountKey("BLACK_FRIDAY"))
-                .thenThrow(new DiscountTypeNotActiveException("Discount campaign for BLACK_FRIDAY does not exist"));
+                .thenThrow(new DiscountCampaignNotFoundException("Discount campaign for BLACK_FRIDAY does not exist"));
 
         mockMvc.perform(get(BASE + "/{discountKey}", "BLACK_FRIDAY")
                         .with(jwtAdmin(KC)).accept(APPLICATION_JSON))
-                // ErrorManagementController maps DiscountTypeNotActiveException to 400 FUNCTIONAL via DISCOUNT_TYPE_NOT_ACTIVE
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.httpStatusCode").value(404))
                 .andExpect(jsonPath("$.errorCodeType").value("FUNCTIONAL"));
     }
 
@@ -125,6 +126,26 @@ class DiscountAdminControllerTest {
                 .andExpect(jsonPath("$.discountKey").value("SUMMER_FLASH_SALE"));
 
         verify(discountCampaignAdminService).create(any(DiscountCampaignCreateRequestDto.class));
+    }
+
+    @Test
+    void create_duplicateKey_returns409() throws Exception {
+        final DiscountCampaignCreateRequestDto req = new DiscountCampaignCreateRequestDto(
+                "BLACK_FRIDAY", DiscountCalculationType.PERCENTAGE, true,
+                new BigDecimal("25.00"), null, null, null, null, null, 90);
+        when(discountCampaignAdminService.create(any(DiscountCampaignCreateRequestDto.class)))
+                .thenThrow(new DiscountCampaignAlreadyExistsException("A discount campaign 'BLACK_FRIDAY' already exists"));
+
+        mockMvc.perform(post(BASE)
+                        .with(jwtAdmin(KC))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(req)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.httpStatusCode").value(409))
+                .andExpect(jsonPath("$.errorCodeType").value("FUNCTIONAL"))
+                .andExpect(jsonPath("$.message").value("A discount campaign 'BLACK_FRIDAY' already exists"));
     }
 
     @Test
@@ -237,14 +258,14 @@ class DiscountAdminControllerTest {
     }
 
     @Test
-    void delete_missing_returns400() throws Exception {
-        org.mockito.Mockito.doThrow(new DiscountTypeNotActiveException("Discount campaign for BLACK_FRIDAY does not exist"))
+    void delete_missing_returns404() throws Exception {
+        org.mockito.Mockito.doThrow(new DiscountCampaignNotFoundException("Discount campaign for BLACK_FRIDAY does not exist"))
                 .when(discountCampaignAdminService).deleteByDiscountKey("BLACK_FRIDAY");
 
         mockMvc.perform(delete(BASE + "/{discountKey}", "BLACK_FRIDAY")
                         .with(jwtAdmin(KC))
                         .with(csrf()))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCodeType").value("FUNCTIONAL"));
     }
 }

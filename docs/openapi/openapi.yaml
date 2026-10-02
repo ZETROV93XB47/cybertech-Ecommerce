@@ -1122,8 +1122,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/DiscountCampaignResponseDto"
         "400":
-          description: Invalid input data / Validation error / discountKey already
-            exists / no strategy wired for calculationType
+          description: Invalid input data / Validation error / field required by the
+            calculationType missing
           content:
             application/json:
               schema:
@@ -1140,8 +1140,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: A discount campaign already exists under this discountKey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
         "500":
-          description: Internal server error during creation
+          description: Internal server error during creation (e.g. no strategy wired
+            for the calculationType)
           content:
             application/json:
               schema:
@@ -4466,11 +4473,11 @@ components:
           type: boolean
         last:
           type: boolean
+        sort:
+          $ref: "#/components/schemas/SortObject"
         numberOfElements:
           type: integer
           format: int32
-        sort:
-          $ref: "#/components/schemas/SortObject"
         pageable:
           $ref: "#/components/schemas/PageableObject"
         empty:
@@ -4481,14 +4488,14 @@ components:
         offset:
           type: integer
           format: int64
-        sort:
-          $ref: "#/components/schemas/SortObject"
         paged:
           type: boolean
-        pageSize:
+        sort:
+          $ref: "#/components/schemas/SortObject"
+        pageNumber:
           type: integer
           format: int32
-        pageNumber:
+        pageSize:
           type: integer
           format: int32
         unpaged:

@@ -5,14 +5,16 @@ import com.novatech.cybertech.dto.request.admin.DiscountCampaignUpdateRequestDto
 import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
+import com.novatech.cybertech.exceptions.DiscountCampaignAlreadyExistsException;
 import com.novatech.cybertech.exceptions.DiscountCampaignMissingRequiredFieldException;
-import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
+import com.novatech.cybertech.exceptions.DiscountCampaignNotFoundException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
 import com.novatech.cybertech.repositories.DiscountCampaignRepository;
 import com.novatech.cybertech.services.core.DiscountCampaignAdminService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,7 +57,7 @@ public class DiscountCampaignAdminServiceImp implements DiscountCampaignAdminSer
     @Transactional
     public DiscountCampaignResponseDto create(final DiscountCampaignCreateRequestDto request) {
         if (discountCampaignRepository.existsByDiscountKey(request.discountKey())) {
-            throw new IllegalArgumentException("A discount campaign '" + request.discountKey() + "' already exists");
+            throw new DiscountCampaignAlreadyExistsException(alreadyExistsMessage(request.discountKey()));
         }
 
         // Fail fast on an algorithm nothing implements — never persist a campaign price
@@ -72,7 +74,7 @@ public class DiscountCampaignAdminServiceImp implements DiscountCampaignAdminSer
         // unmapped IllegalStateException) when a real customer's order priced against this campaign.
         requireFieldForCalculationType(request.calculationType(), request.percentage(), request.fixedAmount());
 
-        final DiscountCampaignEntity saved = discountCampaignRepository.save(DiscountCampaignEntity.builder()
+        final DiscountCampaignEntity saved = saveNewCampaign(DiscountCampaignEntity.builder()
                 .discountKey(request.discountKey())
                 .calculationType(request.calculationType())
                 .enabled(request.enabled() != null && request.enabled())
@@ -171,8 +173,28 @@ public class DiscountCampaignAdminServiceImp implements DiscountCampaignAdminSer
 
     private DiscountCampaignEntity loadOrThrow(final String discountKey) {
         return discountCampaignRepository.findByDiscountKey(discountKey)
-                .orElseThrow(() -> new DiscountTypeNotActiveException(
+                .orElseThrow(() -> new DiscountCampaignNotFoundException(
                         "Discount campaign for " + discountKey + " does not exist"));
+    }
+
+    /**
+     * The {@code existsByDiscountKey} pre-check is a plain SELECT: two concurrent creates of the same
+     * key can both pass it. The unique constraint on the key column is what actually rejects the
+     * second insert — surfaced as the same 409 instead of a raw 500 (same pattern as
+     * {@code WishlistServiceImp#addProductToMyWishlist}). IDENTITY ids make {@code save} insert
+     * immediately, so the violation is raised here rather than at commit.
+     */
+    private DiscountCampaignEntity saveNewCampaign(final DiscountCampaignEntity campaign) {
+        try {
+            return discountCampaignRepository.save(campaign);
+        } catch (DataIntegrityViolationException e) {
+            log.info("Concurrent create of discount campaign '{}' — caught by the unique constraint", campaign.getDiscountKey());
+            throw new DiscountCampaignAlreadyExistsException(alreadyExistsMessage(campaign.getDiscountKey()), e);
+        }
+    }
+
+    private static String alreadyExistsMessage(final String discountKey) {
+        return "A discount campaign '" + discountKey + "' already exists";
     }
 
     private DiscountCampaignResponseDto toResponse(final DiscountCampaignEntity entity) {

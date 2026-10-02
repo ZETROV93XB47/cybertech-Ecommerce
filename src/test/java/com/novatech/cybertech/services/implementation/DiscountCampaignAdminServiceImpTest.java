@@ -6,11 +6,13 @@ import com.novatech.cybertech.dto.response.admin.DiscountCampaignResponseDto;
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
 import com.novatech.cybertech.exceptions.DiscountCampaignMissingRequiredFieldException;
-import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
+import com.novatech.cybertech.exceptions.DiscountCampaignAlreadyExistsException;
+import com.novatech.cybertech.exceptions.DiscountCampaignNotFoundException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
 import com.novatech.cybertech.repositories.DiscountCampaignRepository;
 import com.novatech.cybertech.strategy.discount.DiscountStrategy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -87,7 +89,7 @@ class DiscountCampaignAdminServiceImpTest {
         when(discountCampaignRepository.findByDiscountKey("BLACK_FRIDAY")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.getByDiscountKey("BLACK_FRIDAY"))
-                .isInstanceOf(DiscountTypeNotActiveException.class)
+                .isInstanceOf(DiscountCampaignNotFoundException.class)
                 .hasMessageContaining("BLACK_FRIDAY");
     }
 
@@ -140,10 +142,27 @@ class DiscountCampaignAdminServiceImpTest {
                 new BigDecimal("25.00"), null, null, null, null, null, 90);
 
         assertThatThrownBy(() -> service.create(req))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(DiscountCampaignAlreadyExistsException.class)
                 .hasMessageContaining("BLACK_FRIDAY");
 
         verify(discountCampaignRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("create: a concurrent create winning the race -> unique constraint mapped to DiscountCampaignAlreadyExistsException")
+    void createConcurrentDuplicateCaughtByConstraint() {
+        when(discountCampaignRepository.existsByDiscountKey("SUMMER_FLASH_SALE")).thenReturn(false);
+        when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(discountStrategy);
+        when(discountCampaignRepository.save(any(DiscountCampaignEntity.class)))
+                .thenThrow(new DataIntegrityViolationException("uk_discount_campaign_key"));
+
+        final DiscountCampaignCreateRequestDto req = new DiscountCampaignCreateRequestDto(
+                "SUMMER_FLASH_SALE", DiscountCalculationType.PERCENTAGE, true,
+                new BigDecimal("25.00"), null, null, null, null, null, 90);
+
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(DiscountCampaignAlreadyExistsException.class)
+                .hasMessageContaining("SUMMER_FLASH_SALE");
     }
 
     @Test
@@ -272,13 +291,13 @@ class DiscountCampaignAdminServiceImpTest {
     }
 
     @Test
-    @DisplayName("update on missing campaign throws DiscountTypeNotActiveException without saving")
+    @DisplayName("update on missing campaign throws DiscountCampaignNotFoundException without saving")
     void updateMissing() {
         when(discountCampaignRepository.findByDiscountKey("SPRING_SALES")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.update("SPRING_SALES",
                 new DiscountCampaignUpdateRequestDto(true, null, null, null, null, null, null, null, null)))
-                .isInstanceOf(DiscountTypeNotActiveException.class);
+                .isInstanceOf(DiscountCampaignNotFoundException.class);
 
         verify(discountCampaignRepository, never()).save(any());
         verify(discountCampaignService, never()).evictCache(any());
@@ -302,7 +321,7 @@ class DiscountCampaignAdminServiceImpTest {
         when(discountCampaignRepository.findByDiscountKey("BLACK_FRIDAY")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.deleteByDiscountKey("BLACK_FRIDAY"))
-                .isInstanceOf(DiscountTypeNotActiveException.class);
+                .isInstanceOf(DiscountCampaignNotFoundException.class);
 
         verify(discountCampaignRepository, never()).delete(any());
         verify(discountCampaignService, never()).evictCache(any());

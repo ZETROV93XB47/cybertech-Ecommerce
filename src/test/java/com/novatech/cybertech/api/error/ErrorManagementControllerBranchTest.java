@@ -14,6 +14,8 @@ import com.novatech.cybertech.exceptions.CartItemNotFoundException;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.CommentPostNotAllowedException;
 import com.novatech.cybertech.exceptions.DiscountTypeCannotBeNullForStrategy;
+import com.novatech.cybertech.exceptions.DiscountCampaignAlreadyExistsException;
+import com.novatech.cybertech.exceptions.DiscountCampaignNotFoundException;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.FailedRetryingPayment;
 import com.novatech.cybertech.exceptions.NegativeQuantityException;
@@ -375,6 +377,24 @@ class ErrorManagementControllerBranchTest {
                 controller.handleDiscountTypeNotActiveException(new DiscountTypeNotActiveException("not active"));
 
         assertEnvelope(response, HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL, "not active");
+    }
+
+    @Test
+    @DisplayName("DiscountCampaignNotFoundException → 404 FUNCTIONAL with passthrough message")
+    void discountCampaignNotFoundReturns404() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleDiscountCampaignNotFoundException(new DiscountCampaignNotFoundException("no such campaign"));
+
+        assertEnvelope(response, HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL, "no such campaign");
+    }
+
+    @Test
+    @DisplayName("DiscountCampaignAlreadyExistsException → 409 FUNCTIONAL with passthrough message")
+    void discountCampaignAlreadyExistsReturns409() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleDiscountCampaignAlreadyExistsException(new DiscountCampaignAlreadyExistsException("key taken"));
+
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "key taken");
     }
 
     @Test

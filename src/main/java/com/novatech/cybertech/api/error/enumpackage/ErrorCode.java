@@ -62,7 +62,11 @@ public enum ErrorCode {
     /** Admin submitted a categoryKey/jsonSchema pair that fails to compile as a JSON Schema. */
     INVALID_PRODUCT_CATEGORY_SCHEMA(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),
     /** Admin created/updated a discount campaign missing the field its calculationType requires (e.g. PERCENTAGE with no percentage). */
-    DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL);
+    DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
+    /** Admin looked up / updated / deleted a discount campaign key that does not exist. */
+    DISCOUNT_CAMPAIGN_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
+    /** Admin tried to create a discount campaign under a key that is already taken. */
+    DISCOUNT_CAMPAIGN_ALREADY_EXISTS(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;

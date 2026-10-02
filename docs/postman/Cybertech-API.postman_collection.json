@@ -1756,7 +1756,7 @@
                 { "key": "discountKey", "value": "BLACK_FRIDAY" }
               ]
             },
-            "description": "ADMIN: load one campaign by its key. Keys are free-form (created via POST); seeded ones: `NO_DISCOUNT`, `BLACK_FRIDAY`, `WINTER_SALES`, `SPRING_SALES`, `BUY_ONE_GET_ONE_FREE`.\n\n- Role: ADMIN\n- Success: 200."
+            "description": "ADMIN: load one campaign by its key. Keys are free-form (created via POST); seeded ones: `NO_DISCOUNT`, `BLACK_FRIDAY`, `WINTER_SALES`, `SPRING_SALES`, `BUY_ONE_GET_ONE_FREE`.\n\n- Role: ADMIN\n- Success: 200.\n- Errors: 404 unknown key."
           },
           "event": [
             {
@@ -1823,7 +1823,7 @@
               "mode": "raw",
               "raw": "{\n  \"discountKey\": \"SUMMER_SALES\",\n  \"calculationType\": \"PERCENTAGE\",\n  \"enabled\": true,\n  \"percentage\": 15.00,\n  \"minOrderAmount\": 50.00,\n  \"maxDiscountAmount\": 200.00,\n  \"startsAt\": \"2027-06-21T00:00:00\",\n  \"endsAt\": \"2027-07-21T23:59:59\",\n  \"priority\": 5\n}"
             },
-            "description": "ADMIN: register a new discount campaign under a free-form key (no redeploy needed). `discountKey` and `calculationType` are required; the key must not already exist.\n\n- Role: ADMIN\n- Success: 201 with `DiscountCampaignResponseDto`.\n- Errors: 400 invalid payload or key already used."
+            "description": "ADMIN: register a new discount campaign under a free-form key (no redeploy needed). `discountKey` and `calculationType` are required; the key must not already exist.\n\n- Role: ADMIN\n- Success: 201 with `DiscountCampaignResponseDto`.\n- Errors: 400 invalid payload, 409 key already used."
           },
           "event": [
             {
@@ -1853,7 +1853,7 @@
                 { "key": "discountKey", "value": "SUMMER_SALES" }
               ]
             },
-            "description": "ADMIN: delete a campaign by key.\n\n- Role: ADMIN\n- Success: 204.\n- Errors: 400 unknown key (the service throws `DiscountTypeNotActiveException`)."
+            "description": "ADMIN: delete a campaign by key.\n\n- Role: ADMIN\n- Success: 204.\n- Errors: 404 unknown key."
           },
           "event": [
             {
