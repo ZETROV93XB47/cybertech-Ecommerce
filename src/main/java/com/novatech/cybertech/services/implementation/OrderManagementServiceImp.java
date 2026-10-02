@@ -247,8 +247,6 @@ public class OrderManagementServiceImp implements OrderManagementService {
     @Transactional
     public OrderResponseDto updateOrder(final OrderUpdateRequestDto dto, final Jwt jwt) {
 
-        log.info("in Update Order : {}", dto);
-
         final String keycloakId = resolveKeycloakIdFromJwt(jwt);
 
         // Row lock (SELECT ... FOR UPDATE) held until this transaction ends: a concurrent update of
@@ -257,14 +255,16 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // This is what makes the per-attempt complement key below safe.
         final OrderEntity order = orderRepository.lockByUuid(dto.getUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
-        log.info("Order found : {}", order);
+        log.info("Update order {}: current status {}, total {}, {} new line(s) requested", order.getUuid(), order.getStatus(),
+                order.getTotalAmount() == null ? null : order.getTotalAmount().getAmount(),
+                dto.getItemUpdateRequestDtoList() == null ? 0 : dto.getItemUpdateRequestDtoList().size());
 
         if (!isCurrentUserOrderInitiator(order, keycloakId)) {
             throw new OrderDoesntBelongsToUserException("Order not found for this user account");
         }
 
         if (isOrderAlreadyShipped(order)) {
-            log.info("Order already shipped, cannot update");
+            log.info("Update order {} rejected: already {}", order.getUuid(), order.getStatus());
             throw new OrderAlreadyShippedException("Order already shipped, cannot update");
         }
 
@@ -483,7 +483,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 idempotencyKey
         );
 
-        log.info("Retry payment attempt :: {}", attempt);
+        log.info("Retry payment for order {}: attempt {} -> {}", orderUuid, attempt.getUuid(), attempt.getStatus());
 
         sendOrderUpdatedEvent(order, order.getUserEntity(), order.getTotalAmount().getAmount(), attempt.getStatus());
 
@@ -545,6 +545,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
             );
 
             resultingStatus = attempt.getStatus();
+            log.info("Order {}: payment attempt {} -> {} ({} {})", orderUuid, attempt.getUuid(), resultingStatus, totalAmount, req.getPaymentType());
 
             if (resultingStatus == PaymentAttemptStatus.FAILED) {
                 log.warn("Payment FAILED for order {} — releasing stock reservation.", orderUuid);
@@ -597,7 +598,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     @Override
     @Retryable(retryFor = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     public OrderResponseDto cancelOrder(final UUID orderUUID, final Jwt jwt) {
-        log.info("Order UUD : {}", orderUUID);
+        log.info("Cancel order {} requested", orderUUID);
         return orderCancellationTransactionalDelegate.cancelWithinTransaction(orderUUID, jwt);
     }
 

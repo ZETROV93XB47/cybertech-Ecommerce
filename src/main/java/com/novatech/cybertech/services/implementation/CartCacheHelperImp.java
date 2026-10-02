@@ -3,6 +3,7 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.annotation.NotTraced;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.services.core.CartCacheHelper;
+import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -64,7 +65,7 @@ public class CartCacheHelperImp implements CartCacheHelper {
         try {
             final boolean acquired = lock.tryLock(waitMillis, TimeUnit.MILLISECONDS);
             if (!acquired) {
-                log.warn("Could not acquire cart lock for user {} within {}ms", userId, waitMillis);
+                log.warn("Could not acquire cart lock for user {} within {}ms", LogSafetyUtils.maskUuid(userId), waitMillis);
             }
             return acquired;
         } catch (InterruptedException ie) {
@@ -89,7 +90,7 @@ public class CartCacheHelperImp implements CartCacheHelper {
      */
     @Override
     public void refreshTtlWithJitter(final String userId) {
-        log.info("Refreshing TTL with jitter for user: {}", userId);
+        log.debug("Refreshing TTL with jitter for user: {}", LogSafetyUtils.maskUuid(userId));
         redisTemplate.expire(cartKey(userId), getTtlWithJitter());
     }
 
@@ -98,7 +99,7 @@ public class CartCacheHelperImp implements CartCacheHelper {
      */
     @Override
     public void putWithJitter(final String userId, final CartResponseDto cart) {
-        log.info("Putting cart in cache with jitter for user: {}", userId);
+        log.debug("Putting cart in cache with jitter for user: {}", LogSafetyUtils.maskUuid(userId));
         redisTemplate.opsForValue().set(cartKey(userId), cart, getTtlWithJitter());
     }
 
@@ -112,7 +113,7 @@ public class CartCacheHelperImp implements CartCacheHelper {
      */
     @Override
     public CartResponseDto getRaw(final String userId) {
-        log.info("Getting raw cart from cache for user: {}", userId);
+        log.debug("Getting raw cart from cache for user: {}", LogSafetyUtils.maskUuid(userId));
         return (CartResponseDto) redisTemplate.opsForValue().get(cartKey(userId));
     }
 

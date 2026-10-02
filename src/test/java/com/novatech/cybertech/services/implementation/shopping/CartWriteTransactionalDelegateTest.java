@@ -147,6 +147,28 @@ class CartWriteTransactionalDelegateTest {
         }
 
         @Test
+        @DisplayName("same product twice in one request -> quantities summed into one line (no 500)")
+        void sameProductTwiceInRequest_quantitiesSummed() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().stock(10).reservedStock(0).build();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).cartEntity(null).build();
+            final CartCreateRequestDto req = requestFor(List.of(
+                    CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(1).build(),
+                    CartItemAddRequestDto.builder().productUuid(product.getUuid()).quantity(2).build()));
+
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
+            when(cartRepository.save(any(CartEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(cartMapper.mapFromEntityToResponseDto(any(CartEntity.class))).thenReturn(stubMappedResponse());
+
+            delegate.addItemsWithinTransaction(req, keycloakId);
+
+            final ArgumentCaptor<CartEntity> captor = ArgumentCaptor.forClass(CartEntity.class);
+            verify(cartRepository).save(captor.capture());
+            assertThat(captor.getValue().getCartItems()).singleElement()
+                    .extracting(CartItemEntity::getQuantity).isEqualTo(3);
+        }
+
+        @Test
         @DisplayName("idempotent re-add: existing item quantity increased rather than duplicated")
         void reAdd_increasesExistingItemQuantity() {
             final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().stock(10).build();

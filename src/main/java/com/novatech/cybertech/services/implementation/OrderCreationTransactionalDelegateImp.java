@@ -88,6 +88,8 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
         final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceRequest);
         final Money totalMoney = priceResult.asFinalMoney();
         final BigDecimal totalAmount = totalMoney.getAmount();
+        log.info("Order {}: {} line(s) from cart {}, total {} EUR (discountKey={}, shipping={} {})", orderUuid, cartItems.size(),
+                cart.getUuid(), totalAmount, req.getDiscountKey(), req.getShippingProvider(), req.getShippingType());
 
         final List<OrderItemEntity> orderItems = cartItems.stream()
                 .map(item -> OrderItemEntity.builder()
@@ -136,6 +138,7 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
         // order's own items, not the cart). The Redis cart cache is refreshed by the caller once
         // this transaction has committed — see OrderManagementServiceImp#placeOrder.
         cart.getCartItems().clear();
+        log.info("Order {} saved as AWAITING_PAYMENT, stock reserved, cart {} emptied", orderUuid, cart.getUuid());
 
         return savedOrder;
     }

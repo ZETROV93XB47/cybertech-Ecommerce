@@ -13,6 +13,7 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.repositories.WishlistRepository;
 import com.novatech.cybertech.services.core.WishlistService;
+import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -51,14 +52,16 @@ public class WishlistServiceImp implements WishlistService {
                 .build();
 
         try {
-            return wishlistMapper.toResponseDto(wishlistRepository.save(wishlistEntity));
+            final WishlistEntity saved = wishlistRepository.save(wishlistEntity);
+            log.info("Product {} ('{}') added to wishlist", productUuid, product.getName());
+            return wishlistMapper.toResponseDto(saved);
         } catch (DataIntegrityViolationException e) {
             // The pre-check above is a plain SELECT with no lock — a concurrent request (double
             // click, two tabs) can pass it for the same (user, product) before either insert
             // commits. The uk_wishlist_user_product DB constraint is what actually prevents the
             // duplicate in that case; surface it as the same domain exception the pre-check
             // throws instead of leaking a raw DataIntegrityViolationException as a 500.
-            log.info("Concurrent add-to-wishlist race for user {} / product {} — caught by the DB constraint", userKeycloakId, productUuid);
+            log.info("Concurrent add-to-wishlist race for user {} / product {} — caught by the DB constraint", LogSafetyUtils.maskUuid(userKeycloakId), productUuid);
             throw new ProductAlreadyInWishlist("Product already in wishlist");
         }
     }
@@ -68,6 +71,7 @@ public class WishlistServiceImp implements WishlistService {
     public void removeProductFromMyWishlist(String userKeycloakId, UUID productUuid) {
         WishlistEntity entity = wishlistRepository.findByUser_KeycloakIdAndProduct_Uuid(userKeycloakId, productUuid).orElseThrow(() -> new WishlistNotFoundException("Wishlist item not found"));
         wishlistRepository.delete(entity);
+        log.info("Product {} removed from wishlist", productUuid);
     }
 
     @Override

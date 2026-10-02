@@ -64,6 +64,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         if (user.getBankCardEntity() != null) {
+            log.warn("Add bank card rejected: user {} already has card {}", user.getUuid(), user.getBankCardEntity().getUuid());
             throw new IllegalStateException("User already has a bank card.");
         }
 
@@ -77,6 +78,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         applyPciStorageRules(bankCardEntity, dto.getCardNumber());
 
         BankCardEntity savedCard = bankCardRepository.save(bankCardEntity);
+        log.info("Bank card {} (**** {}) added for user {}", savedCard.getUuid(), savedCard.getLastFourDigits(), user.getUuid());
         return bankCardMapper.mapFromEntityToResponseDto(savedCard);
     }
 
@@ -92,6 +94,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
 
         // Suppression via le repository pour déclencher les events JPA si besoin
         bankCardRepository.delete(bankCard);
+        log.info("Bank card {} (**** {}) deleted by its owner {}", bankCard.getUuid(), bankCard.getLastFourDigits(), user.getUuid());
     }
 
     /**
@@ -118,6 +121,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         bankCardMapper.updateEntityFromDto(dto, bankCard);
 
         BankCardEntity savedCard = bankCardRepository.save(bankCard);
+        log.info("Bank card {} updated by its owner (holder name / expiry)", savedCard.getUuid());
         return bankCardMapper.mapFromEntityToResponseDto(savedCard);
     }
 

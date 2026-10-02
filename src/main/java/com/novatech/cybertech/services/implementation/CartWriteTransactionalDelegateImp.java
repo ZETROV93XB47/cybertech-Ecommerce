@@ -22,6 +22,7 @@ import com.novatech.cybertech.repositories.CartRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartWriteTransactionalDelegate;
+import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -60,7 +61,10 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
     @Override
     @Transactional
     public CartResponseDto addItemsWithinTransaction(final CartCreateRequestDto dto, final String keycloakId) {
-        final Map<UUID, Integer> productsToAdd = dto.getCartItemAddRequestDtos().stream().collect(Collectors.toMap(CartItemAddRequestDto::getProductUuid, CartItemAddRequestDto::getQuantity));
+        // Integer::sum: the same product sent twice in one request adds up instead of crashing
+        // Collectors.toMap with an IllegalStateException (raw 500).
+        final Map<UUID, Integer> productsToAdd = dto.getCartItemAddRequestDtos().stream()
+                .collect(Collectors.toMap(CartItemAddRequestDto::getProductUuid, CartItemAddRequestDto::getQuantity, Integer::sum));
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         // Single round-trip to load every requested product.
@@ -78,6 +82,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
                     .cartItems(new ArrayList<>())
                     .uuid(UuidCreator.getTimeOrderedEpoch())
                     .build();
+            log.info("No cart yet for user {} — creating cart {}", LogSafetyUtils.maskUuid(keycloakId), cartEntity.getUuid());
         }
 
         for (final Map.Entry<UUID, Integer> entry : productsToAdd.entrySet()) {
@@ -109,6 +114,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
                         .build();
                 cartEntity.getCartItems().add(newItem);
             }
+            log.info("Cart {}: +{} x product {} ('{}') -> line quantity {}", cartEntity.getUuid(), quantity, productUuid, product.getName(), newQuantity);
         }
 
         final CartEntity savedCart = cartRepository.save(cartEntity);
@@ -125,6 +131,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
             final boolean removed = cart.getCartItems().removeIf(item -> item.getProductEntity().getUuid().equals(productUuid));
 
             if (removed) {
+                log.info("Cart {}: product {} removed, {} line(s) left", cart.getUuid(), productUuid, cart.getCartItems().size());
                 final CartEntity savedCart = cartRepository.save(cart);
                 return cartMapper.mapFromEntityToResponseDto(savedCart);
             }
@@ -152,6 +159,8 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
         if (updateResult <= 0) {
             cart.getCartItems().remove(cartItemToDecrease);
         }
+        log.info("Cart {}: -{} x product {} -> line quantity {}{}", cart.getUuid(), cartItemRemoveRequestDto.getQuantity(),
+                cartItemRemoveRequestDto.getProductUuid(), Math.max(updateResult, 0), updateResult <= 0 ? " (line removed)" : "");
 
         final CartEntity savedCart = cartRepository.save(cart);
         return cartMapper.mapFromEntityToResponseDto(savedCart);
@@ -164,9 +173,11 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
         final CartEntity cart = user.getCartEntity();
 
         if (cart == null || cart.getCartItems() == null) {
+            log.info("Clear cart: user {} has no cart, nothing to do", LogSafetyUtils.maskUuid(keycloakId));
             return null;
         }
 
+        log.info("Cart {}: cleared ({} line(s) removed)", cart.getUuid(), cart.getCartItems().size());
         cart.getCartItems().clear();
         final CartEntity savedCart = cartRepository.save(cart);
         return cartMapper.mapFromEntityToResponseDto(savedCart);
@@ -202,6 +213,8 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
             productMap = Map.of();
         }
 
+        log.info("Cart {}: replacing {} line(s) with {} line(s)", cartUuid,
+                cart.getCartItems() == null ? 0 : cart.getCartItems().size(), items == null ? 0 : items.size());
         if (cart.getCartItems() != null) {
             cart.getCartItems().clear();
         }
@@ -230,7 +243,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
     private void assertCallerOwnsCart(final CartEntity cart, final UUID cartUuid, final String keycloakId) {
         final UserEntity owner = cart.getUserEntity();
         if (owner == null || owner.getKeycloakId() == null || !owner.getKeycloakId().equals(keycloakId)) {
-            log.warn("Unauthorized cart access attempt: caller {} on cart {}", keycloakId, cartUuid);
+            log.warn("Unauthorized cart access attempt: caller {} on cart {}", LogSafetyUtils.maskUuid(keycloakId), cartUuid);
             throw new UnauthorizedCartAccessException("Caller does not own cart " + cartUuid);
         }
     }

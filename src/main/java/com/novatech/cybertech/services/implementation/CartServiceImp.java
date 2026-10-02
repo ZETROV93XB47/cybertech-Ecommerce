@@ -12,6 +12,7 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.core.CartService;
 import com.novatech.cybertech.services.core.CartWriteTransactionalDelegate;
+import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -130,7 +131,7 @@ public class CartServiceImp implements CartService {
         final boolean acquired = cartCacheHelper.acquireLockBlocking(keycloakId, CART_ADD_LOCK_WAIT_MS);
         if (!acquired) {
             // Couldn't get the lock in time — surface a retryable error rather than racing.
-            log.warn("Could not acquire cart lock for user {} within {}ms — aborting addItemsToCart", keycloakId, CART_ADD_LOCK_WAIT_MS);
+            log.warn("Could not acquire cart lock for user {} within {}ms — aborting addItemsToCart", LogSafetyUtils.maskUuid(keycloakId), CART_ADD_LOCK_WAIT_MS);
             throw new IllegalStateException("Cart is temporarily locked by a concurrent operation, please retry.");
         }
 
@@ -159,6 +160,7 @@ public class CartServiceImp implements CartService {
         // 1) Try cache first — sliding TTL refresh on hit
         final CartResponseDto cached = cartCacheHelper.getRaw(keycloakId);
         if (cached != null) {
+            log.info("Cart served from cache ({} line(s))", lineCount(cached));
             cartCacheHelper.refreshTtlWithJitter(keycloakId);
             return cached;
         }
@@ -174,6 +176,8 @@ public class CartServiceImp implements CartService {
             // Waited the full budget and still couldn't get the lock — genuinely unusual (mirrors
             // addItemsToCart's own failure mode). Best-effort final read.
             final CartResponseDto retry = cartCacheHelper.getRaw(keycloakId);
+            log.warn("Cart rebuild lock not acquired within {}ms — returning {}", CART_REBUILD_LOCK_WAIT_MS,
+                    retry != null ? "the cached cart" : "an EMPTY cart (best effort)");
             return retry != null ? retry : new CartResponseDto();
         }
 
@@ -194,13 +198,14 @@ public class CartServiceImp implements CartService {
                     : cartMapper.mapFromEntityToResponseDto(user.getCartEntity());
 
             // 5) Populate cache with jitter TTL
+            log.info("Cart cache miss — rebuilt from DB ({} line(s)) and cached", lineCount(dto));
             cartCacheHelper.putWithJitter(keycloakId, dto);
 
             return dto;
 
         } finally {
             // 6) Always release the lock
-            log.info("Releasing rebuild lock for user {}", keycloakId);
+            log.debug("Releasing rebuild lock for user {}", LogSafetyUtils.maskUuid(keycloakId));
             cartCacheHelper.releaseLock(keycloakId);
         }
     }
@@ -253,5 +258,9 @@ public class CartServiceImp implements CartService {
         final CartResponseDto result = cartWriteTransactionalDelegate.updateCartWithinTransaction(cartUuid, dto, keycloakId);
         cartCacheHelper.putWithJitter(keycloakId, result);
         return result;
+    }
+
+    private static int lineCount(final CartResponseDto cart) {
+        return cart.getItems() == null ? 0 : cart.getItems().size();
     }
 }

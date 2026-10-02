@@ -91,6 +91,9 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
         final ProductDocument productDocument = productMapper.mapFromProductEntityToProductDocument(savedProductEntity);
         productSearchRepository.save(productDocument);
+        log.info("Product {} '{}' created ({}, price {}, stock {}, {} photo(s)) and indexed", savedProductEntity.getUuid(),
+                savedProductEntity.getName(), savedProductEntity.getCategory(), savedProductEntity.getPrice(),
+                savedProductEntity.getStock(), savedProductEntity.getPhotos() == null ? 0 : savedProductEntity.getPhotos().size());
 
         return productMapper.mapFromEntityToResponseDto(savedProductEntity);
     }
@@ -120,6 +123,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
         final ProductDocument document = productMapper.mapFromProductEntityToProductDocument(saved);
         productSearchRepository.save(document);
+        log.info("Product {} updated (price {}, stock {}) and re-indexed", uuid, saved.getPrice(), saved.getStock());
 
         return productMapper.mapFromEntityToResponseDto(saved);
     }
@@ -129,11 +133,14 @@ public class ProductManagementServiceImp implements ProductManagementService {
     public void deleteByUUID(final UUID uuid, final String keycloakId) {
         productRepository.deleteByUuid(uuid);
         productSearchRepository.deleteByUuid(uuid);
+        log.info("Product {} deleted from DB and search index", uuid);
     }
 
     @Override
     public Page<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto) {
         final Page<ProductDocument> productDocuments = productSearchService.search(productSearchRequestDto);
+        log.info("Product search {}: {} hit(s), returning page {} ({} item(s))", productSearchRequestDto, productDocuments.getTotalElements(),
+                productDocuments.getNumber(), productDocuments.getNumberOfElements());
         return productDocuments.map(productMapper::mapFromProductDocumentToProductResponseDto);
     }
 

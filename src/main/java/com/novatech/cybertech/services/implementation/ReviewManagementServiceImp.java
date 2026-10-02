@@ -21,6 +21,7 @@ import com.novatech.cybertech.repositories.ReviewRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.ModerationService;
 import com.novatech.cybertech.services.core.ReviewManagementService;
+import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -182,7 +183,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         //TODO: maybe make this part more explicit in the future, can be confusing
         if (!orderContainsProduct) {
 
-            log.warn("Product is not part of current Order (the order sent in the request DTO), a search will be done in all user's orders");
+            log.info("Review: product {} not in the referenced order, checking the user's other orders", reviewCreateRequestDto.getProductUuid());
 
             // Single boolean SQL query — replaces the in-memory walk over the lazy order graph
             // (user -> orders -> items -> product), which used to trigger a 4-level lazy load.
@@ -190,7 +191,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
                     orderItemRepository.userHasBoughtProduct(keycloakId, reviewCreateRequestDto.getProductUuid());
 
             if (!isProductPartOfUserOrders) {
-                log.error("The product on which the user {} is trying to post a comment on is not a part of his order, maybe the product has already been bought in another order", keycloakId);
+                log.warn("Review rejected: user {} never bought product {}", LogSafetyUtils.maskUuid(keycloakId), reviewCreateRequestDto.getProductUuid());
                 throw new ProductNotFoundException("This product is not part of your order, you can put a review only on a product that you have already bought");
             }
         }
@@ -198,7 +199,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
     private static void isUserActive(final UserEntity user) {
         if (!user.getIsActive()) {
-            log.error("User that's trying to post this comment is not active");
+            log.warn("Review rejected: user {} is not active", user.getUuid());
             throw new UserNotActiveException("User that's trying to post this comment is not active");
         }
     }

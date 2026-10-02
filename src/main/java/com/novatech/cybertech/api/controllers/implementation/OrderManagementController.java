@@ -11,7 +11,6 @@ import com.novatech.cybertech.services.core.OrderManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -32,7 +31,6 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.ORDER_MANAG
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 
-@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(version = APP_API_VERSION, value = ORDER_MANAGEMENT_CONTROLLER_BASE_PATH)
@@ -47,7 +45,6 @@ public class OrderManagementController implements OrderManagementControllerApiSp
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @PostMapping(value = "/place", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponseDto> placeOrder(@Valid @RequestBody final OrderPlacingRequestDto orderPlacingRequestDto, @AuthenticationPrincipal final Jwt jwt) {
-        log.info("request : {}", orderPlacingRequestDto);
         return ResponseEntity.status(HttpStatus.CREATED).body(orderManagementService.placeOrder(orderPlacingRequestDto, jwt));
     }
 

@@ -11,7 +11,9 @@ import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
+import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.MDC;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
@@ -70,6 +72,7 @@ public class RequestTraceAspect {
     private static final String BACKGROUND_REQUEST_ID_PREFIX = "bg-";
     private static final int BACKGROUND_REQUEST_ID_LENGTH = 8;
     private static final int SERVER_ERROR_THRESHOLD = 500;
+    private static final String VOID = "void";
 
     /** Current nesting depth on this thread — drives the indentation of the call tree. */
     private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
@@ -109,6 +112,12 @@ public class RequestTraceAspect {
 
     @Around("(controllerLayer() || businessLayer()) && publicBusinessMethod() && !optedOut()")
     public Object trace(final ProceedingJoinPoint joinPoint) throws Throwable {
+        if (AopUtils.isAopProxy(joinPoint.getTarget())) {
+            // Bean re-exposed under a second name (e.g. AppConfig#orderValidatorChain returns the
+            // already-proxied ActiveUserValidator) and therefore proxied twice: the inner proxy
+            // traces the call, tracing it here as well would only print every line twice.
+            return joinPoint.proceed();
+        }
         final int depth = DEPTH.get();
         final boolean startsBackgroundTrace = depth == 0 && MDC.get(LoggingFilter.REQUEST_ID) == null;
         if (startsBackgroundTrace) {
@@ -129,7 +138,7 @@ public class RequestTraceAspect {
         DEPTH.set(depth + 1);
         try {
             final Object result = joinPoint.proceed();
-            log.info("{}◀ {} = {} ({} ms)", indent, call, LogTraceUtils.summarize(result), elapsedMs(start));
+            log.info("{}◀ {} = {} ({} ms)", indent, call, summarizeResult(joinPoint, result), elapsedMs(start));
             return result;
         } catch (Throwable failure) {
             reportFailure(indent, call, failure, elapsedMs(start));
@@ -180,6 +189,13 @@ public class RequestTraceAspect {
         }
         LAST_REPORTED_FAILURE.set(failure);
         log.warn("{}✖ {} threw {}: {} ({} ms)", indent, call, failure.getClass().getSimpleName(), failure.getMessage(), elapsedMs);
+    }
+
+    private static String summarizeResult(final ProceedingJoinPoint joinPoint, final Object result) {
+        if (joinPoint.getSignature() instanceof MethodSignature signature && signature.getReturnType() == void.class) {
+            return VOID;
+        }
+        return LogTraceUtils.summarize(result);
     }
 
     private static void rememberAuthenticatedUser() {

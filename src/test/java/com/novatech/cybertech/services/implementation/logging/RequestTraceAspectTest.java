@@ -81,6 +81,14 @@ class RequestTraceAspectTest {
         public String currentRequestId() {
             return MDC.get(LoggingFilter.REQUEST_ID);
         }
+
+        public void touch() {
+            // no-op
+        }
+
+        public String nothing() {
+            return null;
+        }
     }
 
     static class OuterProbe {
@@ -147,6 +155,29 @@ class RequestTraceAspectTest {
             outer.addToCart(CartCreateRequestDto.builder().cartItemAddRequestDtos(List.of()).build(), UUID.randomUUID());
 
             assertThat(messages().getFirst()).contains("CartCreateRequestDto").doesNotContain("cartItemAddRequestDtos");
+        }
+
+        @Test
+        @DisplayName("a void method exits with 'void', a null return with 'null'")
+        void voidAndNullResultsAreDistinguished() {
+            final InnerProbe inner = proxy(new InnerProbe());
+
+            inner.touch();
+            inner.nothing();
+
+            assertThat(messages().get(1)).startsWith("◀ InnerProbe.touch = void (");
+            assertThat(messages().get(3)).startsWith("◀ InnerProbe.nothing = null (");
+        }
+
+        @Test
+        @DisplayName("a call reaching an already-proxied target is traced once, by the inner proxy")
+        void doubleProxyIsTracedOnce() {
+            final InnerProbe twice = proxy(proxy(new InnerProbe()));
+
+            twice.touch();
+
+            assertThat(messages()).hasSize(2);
+            assertThat(messages().getFirst()).isEqualTo("▶ InnerProbe.touch()");
         }
 
         @Test
