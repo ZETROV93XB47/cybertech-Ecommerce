@@ -23,7 +23,7 @@ public class CustomAccessDeniedHandler implements AccessDeniedHandler {
     @Override
     public void handle(@NonNull HttpServletRequest request, HttpServletResponse response, AccessDeniedException accessDeniedException) throws IOException {
 
-        log.error("Access denied for request {} with message: {}", request, accessDeniedException.getMessage());
+        log.warn("✖ 403 access denied on {} {}: {}", request.getMethod(), request.getRequestURI(), accessDeniedException.getMessage());
 
         final ErrorResponseDto error = new ErrorResponseDto(
                 "Access denied",

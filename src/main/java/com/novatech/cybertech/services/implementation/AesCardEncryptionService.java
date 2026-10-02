@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.annotation.NotTraced;
 import com.novatech.cybertech.services.core.CardEncryptionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +42,7 @@ import java.util.Base64;
  */
 @Slf4j
 @Service
+@NotTraced
 public class AesCardEncryptionService implements CardEncryptionService {
 
     /** GCM recommended IV length (NIST SP 800-38D) — 96 bits = 12 bytes. */

@@ -6,9 +6,10 @@
     default `logback.xml`. We define two profile-scoped pipelines:
 
       * default (dev / test / unspecified):
-          Plain text pattern, console-only, mirrors Spring Boot's own default so local
-          builds and `mvn test` output stay readable. MDC keys (userKeycloakId, orderUuid)
-          are appended at the end of each line when present.
+          Plain text pattern, console-only, so local builds and `mvn test` output stay
+          readable. The request id (MDC `requestId`, set by LoggingFilter / RequestTraceAspect)
+          sits right after the level: `grep <requestId>` returns the whole story of one
+          request, from the `→` line to the `←` line.
 
       * prod:
           LogstashEncoder JSON output to STDOUT, designed to be ingested by Loki via the
@@ -34,7 +35,7 @@
 
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg %X%n</pattern>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%-11X{requestId:--}] [%thread] %logger{36} - %msg%n</pattern>
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
@@ -63,8 +64,10 @@
                 <!-- Canonical fields. timestamp/level/message/logger/thread are emitted
                      by default; we promote MDC keys we care about to top-level JSON
                      properties so Loki can index them as labels via pipeline_stages. -->
-                <includeMdcKeyName>userKeycloakId</includeMdcKeyName>
-                <includeMdcKeyName>orderUuid</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <includeMdcKeyName>method</includeMdcKeyName>
+                <includeMdcKeyName>path</includeMdcKeyName>
+                <includeMdcKeyName>user</includeMdcKeyName>
                 <customFields>{"application":"${appName}"}</customFields>
                 <fieldNames>
                     <timestamp>@timestamp</timestamp>

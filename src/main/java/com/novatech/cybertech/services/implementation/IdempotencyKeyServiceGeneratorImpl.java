@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 
+import com.novatech.cybertech.annotation.NotTraced;
 import com.novatech.cybertech.exceptions.IdempotencyKeyGenerationException;
 import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,7 @@ import java.util.List;
 
 @Slf4j
 @Service
+@NotTraced
 public class IdempotencyKeyServiceGeneratorImpl implements IdempotencyKeyServiceGenerator {
 
     private static final String HASH_ALGORITHM = "SHA-256";

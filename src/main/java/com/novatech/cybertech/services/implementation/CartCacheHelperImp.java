@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.annotation.NotTraced;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Component
+@NotTraced
 @RequiredArgsConstructor
 public class CartCacheHelperImp implements CartCacheHelper {
 

@@ -23,7 +23,7 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
     @Override
     public void commence(@NonNull HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException {
 
-        log.error("Authentication required for request {} with message: {}", request, authException.getMessage());
+        log.warn("✖ 401 authentication required on {} {}: {}", request.getMethod(), request.getRequestURI(), authException.getMessage());
 
         final ErrorResponseDto error = new ErrorResponseDto(
                 "Authentication required",

@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.annotation.NotTraced;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -29,6 +30,7 @@ import java.time.Duration;
  */
 @Slf4j
 @Component
+@NotTraced
 @RequiredArgsConstructor
 public class ProductCategorySchemaCacheImp implements ProductCategorySchemaCache {
 

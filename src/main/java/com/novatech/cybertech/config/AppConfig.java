@@ -21,11 +21,13 @@ import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.slf4j.MDC;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -33,6 +35,7 @@ import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+import java.lang.annotation.Annotation;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -71,6 +74,17 @@ public class AppConfig {
         return activeUserValidator;
     }
 
+    /**
+     * Reads a strategy's handler annotation from the bean's <em>target</em> class. Any bean that
+     * carries AOP advice (Resilience4j {@code @Retry} / {@code @CircuitBreaker}, {@code @Transactional},
+     * the request trace aspect...) is a CGLIB subclass at runtime, and {@code bean.getClass().getAnnotation(..)}
+     * on that subclass returns {@code null} for a non-{@code @Inherited} annotation — the strategy would
+     * then silently be missing from its map.
+     */
+    private static <A extends Annotation> A handlerAnnotation(final Object bean, final Class<A> annotationType) {
+        return AnnotationUtils.findAnnotation(AopUtils.getTargetClass(bean), annotationType);
+    }
+
     @Bean
     public Map<Set<PaymentType>, PaymentAttemptProcessor> paymentServiceMap(final ApplicationContext context) {
         final Map<Set<PaymentType>, PaymentAttemptProcessor> serviceMap = new HashMap<Set<PaymentType>, PaymentAttemptProcessor>();
@@ -78,7 +92,7 @@ public class AppConfig {
         final Map<String, PaymentAttemptProcessor> beans = context.getBeansOfType(PaymentAttemptProcessor.class);
 
         for (PaymentAttemptProcessor service : beans.values()) {
-            final PaymentTypeHandler annotation = service.getClass().getAnnotation(PaymentTypeHandler.class);
+            final PaymentTypeHandler annotation = handlerAnnotation(service, PaymentTypeHandler.class);
             if (annotation != null) {
                 serviceMap.put((new HashSet<>(Arrays.asList(annotation.value()))), service);
             }
@@ -94,7 +108,7 @@ public class AppConfig {
     public Map<DiscountCalculationType, DiscountStrategy> discountStrategyMap(ApplicationContext context) {
         Map<DiscountCalculationType, DiscountStrategy> map = new EnumMap<>(DiscountCalculationType.class);
         context.getBeansOfType(DiscountStrategy.class).forEach((name, bean) -> {
-            DiscountTypeHandler annotation = bean.getClass().getAnnotation(DiscountTypeHandler.class);
+            DiscountTypeHandler annotation = handlerAnnotation(bean, DiscountTypeHandler.class);
             if (annotation != null) {
                 for (DiscountCalculationType calcType : annotation.value()) {
                     map.put(calcType, bean);
@@ -108,7 +122,7 @@ public class AppConfig {
     public Map<NotificationType, AbstractNotification> getNotificationStrategies(final ApplicationContext context) {
         Map<NotificationType, AbstractNotification> map = new EnumMap<>(NotificationType.class);
         context.getBeansOfType(AbstractNotification.class).forEach((name, bean) -> {
-            NotificationTypeHandler annotation = bean.getClass().getAnnotation(NotificationTypeHandler.class);
+            NotificationTypeHandler annotation = handlerAnnotation(bean, NotificationTypeHandler.class);
             if (annotation != null) {
                 map.put(annotation.value(), bean);
             }
@@ -120,7 +134,7 @@ public class AppConfig {
     public Map<CommunicationChanel, NotificationProcessor> getNotificationProcessorStrategies(final ApplicationContext context) {
         Map<CommunicationChanel, NotificationProcessor> map = new EnumMap<>(CommunicationChanel.class);
         context.getBeansOfType(NotificationProcessor.class).forEach((name, bean) -> {
-            CommunicationTypeHandler annotation = bean.getClass().getAnnotation(CommunicationTypeHandler.class);
+            CommunicationTypeHandler annotation = handlerAnnotation(bean, CommunicationTypeHandler.class);
             if (annotation != null) {
                 map.put(annotation.value(), bean);
             }
@@ -133,7 +147,7 @@ public class AppConfig {
     public Map<ShippingProvider, ShippingProviderService> getShippingProviderStrategies(final ApplicationContext applicationContext) {
         Map<ShippingProvider, ShippingProviderService> map = new EnumMap<>(ShippingProvider.class);
         applicationContext.getBeansOfType(ShippingProviderService.class).forEach((name, bean) -> {
-            ShippingProviderHandler annotation = bean.getClass().getAnnotation(ShippingProviderHandler.class);
+            ShippingProviderHandler annotation = handlerAnnotation(bean, ShippingProviderHandler.class);
             if (annotation != null) {
                 map.put(annotation.value(), bean);
             }
