@@ -5,7 +5,6 @@ import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
@@ -15,7 +14,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
-import java.util.List;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -64,24 +62,8 @@ public interface BankCardControllerApiSpec {
             security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Bank card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "No bank card set", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "The caller has no bank card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<BankCardResponseDto> getDefaultBankCard(Jwt jwt);
-
-    @Operation(summary = "List the authenticated user's bank cards",
-            description = """
-                    Frontend-gap #4 — returns every bank card owned by the authenticated caller as a
-                    list of PCI-masked DTOs. The current domain model enforces 1-card-per-user
-                    (UserEntity.bankCardEntity is @OneToOne) so the list contains at most one entry,
-                    but the list shape keeps the contract forward-compatible should that constraint
-                    be relaxed.
-                    """,
-            security = @SecurityRequirement(name = "keycloak"),
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "List of cards (possibly empty)", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = BankCardResponseDto.class)))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<List<BankCardResponseDto>> getAllMine(Jwt jwt);
+    ResponseEntity<BankCardResponseDto> getBankCard(Jwt jwt);
 }

@@ -25,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -163,32 +162,14 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
                         LogSafetyUtils.maskUuid(keycloakId), uuid));
     }
 
-    // --- single-card surface -------------------------------------------------------------
-
-    /**
-     * Frontend-gap #4 — list every card owned by the authenticated user.
-     *
-     * <p>Backed by the existing {@link BankCardRepository#findAllByUserEntity_KeycloakId(String)},
-     * so no new repository method is needed. Today the list is at most one entry — see
-     * {@link BankCardManagementService#findAllMine} for the rationale around the
-     * 1-card-per-user constraint.</p>
-     */
-    @Override
-    @Transactional(readOnly = true)
-    public List<BankCardResponseDto> findAllMine(final String keycloakId) {
-        return bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId).stream()
-                .map(bankCardMapper::mapFromEntityToResponseDto)
-                .toList();
-    }
-
-    /**
+        /**
      * Returns the user's single bank card, already masked for safe API exposure.
      *
      * @throws BankCardNotFoundException if the user has no bank card.
      */
     @Override
     @Transactional(readOnly = true)
-    public BankCardResponseDto getDefaultCard(final String keycloakId) {
+    public BankCardResponseDto getCard(final String keycloakId) {
         final BankCardEntity card = bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId).stream()
                 .findFirst()
                 .orElseThrow(() -> new BankCardNotFoundException("No bank card set for the user"));

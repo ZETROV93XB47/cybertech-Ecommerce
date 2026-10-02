@@ -1429,45 +1429,18 @@
           "response": []
         },
         {
-          "name": "Get my default card",
+          "name": "Get my bank card",
           "request": {
             "method": "GET",
             "header": [
               { "key": "X-API-VERSION", "value": "{{api_version}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card/default",
+              "raw": "{{base_url}}/api/v1/services/bank-card/get",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "bank-card", "default"]
+              "path": ["api", "v1", "services", "bank-card", "get"]
             },
-            "description": "Return the caller's default card (masked).\n\n- Roles: USER or ADMIN\n- Success: 200 with `BankCardResponseDto`."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Get all my bank cards",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card/all-mine",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "bank-card", "all-mine"]
-            },
-            "description": "Frontend-gap #4 — lists every bank card owned by the caller. Returns at most one today (one-card-per-user, `@OneToOne UserEntity.bankCardEntity`); kept as a list for forward-compatibility.\n\n- Roles: USER or ADMIN\n- Success: 200 with `List<BankCardResponseDto>`."
+            "description": "Return the caller's bank card (masked) — a user has at most one card; 404 when none.\n\n- Roles: USER or ADMIN\n- Success: 200 with `BankCardResponseDto`."
           },
           "event": [
             {

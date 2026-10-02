@@ -19,7 +19,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.List;
 import java.util.UUID;
 
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
@@ -256,40 +255,39 @@ class BankCardManagementControllerTest {
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
     }
 
-    // ---------- GET /all-mine (Frontend-gap #4) ----------
+    // ---------- GET /get ----------
 
     @Test
-    void shouldGetAllMineSuccessfully() throws Exception {
+    void shouldGetBankCardSuccessfully() throws Exception {
         BankCardResponseDto card = UserDtoFixtures.aSampleBankCardResponse();
-        when(bankCardService.findAllMine(KEYCLOAK_ID)).thenReturn(List.of(card));
+        when(bankCardService.getCard(KEYCLOAK_ID)).thenReturn(card);
 
-        mockMvc.perform(get(BASE + "/all-mine")
+        mockMvc.perform(get(BASE + "/get")
                         .with(jwtUser(KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(jsonPath("$.length()").value(1));
+                .andExpect(content().json(asJsonString(card), STRICT));
 
         ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
-        verify(bankCardService).findAllMine(subjectCaptor.capture());
+        verify(bankCardService).getCard(subjectCaptor.capture());
         assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
     }
 
     @Test
-    void shouldGetAllMineReturnEmptyListWhenNoCard() throws Exception {
-        when(bankCardService.findAllMine(KEYCLOAK_ID)).thenReturn(List.of());
+    void shouldFailGetBankCardWhenCallerHasNoCardCauseNotFound() throws Exception {
+        when(bankCardService.getCard(KEYCLOAK_ID)).thenThrow(new BankCardNotFoundException("No bank card set for the user"));
 
-        mockMvc.perform(get(BASE + "/all-mine")
+        mockMvc.perform(get(BASE + "/get")
                         .with(jwtUser(KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.httpStatusCode").value(404));
     }
 
     @Test
-    void shouldFailGetAllMineWhenAnonymousCauseUnauthorized() throws Exception {
-        mockMvc.perform(get(BASE + "/all-mine")
+    void shouldFailGetBankCardWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(get(BASE + "/get")
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
     }

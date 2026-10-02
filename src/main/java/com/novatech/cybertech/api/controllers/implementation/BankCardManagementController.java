@@ -16,7 +16,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.BANK_CARD_CRUD_CONTROLLER_BASE_PATH;
@@ -60,23 +59,9 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
      */
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-    @GetMapping(value = "/default", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<BankCardResponseDto> getDefaultBankCard(@AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.ok(bankCardService.getDefaultCard(jwt.getSubject()));
-    }
-
-    /**
-     * Frontend-gap #4 — list every bank card owned by the authenticated user.
-     *
-     * <p>Returns at most one card today (one-card-per-user enforced by the
-     * {@code @OneToOne UserEntity.bankCardEntity}); the response is still a list to keep the
-     * contract forward-compatible.</p>
-     */
-    @Override
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-    @GetMapping(value = "/all-mine", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<BankCardResponseDto>> getAllMine(@AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.ok(bankCardService.findAllMine(jwt.getSubject()));
+    @GetMapping(value = "/get", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<BankCardResponseDto> getBankCard(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(bankCardService.getCard(jwt.getSubject()));
     }
 
 }

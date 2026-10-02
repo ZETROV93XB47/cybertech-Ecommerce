@@ -97,7 +97,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ### À faire / pistes ouvertes (non traitées, non priorisées)
 
 - **Audit `CrudBaseService` (2026-10-02)** :
-  - `BankCardManagementService` : **fait le 2026-10-02**. L'héritage `CrudBaseService` et le `create`/`update` admin sont retirés ; l'admin peut seulement lister, lire et supprimer. Restent en doublon : `findAllMine` et `getDefaultCard` (1 carte par user).
+  - `BankCardManagementService` : **fait le 2026-10-02**. L'héritage `CrudBaseService` et le `create`/`update` admin sont retirés ; l'admin peut seulement lister, lire et supprimer. Doublon résolu : `findAllMine` / `GET /bank-card/all-mine` a été supprimé, et `getDefaultCard` / `GET /bank-card/default` a été renommé en `getCard` / `GET /bank-card/get`.
   - `ProductManagementService` : les 4 méthodes sont pertinentes (catalogue admin). `/create` (JSON) et `/create-with-image` font doublon : on peut rendre `images` optionnel et ne garder qu'un endpoint. La vérification « UUID du path = UUID du body » vit dans le controller (contraire à la règle « controllers propres »).
   - `UserManagementService` : les 4 méthodes sont utilisées et pertinentes. Points annexes : le contrôle d'accès « owner ou admin » de `GET /user/get/{uuid}` est dans le controller, il n'existe pas de `GET /user/me`, `/user/ok` est un ping de debug et `/admin/.../register/auto/single` un helper de dev.
 - `S3ServiceImp` : la clé S3 est préfixée par le nom du bucket (`cybertech-products/<uuid>_<nom>.jpg` dans le bucket `cybertech-products`), ce qui est redondant.

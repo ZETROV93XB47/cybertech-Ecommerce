@@ -1505,19 +1505,19 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /api/v1/services/bank-card/default:
+  /api/v1/services/bank-card/get:
     get:
       tags: [Bank Card]
-      summary: Get the caller's default bank card
+      summary: Get the caller's bank card (a user has at most one)
       responses:
         '200':
-          description: Default card (masked PAN)
+          description: The caller's card (masked PAN)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/BankCardResponseDto' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403':
-          description: No default card set
+        '404':
+          description: The caller has no bank card
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponseDto' }

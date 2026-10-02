@@ -30,7 +30,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
-import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -216,35 +215,27 @@ class BankCardManagementServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("getDefaultCard — single-card surface")
-    class DefaultCard {
+    @DisplayName("getCard — the caller's single card")
+    class GetCard {
+
 
         @Test
-        @DisplayName("BankCardManagementServiceImp exposes getDefaultCard method")
-        void defaultCardMethodExists() {
-            final List<String> methodNames = Arrays.stream(BankCardManagementServiceImp.class.getDeclaredMethods())
-                    .map(Method::getName)
-                    .toList();
-            assertThat(methodNames).contains("getDefaultCard");
-        }
-
-        @Test
-        @DisplayName("getDefaultCard: returns masked DTO of the user's card")
-        void getDefaultCard_happy() {
+        @DisplayName("getCard: returns masked DTO of the user's card")
+        void getCard_happy() {
             final BankCardEntity card = BankCardEntityBuilder.aValidBankCard();
             final BankCardResponseDto dto = new BankCardResponseDto();
             when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of(card));
             when(bankCardMapper.mapFromEntityToResponseDto(card)).thenReturn(dto);
 
-            assertThat(service.getDefaultCard(keycloakId)).isSameAs(dto);
+            assertThat(service.getCard(keycloakId)).isSameAs(dto);
         }
 
         @Test
-        @DisplayName("getDefaultCard: no card -> BankCardNotFoundException")
-        void getDefaultCard_noneSet_throws() {
+        @DisplayName("getCard: no card -> BankCardNotFoundException")
+        void getCard_noCard_throws() {
             when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of());
 
-            assertThatThrownBy(() -> service.getDefaultCard(keycloakId))
+            assertThatThrownBy(() -> service.getCard(keycloakId))
                     .isInstanceOf(BankCardNotFoundException.class);
         }
     }
@@ -450,49 +441,6 @@ class BankCardManagementServiceImpTest {
             assertThatCode(() -> service.deleteByUUID(cardUuid, keycloakId)).doesNotThrowAnyException();
 
             verify(bankCardRepository, never()).deleteByUuid(any(UUID.class));
-        }
-    }
-
-    // =================================================================
-    @Nested
-    @DisplayName("findAllMine — Frontend-gap #4 list every card belonging to the caller")
-    class FindAllMine {
-
-        @Test
-        @DisplayName("happy path: user has 1 card -> repo result mapped to single-element list")
-        void findAllMine_oneCard_returnsMappedSingleton() {
-            final BankCardEntity card = BankCardEntityBuilder.aValidBankCard();
-            final BankCardResponseDto responseDto = new BankCardResponseDto();
-            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of(card));
-            when(bankCardMapper.mapFromEntityToResponseDto(card)).thenReturn(responseDto);
-
-            final List<BankCardResponseDto> result = service.findAllMine(keycloakId);
-
-            assertThat(result).hasSize(1).first().isSameAs(responseDto);
-            verify(bankCardRepository).findAllByUserEntity_KeycloakId(keycloakId);
-        }
-
-        @Test
-        @DisplayName("user with no card -> empty list, mapper never called")
-        void findAllMine_noCard_returnsEmpty() {
-            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of());
-
-            final List<BankCardResponseDto> result = service.findAllMine(keycloakId);
-
-            assertThat(result).isEmpty();
-            verify(bankCardMapper, never()).mapFromEntityToResponseDto(any(BankCardEntity.class));
-        }
-
-        @Test
-        @DisplayName("forwards keycloakId to the repository verbatim — no normalisation, no transformation")
-        void findAllMine_forwardsKeycloakIdVerbatim() {
-            when(bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId)).thenReturn(List.of());
-
-            service.findAllMine(keycloakId);
-
-            ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
-            verify(bankCardRepository).findAllByUserEntity_KeycloakId(captor.capture());
-            assertThat(captor.getValue()).isEqualTo(keycloakId);
         }
     }
 }
