@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,7 +38,6 @@ class BankCardMapperTest {
                     .cardNumber("4242424242424242")
                     .expiryDate("12/2099")
                     .cardType(BankCardType.MASTERCARD)
-                    .userUuid(UUID.randomUUID())
                     .build();
 
             BankCardEntity entity = mapper.mapFromCreationRequestToEntity(dto);
@@ -54,45 +52,7 @@ class BankCardMapperTest {
 
         @Test
         void shouldReturnNullForNullSource() {
-            assertThat(mapper.mapFromCreationRequestToEntity((BankCardCreationRequestDto) null)).isNull();
-        }
-
-        @Test
-        void shouldMapCollection() {
-            Collection<BankCardEntity> entities = mapper.mapFromCreationRequestToEntity(
-                    List.of(UserDtoFixtures.aValidBankCardCreationRequest()));
-
-            assertThat(entities).hasSize(1);
-        }
-
-        @Test
-        void shouldReturnNullForNullCollection() {
-            assertThat(mapper.mapFromCreationRequestToEntity((Collection<BankCardCreationRequestDto>) null)).isNull();
-        }
-    }
-
-    @Nested
-    @DisplayName("mapFromUpdateRequestToEntity(BankCardUpdateRequestDto)")
-    class FromUpdateRequest {
-
-        @Test
-        void shouldMapEditableFieldsIncludingUuid() {
-            UUID cardUuid = UUID.randomUUID();
-            // Write-once PAN: the update DTO carries only uuid + holder name + expiry.
-            BankCardUpdateRequestDto dto = new BankCardUpdateRequestDto(
-                    cardUuid, "Holder", "01/2099");
-
-            BankCardEntity entity = mapper.mapFromUpdateRequestToEntity(dto);
-
-            assertThat(entity).isNotNull();
-            assertThat(entity.getUuid()).isEqualTo(cardUuid);
-            assertThat(entity.getCardHolderName()).isEqualTo("Holder");
-            assertThat(entity.getExpiryDate()).isEqualTo("01/2099");
-        }
-
-        @Test
-        void shouldReturnNullForNullSource() {
-            assertThat(mapper.mapFromUpdateRequestToEntity(null)).isNull();
+            assertThat(mapper.mapFromCreationRequestToEntity(null)).isNull();
         }
     }
 
@@ -111,7 +71,6 @@ class BankCardMapperTest {
             // Write-once PAN: only holder name + expiry are mutable; uuid, user, card number and
             // card type must be left untouched by the in-place update.
             BankCardUpdateRequestDto dto = new BankCardUpdateRequestDto(
-                    UUID.randomUUID(),
                     "New holder",
                     "06/2099");
 
@@ -173,20 +132,7 @@ class BankCardMapperTest {
 
         @Test
         void shouldReturnNullForNullSource() {
-            assertThat(mapper.mapFromEntityToResponseDto((BankCardEntity) null)).isNull();
-        }
-
-        @Test
-        void shouldMapCollection() {
-            Collection<BankCardResponseDto> dtos = mapper.mapFromEntityToResponseDto(
-                    List.of(BankCardEntityBuilder.aValidBankCard(), BankCardEntityBuilder.aValidBankCard()));
-
-            assertThat(dtos).hasSize(2);
-        }
-
-        @Test
-        void shouldReturnNullForNullCollection() {
-            assertThat(mapper.mapFromEntityToResponseDto((Collection<BankCardEntity>) null)).isNull();
+            assertThat(mapper.mapFromEntityToResponseDto(null)).isNull();
         }
     }
 }

@@ -1,27 +1,20 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.spec.BankCardAdminControllerApiSpec;
-import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
-import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.services.core.BankCardManagementService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,10 +27,10 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_SOR
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 /**
- * Admin-only bank-card back-office. Hosts the cross-user CRUD endpoints that used to live on
- * {@link BankCardManagementController}. Injects the same {@link BankCardManagementService} — the
- * service was intentionally left unchanged in this controllers-only split (mirrors how
- * {@code OrderManagementAdminController} shares {@code OrderManagementService}).
+ * Admin-only bank-card back-office: list, read and delete any user's card. There is deliberately
+ * no admin create / update — an admin never types in a customer's card number nor edits someone
+ * else's card; cards are only added and edited by their owner through
+ * {@link BankCardManagementController}.
  *
  * <p>OpenAPI documentation lives on {@link BankCardAdminControllerApiSpec}.
  */
@@ -59,20 +52,8 @@ public class BankCardAdminController implements BankCardAdminControllerApiSpec {
 
     @Override
     @GetMapping(value = "/get/{uuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<BankCardResponseDto> getBankCardByUuid(@PathVariable UUID uuid, @AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.ok(bankCardService.getByUUID(uuid, jwt.getSubject()));
-    }
-
-    @Override
-    @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<BankCardResponseDto> createBankCard(@Valid @RequestBody BankCardCreationRequestDto dto, @AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(bankCardService.create(dto, jwt.getSubject()));
-    }
-
-    @Override
-    @PatchMapping(value = "/update", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<BankCardResponseDto> updateBankCardAdmin(@Valid @RequestBody BankCardUpdateRequestDto dto, @AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.ok(bankCardService.update(dto, jwt.getSubject()));
+    public ResponseEntity<BankCardResponseDto> getBankCardByUuid(@PathVariable UUID uuid) {
+        return ResponseEntity.ok(bankCardService.getByUUID(uuid));
     }
 
     @Override

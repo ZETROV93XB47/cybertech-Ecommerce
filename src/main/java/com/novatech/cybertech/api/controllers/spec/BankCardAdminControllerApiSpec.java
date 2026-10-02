@@ -1,8 +1,6 @@
 package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
-import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
-import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -51,37 +49,7 @@ public interface BankCardAdminControllerApiSpec {
                     @ApiResponse(responseCode = "404", description = "Bank card not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
-    ResponseEntity<BankCardResponseDto> getBankCardByUuid(UUID uuid, Jwt jwt);
-
-    @Operation(summary = "Create a bank card (Admin)",
-            description = "Creates a bank card directly linked to a user UUID.",
-            security = @SecurityRequirement(name = "keycloak"),
-            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardCreationRequestDto.class))),
-            responses = {
-                    @ApiResponse(responseCode = "201", description = "Bank card created",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
-                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<BankCardResponseDto> createBankCard(BankCardCreationRequestDto dto, Jwt jwt);
-
-    @Operation(summary = "Update a bank card (Admin)",
-            description = "Updates a bank card by UUID (UUID carried in the request body).",
-            security = @SecurityRequirement(name = "keycloak"),
-            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardUpdateRequestDto.class))),
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Bank card updated",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden - ADMIN role required",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Bank card not found",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<BankCardResponseDto> updateBankCardAdmin(BankCardUpdateRequestDto dto, Jwt jwt);
+    ResponseEntity<BankCardResponseDto> getBankCardByUuid(UUID uuid);
 
     @Operation(summary = "Delete a bank card by UUID (Admin)",
             description = "Deletes a bank card by its UUID.",

@@ -1384,9 +1384,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"uuid\": \"55555555-6666-7777-8888-999999999999\",\n  \"cardHolderName\": \"Jane Doe\",\n  \"cardNumber\": \"4242424242424242\",\n  \"expiryDate\": \"06/2031\",\n  \"cardType\": \"VISA\"\n}"
+              "raw": "{\n  \"cardHolderName\": \"Jane Doe\",\n  \"expiryDate\": \"06/2031\"\n}"
             },
-            "description": "Replace the caller's existing card details.\n\n- Roles: USER or ADMIN\n- Success: 200 with masked `BankCardResponseDto`."
+            "description": "Edit the caller's card holder name and expiry date (the card number is write-once: delete and re-add to change it).\n\n- Roles: USER or ADMIN\n- Success: 200 with masked `BankCardResponseDto`."
           },
           "event": [
             {
@@ -1414,36 +1414,6 @@
               "path": ["api", "v1", "services", "bank-card", "delete"]
             },
             "description": "Delete the caller's bank card.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Set default card",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card/set-default/:cardUuid",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "bank-card", "set-default", ":cardUuid"],
-              "variable": [
-                { "key": "cardUuid", "value": "55555555-6666-7777-8888-999999999999" }
-              ]
-            },
-            "description": "Mark the supplied card as the caller's default. Sibling cards are demoted in the same transaction.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content."
           },
           "event": [
             {
@@ -1560,70 +1530,6 @@
               ]
             },
             "description": "ADMIN-only fetch of any card by UUID. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 200 with `BankCardResponseDto`."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Admin: create card",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/admin/bank-card/create",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "admin", "bank-card", "create"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"cardHolderName\": \"Admin Created\",\n  \"cardNumber\": \"5555555555554444\",\n  \"expiryDate\": \"08/2029\",\n  \"cardType\": \"MASTERCARD\",\n  \"userUuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\"\n}"
-            },
-            "description": "ADMIN: create a card directly on a user UUID. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `BankCardResponseDto`."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Admin: update card",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/admin/bank-card/update",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "admin", "bank-card", "update"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"uuid\": \"55555555-6666-7777-8888-999999999999\",\n  \"cardHolderName\": \"Admin Edit\",\n  \"cardNumber\": \"5555555555554444\",\n  \"expiryDate\": \"09/2030\",\n  \"cardType\": \"MASTERCARD\"\n}"
-            },
-            "description": "ADMIN: edit any card. Lives on `BankCardAdminController` — method changed PUT→PATCH in the admin-split refactor.\n\n- Role: ADMIN\n- Success: 200 with `BankCardResponseDto`."
           },
           "event": [
             {

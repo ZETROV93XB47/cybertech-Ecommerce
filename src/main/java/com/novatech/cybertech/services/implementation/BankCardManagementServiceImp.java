@@ -125,7 +125,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
         return bankCardMapper.mapFromEntityToResponseDto(savedCard);
     }
 
-    // --- Méthodes CRUD Base (Admin / Generic) ---
+    // --- Admin back-office (list / read / delete) ---
 
     @Override
     @Transactional(readOnly = true)
@@ -135,54 +135,10 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
 
     @Override
     @Transactional(readOnly = true)
-    public BankCardResponseDto getByUUID(final UUID uuid, final String keycloakId) {
+    public BankCardResponseDto getByUUID(final UUID uuid) {
         BankCardEntity entity = bankCardRepository.findByUuid(uuid)
                 .orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + uuid));
         return bankCardMapper.mapFromEntityToResponseDto(entity);
-    }
-
-    @Override
-    @Transactional
-    public BankCardResponseDto create(final BankCardCreationRequestDto dto, final String keycloakId) {
-        // Pour le CRUD générique, on a besoin de lier un user.
-        // On suppose que le DTO contient l'UUID du user (ajouté précédemment).
-        if (dto.getUserUuid() == null) {
-            throw new IllegalArgumentException("User UUID is required for generic bank card creation.");
-        }
-
-        UserEntity user = userRepository.findByUuid(dto.getUserUuid()).orElseThrow(() -> new UserNotFoundException("User not found with UUID: " + dto.getUserUuid()));
-
-        if (user.getBankCardEntity() != null) {
-            throw new IllegalStateException("User already has a bank card.");
-        }
-
-        BankCardEntity entity = bankCardMapper.mapFromCreationRequestToEntity(dto);
-        entity.setUserEntity(user);
-
-        // Apply same PCI + expiry rules as the user-facing path
-        validateExpiryNotInThePast(dto.getExpiryDate());
-        applyPciStorageRules(entity, dto.getCardNumber());
-
-        return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.save(entity));
-    }
-
-    /**
-     * Admin-side update. Same write-once PAN policy as
-     * {@link #updateBankCard(String, BankCardUpdateRequestDto)}: only holder name and expiry are
-     * editable; the encrypted card number is never mutated in place.
-     */
-    @Override
-    @Transactional
-    public BankCardResponseDto update(final BankCardUpdateRequestDto dto, final String keycloakId) {
-        BankCardEntity entity = bankCardRepository.findByUuid(dto.getUuid()).orElseThrow(() -> new BankCardNotFoundException("Bank card not found with UUID: " + dto.getUuid()));
-
-        if (dto.getExpiryDate() != null && !dto.getExpiryDate().isBlank()) {
-            validateExpiryNotInThePast(dto.getExpiryDate());
-        }
-
-        bankCardMapper.updateEntityFromDto(dto, entity);
-
-        return bankCardMapper.mapFromEntityToResponseDto(bankCardRepository.save(entity));
     }
 
     /**

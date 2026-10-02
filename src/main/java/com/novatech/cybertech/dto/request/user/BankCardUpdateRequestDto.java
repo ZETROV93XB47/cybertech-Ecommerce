@@ -1,14 +1,12 @@
 package com.novatech.cybertech.dto.request.user;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.UUID;
 
 /**
  * Update payload for a bank card. By design the PAN ({@code cardNumber}) and the derived
@@ -21,9 +19,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BankCardUpdateRequestDto {
-
-    @NotNull(message = "UUID cannot be null for update")
-    private UUID uuid;
 
     @NotBlank(message = "Card holder name cannot be blank")
     private String cardHolderName;

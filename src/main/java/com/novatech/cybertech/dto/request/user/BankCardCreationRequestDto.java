@@ -10,7 +10,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.UUID;
 
 @Data
 @Builder
@@ -32,7 +31,4 @@ public class BankCardCreationRequestDto {
 
     @NotNull(message = "Card type cannot be null")
     private BankCardType cardType;
-
-    // Optionnel : Utilisé uniquement pour le CRUD Admin si on veut lier directement à un user
-    private UUID userUuid;
 }

@@ -17,16 +17,17 @@ import org.mapstruct.ReportingPolicy;
  * was written before the fix, only the last four digits surface via the masked field. We
  * also explicitly ignore {@code encryptedNumber} when producing the response so the base64
  * ciphertext cannot accidentally leak either.</p>
+ *
+ * <p>Not a {@link BaseMapper}: an update is always applied in place on the loaded entity
+ * ({@link #updateEntityFromDto}) so the write-once PAN fields are never rebuilt from a DTO.</p>
  */
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface BankCardMapper extends BaseMapper<BankCardEntity, BankCardCreationRequestDto, BankCardUpdateRequestDto, BankCardResponseDto> {
+public interface BankCardMapper {
 
-    @Override
     @Mapping(target = "userUuid", expression = "java(entity.getUserEntity() != null ? entity.getUserEntity().getUuid() : null)")
     @Mapping(target = "maskedNumber", expression = "java(entity.getLastFourDigits() != null ? \"**** **** **** \" + entity.getLastFourDigits() : null)")
     BankCardResponseDto mapFromEntityToResponseDto(BankCardEntity entity);
 
-    @Override
     @Mapping(target = "userEntity", ignore = true) // Géré manuellement dans le service
     @Mapping(target = "encryptedNumber", ignore = true) // set by the service via CardEncryptionService
     @Mapping(target = "lastFourDigits", ignore = true) // computed by the service, never from the raw DTO

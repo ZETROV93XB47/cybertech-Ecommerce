@@ -9,7 +9,16 @@ import org.springframework.data.domain.Pageable;
 import java.util.List;
 import java.util.UUID;
 
-public interface BankCardManagementService extends CrudBaseService<UUID, BankCardCreationRequestDto, BankCardUpdateRequestDto, BankCardResponseDto, String> {
+/**
+ * Bank card domain service.
+ * <p>
+ * Deliberately NOT a {@link CrudBaseService}: a user owns at most one card, managed through the
+ * caller-scoped methods ({@link #addBankCard}, {@link #updateBankCard}, {@link #deleteBankCard}).
+ * The admin back-office only lists, reads and deletes cards — an admin never types in a
+ * customer's card number nor edits someone else's card, so the generic {@code create} /
+ * {@code update} had no legitimate use case and were removed.
+ */
+public interface BankCardManagementService {
 
     BankCardResponseDto addBankCard(String keycloakId, BankCardCreationRequestDto bankCardCreationRequestDto);
 
@@ -30,9 +39,18 @@ public interface BankCardManagementService extends CrudBaseService<UUID, BankCar
      */
     BankCardResponseDto getDefaultCard(String keycloakId);
 
-    // deleteByUUID(UUID, String) is now the inherited CrudBaseService method itself — the admin
-    // caller's identity rides along for the audit trail (see BankCardManagementServiceImp), it is
-    // not an ownership check: admin callers may delete any user's card by design.
+    /**
+     * Admin read of any card by UUID (masked DTO).
+     *
+     * @throws com.novatech.cybertech.exceptions.BankCardNotFoundException when no card matches.
+     */
+    BankCardResponseDto getByUUID(UUID uuid);
+
+    /**
+     * Admin delete of any card by UUID. {@code adminKeycloakId} is not an ownership check — admins
+     * may delete any user's card by design — it is the acting admin recorded in the PCI audit log.
+     */
+    void deleteByUUID(UUID uuid, String adminKeycloakId);
 
     /**
      * Frontend-gap #4 — list every bank card belonging to the authenticated user.

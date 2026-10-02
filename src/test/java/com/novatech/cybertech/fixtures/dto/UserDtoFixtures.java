@@ -107,7 +107,6 @@ public final class UserDtoFixtures {
 
     public static BankCardUpdateRequestDto.BankCardUpdateRequestDtoBuilder aValidBankCardUpdateRequestBuilder() {
         return BankCardUpdateRequestDto.builder()
-                .uuid(UUID.randomUUID())
                 .cardHolderName("Jane Doe")
                 .expiryDate(LocalDate.now().plusYears(5).format(EXPIRY_FORMAT));
     }

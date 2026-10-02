@@ -3,8 +3,6 @@ package com.novatech.cybertech.api.controllers.implementation.bankcard;
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.BankCardAdminController;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
-import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
-import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
@@ -58,8 +56,6 @@ class BankCardAdminControllerTest {
     private static final String BASE = "/api/v1/services/admin/bank-card";
     private static final String GET_ALL = BASE + "/get/all";
     private static final String GET_BY_UUID = BASE + "/get/{uuid}";
-    private static final String CREATE = BASE + "/create";
-    private static final String UPDATE = BASE + "/update";
     private static final String DELETE_BY_UUID = BASE + "/delete/{uuid}";
 
     private static final String KEYCLOAK_ID = "keycloak-subject-id";
@@ -113,7 +109,7 @@ class BankCardAdminControllerTest {
         UUID cardUuid = UUID.randomUUID();
         BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponseBuilder().uuid(cardUuid).build();
 
-        when(bankCardService.getByUUID(cardUuid, KEYCLOAK_ID)).thenReturn(response);
+        when(bankCardService.getByUUID(cardUuid)).thenReturn(response);
 
         mockMvc.perform(get(GET_BY_UUID, cardUuid)
                         .with(jwtAdmin(KEYCLOAK_ID))
@@ -132,7 +128,7 @@ class BankCardAdminControllerTest {
                 .errorCodeType(FUNCTIONAL)
                 .build();
 
-        when(bankCardService.getByUUID(cardUuid, KEYCLOAK_ID))
+        when(bankCardService.getByUUID(cardUuid))
                 .thenThrow(new BankCardNotFoundException("Bank card not found by UUID"));
 
         mockMvc.perform(get(GET_BY_UUID, cardUuid)
@@ -165,105 +161,6 @@ class BankCardAdminControllerTest {
         mockMvc.perform(get(GET_BY_UUID, cardUuid)
                         .with(jwtUser(KEYCLOAK_ID))
                         .accept(APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
-
-    // ---------- POST /create ----------
-
-    @Test
-    void shouldCreateBankCardAdminSuccessfully() throws Exception {
-        BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
-        BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponse();
-
-        when(bankCardService.create(any(BankCardCreationRequestDto.class), eq(KEYCLOAK_ID))).thenReturn(response);
-
-        mockMvc.perform(post(CREATE)
-                        .with(jwtAdmin(KEYCLOAK_ID))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content(asJsonString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(response), STRICT));
-    }
-
-    @Test
-    void shouldFailCreatingBankCardAdminWhenDtoBadRequest() throws Exception {
-        BankCardCreationRequestDto bad = new BankCardCreationRequestDto();
-
-        mockMvc.perform(post(CREATE)
-                        .with(jwtAdmin(KEYCLOAK_ID))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content(asJsonString(bad)))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
-                .andExpect(jsonPath("$.httpStatusCode").value(400))
-                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
-    }
-
-    @Test
-    void shouldFailCreatingBankCardAdminWhenAnonymousCauseUnauthorized() throws Exception {
-        mockMvc.perform(post(CREATE)
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void shouldFailCreatingBankCardAdminAsNonAdminCauseForbidden() throws Exception {
-        BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
-        mockMvc.perform(post(CREATE)
-                        .with(jwtUser(KEYCLOAK_ID))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content(asJsonString(request)))
-                .andExpect(status().isForbidden());
-    }
-
-    // ---------- PATCH /update ----------
-
-    @Test
-    void shouldUpdateBankCardAdminSuccessfully() throws Exception {
-        BankCardUpdateRequestDto request = UserDtoFixtures.aValidBankCardUpdateRequest();
-        BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponse();
-
-        when(bankCardService.update(any(BankCardUpdateRequestDto.class), eq(KEYCLOAK_ID))).thenReturn(response);
-
-        mockMvc.perform(patch(UPDATE)
-                        .with(jwtAdmin(KEYCLOAK_ID))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content(asJsonString(request)))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(response), STRICT));
-    }
-
-    @Test
-    void shouldFailUpdatingBankCardAdminWhenAnonymousCauseUnauthorized() throws Exception {
-        mockMvc.perform(patch(UPDATE)
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void shouldFailUpdatingBankCardAdminAsNonAdminCauseForbidden() throws Exception {
-        BankCardUpdateRequestDto request = UserDtoFixtures.aValidBankCardUpdateRequest();
-        mockMvc.perform(patch(UPDATE)
-                        .with(jwtUser(KEYCLOAK_ID))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content(asJsonString(request)))
                 .andExpect(status().isForbidden());
     }
 
