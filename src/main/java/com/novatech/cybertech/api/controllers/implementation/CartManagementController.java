@@ -32,28 +32,6 @@ public class CartManagementController implements CartManagementControllerApiSpec
 
     private final CartService cartService;
 
-    //Base CRUD Endpoints, maybe delete these endpoints in the future
-    /**
-     * Forwards to the ownership-checked
-     * {@link CartService#getByUUID(UUID, String)} overload using the JWT
-     * subject as caller identity. Previously {@code getByUUID(UUID)} was
-     * called with no caller context, allowing any authenticated user to
-     * read any other user's cart by guessing their UUID (IDOR).
-     */
-    @Override
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-    @GetMapping(value = "/get/{cartUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<CartResponseDto> getCartByUuid(@PathVariable("cartUuid") UUID cartUuid, @AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.OK).body(cartService.getByUUID(cartUuid, jwt.getSubject()));
-    }
-
-    @Override
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-    @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<CartResponseDto> createCart(@Valid @RequestBody CartCreateRequestDto cartCreateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(cartService.create(cartCreateRequestDto, jwt.getSubject()));
-    }
-
     /**
      * Update a cart identified by UUID with the
      * correctly-typed {@link CartUpdateRequestDto}. Uses the JWT subject as
@@ -65,23 +43,6 @@ public class CartManagementController implements CartManagementControllerApiSpec
     public ResponseEntity<CartResponseDto> updateCart(@PathVariable("cartUuid") final UUID cartUuid, @Valid @RequestBody final CartUpdateRequestDto cartUpdateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
         return ResponseEntity.status(HttpStatus.OK).body(cartService.updateCart(cartUuid, cartUpdateRequestDto, jwt.getSubject()));
     }
-
-    /**
-     * Forwards to the ownership-checked
-     * {@link CartService#deleteByUUID(UUID, String)} overload. An attacker
-     * can no longer delete an unrelated user's cart by guessing its UUID.
-     */
-    @Override
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-    @DeleteMapping(value = "/delete/{cartUuid}", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deleteCartByUuid(@PathVariable("cartUuid") UUID cartUuid, @AuthenticationPrincipal final Jwt jwt) {
-        cartService.deleteByUUID(cartUuid, jwt.getSubject());
-        return ResponseEntity.noContent().build();
-    }
-
-
-
-
 
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")

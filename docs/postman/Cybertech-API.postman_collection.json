@@ -685,68 +685,6 @@
           "response": []
         },
         {
-          "name": "Get cart by UUID (ownership-checked)",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/cart/get/:cartUuid",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "cart", "get", ":cartUuid"],
-              "variable": [
-                { "key": "cartUuid", "value": "33333333-4444-5555-6666-777777777777" }
-              ]
-            },
-            "description": "ownership-checked. Forwards JWT subject so the service rejects IDOR attempts.\n\n- Roles: USER or ADMIN\n- Success: 200 with `CartResponseDto`.\n- Errors: 403 if cart belongs to a different user, 404 if not found."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Create cart",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/cart/create",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "cart", "create"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"cartItemAddRequestDtos\": [\n    { \"productUuid\": \"11111111-2222-3333-4444-555555555555\", \"quantity\": 1 },\n    { \"productUuid\": \"22222222-3333-4444-5555-666666666666\", \"quantity\": 2 }\n  ]\n}"
-            },
-            "description": "Bulk-initialise a cart with items.\n\n- Roles: USER or ADMIN\n- Success: 201 with `CartResponseDto`."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
           "name": "Add items to my cart",
           "request": {
             "method": "POST",
@@ -888,36 +826,6 @@
               "path": ["api", "v1", "services", "cart", "clear"]
             },
             "description": "Empty all items from the caller's cart.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Delete cart by UUID",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/cart/delete/:cartUuid",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "cart", "delete", ":cartUuid"],
-              "variable": [
-                { "key": "cartUuid", "value": "33333333-4444-5555-6666-777777777777" }
-              ]
-            },
-            "description": "Hard-delete a cart by UUID. Ownership-checked.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content.\n- Errors: 403 IDOR, 404 not found."
           },
           "event": [
             {

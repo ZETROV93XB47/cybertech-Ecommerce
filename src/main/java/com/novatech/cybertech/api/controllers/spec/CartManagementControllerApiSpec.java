@@ -22,46 +22,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @Tag(name = "Cart", description = "Endpoints to manage the authenticated user's shopping cart")
 public interface CartManagementControllerApiSpec {
 
-    @Operation(summary = "Request a Cart by UUID",
-            description = "Fetches a Cart's details based on their unique UUID. Caller must own the cart.",
-            security = @SecurityRequirement(name = "keycloak"),
-            parameters = {
-                    @Parameter(name = "cartUuid", description = "UUID for searching a Cart", required = true, schema = @Schema(implementation = UUID.class))
-            },
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Cart found successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartResponseDto.class))),
-                    @ApiResponse(responseCode = "400", description = "Bad request", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden - caller does not own the cart", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Cart not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<CartResponseDto> getCartByUuid(final UUID cartUuid, final Jwt jwt);
-
-
-    @Operation(summary = "Create a new Cart",
-            description = "Registers a new Cart in the system. Requires authenticated USER or ADMIN role.",
-            security = @SecurityRequirement(name = "keycloak"),
-            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Cart data for creation. All fields are mandatory",
-                    required = true,
-                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartCreateRequestDto.class))
-            ),
-            responses = {
-                    @ApiResponse(responseCode = "201", description = "Cart created successfully",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = CartResponseDto.class))),
-                    @ApiResponse(responseCode = "400", description = "Invalid input data / Validation error",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "500", description = "Internal server error during Cart creation",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<CartResponseDto> createCart(final CartCreateRequestDto cartCreateRequestDto, final Jwt jwt);
-
-
     @Operation(summary = "Update an existing Cart by UUID",
             description = "Updates an existing cart's items based on its unique UUID. Caller must own the cart.",
             security = @SecurityRequirement(name = "keycloak"),
@@ -82,27 +42,6 @@ public interface CartManagementControllerApiSpec {
             })
     ResponseEntity<CartResponseDto> updateCart(final UUID cartUuid, final CartUpdateRequestDto cartUpdateRequestDto, final Jwt jwt);
 
-
-    @Operation(summary = "Delete a Cart by UUID",
-            description = "Deletes a cart based on their unique UUID. Caller must own the cart.",
-            security = @SecurityRequirement(name = "keycloak"),
-            parameters = {
-                    @Parameter(name = "cartUuid", description = "The UUID of the cart to delete", required = true, schema = @Schema(implementation = UUID.class))
-            },
-            responses = {
-                    @ApiResponse(responseCode = "204", description = "Cart deleted successfully (No Content)"),
-                    @ApiResponse(responseCode = "400", description = "Bad request (e.g., invalid UUID format)",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden - caller is not the cart owner",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Cart not found",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "500", description = "Internal server error during cart deletion",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<Void> deleteCartByUuid(final UUID cartUuid, final Jwt jwt);
 
     @Operation(summary = "Get current user's cart",
             description = "Retrieves the shopping cart associated with the authenticated user.",

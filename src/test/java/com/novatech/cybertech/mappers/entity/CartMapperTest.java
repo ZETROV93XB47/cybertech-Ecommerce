@@ -1,7 +1,5 @@
 package com.novatech.cybertech.mappers.entity;
 
-import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
-import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartItemResponseDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.entities.CartEntity;
@@ -12,7 +10,6 @@ import com.novatech.cybertech.fixtures.builders.CartEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.CartItemEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
-import com.novatech.cybertech.fixtures.dto.CartDtoFixtures;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -20,7 +17,6 @@ import org.mapstruct.factory.Mappers;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -89,20 +85,7 @@ class CartMapperTest {
 
         @Test
         void shouldReturnNullForNullSource() {
-            assertThat(mapper.mapFromEntityToResponseDto((CartEntity) null)).isNull();
-        }
-
-        @Test
-        void shouldMapCollection() {
-            Collection<CartResponseDto> dtos = mapper.mapFromEntityToResponseDto(
-                    List.of(CartEntityBuilder.aValidCart(), CartEntityBuilder.aValidCart()));
-
-            assertThat(dtos).hasSize(2);
-        }
-
-        @Test
-        void shouldReturnNullForNullCollection() {
-            assertThat(mapper.mapFromEntityToResponseDto((Collection<CartEntity>) null)).isNull();
+            assertThat(mapper.mapFromEntityToResponseDto(null)).isNull();
         }
     }
 
@@ -224,50 +207,6 @@ class CartMapperTest {
 
             assertThat(mapper.calculateTotalPrice(List.of(a, b)))
                     .isEqualByComparingTo("22.00");
-        }
-    }
-
-    @Nested
-    @DisplayName("BaseMapper-inherited surface (creation/update via DTO)")
-    class BaseSurface {
-
-        @Test
-        void mapFromCreationRequestToEntity_shouldReturnEmptyEntity() {
-            // CartMapper has no @Mapping for the create DTO; it just builds an empty CartEntity.
-            CartCreateRequestDto dto = CartDtoFixtures.aValidCartCreateRequest();
-
-            CartEntity entity = mapper.mapFromCreationRequestToEntity(dto);
-
-            assertThat(entity).isNotNull();
-            assertThat(entity.getCartItems()).isNull();
-            assertThat(entity.getUserEntity()).isNull();
-        }
-
-        @Test
-        void mapFromCreationRequestToEntity_shouldReturnNullForNullSource() {
-            assertThat(mapper.mapFromCreationRequestToEntity((CartCreateRequestDto) null)).isNull();
-        }
-
-        @Test
-        void mapFromCreationRequestToEntity_shouldMapCollection() {
-            Collection<CartEntity> entities = mapper.mapFromCreationRequestToEntity(
-                    List.of(CartDtoFixtures.aValidCartCreateRequest()));
-
-            assertThat(entities).hasSize(1);
-        }
-
-        @Test
-        void mapFromUpdateRequestToEntity_shouldReturnEmptyEntity() {
-            CartItemRemoveRequestDto u = CartDtoFixtures.aValidCartItemRemoveRequest();
-
-            CartEntity entity = mapper.mapFromUpdateRequestToEntity(u);
-
-            assertThat(entity).isNotNull();
-        }
-
-        @Test
-        void mapFromUpdateRequestToEntity_shouldReturnNullForNullSource() {
-            assertThat(mapper.mapFromUpdateRequestToEntity(null)).isNull();
         }
     }
 }

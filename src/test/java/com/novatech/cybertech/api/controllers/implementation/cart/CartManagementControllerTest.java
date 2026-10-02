@@ -55,10 +55,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @WebMvcTest(value = CartManagementController.class)
 class CartManagementControllerTest {
 
-    private static final String GET_CART_BY_UUID_ENDPOINT = "/api/v1/services/cart/get/{cartUuid}";
-    private static final String CREATE_CART_ENDPOINT = "/api/v1/services/cart/create";
     private static final String UPDATE_CART_ENDPOINT = "/api/v1/services/cart/update/{cartUuid}";
-    private static final String DELETE_CART_ENDPOINT = "/api/v1/services/cart/delete/{cartUuid}";
     private static final String GET_MY_CART_ENDPOINT = "/api/v1/services/cart/get";
     private static final String CLEAR_CART_ENDPOINT = "/api/v1/services/cart/clear";
     private static final String ADD_TO_CART_ENDPOINT = "/api/v1/services/cart/add";
@@ -78,69 +75,12 @@ class CartManagementControllerTest {
     // -----------------------------------------------------------------
     @Nested
     class CartCRUD {
-
         @Test
-        void shouldGetCartByUuidSuccessfully() throws Exception {
-            UUID cartUuid = UUID.randomUUID();
-            CartResponseDto response = CartDtoFixtures.aSampleCartResponseBuilder().cartUuid(cartUuid).build();
-
-            // Controller now forwards JWT subject to ownership-checked overload.
-            when(cartService.getByUUID(eq(cartUuid), eq(KEYCLOAK_ID))).thenReturn(response);
-
-            mockMvc.perform(get(GET_CART_BY_UUID_ENDPOINT, cartUuid)
-                            .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
-                            .contentType(APPLICATION_JSON))
-                    .andExpect(status().isOk())
-                    .andExpect(content().contentType(APPLICATION_JSON))
-                    .andExpect(content().json(asJsonString(response), STRICT));
-        }
-
-        @Test
-        void failGetCartByUuid_whenCartNotFound_thenNotFound() throws Exception {
-            // Handler now maps CartNotFoundException -> 404 CART_NOT_FOUND.
-            UUID cartUuid = UUID.randomUUID();
-            String message = "No cart with the UUID : " + cartUuid + " found";
-
-            ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                    .message(message)
-                    .httpStatusCode(404)
-                    .errorCodeType(FUNCTIONAL)
-                    .build();
-
-            when(cartService.getByUUID(eq(cartUuid), eq(KEYCLOAK_ID))).thenThrow(new CartNotFoundException(message));
-
-            mockMvc.perform(get(GET_CART_BY_UUID_ENDPOINT, cartUuid)
-                            .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
-                            .contentType(APPLICATION_JSON))
-                    .andExpect(status().isNotFound())
-                    .andExpect(content().contentType(APPLICATION_JSON))
-                    .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
-        }
-
-        @Test
-        void shouldCreateCartSuccessfully() throws Exception {
-            CartCreateRequestDto request = CartDtoFixtures.aValidCartCreateRequest();
-            CartResponseDto response = CartDtoFixtures.aSampleCartResponse();
-
-            when(cartService.create(any(CartCreateRequestDto.class), eq(KEYCLOAK_ID))).thenReturn(response);
-
-            mockMvc.perform(post(CREATE_CART_ENDPOINT)
-                            .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
-                            .with(csrf())
-                            .accept(APPLICATION_JSON)
-                            .contentType(APPLICATION_JSON)
-                            .content(asJsonString(request)))
-                    .andExpect(status().isCreated())
-                    .andExpect(content().contentType(APPLICATION_JSON))
-                    .andExpect(content().json(asJsonString(response), STRICT));
-        }
-
-        @Test
-        void failCreateCart_whenNullCartItems_thenBadRequest() throws Exception {
+        void failAddToCart_whenNullCartItems_thenBadRequest() throws Exception {
             // Outer DTO @NotNull on cartItemAddRequestDtos
             CartCreateRequestDto bad = new CartCreateRequestDto();
 
-            mockMvc.perform(post(CREATE_CART_ENDPOINT)
+            mockMvc.perform(post(ADD_TO_CART_ENDPOINT)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
                             .with(csrf())
                             .accept(APPLICATION_JSON)
@@ -154,7 +94,7 @@ class CartManagementControllerTest {
         }
 
         @Test
-        void failCreateCart_whenNestedNegativeQuantity_thenBadRequest() throws Exception {
+        void failAddToCart_whenNestedNegativeQuantity_thenBadRequest() throws Exception {
             // @Valid on cartItemAddRequestDtos now propagates to nested @Min(1).
             CartItemAddRequestDto badItem = CartItemAddRequestDto.builder()
                     .productUuid(UUID.randomUUID())
@@ -164,7 +104,7 @@ class CartManagementControllerTest {
                     .cartItemAddRequestDtos(List.of(badItem))
                     .build();
 
-            mockMvc.perform(post(CREATE_CART_ENDPOINT)
+            mockMvc.perform(post(ADD_TO_CART_ENDPOINT)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
                             .with(csrf())
                             .accept(APPLICATION_JSON)
@@ -219,52 +159,6 @@ class CartManagementControllerTest {
                     .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
         }
 
-        @Test
-        void shouldDeleteCartByUuidSuccessfully() throws Exception {
-            // deleteCartByUuid now binds @PathVariable("cartUuid").
-            // Controller forwards JWT subject for ownership check.
-            UUID cartUuid = UUID.randomUUID();
-            doNothing().when(cartService).deleteByUUID(eq(cartUuid), eq(KEYCLOAK_ID));
-
-            mockMvc.perform(delete(DELETE_CART_ENDPOINT, cartUuid)
-                            .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
-                            .with(csrf())
-                            .accept(APPLICATION_JSON)
-                            .contentType(APPLICATION_JSON))
-                    .andExpect(status().isNoContent());
-
-            verify(cartService).deleteByUUID(eq(cartUuid), eq(KEYCLOAK_ID));
-        }
-
-        @Test
-        void idorOnDeleteByCartUuidReturnsForbidden() throws Exception {
-            // Caller does not own cart -> service throws
-            // UnauthorizedCartAccessException -> @ExceptionHandler -> HTTP 403.
-            UUID otherUserCartUuid = UUID.randomUUID();
-            doThrow(new UnauthorizedCartAccessException("Caller does not own cart " + otherUserCartUuid))
-                    .when(cartService).deleteByUUID(eq(otherUserCartUuid), eq(KEYCLOAK_ID));
-
-            mockMvc.perform(delete(DELETE_CART_ENDPOINT, otherUserCartUuid)
-                            .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
-                            .with(csrf())
-                            .accept(APPLICATION_JSON)
-                            .contentType(APPLICATION_JSON))
-                    .andExpect(status().isForbidden());
-        }
-
-        @Test
-        void idorOnGetByCartUuidReturnsForbidden() throws Exception {
-            // GET /cart/get/{cartUuid} also enforces ownership.
-            UUID otherUserCartUuid = UUID.randomUUID();
-            when(cartService.getByUUID(eq(otherUserCartUuid), eq(KEYCLOAK_ID)))
-                    .thenThrow(new UnauthorizedCartAccessException("Caller does not own cart " + otherUserCartUuid));
-
-            mockMvc.perform(get(GET_CART_BY_UUID_ENDPOINT, otherUserCartUuid)
-                            .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
-                            .accept(APPLICATION_JSON)
-                            .contentType(APPLICATION_JSON))
-                    .andExpect(status().isForbidden());
-        }
     }
 
     // -----------------------------------------------------------------
@@ -519,15 +413,6 @@ class CartManagementControllerTest {
                             .accept(APPLICATION_JSON)
                             .contentType(APPLICATION_JSON)
                             .content(asJsonString(request)))
-                    .andExpect(status().isUnauthorized());
-        }
-
-        @Test
-        void whenAnonymousDeleteCartByUuid_thenUnauthorized() throws Exception {
-            UUID cartUuid = UUID.randomUUID();
-            mockMvc.perform(delete(DELETE_CART_ENDPOINT, cartUuid)
-                            .with(csrf())
-                            .accept(APPLICATION_JSON))
                     .andExpect(status().isUnauthorized());
         }
 

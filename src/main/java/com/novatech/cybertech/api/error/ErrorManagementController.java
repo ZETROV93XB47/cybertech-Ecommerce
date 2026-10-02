@@ -79,10 +79,9 @@ public class ErrorManagementController {
     /**
      * Maps {@link UnauthorizedCartAccessException} to a 403 FUNCTIONAL
      * error. The exception is raised by {@code CartServiceImp} when an
-     * authenticated user attempts to read, update or delete a cart whose owner's
+     * authenticated user attempts to update a cart whose owner's
      * Keycloak subject differs from the caller's — closing the IDOR hole on
-     * {@code GET /cart/get/{cartUuid}}, {@code PATCH /cart/update/{cartUuid}}
-     * and {@code DELETE /cart/delete/{cartUuid}}.
+     * {@code PATCH /cart/update/{cartUuid}}.
      */
     @ExceptionHandler(UnauthorizedCartAccessException.class)
     public ResponseEntity<ErrorResponseDto> handleUnauthorizedCartAccessException(UnauthorizedCartAccessException exception) {

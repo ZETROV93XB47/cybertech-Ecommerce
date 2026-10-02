@@ -19,7 +19,6 @@ import com.novatech.cybertech.fixtures.builders.CartItemEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.mappers.entity.CartMapper;
-import com.novatech.cybertech.repositories.CartRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.core.CartWriteTransactionalDelegate;
@@ -62,15 +61,9 @@ import static org.mockito.Mockito.when;
  * <ul>
  *   <li>New {@link CartUpdateRequestDto} carries the correct
  *       update payload, and {@code updateCart(UUID, CartUpdateRequestDto, keycloakId)}
- *       loads the existing cart, verifies ownership, and replaces its items. The
- *       historical {@code update(CartItemRemoveRequestDto)} stays wired to keep
- *       {@code CrudBaseService} happy.</li>
+ *       loads the existing cart, verifies ownership, and replaces its items. </li>
  *   <li>{@link CartServiceImp#addItemsToCart} now takes a
  *       per-user distributed Redis lock around the full read-modify-write path.</li>
- *   <li>Ownership-checked overloads
- *       {@code getByUUID(UUID, String)} / {@code deleteByUUID(UUID, String)} throw
- *       {@link UnauthorizedCartAccessException} when the caller's Keycloak subject
- *       does not match the cart's owner.</li>
  *   <li>Negative/null quantity is rejected — enforced by
      *       {@code @Valid} bean validation at the controller boundary, covered in
      *       {@code CartManagementControllerTest}; no longer duplicated at the service level.</li>
@@ -81,7 +74,6 @@ class CartServiceImpTest {
 
     @Mock CartMapper cartMapper;
     @Mock UserRepository userRepository;
-    @Mock CartRepository cartRepository;
     @Mock CartCacheHelper cartCacheHelper;
     @Mock CartWriteTransactionalDelegate cartWriteTransactionalDelegate;
 
@@ -94,7 +86,7 @@ class CartServiceImpTest {
         keycloakId = "kc-" + UUID.randomUUID();
         // addItemsToCart now wraps its read-modify-write in the distributed lock.
         // Use lenient so tests which never exercise addItemsToCart (e.g. getCart, remove,
-        // decreaseQuantity, CRUD paths) don't fail with Mockito strict-stubbing.
+        // decreaseQuantity) don't fail with Mockito strict-stubbing.
         lenient().when(cartCacheHelper.acquireLockBlocking(anyString(), anyLong()))
                 .thenReturn(true);
     }
@@ -198,7 +190,7 @@ class CartServiceImpTest {
 
             assertThat(result).isSameAs(cached);
             verify(cartCacheHelper).refreshTtlWithJitter(keycloakId);
-            verifyNoInteractions(userRepository, cartRepository);
+            verifyNoInteractions(userRepository);
             verify(cartCacheHelper, never()).acquireLockBlocking(anyString(), anyLong());
         }
 
@@ -242,7 +234,7 @@ class CartServiceImpTest {
 
             assertThat(result).isSameAs(rebuiltByWinner);
             // No redundant DB rebuild — the double-check short-circuited before touching the DB.
-            verifyNoInteractions(userRepository, cartRepository, cartMapper);
+            verifyNoInteractions(userRepository, cartMapper);
             // Never re-populates the cache — the winner already did.
             verify(cartCacheHelper, never()).putWithJitter(anyString(), any(CartResponseDto.class));
             verify(cartCacheHelper).releaseLock(keycloakId);
@@ -277,7 +269,7 @@ class CartServiceImpTest {
             final CartResponseDto result = service.getCart(keycloakId);
 
             assertThat(result).isSameAs(retried);
-            verifyNoInteractions(userRepository, cartRepository, cartMapper);
+            verifyNoInteractions(userRepository, cartMapper);
             verify(cartCacheHelper, never()).releaseLock(anyString());
         }
 
@@ -425,51 +417,8 @@ class CartServiceImpTest {
 
     // =================================================================
     @Nested
-    @DisplayName("CRUD admin: getByUUID / create / update / deleteByUUID")
-    class CrudAdmin {
-
-        @Test
-        @DisplayName("getByUUID missing -> CartNotFoundException")
-        void getByUuid_missing_throws() {
-            final UUID uuid = UUID.randomUUID();
-            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.getByUUID(uuid, keycloakId))
-                    .isInstanceOf(CartNotFoundException.class)
-                    .hasMessageContaining(uuid.toString());
-        }
-
-        @Test
-        @DisplayName("create() resolves the caller as owner, maps creation request, saves, maps response")
-        void create_happy() {
-            final CartCreateRequestDto req = CartCreateRequestDto.builder()
-                    .cartItemAddRequestDtos(List.of()).build();
-            final CartEntity entity = CartEntityBuilder.aValidCart();
-            final CartEntity saved = CartEntityBuilder.aValidCart();
-            final CartResponseDto resp = new CartResponseDto();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(owner));
-            when(cartMapper.mapFromCreationRequestToEntity(req)).thenReturn(entity);
-            when(cartRepository.save(entity)).thenReturn(saved);
-            when(cartMapper.mapFromEntityToResponseDto(saved)).thenReturn(resp);
-
-            assertThat(service.create(req, keycloakId)).isSameAs(resp);
-            assertThat(entity.getUserEntity()).isSameAs(owner);
-        }
-
-        @Test
-        @DisplayName("create() with unknown caller -> UserNotFoundException")
-        void create_unknownCaller_throws() {
-            final CartCreateRequestDto req = CartCreateRequestDto.builder()
-                    .cartItemAddRequestDtos(List.of()).build();
-            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> service.create(req, keycloakId))
-                    .isInstanceOf(UserNotFoundException.class);
-
-            verify(cartRepository, never()).save(any());
-        }
+    @DisplayName("updateCart(UUID, CartUpdateRequestDto, keycloakId)")
+    class UpdateCart {
 
         @Test
         @DisplayName("updateCart(UUID, CartUpdateRequestDto, keycloakId) delegates, then caches the result")
@@ -499,83 +448,6 @@ class CartServiceImpTest {
                     .isInstanceOf(UnauthorizedCartAccessException.class);
 
             verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
-        }
-
-        @Test
-        @DisplayName("Legacy update(CartItemRemoveRequestDto, keycloakId) preserved for base CRUD contract")
-        void update_currentBehavior_PIN() {
-            // Intentionally kept: the generic CrudBaseService contract still points at
-            // update(CartItemRemoveRequestDto, String). The correct fix surface is the new
-            // updateCart(...) overload above — this test guarantees the legacy method
-            // stays wired so external CRUD callers don't break.
-            final CartItemRemoveRequestDto dto = CartItemRemoveRequestDto.builder()
-                    .productUuid(UUID.randomUUID()).quantity(1).build();
-            final CartEntity entity = CartEntityBuilder.aValidCart();
-            final CartEntity saved = CartEntityBuilder.aValidCart();
-            final CartResponseDto resp = new CartResponseDto();
-
-            when(cartMapper.mapFromUpdateRequestToEntity(dto)).thenReturn(entity);
-            when(cartRepository.save(entity)).thenReturn(saved);
-            when(cartMapper.mapFromEntityToResponseDto(saved)).thenReturn(resp);
-
-            assertThat(service.update(dto, keycloakId)).isSameAs(resp);
-        }
-
-        @Test
-        @DisplayName("getByUUID(UUID, keycloakId) rejects non-owner with " +
-                "UnauthorizedCartAccessException")
-        void getByUuid_shouldEnforceOwnership_BUG160_closed() {
-            final UUID uuid = UUID.randomUUID();
-            final UserEntity otherUser = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER").build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(uuid).userEntity(otherUser).cartItems(new ArrayList<>()).build();
-            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
-
-            assertThatThrownBy(() -> service.getByUUID(uuid, keycloakId))
-                    .isInstanceOf(UnauthorizedCartAccessException.class);
-        }
-
-        @Test
-        @DisplayName("getByUUID(UUID, keycloakId) returns mapped DTO for owner")
-        void getByUuid_owner_returnsMapped_BUG160_closed() {
-            final UUID uuid = UUID.randomUUID();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(uuid).userEntity(owner).cartItems(new ArrayList<>()).build();
-            final CartResponseDto resp = stubMappedResponse();
-            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
-            when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(resp);
-
-            assertThat(service.getByUUID(uuid, keycloakId)).isSameAs(resp);
-        }
-
-        @Test
-        @DisplayName("deleteByUUID(UUID, keycloakId) rejects non-owner")
-        void deleteByUuid_shouldEnforceOwnership_BUG161_closed() {
-            final UUID uuid = UUID.randomUUID();
-            final UserEntity otherUser = UserEntityBuilder.aValidUserBuilder().keycloakId("OTHER").build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(uuid).userEntity(otherUser).cartItems(new ArrayList<>()).build();
-            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
-
-            assertThatThrownBy(() -> service.deleteByUUID(uuid, keycloakId))
-                    .isInstanceOf(UnauthorizedCartAccessException.class);
-
-            verify(cartRepository, never()).deleteByUuid(any());
-        }
-
-        @Test
-        @DisplayName("deleteByUUID(UUID, keycloakId) deletes when caller is owner")
-        void deleteByUuid_owner_deletes_BUG161_closed() {
-            final UUID uuid = UUID.randomUUID();
-            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
-            final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
-                    .uuid(uuid).userEntity(owner).cartItems(new ArrayList<>()).build();
-            when(cartRepository.findByUuid(uuid)).thenReturn(Optional.of(cart));
-
-            service.deleteByUUID(uuid, keycloakId);
-
-            verify(cartRepository).deleteByUuid(uuid);
         }
     }
 }

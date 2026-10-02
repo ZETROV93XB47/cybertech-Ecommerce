@@ -11,16 +11,13 @@ import java.util.UUID;
 /**
  * Cart domain service contract.
  * <p>
- * Extends the generic {@link CrudBaseService} for the historical CRUD shape
- * ({@code getByUUID / create / update / deleteByUUID}). The generics use
- * {@link CartItemRemoveRequestDto} as the update argument purely to keep that
- * base contract — the new {@link #updateCart(UUID, CartUpdateRequestDto, String)}
- * overload below is the <em>correct</em> update entrypoint introduced to carry
- * a new argument type. {@link CrudBaseService}'s {@code J} caller-identity
- * parameter is what {@code getByUUID}/{@code deleteByUUID} use for ownership
- * enforcement below — no separate ad hoc overload needed anymore.
+ * Deliberately NOT a {@link CrudBaseService}: a cart is an implicit, per-user resource, not a
+ * CRUD entity. It is created on the first {@link #addItemsToCart} call, emptied by
+ * {@link #clearCart} (also done automatically once an order is placed) and removed by cascade
+ * with its owner — so a generic {@code create} / {@code getByUUID} / {@code deleteByUUID} has no
+ * real use case. Every operation is keyed on the caller's Keycloak subject.
  */
-public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto, CartItemRemoveRequestDto, CartResponseDto, String> {
+public interface CartService {
     /**
      * Remove every line-item from the authenticated user's cart.
      *
@@ -66,13 +63,6 @@ public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto,
     /**
      * Update an existing cart identified by UUID, after verifying the caller
      * owns it.
-     * <p>
-     * This is a <em>new</em> method rather than a modification of the inherited
-     * {@code update(CartItemRemoveRequestDto)} so the generic signatures of
-     * {@link CrudBaseService} — and every other implementation of it — stay
-     * stable. Using the dedicated {@link CartUpdateRequestDto} makes the intent
-     * ("replace cart items with this list") explicit.
-     *
      * @param cartUuid   the cart to update.
      * @param dto        the new items payload.
      * @param keycloakId Keycloak subject of the caller — must match the cart
@@ -83,8 +73,4 @@ public interface CartService extends CrudBaseService<UUID, CartCreateRequestDto,
      */
     CartResponseDto updateCart(final UUID cartUuid, final CartUpdateRequestDto dto, final String keycloakId);
 
-    // getByUUID(UUID, String) and deleteByUUID(UUID, String) are now the inherited
-    // CrudBaseService methods themselves — the caller-identity parameter IS the
-    // ownership check, so no separate overload is declared here anymore. See
-    // CartServiceImp for the ownership-enforcing implementations.
 }

@@ -1,7 +1,5 @@
 package com.novatech.cybertech.mappers.entity;
 
-import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
-import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartItemResponseDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.entities.CartEntity;
@@ -14,10 +12,15 @@ import org.mapstruct.ReportingPolicy;
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * Entity → response mapping only. Deliberately not a {@link BaseMapper}: a cart is never built
+ * from a request DTO by MapStruct — its lines need product lookups and stock checks, which live
+ * in {@code CartWriteTransactionalDelegateImp}. The inherited request → entity mappings used to
+ * silently produce an empty cart (the {@code /cart/create} bug), so they are not generated anymore.
+ */
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface CartMapper extends BaseMapper<CartEntity, CartCreateRequestDto, CartItemRemoveRequestDto, CartResponseDto> {
+public interface CartMapper {
 
-    @Override
     @Mapping(source = "uuid", target = "cartUuid")
     @Mapping(source = "userEntity.uuid", target = "userUuid")
     @Mapping(source = "cartItems", target = "items")

@@ -5,11 +5,9 @@ import com.novatech.cybertech.dto.request.cart.CartItemAddRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
-import com.novatech.cybertech.entities.CartEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.CartMapper;
-import com.novatech.cybertech.repositories.CartRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartCacheHelper;
 import com.novatech.cybertech.services.core.CartService;
@@ -28,7 +26,6 @@ public class CartServiceImp implements CartService {
 
     private final CartMapper cartMapper;
     private final UserRepository userRepository;
-    private final CartRepository cartRepository;
     private final CartCacheHelper cartCacheHelper;
 
     /**
@@ -234,55 +231,6 @@ public class CartServiceImp implements CartService {
     }
 
     /**
-     * Ownership-checked read-by-UUID — the {@code CrudBaseService} contract's caller-identity
-     * parameter IS the ownership check now, so there is no separate no-identity overload anymore.
-     *
-     * @param cartUuid   cart to read.
-     * @param keycloakId Keycloak subject of the caller.
-     * @return the cart DTO owned by the caller.
-     * @throws CartNotFoundException           when no cart with that UUID exists.
-     * @throws UnauthorizedCartAccessException when the cart's owner is not the caller.
-     */
-    @Override
-    @Transactional(readOnly = true)
-    public CartResponseDto getByUUID(final UUID cartUuid, final String keycloakId) {
-        final CartEntity cart = cartRepository.findByUuid(cartUuid)
-                .orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + cartUuid + " found"));
-        assertCallerOwnsCart(cart, cartUuid, keycloakId);
-        return cartMapper.mapFromEntityToResponseDto(cart);
-    }
-
-    /**
-     * Generic CRUD create. {@code CartCreateRequestDto} carries no owner reference of its own
-     * (it is normally used as an items-to-add payload for {@link #addItemsToCart}), so the
-     * caller identity is what ties the freshly-created cart to its owner — without it, this
-     * endpoint used to persist an orphan cart with no {@code userEntity}.
-     *
-     * @throws UserNotFoundException when no user matches {@code keycloakId}.
-     */
-    @Override
-    @Transactional
-    public CartResponseDto create(final CartCreateRequestDto cartCreateRequestDto, final String keycloakId) {
-        final UserEntity owner = userRepository.findByKeycloakId(keycloakId)
-                .orElseThrow(() -> new UserNotFoundException("User not found"));
-        final CartEntity entity = cartMapper.mapFromCreationRequestToEntity(cartCreateRequestDto);
-        entity.setUserEntity(owner);
-        return cartMapper.mapFromEntityToResponseDto(cartRepository.save(entity));
-    }
-
-    /**
-     * Historical generic CRUD update — superseded by {@link #updateCart(UUID, CartUpdateRequestDto, String)}
-     * for every real call site; the caller identity is accepted to satisfy the
-     * {@code CrudBaseService} contract but there is no cart reference in
-     * {@link CartItemRemoveRequestDto} to check ownership against.
-     */
-    @Override
-    @Transactional
-    public CartResponseDto update(final CartItemRemoveRequestDto cartCreateRequestDto, final String keycloakId) {
-        return cartMapper.mapFromEntityToResponseDto(cartRepository.save(cartMapper.mapFromUpdateRequestToEntity(cartCreateRequestDto)));
-    }
-
-    /**
      * New, correctly-typed, ownership-checked cart update.
      * <p>
      * Loads the cart by UUID, asserts the caller owns it, replaces its items
@@ -291,11 +239,6 @@ public class CartServiceImp implements CartService {
      * refreshes the cache. Using a dedicated DTO rather than the historical
      * {@link CartItemRemoveRequestDto} makes the intent explicit ("replace my
      * cart items with this list").
-     * <p>
-     * Kept as a NEW method instead of modifying
-     * {@link #update(CartItemRemoveRequestDto)} so the
-     * {@link com.novatech.cybertech.services.core.CrudBaseService}
-     * generics contract (and every caller elsewhere) stays untouched.
      *
      * @param cartUuid   target cart UUID.
      * @param dto        new items payload.
@@ -310,58 +253,5 @@ public class CartServiceImp implements CartService {
         final CartResponseDto result = cartWriteTransactionalDelegate.updateCartWithinTransaction(cartUuid, dto, keycloakId);
         cartCacheHelper.putWithJitter(keycloakId, result);
         return result;
-    }
-
-    /**
-     * Ownership-checked delete-by-UUID.
-     * <p>
-     * Loads the cart, asserts ownership, then delegates to the repository.
-     *
-     * @param cartUuid   cart to delete.
-     * @param keycloakId caller identity.
-     * @throws CartNotFoundException           when no cart with that UUID exists.
-     * @throws UnauthorizedCartAccessException when the caller does not own the cart.
-     */
-    @Override
-    @Transactional
-    public void deleteByUUID(final UUID cartUuid, final String keycloakId) {
-        final CartEntity cart = cartRepository.findByUuid(cartUuid)
-                .orElseThrow(() -> new CartNotFoundException("No cart with the UUID : " + cartUuid + " found"));
-        assertCallerOwnsCart(cart, cartUuid, keycloakId);
-
-        // Break the inverse-side reference before delegating the delete. Without this,
-        // the User entity (now managed in the persistence context after the ownership
-        // check navigated cart.userEntity) still holds a `cartEntity` reference. With
-        // cascade=CascadeType.ALL on the User → Cart inverse mapping, Hibernate may
-        // re-cascade-persist the soon-to-be-deleted cart back at flush/commit time,
-        // leaving the row in place and silently defeating the delete.
-        final UserEntity owner = cart.getUserEntity();
-        if (owner != null) {
-            owner.setCartEntity(null);
-        }
-
-        cartRepository.deleteByUuid(cartUuid);
-    }
-
-    /**
-     * Central ownership guard.
-     * <p>
-     * Throws {@link UnauthorizedCartAccessException} when the caller's
-     * Keycloak id does not match the cart's owner. Extracted so the three
-     * ownership-checked entrypoints ({@link #getByUUID(UUID, String)},
-     * {@link #deleteByUUID(UUID, String)}, {@link #updateCart(UUID, CartUpdateRequestDto, String)})
-     * share a single implementation and error message shape.
-     *
-     * @param cart       cart entity loaded from the repository.
-     * @param cartUuid   the UUID that identified the cart (for error logging).
-     * @param keycloakId caller identity.
-     * @throws UnauthorizedCartAccessException when the caller does not own the cart.
-     */
-    private void assertCallerOwnsCart(final CartEntity cart, final UUID cartUuid, final String keycloakId) {
-        final UserEntity owner = cart.getUserEntity();
-        if (owner == null || owner.getKeycloakId() == null || !owner.getKeycloakId().equals(keycloakId)) {
-            log.warn("Unauthorized cart access attempt: caller {} on cart {}", keycloakId, cartUuid);
-            throw new UnauthorizedCartAccessException("Caller does not own cart " + cartUuid);
-        }
     }
 }

@@ -4,6 +4,7 @@ import com.novatech.cybertech.TestcontainersConfiguration;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemAddRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
+import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.entities.CartEntity;
 import com.novatech.cybertech.entities.ProductEntity;
@@ -46,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -67,8 +69,7 @@ class CartFlowIT {
 
     private static final String CART_ADD_ENDPOINT = "/api/v1/services/cart/add";
     private static final String CART_GET_ENDPOINT = "/api/v1/services/cart/get";
-    private static final String CART_GET_BY_UUID_ENDPOINT = "/api/v1/services/cart/get/{cartUuid}";
-    private static final String CART_DELETE_BY_UUID_ENDPOINT = "/api/v1/services/cart/delete/{cartUuid}";
+    private static final String CART_UPDATE_ENDPOINT = "/api/v1/services/cart/update/{cartUuid}";
     private static final String CART_CLEAR_ENDPOINT = "/api/v1/services/cart/clear";
     private static final String CART_DECREASE_ENDPOINT = "/api/v1/services/cart/decreaseQuantity";
 
@@ -421,29 +422,6 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
-    // 7. Delete-by-uuid endpoint audit — verifies path binds correctly.
-    // ----------------------------------------------------------------------------------
-    @Test
-    @DisplayName("DELETE /cart/delete/{cartUuid} binds path variable")
-    void deleteByCartUuidBindsPathVariable() throws Exception {
-        addItems(seededProduct.getUuid(), 1);
-        UUID cartUuid = transactionTemplate.execute(tx -> {
-            UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
-            return reloaded.getCartEntity().getUuid();
-        });
-        assertThat(cartUuid).isNotNull();
-
-        mockMvc.perform(delete(CART_DELETE_BY_UUID_ENDPOINT, cartUuid)
-                        .with(JwtTestUtils.jwtUser(keycloakId))
-                        .with(csrf()))
-                .andExpect(status().isNoContent());
-
-        // DB should no longer have the cart
-        boolean stillExists = cartRepository.findByUuid(cartUuid).isPresent();
-        assertThat(stillExists).as("cart row should be deleted").isFalse();
-    }
-
-    // ----------------------------------------------------------------------------------
     // 8. Pagination surface — /cart/get returns the user's cart shape (no Page<T> here,
     //    but the assertion documents the JSON response surface for consumers).
     // ----------------------------------------------------------------------------------
@@ -463,11 +441,12 @@ class CartFlowIT {
     }
 
     // ----------------------------------------------------------------------------------
-    // 9a. GET /cart/get/{cartUuid} now rejects non-owners with 403.
+    // 9. PATCH /cart/update/{cartUuid} — the only cart endpoint still keyed on a cart UUID —
+    //    rejects non-owners with 403.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("GET /cart/get/{cartUuid} returns 403 for non-owner")
-    void idorOnGetByCartUuid_returns403() throws Exception {
+    @DisplayName("PATCH /cart/update/{cartUuid} returns 403 for non-owner")
+    void idorOnUpdateByCartUuid_returns403() throws Exception {
         // Seed user A's cart
         addItems(seededProduct.getUuid(), 1);
         UUID userACartUuid = transactionTemplate.execute(tx -> {
@@ -484,36 +463,14 @@ class CartFlowIT {
                         .build()
         );
 
-        // User B is now blocked from reading user A's cart -> 403.
-        mockMvc.perform(get(CART_GET_BY_UUID_ENDPOINT, userACartUuid)
+        // User B is blocked from overwriting user A's cart -> 403.
+        final CartUpdateRequestDto overwrite = CartUpdateRequestDto.builder()
+                .cartItemAddRequestDtos(new ArrayList<>()).build();
+        mockMvc.perform(patch(CART_UPDATE_ENDPOINT, userACartUuid)
                         .with(JwtTestUtils.jwtUser(userBKeycloakId))
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
-
-    // ----------------------------------------------------------------------------------
-    // 9b. DELETE /cart/delete/{cartUuid} returns 403 for non-owner.
-    // ----------------------------------------------------------------------------------
-    @Test
-    @DisplayName("DELETE /cart/delete/{cartUuid} returns 403 for non-owner")
-    void idorOnDeleteByCartUuidReturnsForbidden() throws Exception {
-        addItems(seededProduct.getUuid(), 1);
-        UUID userACartUuid = transactionTemplate.execute(tx -> {
-            UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
-            return reloaded.getCartEntity().getUuid();
-        });
-
-        String userBKeycloakId = "kc-it-userB-" + UUID.randomUUID();
-        userRepository.save(
-                UserEntityBuilder.aValidUserBuilder()
-                        .keycloakId(userBKeycloakId)
-                        .email("userB+" + UUID.randomUUID() + "@example.com")
-                        .build()
-        );
-
-        mockMvc.perform(delete(CART_DELETE_BY_UUID_ENDPOINT, userACartUuid)
-                        .with(JwtTestUtils.jwtUser(userBKeycloakId))
-                        .with(csrf()))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(overwrite)))
                 .andExpect(status().isForbidden());
     }
 
