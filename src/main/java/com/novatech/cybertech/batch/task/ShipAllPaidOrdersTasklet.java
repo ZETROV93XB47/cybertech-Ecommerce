@@ -35,9 +35,11 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         log.info("Starting ShipAllAwaitingShippingOrdersTasklet");
 
         // Récupérer toutes les commandes en attente d'expédition.
-        // findByStatus runs in its own short transaction (Spring Data default) — we no longer
-        // wrap execute(...) in @Transactional because the per-order optimistic-lock claim must
-        // commit at the delegate boundary so a race-loss can be caught here per-order.
+        // execute(...) still runs inside the step's chunk transaction (BatchConfig wires the
+        // tasklet with the platform transaction manager), so these entities are managed by that
+        // outer session. The per-order claim commits in the delegate's own REQUIRES_NEW
+        // transaction on a re-loaded copy — these instances must stay unmodified, or the step's
+        // commit would flush them at a stale @Version.
         final List<OrderEntity> awaitingOrders = orderRepository.findByStatus(OrderStatus.PAID);
 
         if (awaitingOrders.isEmpty()) {

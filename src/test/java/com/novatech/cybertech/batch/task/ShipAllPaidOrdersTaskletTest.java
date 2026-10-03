@@ -49,9 +49,9 @@ import static org.mockito.Mockito.when;
  *
  * <p>The per-order claim+dispatch runs through
  * {@link ShipOrderTransactionalDelegate#claimAndShip(OrderEntity, ShippingContext)}
- * (REQUIRES_NEW). The tasklet itself is no longer {@code @Transactional}, so the
- * optimistic-lock flush commits inside the delegate call and the per-order
- * try/catch on {@link OptimisticLockingFailureException} actually fires. The mocks
+ * (REQUIRES_NEW, on a copy re-loaded in its own transaction), so the optimistic-lock
+ * flush commits inside the delegate call and the per-order try/catch on
+ * {@link OptimisticLockingFailureException} actually fires. The mocks
  * for the delegate replicate that contract: when the real delegate would set
  * {@code AWAITING_SHIPPING} + save and then dispatch, the test's
  * {@code doAnswer(...)} on {@code claimAndShip} mutates the order's status and
