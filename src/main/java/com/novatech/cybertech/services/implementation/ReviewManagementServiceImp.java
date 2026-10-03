@@ -197,10 +197,4 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         }
     }
 
-    private static void isUserActive(final UserEntity user) {
-        if (!user.getIsActive()) {
-            log.warn("Review rejected: user {} is not active", user.getUuid());
-            throw new UserNotActiveException("User that's trying to post this comment is not active");
-        }
-    }
 }
