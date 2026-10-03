@@ -27,6 +27,7 @@ public class OrderConfirmationNotification extends AbstractNotification {
     private static final String THEME_COLOR = "themeColor";
     private static final String THEME_BACKGROUND_COLOR = "themeBackgroundColor";
     private static final String THEME_BORDER_COLOR = "themeBorderColor";
+    private static final String NEXT_STEP = "nextStep";
 
     @Override
     protected void prepareContext(final NotificationContext<?> context) {
@@ -46,7 +47,8 @@ public class OrderConfirmationNotification extends AbstractNotification {
                 TITLE, format.title(),
                 THEME_COLOR, format.themeColor(),
                 THEME_BACKGROUND_COLOR, format.themeBackgroundColor(),
-                THEME_BORDER_COLOR, format.themeBorderColor()
+                THEME_BORDER_COLOR, format.themeBorderColor(),
+                NEXT_STEP, format.nextStep()
         ));
     }
 
@@ -55,27 +57,31 @@ public class OrderConfirmationNotification extends AbstractNotification {
             String title,
             String themeColor,
             String themeBackgroundColor,
-            String themeBorderColor
+            String themeBorderColor,
+            String nextStep
     ) {
         static OrderNotificationFormat of(final PaymentAttemptStatus status) {
             if (PaymentAttemptStatus.SUCCESS.equals(status)) {
                 return new OrderNotificationFormat(
                         NotificationSubject.ORDER_CONFIRMATION.getSubject(),
                         "Confirmation de votre commande",
-                        "#27ae60", "#eafaf1", "#d5f5e3"
+                        "#27ae60", "#eafaf1", "#d5f5e3",
+                        "Vous recevrez un nouvel email dès que votre commande sera expédiée."
                 );
             }
             if (PaymentAttemptStatus.FAILED.equals(status) || PaymentAttemptStatus.CANCELED.equals(status)) {
                 return new OrderNotificationFormat(
                         "Commande enregistrée - Paiement échoué",
                         "Commande créée mais paiement non abouti",
-                        "#e74c3c", "#fdedec", "#fadbd8"
+                        "#e74c3c", "#fdedec", "#fadbd8",
+                        "Votre paiement n'a pas pu être validé. Vous pouvez le relancer depuis votre espace client."
                 );
             }
             return new OrderNotificationFormat(
                     "Commande enregistrée - Paiement en attente",
                     "Commande créée - Paiement en cours de validation",
-                    "#f39c12", "#fef9e7", "#fdebd0"
+                    "#f39c12", "#fef9e7", "#fdebd0",
+                    "Vous recevrez un nouvel email dès que votre paiement sera confirmé."
             );
         }
     }

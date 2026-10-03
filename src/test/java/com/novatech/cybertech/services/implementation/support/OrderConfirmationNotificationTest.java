@@ -82,7 +82,8 @@ class OrderConfirmationNotificationTest {
                 .containsEntry("title", "Confirmation de votre commande")
                 .containsEntry("themeColor", "#27ae60")
                 .containsEntry("themeBackgroundColor", "#eafaf1")
-                .containsEntry("themeBorderColor", "#d5f5e3");
+                .containsEntry("themeBorderColor", "#d5f5e3")
+                .containsEntry("nextStep", "Vous recevrez un nouvel email dès que votre commande sera expédiée.");
 
         verify(notificationProcessor).sendMessage(ctx);
     }
@@ -100,7 +101,8 @@ class OrderConfirmationNotificationTest {
                 .containsEntry("themeColor", "#e74c3c")
                 .containsEntry("themeBackgroundColor", "#fdedec")
                 .containsEntry("themeBorderColor", "#fadbd8")
-                .containsEntry("title", "Commande créée mais paiement non abouti");
+                .containsEntry("title", "Commande créée mais paiement non abouti")
+                .containsEntry("nextStep", "Votre paiement n'a pas pu être validé. Vous pouvez le relancer depuis votre espace client.");
     }
 
     @Test
@@ -128,7 +130,8 @@ class OrderConfirmationNotificationTest {
                 .containsEntry("themeColor", "#f39c12")
                 .containsEntry("themeBackgroundColor", "#fef9e7")
                 .containsEntry("themeBorderColor", "#fdebd0")
-                .containsEntry("title", "Commande créée - Paiement en cours de validation");
+                .containsEntry("title", "Commande créée - Paiement en cours de validation")
+                .containsEntry("nextStep", "Vous recevrez un nouvel email dès que votre paiement sera confirmé.");
 
         ArgumentCaptor<NotificationContext> captor = ArgumentCaptor.forClass(NotificationContext.class);
         verify(notificationProcessor).sendMessage(captor.capture());
