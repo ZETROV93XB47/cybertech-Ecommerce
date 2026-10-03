@@ -1,7 +1,9 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
@@ -10,8 +12,10 @@ import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.services.core.OrderPaymentConfirmationTransactionalDelegate;
 import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.utils.OrderPaymentUtils;
+import com.novatech.cybertech.utils.UserContactUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +63,7 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
 
     private final StockService stockService;
     private final OrderRepository orderRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Commits the reserved stock and marks the order as {@link OrderStatus#PAID} on a successful
@@ -89,6 +94,17 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
         stockService.commitStock(order.getUuid());
 
         log.info("Order {} marked as PAID", order.getUuid());
+
+        // Published only on an actual transition to PAID (a duplicate webhook returned above), and
+        // delivered AFTER_COMMIT, so the user is told "payment confirmed" once the PAID row is durable.
+        if (order.getUserEntity() != null) {
+            eventPublisher.publishEvent(new OrderPaymentConfirmedEvent(OrderEventDto.builder()
+                    .orderUuid(order.getUuid())
+                    .totalAmount(order.getTotalAmount().getAmount())
+                    .orderStatus(order.getStatus())
+                    .userContactDto(UserContactUtils.toUserContact(order.getUserEntity()))
+                    .build()));
+        }
     }
 
     /**

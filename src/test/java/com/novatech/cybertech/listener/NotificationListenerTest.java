@@ -1,14 +1,18 @@
 package com.novatech.cybertech.listener;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.enums.CommunicationChanel;
+import com.novatech.cybertech.entities.enums.EmailTemplateType;
+import com.novatech.cybertech.entities.enums.NotificationSubject;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
 import com.novatech.cybertech.events.OrderShippedEvent;
 import com.novatech.cybertech.services.core.NotificationRetryableDelivery;
 import org.junit.jupiter.api.Test;
@@ -86,5 +90,34 @@ class NotificationListenerTest {
         assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
         assertThat(ctx.getCommunicationChanel()).isEqualTo(CommunicationChanel.EMAIL);
         assertThat(ctx.getPayload()).isNotNull();
+    }
+
+    @Test
+    void onPaymentConfirmedIsAnnotatedTransactionalEventListenerAfterCommit() throws NoSuchMethodException {
+        Method m = NotificationListener.class.getMethod("on", OrderPaymentConfirmedEvent.class);
+        TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
+        assertThat(ann).as("@TransactionalEventListener present").isNotNull();
+        assertThat(ann.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
+    }
+
+    @Test
+    void onPaymentConfirmedShouldDelegateExactlyOnceWithPaymentConfirmationContext() {
+        OrderEventDto dto = sampleEventDto();
+
+        listener.on(new OrderPaymentConfirmedEvent(dto));
+
+        ArgumentCaptor<NotificationContext> ctxCap = ArgumentCaptor.forClass(NotificationContext.class);
+        verify(retryableDelivery, times(1)).deliver(ctxCap.capture());
+        verifyNoMoreInteractions(retryableDelivery);
+
+        NotificationContext ctx = ctxCap.getValue();
+        assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.PAYMENT_CONFIRMATION);
+        assertThat(ctx.getSubject()).isEqualTo(NotificationSubject.PAYMENT_CONFIRMATION.getSubject());
+        assertThat(ctx.getTemplatePath()).isEqualTo(EmailTemplateType.PAYMENT_CONFIRMATION.getTemplatePath());
+        assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
+        assertThat(ctx.getCommunicationChanel()).isEqualTo(CommunicationChanel.EMAIL);
+        OrderConfirmationPayload payload = (OrderConfirmationPayload) ctx.getPayload();
+        assertThat(payload.getOrderUuid()).isEqualTo(dto.getOrderUuid());
+        assertThat(payload.getTotalAmount()).isEqualByComparingTo(dto.getTotalAmount());
     }
 }

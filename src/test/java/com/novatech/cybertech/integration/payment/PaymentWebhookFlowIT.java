@@ -4,6 +4,7 @@ import com.novatech.cybertech.TestcontainersConfiguration;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.events.OrderPaidEvent;
@@ -14,6 +15,7 @@ import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.support.stubs.StripeEventBuilder;
+import com.novatech.cybertech.repositories.NotificationRepository;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import com.novatech.cybertech.repositories.UserRepository;
@@ -92,6 +94,9 @@ class PaymentWebhookFlowIT {
 
     @Autowired
     private PaymentAttemptRepository paymentAttemptRepository;
+
+    @Autowired
+    private NotificationRepository notificationRepository;
 
     @Autowired
     private ApplicationEvents applicationEvents;
@@ -392,6 +397,30 @@ class PaymentWebhookFlowIT {
                     .as("with metadata.order_uuid the listener flips the order to PAID")
                     .isEqualTo(OrderStatus.PAID);
         });
+    }
+
+    /**
+     * Once the async listener has moved the order to PAID, a PAYMENT_CONFIRMATION notification is
+     * attempted for that order: the order-confirmation email sent at placeOrder usually still says
+     * "payment pending", since Stripe confirms asynchronously. The NotificationEntity audit row is
+     * written whether the SMTP send succeeds or not, so it is asserted on rather than the mailbox.
+     */
+    @Test
+    void paymentSucceededWebhookTriggersPaymentConfirmationNotification() throws Exception {
+        final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        Awaitility.await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(250)).untilAsserted(() ->
+                assertThat(notificationRepository.findAll())
+                        .filteredOn(n -> orderUuid.equals(n.getOrderUuid()))
+                        .extracting(n -> n.getNotificationType())
+                        .contains(NotificationType.PAYMENT_CONFIRMATION));
     }
 
     // ---------------------------------------------------------------------------------

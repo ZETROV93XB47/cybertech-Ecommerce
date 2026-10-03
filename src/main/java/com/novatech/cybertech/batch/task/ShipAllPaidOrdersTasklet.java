@@ -11,6 +11,7 @@ import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.services.core.NotificationRetryableDelivery;
 import com.novatech.cybertech.services.implementation.ShippingConfirmationPayload;
+import com.novatech.cybertech.utils.UserContactUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
@@ -86,12 +87,7 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
             throw new IllegalStateException("Order " + order.getUuid() + " has no associated user — cannot resolve shipping contact details.");
         }
 
-        final UserContactDto userContactDto = UserContactDto.builder()
-                .email(user.getEmail())
-                .name(user.getFirstName())
-                .phoneNumber(user.getPhoneNumber())
-                .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
-                .build();
+        final UserContactDto userContactDto = UserContactUtils.toUserContact(user);
 
         ShippingContext shippingContext = ShippingContext.builder()
                 .user(userContactDto)

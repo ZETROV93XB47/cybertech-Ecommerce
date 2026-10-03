@@ -9,6 +9,7 @@ import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
+import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
@@ -26,6 +27,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -58,6 +60,8 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
     private StockService stockService;
     @Mock
     private OrderRepository orderRepository;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private OrderPaymentConfirmationTransactionalDelegateImp delegate;
@@ -118,6 +122,35 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         final InOrder ord = inOrder(orderRepository, stockService);
         ord.verify(orderRepository).save(any(OrderEntity.class));
         ord.verify(stockService).commitStock(uuid);
+    }
+
+    @Test
+    void handlePaymentSuccess_publishesPaymentConfirmedEventWithOrderAndContact() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-confirm");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        final ArgumentCaptor<OrderPaymentConfirmedEvent> cap = ArgumentCaptor.forClass(OrderPaymentConfirmedEvent.class);
+        verify(eventPublisher).publishEvent(cap.capture());
+        final var dto = cap.getValue().getOrderEventDto();
+        assertThat(dto.getOrderUuid()).isEqualTo(uuid);
+        assertThat(dto.getOrderStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(dto.getTotalAmount()).isEqualTo(order.getTotalAmount().getAmount());
+        assertThat(dto.getUserContactDto().getEmail()).isEqualTo(order.getUserEntity().getEmail());
+    }
+
+    @Test
+    void handlePaymentSuccess_onStaleOrDuplicateWebhook_publishesNoPaymentConfirmedEvent() {
+        // Stripe retries webhooks: a second payment_intent.succeeded for an order already PAID
+        // must not send a second "payment confirmed" email.
+        final UUID uuid = UUID.randomUUID();
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(orderWithStatus(uuid, OrderStatus.PAID)));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test

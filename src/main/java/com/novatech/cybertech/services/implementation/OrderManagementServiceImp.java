@@ -3,7 +3,6 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
-import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
@@ -27,6 +26,7 @@ import com.novatech.cybertech.services.core.*;
 import com.novatech.cybertech.utils.ControllerSecurityUtils;
 import com.novatech.cybertech.utils.OrderPaymentUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
+import com.novatech.cybertech.utils.UserContactUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -695,12 +695,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .totalAmount(totalPrice)
                 .shippingProvider(orderEntity.getShippingProvider())
                 .shippingType(orderEntity.getShippingType())
-                .userContactDto(UserContactDto.builder()
-                        .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
-                        .email(user.getEmail())
-                        .name(user.getFirstName())
-                        .phoneNumber(user.getPhoneNumber())
-                        .build())
+                .userContactDto(UserContactUtils.toUserContact(user))
                 .build();
     }
 

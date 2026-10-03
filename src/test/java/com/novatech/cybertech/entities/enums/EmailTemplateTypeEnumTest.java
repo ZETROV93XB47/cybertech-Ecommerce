@@ -9,11 +9,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class EmailTemplateTypeEnumTest {
 
     @Test
-    void hasFourTemplates() {
+    void hasFiveTemplates() {
         assertThat(EmailTemplateType.values()).containsExactly(
                 EmailTemplateType.ORDER_CANCELLATION,
                 EmailTemplateType.ORDER_PENDING_PAYMENT,
                 EmailTemplateType.ORDER_CONFIRMATION,
+                EmailTemplateType.PAYMENT_CONFIRMATION,
                 EmailTemplateType.SHIPPING_CONFIRMATION);
     }
 
@@ -45,6 +46,11 @@ class EmailTemplateTypeEnumTest {
                 .isEqualTo(NotificationSubject.ORDER_CONFIRMATION);
         assertThat(EmailTemplateType.ORDER_CONFIRMATION.getTemplatePath())
                 .isEqualTo("email/order-confirmation");
+
+        assertThat(EmailTemplateType.PAYMENT_CONFIRMATION.getNotificationSubject())
+                .isEqualTo(NotificationSubject.PAYMENT_CONFIRMATION);
+        assertThat(EmailTemplateType.PAYMENT_CONFIRMATION.getTemplatePath())
+                .isEqualTo("email/payment-confirmation");
 
         assertThat(EmailTemplateType.SHIPPING_CONFIRMATION.getNotificationSubject())
                 .isEqualTo(NotificationSubject.SHIPPING_CONFIRMATION);

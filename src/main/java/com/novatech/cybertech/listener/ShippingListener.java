@@ -14,6 +14,7 @@ import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.OrderShippedEvent;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.utils.UserContactUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -105,12 +106,7 @@ public class ShippingListener {
             throw new IllegalStateException("Order " + order.getUuid() + " has no associated user — cannot resolve shipping contact details.");
         }
 
-        final UserContactDto userContactDto = UserContactDto.builder()
-                .email(user.getEmail())
-                .name(user.getFirstName())
-                .phoneNumber(user.getPhoneNumber())
-                .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
-                .build();
+        final UserContactDto userContactDto = UserContactUtils.toUserContact(user);
 
         final ShippingContext shippingContext = ShippingContext.builder()
                 .user(userContactDto)
