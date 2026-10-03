@@ -87,8 +87,8 @@ class ProductManagementAdminControllerTest {
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(jsonPath("$.content[0].uuid").value(product.getUuid()))
                 .andExpect(jsonPath("$.content[0].name").value(product.getName()))
-                .andExpect(jsonPath("$.totalElements").value(1))
-                .andExpect(jsonPath("$.size").value(1));
+                .andExpect(jsonPath("$.page.totalElements").value(1))
+                .andExpect(jsonPath("$.page.size").value(1));
     }
 
     @Test

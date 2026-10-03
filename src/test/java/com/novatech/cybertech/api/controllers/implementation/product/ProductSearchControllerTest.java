@@ -166,7 +166,7 @@ class ProductSearchControllerTest {
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(jsonPath("$.content[0].uuid").value(productResponseDto.getUuid()))
                 .andExpect(jsonPath("$.content[0].name").value(productResponseDto.getName()))
-                .andExpect(jsonPath("$.totalElements").value(1));
+                .andExpect(jsonPath("$.page.totalElements").value(1));
     }
 
     @Test
@@ -236,7 +236,7 @@ class ProductSearchControllerTest {
                         .content(asJsonString(searchRequestDto)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
-                .andExpect(jsonPath("$.totalElements").value(1));
+                .andExpect(jsonPath("$.page.totalElements").value(1));
     }
 
     @Test
@@ -303,7 +303,7 @@ class ProductSearchControllerTest {
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(jsonPath("$.content[0].uuid").value(productResponseDto.getUuid()))
                 .andExpect(jsonPath("$.content[0].name").value(productResponseDto.getName()))
-                .andExpect(jsonPath("$.totalElements").value(1));
+                .andExpect(jsonPath("$.page.totalElements").value(1));
     }
 
     @Test
@@ -318,6 +318,6 @@ class ProductSearchControllerTest {
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].uuid").value(productResponseDto.getUuid()))
-                .andExpect(jsonPath("$.totalElements").value(1));
+                .andExpect(jsonPath("$.page.totalElements").value(1));
     }
 }

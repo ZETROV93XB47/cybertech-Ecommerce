@@ -529,7 +529,8 @@ class ProductSearchFlowIT {
                 res.getResponse().getContentAsString(),
                 new TypeReference<Map<String, Object>>() {
                 });
-        Object total = body.get("totalElements");
+        Object page = body.get("page");
+        Object total = page instanceof Map<?, ?> m ? m.get("totalElements") : null;
         if (total instanceof Number n) {
             return n.intValue();
         }

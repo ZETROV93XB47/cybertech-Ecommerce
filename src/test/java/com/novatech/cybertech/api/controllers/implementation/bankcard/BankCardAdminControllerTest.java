@@ -82,7 +82,7 @@ class BankCardAdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(jsonPath("$.content", org.hamcrest.Matchers.hasSize(2)))
-                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.page.totalElements").value(2))
                 .andExpect(jsonPath("$.content[0].uuid").value(a.getUuid().toString()))
                 .andExpect(jsonPath("$.content[1].uuid").value(b.getUuid().toString()));
     }

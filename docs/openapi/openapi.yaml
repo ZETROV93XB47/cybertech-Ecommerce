@@ -2394,7 +2394,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Page"
+                $ref: "#/components/schemas/PagedModel"
         "401":
           description: Unauthorized - JWT token missing or invalid
           content:
@@ -2842,7 +2842,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Page"
+                $ref: "#/components/schemas/PagedModel"
         "401":
           description: Unauthorized - JWT token missing or invalid
           content:
@@ -4451,64 +4451,29 @@ components:
           - RETURNED
           - CANCELED
           - REFUNDED
-    Page:
+    PageMetadata:
       type: object
       properties:
+        size:
+          type: integer
+          format: int64
+        number:
+          type: integer
+          format: int64
         totalElements:
           type: integer
           format: int64
         totalPages:
           type: integer
-          format: int32
-        size:
-          type: integer
-          format: int32
+          format: int64
+    PagedModel:
+      type: object
+      properties:
         content:
           type: array
           items: {}
-        number:
-          type: integer
-          format: int32
-        first:
-          type: boolean
-        last:
-          type: boolean
-        sort:
-          $ref: "#/components/schemas/SortObject"
-        numberOfElements:
-          type: integer
-          format: int32
-        pageable:
-          $ref: "#/components/schemas/PageableObject"
-        empty:
-          type: boolean
-    PageableObject:
-      type: object
-      properties:
-        offset:
-          type: integer
-          format: int64
-        paged:
-          type: boolean
-        sort:
-          $ref: "#/components/schemas/SortObject"
-        pageNumber:
-          type: integer
-          format: int32
-        pageSize:
-          type: integer
-          format: int32
-        unpaged:
-          type: boolean
-    SortObject:
-      type: object
-      properties:
-        empty:
-          type: boolean
-        unsorted:
-          type: boolean
-        sorted:
-          type: boolean
+        page:
+          $ref: "#/components/schemas/PageMetadata"
     DiscountContext:
       type: object
       properties:
