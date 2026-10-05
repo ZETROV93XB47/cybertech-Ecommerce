@@ -96,7 +96,10 @@ class ShippingListenerTest {
         // before dispatch, prevents double-ship race against ShipAllPaidOrdersTasklet) and
         // once with SHIPPED after dispatch succeeds. The captor sees the same mutated entity
         // reference both times, so we assert call count + final state instead.
-        verify(orderRepository, org.mockito.Mockito.times(2)).save(org.mockito.ArgumentMatchers.same(order));
+        final org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(orderRepository, shippingDispatcher);
+        inOrder.verify(orderRepository).saveAndFlush(org.mockito.ArgumentMatchers.same(order));
+        inOrder.verify(shippingDispatcher).dispatch(org.mockito.ArgumentMatchers.any(ShippingContext.class));
+        inOrder.verify(orderRepository).save(org.mockito.ArgumentMatchers.same(order));
         assertThat(order.getStatus()).isEqualTo(OrderStatus.SHIPPED);
 
         ArgumentCaptor<OrderShippedEvent> evCap = ArgumentCaptor.forClass(OrderShippedEvent.class);

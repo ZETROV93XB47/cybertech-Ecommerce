@@ -1,6 +1,6 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : 2026-10-03 — branche `develop_back`._
+_Dernière mise à jour : 2026-10-05 — branche `develop_back`._
 
 ---
 
@@ -10,7 +10,9 @@ Backend Spring Boot 4 / Java 26 d'une plateforme e-commerce (portfolio, pas ente
 
 État de l'arbre (2026-10-02) : propre. Seul `cybertech-realm-export.json` reste non suivi, volontairement non committé. Le realm Keycloak est importé automatiquement au boot depuis `src/main/resources/keycloak/import/cybertech-realm.json`.
 
-Dernière session (2026-10-02) : panier sans CRUD, trace de requête + logs métier, fix `AppConfig` sur les proxies. 2049 tests unitaires verts, `CartFlowIT` + `OrderFlowIT` verts ; la suite IT complète n'a pas été relancée.
+Dernière session (2026-10-05) : jobs batch mal câblés (le job commandes tournait en N exemplaires concurrents, les 4 autres jobs ne tournaient jamais) + double envoi transporteur. 2057 tests unitaires verts ; ITs non relancées.
+
+Session précédente (2026-10-02) : panier sans CRUD, trace de requête + logs métier, fix `AppConfig` sur les proxies. 2049 tests unitaires verts, `CartFlowIT` + `OrderFlowIT` verts ; la suite IT complète n'a pas été relancée.
 
 Dernière validation complète connue (2026-09-29, après le passage `discountKey`) : `./mvnw verify -Pintegration-test` → BUILD SUCCESS (7:02 min) — 2025 tests unitaires, 56 tests d'intégration, 0 échec, gate JaCoCo respectée (`ProductSearchFlowIT` exécute 0 test, comme avant).
 
@@ -22,6 +24,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### Faites (cette phase de travail)
 
+- **2026-10-05 — Jobs batch : mauvais `Job` injecté + double expédition** : sans `lombok.config`, le `@Qualifier` posé sur `private final Job job` n'était pas recopié sur le constructeur `@RequiredArgsConstructor`. Spring injectait donc le job `@Primary` (commandes) dans les 5 `*JobImp` : à chaque tick `*/15` le job commandes (dont l'étape « ship PAID ») partait 3 fois en parallèle, et stock cleanup / gorse / redelivery notifications / outbox Keycloak ne tournaient **jamais**. Constaté sur des logs réels : même commande envoyée deux fois à DHL à 15:45:00. Corrections : `lombok.config` (`lombok.copyableAnnotations += ...Qualifier`), bean du job commandes renommé `REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB` (le qualifier pointait vers un nom inexistant, masqué par `@Primary`, retiré). Le claim `PAID → AWAITING_SHIPPING` passe en `saveAndFlush` dans `ShipOrderTransactionalDelegate` et `ShippingListener` : avec `save` il n'était flushé qu'au commit, **après** l'appel transporteur, donc le perdant de la course expédiait quand même. Test de non-régression `BatchJobQualifierWiringTest`.
 - **2026-10-02 — Panier sans CRUD** (`45e1a2b`) : `POST /cart/create` enregistrait un panier vide (le mapping MapStruct `BaseMapper` ne sait pas transformer `cartItemAddRequestDtos` en lignes et l'ignorait en silence). `/cart/create`, `DELETE /cart/delete/{uuid}` et `GET /cart/get/{uuid}` ont été supprimés, puisque `/cart/add` crée le panier au premier ajout et que `/cart/clear` + `/cart/get` couvrent le reste. `CartService` n'étend plus `CrudBaseService` et `CartMapper` n'étend plus `BaseMapper`. Postman, la spec OpenAPI et les tests (dont `CartFlowIT`, dont l'IDOR cible maintenant `PATCH /cart/update/{uuid}`) ont été mis à jour.
 - **2026-10-02 — Trace de requête lisible** (`351a09e`) : `LoggingFilter` passe en tête de chaîne (avant Spring Security). Il écrit une ligne `→` en entrée et une ligne `← status (ms) user=` en sortie, utilise un `requestId` court (8 caractères) et renvoie le header `X-Request-Id`. Le nouvel aspect `logger/RequestTraceAspect` produit l'arbre d'appels indenté `▶`/`◀` (controllers, services, delegates, validators, listeners, dispatchers, clients, batch) avec les durées. Une erreur est loggée une seule fois, au frame qui l'a levée, et le verdict du handler d'erreur tient sur une ligne `✖ status type — Exception: message`. Les jobs et listeners hors requête reçoivent un id `bg-xxxxxxxx`. `@NotTraced` exclut la plomberie. `LogTraceUtils` affiche les ids, jamais le contenu des DTO. Logback place le `requestId` juste après le niveau en dev et l'exporte en JSON en prod.
 - **2026-10-02 — Bug latent corrigé dans `AppConfig`** : les maps de stratégies lisaient l'annotation via `bean.getClass().getAnnotation(..)`, qui renvoie `null` sur un proxy CGLIB. `StripePaymentAttemptProcessor` (proxifié par Resilience4j) sortait donc vraisemblablement de `paymentServiceMap` en prod. Les ITs ne le voyaient pas parce qu'ils surchargent cette map. Le lookup passe maintenant par `AopUtils.getTargetClass` + `AnnotationUtils.findAnnotation`, couvert par `AppConfigStrategyMapTest`.
@@ -139,6 +142,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ## 3. Remarques
 
+- **`@Qualifier` + Lombok** : un `@Qualifier` sur un champ `final` n'a d'effet avec `@RequiredArgsConstructor` que grâce à `lombok.config` (`copyableAnnotations`). Ne pas supprimer ce fichier ; `BatchJobQualifierWiringTest` casse si c'est le cas. Et ne pas remettre `@Primary` sur un `Job` : c'est ce qui a rendu le bug silencieux.
 - **Request trace : pièges Spring AOP rencontrés (2026-10-02)** : (1) la syntaxe `within(pkg..)` ne matche rien, il faut `within(pkg..*)` ; (2) un aspect en `HIGHEST_PRECEDENCE` passe avant l'`ExposeInvocationInterceptor`, et un `@AfterReturning` y lève « No MethodInvocation found ». Avec l'advice sur `ErrorManagementController`, tous les `@ExceptionHandler` échouaient. D'où `TRACE_ORDER = HIGHEST_PRECEDENCE + 2` ; (3) toute classe dans un package tracé devient un proxy CGLIB, donc ne jamais lire ses annotations via `bean.getClass()` ; (4) un bean ré-exposé sous un second nom (`orderValidatorChain`) est proxifié deux fois, et l'aspect ignore le proxy externe. Pour couper la trace : `logging.level.com.novatech.cybertech.logger.RequestTraceAspect=WARN`.
 - **Lire les logs** : `grep <requestId>` donne toute l'histoire d'une requête, de `→` à `←`, threads `@Async` compris (le MDC est copié par le `TaskDecorator`). Le requestId est aussi renvoyé dans le header `X-Request-Id`, ce qui permet de partir d'une réponse Postman. Les `?` dans la sortie Maven sous Windows sont un artefact d'encodage de la console : logback écrit bien de l'UTF-8 (`▶ ◀ ✖ → ←`).
 

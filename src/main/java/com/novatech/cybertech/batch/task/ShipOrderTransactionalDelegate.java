@@ -83,9 +83,13 @@ public class ShipOrderTransactionalDelegate {
         // optimistic-lock UPDATE (... WHERE version=?) detects a concurrent claim by the
         // OrderPaidEvent listener; the loser throws OptimisticLockingFailureException at this
         // REQUIRES_NEW commit, observed by the caller.
+        // saveAndFlush, not save: the claim UPDATE must hit the DB BEFORE dispatch. With a plain
+        // save it was only flushed at commit, i.e. after the carrier call — two concurrent runs
+        // both dispatched and only the second commit failed. Flushed here, the loser blocks on the
+        // row lock, then fails the version check without ever reaching the carrier.
         current.setStatus(OrderStatus.AWAITING_SHIPPING);
         current.setShippedAt(LocalDateTime.now());
-        orderRepository.save(current);
+        orderRepository.saveAndFlush(current);
 
         shippingDispatcher.dispatch(context);
 

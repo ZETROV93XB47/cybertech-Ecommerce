@@ -10,7 +10,6 @@ import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -25,7 +24,6 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.REPORT_FAIL
 @RequiredArgsConstructor
 public class BatchConfig {
 
-    private static final String GET_FAILED_PAYMENT_ORDERS = "GET_FAILED_PAYMENT_ORDERS";
     private static final String CANCEL_ALL_PENDING_ORDERS_BY_TIME_TASKLET = "CancelAllPendingOrdersByTimeTasklet";
     private static final String GET_ALL_FAILED_PAYMENTS_ORDER_TASKLET = "GetAllFailedPaymentOrderTasklet";
     private static final String SHIP_ALL_PAID_ORDERS_TASKLET = "ShipAllAwaitingShippingOrdersTasklet";
@@ -50,8 +48,7 @@ public class BatchConfig {
     private int schedulerPoolSize;
 
 
-    @Primary
-    @Bean(GET_FAILED_PAYMENT_ORDERS)
+    @Bean(REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB)
     public Job reportFailedOrders() {
 
         final Step getAllFailedPaymentOrderStep = getAllFailedPaymentOrder();

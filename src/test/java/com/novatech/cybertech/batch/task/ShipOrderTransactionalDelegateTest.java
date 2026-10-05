@@ -11,6 +11,7 @@ import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
 import com.novatech.cybertech.repositories.OrderRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -22,8 +23,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -83,8 +84,12 @@ class ShipOrderTransactionalDelegateTest {
         assertThat(dispatched).isTrue();
         assertThat(stored.getStatus()).isEqualTo(OrderStatus.SHIPPED);
         assertThat(stored.getShippedAt()).isNotNull();
-        verify(shippingDispatcher).dispatch(any(ShippingContext.class));
-        verify(orderRepository, times(2)).save(stored);
+        // The claim must be flushed BEFORE the carrier call, so a concurrent loser fails its
+        // version check without dispatching; the SHIPPED transition is a plain save afterwards.
+        final InOrder inOrder = inOrder(orderRepository, shippingDispatcher);
+        inOrder.verify(orderRepository).saveAndFlush(stored);
+        inOrder.verify(shippingDispatcher).dispatch(any(ShippingContext.class));
+        inOrder.verify(orderRepository).save(stored);
     }
 
     @Test

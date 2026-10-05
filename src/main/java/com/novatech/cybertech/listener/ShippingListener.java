@@ -76,7 +76,10 @@ public class ShippingListener {
 
         final OrderEntity order = orderRepository.findByUuid(orderPaidEvent.getOrderUUID()).orElseThrow(() -> new OrderNotFoundException("Order " + orderPaidEvent.getOrderUUID() + " not found"));
 
-        if (order.getStatus() != OrderStatus.PAID) return;
+        if (order.getStatus() != OrderStatus.PAID) {
+            log.info("Order {} is in {} (no longer awaiting shipping) — ignoring stale/duplicate OrderPaidEvent", order.getUuid(), order.getStatus());
+            return;
+        }
 
         // Guards a narrow but real window: updateOrder's charge-difference path can regress an
         // AWAITING_SHIPPING order back to AWAITING_PAYMENT (to fund a top-up), then the payment
@@ -96,7 +99,9 @@ public class ShippingListener {
         // in the SAME save, so it is claimed under the same optimistic-lock guarantee.
         order.setStatus(OrderStatus.AWAITING_SHIPPING);
         order.setShippedAt(LocalDateTime.now());
-        orderRepository.save(order);
+        // saveAndFlush so the claim reaches the DB before the carrier call — see
+        // ShipOrderTransactionalDelegate#claimAndShip for the double-dispatch it prevents.
+        orderRepository.saveAndFlush(order);
 
         final UserEntity user = order.getUserEntity();
         if (user == null) {
