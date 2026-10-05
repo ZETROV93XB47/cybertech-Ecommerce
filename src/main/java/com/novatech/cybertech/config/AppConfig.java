@@ -23,7 +23,9 @@ import org.keycloak.admin.client.KeycloakBuilder;
 import org.slf4j.MDC;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -48,7 +50,16 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.PRODUCT_CAT
 @EnableCaching
 @EnableJpaAuditing
 @RequiredArgsConstructor
-public class AppConfig {
+public class AppConfig implements CachingConfigurer {
+
+    /**
+     * A cache failure (unreadable entry, Redis unreachable) degrades to an uncached call instead of
+     * a 500 — see {@link SelfHealingCacheErrorHandler}.
+     */
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return new SelfHealingCacheErrorHandler();
+    }
 
     @Value("${keycloak.client.user.management.server.url}")
     private String serverUrl;

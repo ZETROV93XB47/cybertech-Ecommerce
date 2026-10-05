@@ -12,6 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.DISCOUNT_CAMPAIGNS_CACHE;
@@ -58,6 +59,21 @@ class RedisConfigCacheSerializationTest {
 
         assertThat(discountConfig).as("dedicated configuration for the %s cache", DISCOUNT_CAMPAIGNS_CACHE).isNotNull();
         assertThat(roundTrip(discountConfig.getValueSerializationPair(), blackFriday())).isEqualTo(blackFriday());
+    }
+
+    @Test
+    void entryWrittenByTheFormerDefaultSerializerIsUnreadableByTheTypedOne() {
+        // Exact payload found in Redis after the serializer switch (2026-10-05). Unreadable by
+        // design — SelfHealingCacheErrorHandler is what turns it into a cache miss instead of a 500.
+        final String formerPayload = "{\"discountKey\":\"BLACK_FRIDAY\",\"calculationType\":\"PERCENTAGE\","
+                + "\"percentage\":[\"java.math.BigDecimal\",20.00],\"fixedAmount\":null,\"minOrderAmount\":null,"
+                + "\"maxDiscountAmount\":null,\"startsAt\":null,\"endsAt\":null}";
+        final RedisCacheManager cacheManager = redisConfig.cacheManager(mock(RedisConnectionFactory.class), defaultConfig, TTL_SECONDS);
+        cacheManager.afterPropertiesSet();
+        final SerializationPair<?> discountPair = cacheManager.getCacheConfigurations().get(DISCOUNT_CAMPAIGNS_CACHE).getValueSerializationPair();
+
+        assertThatThrownBy(() -> discountPair.read(ByteBuffer.wrap(formerPayload.getBytes(StandardCharsets.UTF_8))))
+                .isInstanceOf(SerializationException.class);
     }
 
     @Test
