@@ -1,6 +1,7 @@
 package com.novatech.cybertech.config;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.provider.redis.spring.RedisLockProvider;
@@ -33,6 +34,8 @@ import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DISCOUNT_CAMPAIGNS_CACHE;
 
 @Configuration
 @EnableRedisRepositories
@@ -142,6 +145,11 @@ public class RedisConfig {
 
         final JacksonJsonRedisSerializer<Boolean> userExistSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(Boolean.class);
         final JacksonJsonRedisSerializer<CartResponseDto> cartSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(CartResponseDto.class);
+        // DiscountContext is a record, hence final: the default serializer's DefaultTyping.NON_FINAL
+        // writes it WITHOUT an @class hint, then fails to read it back as Object ("missing type id
+        // property '@class'") on the first cache hit — every order with a discount after the first
+        // one ended in a 500. A serializer bound to the concrete type needs no type hint at all.
+        final JacksonJsonRedisSerializer<DiscountContext> discountSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(DiscountContext.class);
 
         final RedisCacheConfiguration cartConfig = defaultConfig
                 .entryTtl(Duration.ofSeconds(baseTtlSeconds))
@@ -151,10 +159,14 @@ public class RedisConfig {
                 .entryTtl(Duration.ofHours(24))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(userExistSerializer));
 
+        final RedisCacheConfiguration discountConfig = defaultConfig
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(discountSerializer));
+
         final Map<String, RedisCacheConfiguration> configs = new HashMap<>();
 
         configs.put(CART_CACHE, cartConfig);
         configs.put(USER_EXISTENCE_CACHE, userExistConfig);
+        configs.put(DISCOUNT_CAMPAIGNS_CACHE, discountConfig);
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)

@@ -53,6 +53,7 @@ public class CyberTechAppConstants {
     public static final String REDELIVER_FAILED_NOTIFICATIONS_JOB = "REDELIVER_FAILED_NOTIFICATIONS_JOB";
     public static final String KEYCLOAK_OUTBOX_RECONCILIATION_JOB = "KEYCLOAK_OUTBOX_RECONCILIATION_JOB";
     public static final String GORSE_SYNC_JOB = "GORSE_SYNC_JOB";
+    public static final String DISCOUNT_CAMPAIGNS_CACHE = "discountCampaigns";
 
 
     public static final String APP_API_VERSION = "1.0";

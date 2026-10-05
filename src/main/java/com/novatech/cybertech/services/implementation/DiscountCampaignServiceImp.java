@@ -14,12 +14,12 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DISCOUNT_CAMPAIGNS_CACHE;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DiscountCampaignServiceImp implements DiscountCampaignService {
-
-    static final String DISCOUNT_CAMPAIGNS_CACHE = "discountCampaigns";
 
     private final DiscountCampaignRepository discountCampaignRepository;
 
