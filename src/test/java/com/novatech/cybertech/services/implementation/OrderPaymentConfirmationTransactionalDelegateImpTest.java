@@ -9,6 +9,7 @@ import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.TransactionType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
+import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
@@ -142,9 +143,26 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
     }
 
     @Test
+    void handlePaymentSuccess_publishesOrderPaidEventFromTheTransactionThatCommitsPaid() {
+        // The shipping trigger must leave from HERE (AFTER_COMMIT of the PAID flip), not from the
+        // webhook: published there, ShippingListener raced this transaction and read a not-yet-PAID
+        // order.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-paid");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        final ArgumentCaptor<OrderPaidEvent> cap = ArgumentCaptor.forClass(OrderPaidEvent.class);
+        verify(eventPublisher).publishEvent(cap.capture());
+        assertThat(cap.getValue().getOrderUUID()).isEqualTo(uuid);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+    }
+
+    @Test
     void handlePaymentSuccess_onStaleOrDuplicateWebhook_publishesNoPaymentConfirmedEvent() {
         // Stripe retries webhooks: a second payment_intent.succeeded for an order already PAID
-        // must not send a second "payment confirmed" email.
+        // must not send a second "payment confirmed" email, nor re-trigger shipping.
         final UUID uuid = UUID.randomUUID();
         when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(orderWithStatus(uuid, OrderStatus.PAID)));
 

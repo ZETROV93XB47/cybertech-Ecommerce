@@ -55,7 +55,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p><b>Fixes verified end-to-end here:</b>
  * <ul>
  *   <li>Dedup ledger ({@code ProcessedWebhookEventEntity}) short-circuits replays.</li>
- *   <li>{@link OrderPaidEvent} published from {@code handlePaymentSucceeded}.</li>
+ *   <li>{@link OrderPaidEvent} published from the PAID flip (not the webhook), so the shipping
+ *       listener ships the order right away.</li>
  *   <li>{@link PaymentFailedEvent} published from {@code handlePaymentFailed}.</li>
  *   <li>Terminal-state guard prevents SUCCESS→FAILED row regression.</li>
  *   <li>Livemode mismatch silently drops the event.</li>
@@ -393,9 +394,11 @@ class PaymentWebhookFlowIT {
         // but only the order status is asserted to keep the test focused on the metadata key.
         Awaitility.await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(200)).untilAsserted(() -> {
             final OrderEntity reloaded = orderRepository.findByUuid(orderUuid).orElseThrow();
+            // PAID is transient: the shipping listener (OrderPaidEvent, published from the PAID
+            // flip) moves the order on to AWAITING_SHIPPING / SHIPPED right after.
             assertThat(reloaded.getStatus())
-                    .as("with metadata.order_uuid the listener flips the order to PAID")
-                    .isEqualTo(OrderStatus.PAID);
+                    .as("with metadata.order_uuid the listener flips the order to PAID (or beyond)")
+                    .isIn(OrderStatus.PAID, OrderStatus.AWAITING_SHIPPING, OrderStatus.SHIPPED);
         });
     }
 
@@ -424,15 +427,17 @@ class PaymentWebhookFlowIT {
     }
 
     // ---------------------------------------------------------------------------------
-    // 10) OrderPaidEvent is declared but NEVER published (still open per source read)
+    // 10) The shipping listener ships the order as soon as it is PAID
     // ---------------------------------------------------------------------------------
 
     /**
-     * Fix verification — {@link OrderPaidEvent} is now published from the webhook path
-     * after the payment row flips to SUCCESS. The shipping listener can therefore react.
+     * {@link OrderPaidEvent} used to be published by the webhook next to PaymentSucceededEvent: the
+     * two async listeners raced and the shipping one usually read the order before PAID committed,
+     * gave up, and left shipping to the batch (up to 10 min later). Now published from the PAID
+     * flip, the shipping listener always sees PAID and ships within the request's aftermath.
      */
     @Test
-    void orderPaidEventShouldBePublishedAfterOrderFlipsToPaid_BUG_171() throws Exception {
+    void succeededWebhookShipsTheOrderWithoutWaitingForTheBatch_BUG_171() throws Exception {
         final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
         final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
 
@@ -442,9 +447,11 @@ class PaymentWebhookFlowIT {
                         .content(signed.payload()))
                 .andExpect(status().isOk());
 
-        Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
-                assertThat(applicationEvents.stream(OrderPaidEvent.class).count()).isEqualTo(1L)
-        );
+        Awaitility.await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(200)).untilAsserted(() -> {
+            final OrderEntity reloaded = orderRepository.findByUuid(orderUuid).orElseThrow();
+            assertThat(reloaded.getStatus()).isEqualTo(OrderStatus.SHIPPED);
+            assertThat(reloaded.getShippedAt()).isNotNull();
+        });
     }
 
     // ---------------------------------------------------------------------------------

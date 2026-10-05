@@ -60,10 +60,9 @@ import static org.mockito.Mockito.when;
  *   <li>{@code handleEvent} livemode mismatch (both directions: livemode=true on a test
  *       deployment AND livemode=false on a prod deployment)</li>
  *   <li>{@code handleEvent} switch — succeeded / failed / refunded / unknown</li>
- *   <li>{@code handlePaymentSucceeded} happy path → publishes {@link PaymentSucceededEvent} +
- *       {@link OrderPaidEvent}, handles missing metadata fallback to PaymentEntity association,
- *       handles invalid UUID metadata (warn-and-fallback), handles null orderEntity (no
- *       OrderPaidEvent published)</li>
+ *   <li>{@code handlePaymentSucceeded} happy path → publishes {@link PaymentSucceededEvent} only;
+ *       {@link OrderPaidEvent} is no longer published from the webhook (it leaves from the PAID
+ *       flip, see {@code OrderPaymentConfirmationTransactionalDelegateImp})</li>
  *   <li>{@code handlePaymentFailed} happy path → publishes {@link PaymentFailedEvent}, terminal
  *       SUCCESS guard drops the failure, missing payment row throws
  *       {@link PaymentNotFoundException}</li>
@@ -156,97 +155,6 @@ class PaymentWebhookServiceImpTest {
                 paymentIntentId,
                 orderUuid,
                 idempotencyKey
-        );
-    }
-
-    private static String paymentIntentSucceededJsonNoMetadata(final String paymentIntentId) {
-        return """
-                {
-                  "id": "evt_%s",
-                  "object": "event",
-                  "api_version": "2024-04-10",
-                  "created": %d,
-                  "type": "payment_intent.succeeded",
-                  "livemode": false,
-                  "pending_webhooks": 0,
-                  "request": {"id": null, "idempotency_key": null},
-                  "data": {
-                    "object": {
-                      "id": "%s",
-                      "object": "payment_intent",
-                      "amount": 10000,
-                      "amount_received": 10000,
-                      "currency": "eur",
-                      "status": "succeeded"
-                    }
-                  }
-                }
-                """.formatted(
-                UUID.randomUUID().toString().replace("-", ""),
-                System.currentTimeMillis() / 1000L,
-                paymentIntentId
-        );
-    }
-
-    private static String paymentIntentSucceededJsonInvalidUuidMetadata(final String paymentIntentId) {
-        return """
-                {
-                  "id": "evt_%s",
-                  "object": "event",
-                  "api_version": "2024-04-10",
-                  "created": %d,
-                  "type": "payment_intent.succeeded",
-                  "livemode": false,
-                  "pending_webhooks": 0,
-                  "request": {"id": null, "idempotency_key": null},
-                  "data": {
-                    "object": {
-                      "id": "%s",
-                      "object": "payment_intent",
-                      "amount": 10000,
-                      "currency": "eur",
-                      "status": "succeeded",
-                      "metadata": {
-                        "order_uuid": "not-a-uuid"
-                      }
-                    }
-                  }
-                }
-                """.formatted(
-                UUID.randomUUID().toString().replace("-", ""),
-                System.currentTimeMillis() / 1000L,
-                paymentIntentId
-        );
-    }
-
-    private static String paymentIntentSucceededJsonBlankMetadata(final String paymentIntentId) {
-        return """
-                {
-                  "id": "evt_%s",
-                  "object": "event",
-                  "api_version": "2024-04-10",
-                  "created": %d,
-                  "type": "payment_intent.succeeded",
-                  "livemode": false,
-                  "pending_webhooks": 0,
-                  "request": {"id": null, "idempotency_key": null},
-                  "data": {
-                    "object": {
-                      "id": "%s",
-                      "object": "payment_intent",
-                      "amount": 10000,
-                      "currency": "eur",
-                      "status": "succeeded",
-                      "metadata": {
-                        "order_uuid": ""
-                      }
-                    }
-                  }
-                }
-                """.formatted(
-                UUID.randomUUID().toString().replace("-", ""),
-                System.currentTimeMillis() / 1000L,
-                paymentIntentId
         );
     }
 
@@ -452,8 +360,8 @@ class PaymentWebhookServiceImpTest {
     class HandlePaymentSucceeded {
 
         @Test
-        @DisplayName("happy path: flips payment to SUCCESS, publishes PaymentSucceededEvent + OrderPaidEvent")
-        void happyPathFlipsPaymentAndPublishesBothEvents() {
+        @DisplayName("happy path: flips payment to SUCCESS, publishes PaymentSucceededEvent only — OrderPaidEvent leaves from the PAID flip")
+        void happyPathFlipsPaymentAndPublishesPaymentSucceededEventOnly() {
             final String stripePaymentId = "pi_success_happy";
             final OrderEntity order = OrderEntityBuilder.aValidOrder();
             final UUID orderUuid = order.getUuid();
@@ -472,103 +380,8 @@ class PaymentWebhookServiceImpTest {
             assertThat(row.getProviderEventId()).isEqualTo(event.getId());
 
             verify(eventPublisher).publishEvent(any(PaymentSucceededEvent.class));
-
-            final ArgumentCaptor<OrderPaidEvent> orderPaidCaptor = ArgumentCaptor.forClass(OrderPaidEvent.class);
-            verify(eventPublisher).publishEvent(orderPaidCaptor.capture());
-            assertThat(orderPaidCaptor.getValue().getOrderUUID()).isEqualTo(orderUuid);
-        }
-
-        @Test
-        @DisplayName("missing metadata.order_uuid falls back to payment.orderEntity.uuid")
-        void missingMetadataFallsBackToPaymentOrderEntityUuid() {
-            final String stripePaymentId = "pi_no_metadata";
-            final OrderEntity order = OrderEntityBuilder.aValidOrder();
-            final UUID expectedUuid = order.getUuid();
-
-            final String payload = paymentIntentSucceededJsonNoMetadata(stripePaymentId);
-            final Event event = toEvent(payload);
-
-            when(processedWebhookEventRepository.existsByStripeEventId(event.getId())).thenReturn(false);
-            final PaymentEntity row = paymentRow(stripePaymentId, order, PaymentAttemptStatus.PROCESSING);
-            when(attemptRepository.findByStripePaymentID(stripePaymentId)).thenReturn(Optional.of(row));
-            when(attemptRepository.save(any(PaymentEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            service.handleEvent(event, payload);
-
-            verify(eventPublisher).publishEvent(any(PaymentSucceededEvent.class));
-            final ArgumentCaptor<OrderPaidEvent> captor = ArgumentCaptor.forClass(OrderPaidEvent.class);
-            verify(eventPublisher).publishEvent(captor.capture());
-            assertThat(captor.getValue().getOrderUUID()).isEqualTo(expectedUuid);
-        }
-
-        @Test
-        @DisplayName("blank metadata.order_uuid falls back to payment.orderEntity.uuid")
-        void blankMetadataFallsBackToOrderEntityUuid() {
-            final String stripePaymentId = "pi_blank_metadata";
-            final OrderEntity order = OrderEntityBuilder.aValidOrder();
-            final UUID expectedUuid = order.getUuid();
-
-            final String payload = paymentIntentSucceededJsonBlankMetadata(stripePaymentId);
-            final Event event = toEvent(payload);
-
-            when(processedWebhookEventRepository.existsByStripeEventId(event.getId())).thenReturn(false);
-            final PaymentEntity row = paymentRow(stripePaymentId, order, PaymentAttemptStatus.PROCESSING);
-            when(attemptRepository.findByStripePaymentID(stripePaymentId)).thenReturn(Optional.of(row));
-            when(attemptRepository.save(any(PaymentEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            service.handleEvent(event, payload);
-
-            final ArgumentCaptor<OrderPaidEvent> captor = ArgumentCaptor.forClass(OrderPaidEvent.class);
-            verify(eventPublisher).publishEvent(any(PaymentSucceededEvent.class));
-            verify(eventPublisher).publishEvent(captor.capture());
-            assertThat(captor.getValue().getOrderUUID()).isEqualTo(expectedUuid);
-        }
-
-        @Test
-        @DisplayName("invalid UUID metadata is logged warn-level and falls back to payment.orderEntity.uuid")
-        void invalidUuidMetadataFallsBackToOrderEntityUuid() {
-            final String stripePaymentId = "pi_invalid_uuid_metadata";
-            final OrderEntity order = OrderEntityBuilder.aValidOrder();
-            final UUID expectedUuid = order.getUuid();
-
-            final String payload = paymentIntentSucceededJsonInvalidUuidMetadata(stripePaymentId);
-            final Event event = toEvent(payload);
-
-            when(processedWebhookEventRepository.existsByStripeEventId(event.getId())).thenReturn(false);
-            final PaymentEntity row = paymentRow(stripePaymentId, order, PaymentAttemptStatus.PROCESSING);
-            when(attemptRepository.findByStripePaymentID(stripePaymentId)).thenReturn(Optional.of(row));
-            when(attemptRepository.save(any(PaymentEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            service.handleEvent(event, payload);
-
-            final ArgumentCaptor<OrderPaidEvent> captor = ArgumentCaptor.forClass(OrderPaidEvent.class);
-            verify(eventPublisher).publishEvent(any(PaymentSucceededEvent.class));
-            verify(eventPublisher).publishEvent(captor.capture());
-            assertThat(captor.getValue().getOrderUUID()).isEqualTo(expectedUuid);
-        }
-
-        @Test
-        @DisplayName("when no metadata AND payment.orderEntity is null — only PaymentSucceededEvent is published, no OrderPaidEvent")
-        void noMetadataAndNullOrderEntitySkipsOrderPaidEvent() {
-            final String stripePaymentId = "pi_no_order_anywhere";
-
-            final String payload = paymentIntentSucceededJsonNoMetadata(stripePaymentId);
-            final Event event = toEvent(payload);
-
-            when(processedWebhookEventRepository.existsByStripeEventId(event.getId())).thenReturn(false);
-
-            // Build a payment row with no orderEntity (the builder normally seeds one, override to null)
-            final PaymentEntity row = PaymentEntityBuilder.aValidPaymentBuilder()
-                    .stripePaymentID(stripePaymentId)
-                    .status(PaymentAttemptStatus.PROCESSING)
-                    .orderEntity(null)
-                    .build();
-            when(attemptRepository.findByStripePaymentID(stripePaymentId)).thenReturn(Optional.of(row));
-            when(attemptRepository.save(any(PaymentEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            service.handleEvent(event, payload);
-
-            verify(eventPublisher).publishEvent(any(PaymentSucceededEvent.class));
+            // Published here, OrderPaidEvent raced the PAID flip (see
+            // OrderPaymentConfirmationTransactionalDelegateImp) and shipping usually gave up.
             verify(eventPublisher, never()).publishEvent(any(OrderPaidEvent.class));
         }
 

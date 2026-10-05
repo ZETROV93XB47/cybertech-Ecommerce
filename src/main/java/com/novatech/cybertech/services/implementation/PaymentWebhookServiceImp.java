@@ -4,7 +4,6 @@ import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
 import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.ProcessedWebhookEventEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
-import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
@@ -12,7 +11,6 @@ import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import com.novatech.cybertech.repositories.ProcessedWebhookEventRepository;
 import com.novatech.cybertech.services.core.PaymentWebhookService;
-import com.novatech.cybertech.utils.OrderPaymentUtils;
 import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.model.Charge;
 import com.stripe.model.Event;
@@ -28,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 /**
  * Default implementation of {@link PaymentWebhookService}.
@@ -44,9 +41,9 @@ import java.util.UUID;
  * (a misconfigured prod-secret leaking into a test env would otherwise mutate real-money
  * payments) and the event is dropped without processing.
  *
- * <p><b>Domain events</b>: {@code payment_intent.succeeded} publishes both
- * {@link PaymentSucceededEvent} (consumed by the order-confirmation listener) and
- * {@link OrderPaidEvent} (consumed by the shipping listener).
+ * <p><b>Domain events</b>: {@code payment_intent.succeeded} publishes
+ * {@link PaymentSucceededEvent} (consumed by the order-confirmation listener, which flips the order
+ * to PAID and only then publishes {@code OrderPaidEvent} for the shipping listener).
  * {@code payment_intent.payment_failed} publishes {@link PaymentFailedEvent}.
  * {@code charge.refunded} publishes {@link PaymentRefundedEvent}.
  *
@@ -62,7 +59,6 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
     private static final String CHARGE_REFUNDED = "charge.refunded";
     private static final String PAYMENT_INTENT_SUCCEEDED = "payment_intent.succeeded";
     private static final String PAYMENT_INTENT_PAYMENT_FAILED = "payment_intent.payment_failed";
-    private static final String ORDER_UUID_METADATA_KEY = "order_uuid";
 
     private final ApplicationEventPublisher eventPublisher;
     private final PaymentAttemptRepository attemptRepository;
@@ -164,8 +160,14 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
 
     /**
      * Handle {@code payment_intent.succeeded}. Flips the payment row to {@link PaymentAttemptStatus#SUCCESS}
-     * (no-op if already SUCCESS), publishes {@link PaymentSucceededEvent} for the order-confirmation
-     * listener, and publishes {@link OrderPaidEvent} for the shipping listener.
+     * (no-op if already SUCCESS) and publishes {@link PaymentSucceededEvent} for the order-confirmation
+     * listener.
+     *
+     * <p>{@code OrderPaidEvent} is deliberately NOT published here: both events used to leave this
+     * transaction together and their async AFTER_COMMIT listeners ran in parallel, so the shipping
+     * listener usually read the order before the PAID flip had committed and silently gave up.
+     * It is now published by {@code OrderPaymentConfirmationTransactionalDelegateImp}, in the very
+     * transaction that commits PAID.
      *
      * @param event the parsed Stripe {@link Event}
      * @param dto   the rich application-level DTO parsed from the raw payload
@@ -175,14 +177,9 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
         final PaymentIntent intent = (PaymentIntent) deserializeDataObject(event);
 
         final String stripePaymentID = intent.getId();
-        final PaymentEntity payment = updatePaymentStatusGuarded(stripePaymentID, PaymentAttemptStatus.SUCCESS, event.getId());
+        updatePaymentStatusGuarded(stripePaymentID, PaymentAttemptStatus.SUCCESS, event.getId());
 
         eventPublisher.publishEvent(new PaymentSucceededEvent(dto));
-
-        final UUID orderUuid = resolveOrderUuid(payment, dto);
-        if (orderUuid != null) {
-            eventPublisher.publishEvent(new OrderPaidEvent(this, orderUuid));
-        }
     }
 
     /**
@@ -310,31 +307,5 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
                 .processedAt(LocalDateTime.now())
                 .build();
         processedWebhookEventRepository.save(ledgerRow);
-    }
-
-    /**
-     * Resolves the order UUID for {@link OrderPaidEvent} publishing. The PaymentEntity has its own
-     * {@code orderEntity} association, but we prefer the metadata-supplied UUID for symmetry with
-     * {@code OrderPaymentConfirmationEventListener#handlePaymentSuccess}, falling back to the
-     * association if the metadata is missing.
-     *
-     * @param payment the (already-flipped) PaymentEntity
-     * @param dto     the parsed webhook DTO
-     * @return the resolved UUID, or {@code null} if neither source provides one
-     */
-    private UUID resolveOrderUuid(final PaymentEntity payment, final StripeWebhookEventDto dto) {
-
-        final String metaUuid = OrderPaymentUtils.extractMetadata(dto, ORDER_UUID_METADATA_KEY);
-        if (metaUuid != null && !metaUuid.isBlank()) {
-            try {
-                return UUID.fromString(metaUuid);
-            } catch (final IllegalArgumentException ex) {
-                log.warn("Webhook metadata.order_uuid is not a valid UUID: {}", metaUuid);
-            }
-        }
-        if (payment != null && payment.getOrderEntity() != null) {
-            return payment.getOrderEntity().getUuid();
-        }
-        return null;
     }
 }

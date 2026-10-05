@@ -3,6 +3,7 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
@@ -105,6 +106,12 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
                     .userContactDto(UserContactUtils.toUserContact(order.getUserEntity()))
                     .build()));
         }
+
+        // Shipping trigger, published from the transaction that commits PAID so ShippingListener
+        // (AFTER_COMMIT) is guaranteed to read PAID. It used to come straight from the webhook,
+        // alongside PaymentSucceededEvent: the two async listeners then raced, the shipping one
+        // usually saw the order still awaiting payment and gave up, leaving it to the batch.
+        eventPublisher.publishEvent(new OrderPaidEvent(this, order.getUuid()));
     }
 
     /**
