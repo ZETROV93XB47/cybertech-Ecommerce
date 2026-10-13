@@ -11,7 +11,8 @@ import org.springframework.stereotype.Component;
 /**
  * Seeds the product category schemas the demo catalog needs: the two that previously lived as
  * hardcoded Java records ({@code ComputerAttributes}, {@code MonitorAttributes}), so demo data /
- * {@code DataGenerator} keep working out of the box, and SMARTWATCH for the scraped LDLC watches. Mirrors {@link DiscountCampaignInitializer}'s
+ * {@code DataGenerator} keep working out of the box, and DESKTOP, SMARTPHONE and SMARTWATCH for the
+ * scraped LDLC catalog. Mirrors {@link DiscountCampaignInitializer}'s
  * find-or-create-on-startup shape.
  */
 @Slf4j
@@ -46,6 +47,37 @@ public class ProductCategorySchemaInitializer implements ApplicationRunner {
             }
             """;
 
+    // A tower has no screen, unlike COMPUTER (which requires displayType): its own category.
+    private static final String DESKTOP_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {
+                "cpu": {"type": "string", "minLength": 1},
+                "gpu": {"type": "string", "minLength": 1},
+                "ram": {"type": "integer", "minimum": 1},
+                "os": {"type": "string", "minLength": 1},
+                "memory": {"type": "integer", "minimum": 1},
+                "connectivity": {"type": "string", "minLength": 1},
+                "formFactor": {"type": "string", "minLength": 1}
+              },
+              "required": ["cpu", "ram", "memory"]
+            }
+            """;
+
+    // Nothing required, as for smartwatches: the importer sends only what a spec sheet has.
+    private static final String SMARTPHONE_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {
+                "os": {"type": "string", "minLength": 1},
+                "cpu": {"type": "string", "minLength": 1},
+                "storage": {"type": "integer", "minimum": 1},
+                "screenSize": {"type": "number", "exclusiveMinimum": 0},
+                "network": {"type": "string", "minLength": 1}
+              }
+            }
+            """;
+
     // Nothing required: LDLC smartwatch spec sheets are uneven (a cheap watch often lists neither
     // OS nor battery life), so the importer sends only the attributes a sheet actually has.
     private static final String SMARTWATCH_SCHEMA = """
@@ -67,6 +99,8 @@ public class ProductCategorySchemaInitializer implements ApplicationRunner {
     public void run(final ApplicationArguments args) {
         seedIfMissing("COMPUTER", "Computers", COMPUTER_SCHEMA);
         seedIfMissing("MONITOR", "Monitors", MONITOR_SCHEMA);
+        seedIfMissing("DESKTOP", "Desktop computers", DESKTOP_SCHEMA);
+        seedIfMissing("SMARTPHONE", "Smartphones", SMARTPHONE_SCHEMA);
         seedIfMissing("SMARTWATCH", "Smartwatches", SMARTWATCH_SCHEMA);
     }
 

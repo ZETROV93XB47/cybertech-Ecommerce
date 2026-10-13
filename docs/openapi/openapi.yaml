@@ -3997,6 +3997,16 @@ components:
             - SUUNTO
             - COROS
             - FITBIT
+            - MOTOROLA
+            - ONEPLUS
+            - OPPO
+            - HONOR
+            - NOTHING
+            - SONY
+            - CROSSCALL
+            - REALME
+            - FAIRPHONE
+            - NOKIA
         attributes:
           type: object
           additionalProperties:
@@ -4535,6 +4545,16 @@ components:
           - SUUNTO
           - COROS
           - FITBIT
+          - MOTOROLA
+          - ONEPLUS
+          - OPPO
+          - HONOR
+          - NOTHING
+          - SONY
+          - CROSSCALL
+          - REALME
+          - FAIRPHONE
+          - NOKIA
         category:
           type: string
           minLength: 1
@@ -4851,6 +4871,16 @@ components:
           - SUUNTO
           - COROS
           - FITBIT
+          - MOTOROLA
+          - ONEPLUS
+          - OPPO
+          - HONOR
+          - NOTHING
+          - SONY
+          - CROSSCALL
+          - REALME
+          - FAIRPHONE
+          - NOKIA
         category:
           type: string
         photos:

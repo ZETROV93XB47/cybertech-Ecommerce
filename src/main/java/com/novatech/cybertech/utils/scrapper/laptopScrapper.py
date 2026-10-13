@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Scrape des produits LDLC (PC portables, écrans, montres connectées) vers products.json + images/.
+Scrape des produits LDLC (PC portables, tours PC, écrans, smartphones, montres connectées)
+vers products.json + images/.
 
 Usage :
-    python laptopScrapper.py                                  # les 3 catégories
+    python laptopScrapper.py                                  # toutes les catégories
     python laptopScrapper.py --categories MONITOR SMARTWATCH  # seulement certaines
     python laptopScrapper.py --limit 50                       # 50 produits max par catégorie
 
@@ -20,10 +21,13 @@ import re
 
 BASE_URL = "https://www.ldlc.com"
 
-# Clé de catégorie backend -> page liste LDLC.
+# Clé de catégorie backend -> page liste LDLC. Une URL peut porter un filtre LDLC après
+# l'identifiant de catégorie (ex. "+fv1046-5906.html" = format Tour) : voir page_url().
 CATEGORY_URLS = {
     "COMPUTER": BASE_URL + "/informatique/ordinateur-portable/pc-portable/c4265/",
+    "DESKTOP": BASE_URL + "/informatique/ordinateur-de-bureau/pc-de-marque/c4250/+fv1046-5906.html",
     "MONITOR": BASE_URL + "/informatique/peripherique-pc/moniteur-pc/c4623/",
+    "SMARTPHONE": BASE_URL + "/telephonie/telephonie-portable/mobile-smartphone/c4416/",
     "SMARTWATCH": BASE_URL + "/objets-connectes/loisirs/montre-connectee/c5962/",
 }
 
@@ -134,12 +138,34 @@ def extract_product_data(page, product_url, category):
     }
 
 
+def page_url(category_url, page_num):
+    """
+    Page N d'une liste LDLC : "pageN/" juste après l'identifiant de catégorie, filtre conservé.
+    .../c4416/ -> .../c4416/page2/ ; .../c4250/+fv1046-5906.html -> .../c4250/page2/+fv1046-5906.html
+    """
+    if page_num == 1:
+        return category_url
+    return re.sub(r"(/c\d+/)", rf"\g<1>page{page_num}/", category_url, count=1)
+
+
+def spec_value(product, label):
+    attributes = {k.replace("’", "'"): v for k, v in product["attributes"].items()}
+    value = attributes.get(label)
+    return value.strip().lower() if value else None
+
+
 def is_wanted(product):
-    """La catégorie montres peut contenir des accessoires : on ne garde que les montres."""
-    if product["category"] != "SMARTWATCH":
-        return True
-    accessory_type = product["attributes"].get("type d'accessoire") or product["attributes"].get("type d’accessoire")
-    return accessory_type is None or accessory_type.strip().lower() == "montre"
+    """
+    Certaines listes LDLC mélangent d'autres produits : on ne garde que les montres (pas les
+    accessoires) et les smartphones (pas les téléphones à clapet ou "senior").
+    """
+    if product["category"] == "SMARTWATCH":
+        accessory_type = spec_value(product, "type d'accessoire")
+        return accessory_type is None or accessory_type == "montre"
+    if product["category"] == "SMARTPHONE":
+        phone_type = spec_value(product, "type de téléphone")
+        return phone_type is None or phone_type == "smartphone"
+    return True
 
 
 def collect_product_urls(page, category_url, limit):
@@ -157,7 +183,7 @@ def collect_product_urls(page, category_url, limit):
 
     product_urls = []
     for page_num in range(1, last_page + 1):
-        url = category_url if page_num == 1 else category_url + f"page{page_num}/"
+        url = page_url(category_url, page_num)
         print(f"  Page {page_num} : {url}")
         if page_num > 1:
             page.goto(url)
@@ -195,7 +221,7 @@ def scrape(categories, limit):
                         all_products.append(data)
                         kept += 1
                     else:
-                        print("  → ignoré (accessoire, pas une montre)")
+                        print("  → ignoré (hors catégorie : accessoire, téléphone non smartphone)")
                 except Exception as e:
                     print(f"Erreur sur {url} : {e}")
                 time.sleep(DELAY_BETWEEN_PRODUCTS_S)

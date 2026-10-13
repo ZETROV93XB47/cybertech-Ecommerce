@@ -43,7 +43,18 @@ public enum Brand {
     POLAR(30),
     SUUNTO(31),
     COROS(32),
-    FITBIT(33);
+    FITBIT(33),
+    // Smartphone brands (LDLC catalog)
+    MOTOROLA(34),
+    ONEPLUS(35),
+    OPPO(36),
+    HONOR(37),
+    NOTHING(38),
+    SONY(39),
+    CROSSCALL(40),
+    REALME(41),
+    FAIRPHONE(42),
+    NOKIA(43);
 
     private final Integer code;
 

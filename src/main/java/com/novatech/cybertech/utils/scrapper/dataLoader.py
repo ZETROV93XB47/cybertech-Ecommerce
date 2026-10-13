@@ -6,7 +6,7 @@ Usage :
     python dataLoader.py                          # toutes les catégories du JSON
     python dataLoader.py --categories MONITOR     # seulement certaines
 
-Chaque produit porte sa "category" (COMPUTER, MONITOR, SMARTWATCH ; COMPUTER par défaut pour un
+Chaque produit porte sa "category" (COMPUTER, DESKTOP, MONITOR, SMARTPHONE, SMARTWATCH ; COMPUTER par défaut pour un
 ancien products.json) : les attributs LDLC sont convertis vers le JSON Schema de cette catégorie,
 et la marque est lue dans la ligne "Marque" de la fiche technique LDLC.
 """
@@ -77,6 +77,32 @@ def extract_int(value):
     return int(digits[0]) if digits else 0
 
 
+def extract_float(value):
+    """'7.6 pouces' -> 7.6 ; '6,1"' -> 6.1"""
+    if not value:
+        return None
+    match = re.search(r"\d+(?:[.,]\d+)?", value)
+    return float(match.group(0).replace(",", ".")) if match else None
+
+
+def extract_storage_gb(value):
+    """
+    "SSD 1 To" -> 1024 ; "SSD 512 Go" -> 512 ; "2 To" -> 2048 ; illisible -> 0
+    """
+    if not value:
+        return 0
+    match = re.search(r"(\d+)\s*(To|Go)", value, re.IGNORECASE)
+    if not match:
+        return 0
+    size = int(match.group(1))
+    return size * 1024 if match.group(2).lower() == "to" else size
+
+
+def compact(attributes):
+    """Retire les attributs absents de la fiche (None, 0, chaîne vide) : rien n'est envoyé à leur place."""
+    return {k: v for k, v in attributes.items() if v not in (None, 0, "")}
+
+
 def brand_key(value):
     """'BenQ' -> 'BENQ', 'LG Electronics' -> 'LGELECTRONICS' : comparaison sans casse ni ponctuation."""
     return re.sub(r"[^A-Z0-9]", "", value.upper())
@@ -118,27 +144,6 @@ def map_attributes_ldlc_to_computer(raw):
     de la catégorie COMPUTER (ProductCategorySchemaEntity).
     """
 
-    def extract_disk_size(value):
-        """
-        Exemples :
-        - "SSD 1 To" -> 1024
-        - "SSD 512 Go" -> 512
-        - "SSD 2 To" -> 2048
-        """
-        if not value:
-            return 0
-
-        match = re.search(r"(\d+)\s*(To|Go)", value, re.IGNORECASE)
-        if not match:
-            return 0
-
-        size = int(match.group(1))
-        unit = match.group(2).lower()
-
-        if unit == "to":   # Terabytes
-            return size * 1024
-        return size        # Gigabytes
-
     def map_connectivity(raw):
         """
         Concatène proprement :
@@ -165,8 +170,45 @@ def map_attributes_ldlc_to_computer(raw):
         "os": spec(raw, "système d'exploitation", "os") or "Unknown OS",
         "connectivity": map_connectivity(raw),
         "displayType": spec(raw, "type d'écran", "type de dalle", "écran") or "Unknown display",
-        "memory": extract_disk_size(spec(raw, "configuration disque(s)", "disque fourni", "stockage", "memory")),
+        "memory": extract_storage_gb(spec(raw, "configuration disque(s)", "disque fourni", "stockage", "memory")),
     }
+
+
+def map_attributes_ldlc_to_desktop(raw):
+    """
+    Schéma DESKTOP (tour PC, sans écran) : cpu, ram (Go) et memory (Go) obligatoires ;
+    gpu, os, connectivity, formFactor si la fiche les donne.
+    LDLC : "Type de processeur", "Taille de la mémoire : 16 Go", "Disque fourni : SSD 1 To",
+    "Chipset graphique", "Norme(s) réseau sans-fil", "Format du boitier : Moyen Tour".
+    """
+    attributes = compact({
+        "cpu": spec(raw, "processeur", "type de processeur"),
+        "gpu": spec(raw, "chipset graphique"),
+        "ram": extract_int(spec(raw, "taille de la mémoire", "mémoire")),
+        "os": spec(raw, "système d'exploitation"),
+        "memory": extract_storage_gb(spec(raw, "configuration disque(s)", "disque fourni", "stockage")),
+        "connectivity": spec(raw, "norme(s) réseau sans-fil"),
+        "formFactor": spec(raw, "format du boitier", "format du boîtier", "format de pc"),
+    })
+    missing = [k for k in ("cpu", "ram", "memory") if k not in attributes]
+    if missing:
+        raise SkipProduct(f"attribut(s) obligatoire(s) absent(s) de la fiche : {missing}")
+    return attributes
+
+
+def map_attributes_ldlc_to_smartphone(raw):
+    """
+    Schéma SMARTPHONE (aucun attribut obligatoire) : os, cpu, storage (Go), screenSize (pouces),
+    network ("5G"/"4G"). LDLC : "Système d'exploitation : Apple iOS 27", "Processeur : Apple A20 Pro",
+    "Stockage : 1 To", "Taille d'écran : 7.6 pouces", "Fréquence : 5G".
+    """
+    return compact({
+        "os": spec(raw, "système d'exploitation"),
+        "cpu": spec(raw, "processeur", "type de processeur"),
+        "storage": extract_storage_gb(spec(raw, "stockage", "capacité")),
+        "screenSize": extract_float(spec(raw, "taille d'écran", "taille de l'écran")),
+        "network": spec(raw, "fréquence"),
+    })
 
 
 def map_attributes_ldlc_to_monitor(raw):
@@ -192,19 +234,20 @@ def map_attributes_ldlc_to_smartwatch(raw):
     os, caseSize (mm), caseMaterial, batteryLife (heures), cellular ("Oui"/"Non").
     Les attributs absents de la fiche ne sont pas envoyés (pas de valeur "Unknown").
     """
-    attributes = {
+    return compact({
         "os": spec(raw, "système d'exploitation"),
-        "caseSize": extract_int(spec(raw, "taille du boîtier")) or None,
+        "caseSize": extract_int(spec(raw, "taille du boîtier")),
         "caseMaterial": spec(raw, "matière du boîtier"),
-        "batteryLife": extract_int(spec(raw, "autonomie")) or None,
+        "batteryLife": extract_int(spec(raw, "autonomie")),
         "cellular": spec(raw, "données cellulaires"),
-    }
-    return {k: v for k, v in attributes.items() if v is not None}
+    })
 
 
 ATTRIBUTE_MAPPERS = {
     "COMPUTER": map_attributes_ldlc_to_computer,
+    "DESKTOP": map_attributes_ldlc_to_desktop,
     "MONITOR": map_attributes_ldlc_to_monitor,
+    "SMARTPHONE": map_attributes_ldlc_to_smartphone,
     "SMARTWATCH": map_attributes_ldlc_to_smartwatch,
 }
 
