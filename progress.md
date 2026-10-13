@@ -138,6 +138,9 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### À faire / pistes ouvertes (non traitées, non priorisées)
 
+- **Suite IT complète rouge (préexistant)** : `./mvnw verify -Pintegration-test` → 13 erreurs, toutes `ProductSearchFlowIT` (« Connection refused » vers le port Elasticsearch Testcontainers d'un contexte Spring mis en cache dont le conteneur est déjà arrêté). Seul, l'IT passe (13/13). Reproduit à l'identique sur `d50e661` (avant le lot 2) le 2026-10-13 : non causé par le lot 2. Les 49 autres ITs sont verts. Piste : conteneur ES partagé statique (singleton) ou `@DirtiesContext` sur l'IT.
+- `updateOrder` reprend le prix **actuel** des produits, pas le prix figé de la commande (voir remarque du prompt 2).
+
 - `NotificationType.ORDER_UPDATE` n'a aucun handler (`@NotificationTypeHandler`) : `OrderEventListener.onOrderUpdated` finit en `NoStrategyFoundForProcessingTheRequest`, aucun email n'est envoyé après un `updateOrder`.
 - Email de création : « Statut : AWAITING_PAYMENT » affiche l'enum brut au client (libellé français à prévoir ; `Map.of` du handler est déjà à 10 entrées).
 
