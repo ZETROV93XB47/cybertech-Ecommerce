@@ -594,6 +594,64 @@
   },
   "clients": [
     {
+      "id": "6f1c2a3e-9b7d-4e21-8c5a-3d2f1e0b9a71",
+      "clientId": "cybertech-front-client",
+      "name": "cybertech-front-client",
+      "description": "Next.js front (Auth.js v5 BFF) - Authorization Code + PKCE, confidential",
+      "rootUrl": "http://localhost:3000",
+      "adminUrl": "",
+      "baseUrl": "http://localhost:3000",
+      "surrogateAuthRequired": false,
+      "enabled": true,
+      "alwaysDisplayInConsole": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-keycloak-front-secret-change-me",
+      "redirectUris": [
+        "http://localhost:3000/api/auth/callback/keycloak",
+        "https://cybertech.local/api/auth/callback/keycloak"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "https://cybertech.local"
+      ],
+      "notBefore": 0,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "publicClient": false,
+      "frontchannelLogout": true,
+      "protocol": "openid-connect",
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##https://cybertech.local/*",
+        "oidc.ciba.grant.enabled": "false",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false",
+        "use.refresh.tokens": "true"
+      },
+      "authenticationFlowBindingOverrides": {},
+      "fullScopeAllowed": true,
+      "nodeReRegistrationTimeout": -1,
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    },
+    {
       "id": "58b749cd-a9b6-43c3-9f65-e42c719a5ad6",
       "clientId": "account",
       "name": "${client_account}",

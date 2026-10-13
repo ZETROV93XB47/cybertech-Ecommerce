@@ -65,31 +65,27 @@ the `keycloakDB` volume, auto-seeded on a fresh one). **Nothing to do manually f
   - `KEYCLOAK_ADMIN_PASSWORD=admin`
 - The `cybertech` realm is already there (auto-imported) — no "Create realm" step needed.
 
-### B.2 ⚠ The frontend client is still missing
+### B.2 Frontend client — shipped in the imported realm
 
-The imported file ships only TWO confidential clients:
+The imported file ships THREE confidential clients:
 
 | `clientId`                          | `publicClient` | Purpose                                                                 |
 |-------------------------------------|----------------|-------------------------------------------------------------------------|
+| `cybertech-front-client`            | `false`        | Next.js front (Auth.js v5, Authorization Code + PKCE S256)              |
 | `cybertech-postman-client-id`       | `false`        | Postman testing (service account)                                       |
 | `cybertech-user-management-client`  | `false`        | Used by the backend admin client to provision users (server-to-server)  |
 
-**The frontend client `cybertech-frontend` referenced in `front/app/.env.local.example` does NOT exist in the imported realm.** This is still a manual step — a BLOCKER (see Section G, Pitfall 1). Two options:
+`cybertech-front-client` — same id/secret as `k8s/helm/charts/front-app-chart/values.yaml`:
+- secret (dev only): `dev-keycloak-front-secret-change-me`
+- redirect URIs: `http://localhost:3000/api/auth/callback/keycloak`, `https://cybertech.local/api/auth/callback/keycloak`
+- post-logout redirect URIs: `http://localhost:3000/*`, `https://cybertech.local/*`
+- web origins: `http://localhost:3000`, `https://cybertech.local`
+- direct access grants / service account: OFF
 
-**Option B-α (recommended — cleanest, no env change)**
-1. In the `cybertech` realm → Clients → Create client
-2. Client type: OpenID Connect, Client ID: `cybertech-frontend`
-3. Capability config: `Client authentication = ON` (confidential — Auth.js v5 server-side flow uses client_secret), `Authorization = OFF`, `Standard flow = ON`, `Direct access grants = OFF`, `Service accounts = OFF`
-4. Login settings:
-   - Root URL: `http://localhost:3000`
-   - Home URL: `http://localhost:3000`
-   - Valid redirect URIs: `http://localhost:3000/api/auth/callback/keycloak`
-   - Valid post logout redirect URIs: `http://localhost:3000`
-   - Web origins: `http://localhost:3000` (or `+` to mirror redirect URIs)
-5. Save → tab "Credentials" → copy "Client secret" → that's the value for `AUTH_KEYCLOAK_SECRET` in `.env.local`.
-
-**Option B-β (reuse `cybertech-postman-client-id`)**
-You can point the frontend at `cybertech-postman-client-id` instead — the realm already has it set up. But its current `redirectUris=/*` and `webOrigins=/*` are loose and you'd need to set `Root URL = http://localhost:3000` so the relative `/*` resolves correctly. Functionally OK for portfolio scope; less explicit than option α.
+**Existing Keycloak database**: `--import-realm` never re-imports a realm that already exists, so a
+`keycloakDB` volume created before this client was added won't have it. Run
+`src/main/resources/bash/createKeycloakFrontClient.ps1` once (idempotent), or drop the Keycloak
+database/volume to re-import.
 
 ### B.3 Backend admin client secret — already in sync
 
@@ -172,8 +168,8 @@ AUTH_URL=http://localhost:3000
 
 # Keycloak — must match the realm + client created in Section B
 AUTH_KEYCLOAK_ISSUER=http://localhost:8080/realms/cybertech
-AUTH_KEYCLOAK_ID=cybertech-frontend
-AUTH_KEYCLOAK_SECRET=<paste-secret-from-Keycloak-Credentials-tab>
+AUTH_KEYCLOAK_ID=cybertech-front-client
+AUTH_KEYCLOAK_SECRET=dev-keycloak-front-secret-change-me
 ```
 
 ### D.3 Contradiction signalled
@@ -193,10 +189,8 @@ Follow strictly — Spring Boot won't start if Keycloak/MySQL/Redis/Mongo/ES are
    docker compose ps   # wait for all "healthy" / "running"
    ```
 
-2. **Create the missing frontend client** (one-time — the realm itself is already auto-imported by `docker compose up`, see Section B)
-   - Open <http://localhost:8080> → admin / admin — the `cybertech` realm is already there.
-   - Create the `cybertech-frontend` client (Section B.2 option α) → copy its secret.
-   - Nothing to reconcile on `cybertech-user-management-client` — already in sync with `application.properties` (Section B.3).
+2. **Frontend client** — `cybertech-front-client` is auto-imported with the realm (Section B.2). On a
+   Keycloak database created before it existed, run `src/main/resources/bash/createKeycloakFrontClient.ps1` once.
 
 3. **Start backend from IntelliJ**
    - Spring Boot run config on `CybertechApplication`, no profile, `--enable-preview` in VM options.
@@ -262,8 +256,9 @@ curl -i -X POST http://localhost:8081/api/v1/services/user/register \
 
 ## Section G — Pièges identifiés
 
-### G.1 BLOCKER — `cybertech-frontend` client missing from the imported realm
-`.env.local.example` references `AUTH_KEYCLOAK_ID=cybertech-frontend`, but that client does NOT exist in `src/main/resources/keycloak/import/cybertech-realm.json` (only `cybertech-postman-client-id` and `cybertech-user-management-client` exist). Without creating it by hand (Section B.2), Auth.js will fail at the OIDC token exchange with "client not found".
+### G.1 RESOLVED — frontend client now in the imported realm
+`cybertech-front-client` ships in `src/main/resources/keycloak/import/cybertech-realm.json` (Section B.2). Only an
+existing Keycloak database needs `createKeycloakFrontClient.ps1`.
 
 ### G.2 NOTE — `keycloak.client.user.management.client.secret` — no mismatch with the standard flow
 This used to be a BLOCKER back when the realm was imported from a masked, secrets-stripped export (Keycloak would regenerate a fresh secret on import, diverging from the hardcoded `application.properties` value → `POST /register` 500). It no longer applies: the file Docker Compose auto-imports today (`src/main/resources/keycloak/import/cybertech-realm.json`) ships the SAME secret as `application.properties` in clear text (`rPKnibr1m14c2Oit4XybU1AhhIbuZVtt`), checked in on purpose for this dev-only setup. Only resurfaces if you manually re-import a *different* export into an existing realm — see Section B.3's fallback.
