@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.entities.enums.Role;
+import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
 import com.novatech.cybertech.services.core.KeycloakUserManagementService;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * See {@link KeycloakUserManagementService} for the contract's intent.
@@ -28,47 +30,70 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class KeycloakUserManagementServiceImp implements KeycloakUserManagementService {
 
+    private static final String EMAIL_ALREADY_USED_MESSAGE = "An account already exists with this email";
+    private static final int MAX_USERNAME_ATTEMPTS = 5;
+    private static final int USERNAME_SUFFIX_BOUND = 10_000;
+
     @Value("${keycloak.client.user.management.realm}")
     private String realm;
     private final Keycloak keycloakClient;
 
 
+    /**
+     * A Keycloak 409 means either the email or the username is taken. A taken email is a real
+     * duplicate account → {@link UserAlreadyExistsException} (409 USER_ALREADY_EXISTS). A taken
+     * username only means another person shares the same first/last name (the username is derived
+     * from them), which must not block sign-up → retry with a random numeric suffix.
+     */
     @Override
     public String createUser(String email, String firstName, String lastName, String rawPassword, Role role) {
 
         final UsersResource users = keycloakClient.realm(realm).users();
 
         UserRepresentation userRepresentation = getUserRepresentation(email, firstName, lastName, rawPassword);
+        final String baseUsername = userRepresentation.getUsername();
 
-        final String locationHeaderValue;
-        try (Response resp = users.create(userRepresentation)) {
-
-            if (resp.getStatus() != 201) {
-                String msg = resp.readEntity(String.class);
-                throw new IllegalStateException("Keycloak user creation failed: " + resp.getStatus() + " " + msg);
+        for (int attempt = 1; ; attempt++) {
+            try (Response resp = users.create(userRepresentation)) {
+                if (resp.getStatus() != Response.Status.CONFLICT.getStatusCode()) {
+                    return handleCreateResponse(users, resp, role);
+                }
+                if (searchByEmail(email).isPresent()) {
+                    throw new UserAlreadyExistsException(EMAIL_ALREADY_USED_MESSAGE);
+                }
+                if (attempt >= MAX_USERNAME_ATTEMPTS) {
+                    throw new IllegalStateException("Keycloak user creation failed: no free username derived from '" + baseUsername + "' after " + attempt + " attempts");
+                }
+                log.info("Keycloak username '{}' already taken — retrying with a suffix", userRepresentation.getUsername());
+                userRepresentation.setUsername(baseUsername + "." + ThreadLocalRandom.current().nextInt(USERNAME_SUFFIX_BOUND));
             }
-
-            // L’ID est dans le Location header: .../users/{id}
-            if (resp.getLocation() == null) {
-                throw new IllegalStateException("Keycloak user creation returned 201 but no Location header");
-            }
-            locationHeaderValue = resp.getLocation().toString();
-
-            String userId = getUserKeycloakId(locationHeaderValue);
-
-            log.info("userID : {}", userId);
-
-            RoleRepresentation userRole = keycloakClient.realm(realm)
-                    .roles()
-                    .get(role.name())
-                    .toRepresentation();
-
-            log.info("userRole : {}", userRole);
-
-            users.get(userId).roles().realmLevel().add(List.of(userRole));
-
         }
-        return getUserKeycloakId(locationHeaderValue);
+    }
+
+    private String handleCreateResponse(final UsersResource users, final Response resp, final Role role) {
+        if (resp.getStatus() != 201) {
+            String msg = resp.readEntity(String.class);
+            throw new IllegalStateException("Keycloak user creation failed: " + resp.getStatus() + " " + msg);
+        }
+
+        // L’ID est dans le Location header: .../users/{id}
+        if (resp.getLocation() == null) {
+            throw new IllegalStateException("Keycloak user creation returned 201 but no Location header");
+        }
+
+        String userId = getUserKeycloakId(resp.getLocation().toString());
+
+        log.info("userID : {}", userId);
+
+        RoleRepresentation userRole = keycloakClient.realm(realm)
+                .roles()
+                .get(role.name())
+                .toRepresentation();
+
+        log.info("userRole : {}", userRole);
+
+        users.get(userId).roles().realmLevel().add(List.of(userRole));
+        return userId;
     }
 
     private static String getUserKeycloakId(String locationHeaderValue) {

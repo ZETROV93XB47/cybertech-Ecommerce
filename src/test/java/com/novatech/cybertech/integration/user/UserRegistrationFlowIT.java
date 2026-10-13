@@ -56,9 +56,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>{@code UserAlreadyExistsException} now mapped to 409 by
  *       {@code ErrorManagementController#handleUserAlreadyExistsException}. The fix is
  *       <b>CONFIRMED</b> live. Asserted by
- *       {@link #duplicateRegisterReturns409PerBug015}. Note: production code does not yet
- *       throw {@code UserAlreadyExistsException} from the registration path itself
- *       (Keycloak conflicts surface as {@code IllegalStateException}); we stub the service
+ *       {@link #duplicateRegisterReturns409PerBug015}. Production code throws it from
+ *       {@code KeycloakUserManagementServiceImp#createUser} on a Keycloak 409 for a taken
+ *       email (unit-tested there); Keycloak is stubbed here, so we stub the service
  *       to throw the exception so the @ControllerAdvice mapping can be exercised end-to-end
  *       through the real Spring MVC + security filter chain.</li>
  *   <li>{@code AuthorizationDeniedException}/{@code AccessDeniedException}
@@ -165,9 +165,9 @@ class UserRegistrationFlowIT {
 
     // -----------------------------------------------------------------------------------
     // 2. Duplicate email → 409 CONFLICT.
-    //    The registration code-path never throws UserAlreadyExistsException itself today
-    //    (Keycloak conflicts bubble up as IllegalStateException), so we spy on the service
-    //    and force the exception. The point of this IT is to verify that the @ControllerAdvice
+    //    KeycloakUserManagementServiceImp throws UserAlreadyExistsException on a Keycloak 409
+    //    for a taken email, but Keycloak is stubbed here, so we spy on the service and force
+    //    the exception. The point of this IT is to verify that the @ControllerAdvice
     //    in ErrorManagementController ACTUALLY maps the exception → 409 in a full Spring MVC
     //    + Security filter chain context (slice tests can't catch advice ordering or
     //    filter-chain interception bugs).

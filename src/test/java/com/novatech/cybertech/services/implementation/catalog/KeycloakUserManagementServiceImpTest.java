@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation.catalog;
 
 import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
 import com.novatech.cybertech.entities.enums.Role;
+import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import com.novatech.cybertech.services.implementation.KeycloakUserManagementServiceImp;
 import jakarta.ws.rs.core.Response;
@@ -26,12 +27,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -72,6 +75,12 @@ class KeycloakUserManagementServiceImpTest {
         return resp;
     }
 
+    private Response conflict() {
+        Response resp = org.mockito.Mockito.mock(Response.class);
+        when(resp.getStatus()).thenReturn(409);
+        return resp;
+    }
+
     // -----------------------------------------------------------------
     @Nested
     @DisplayName("createUser")
@@ -103,21 +112,88 @@ class KeycloakUserManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("non-201 response throws IllegalStateException with status + body")
+        @DisplayName("non-201 / non-409 response throws IllegalStateException with status + body")
         void createUser_4xx_throws() {
             Response resp = org.mockito.Mockito.mock(Response.class);
-            when(resp.getStatus()).thenReturn(409);
-            when(resp.readEntity(String.class)).thenReturn("user exists");
+            when(resp.getStatus()).thenReturn(400);
+            when(resp.readEntity(String.class)).thenReturn("invalid password");
             when(keycloak.realm(REALM)).thenReturn(realmResource);
             when(realmResource.users()).thenReturn(usersResource);
             when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
 
             assertThatThrownBy(() -> service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("409")
-                    .hasMessageContaining("user exists");
+                    .hasMessageContaining("400")
+                    .hasMessageContaining("invalid password");
 
             // Role lookup must NOT happen on failure.
+            verify(realmResource, never()).roles();
+        }
+
+        @Test
+        @DisplayName("409 with the email already registered throws UserAlreadyExistsException (→ 409 USER_ALREADY_EXISTS)")
+        void createUser_409_emailTaken_throwsUserAlreadyExists() {
+            Response resp = conflict();
+            UserRepresentation existing = new UserRepresentation();
+            existing.setId("kc-existing");
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(usersResource.searchByEmail("a@b.com", true)).thenReturn(List.of(existing));
+
+            assertThatThrownBy(() -> service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER))
+                    .isInstanceOf(UserAlreadyExistsException.class);
+
+            verify(usersResource, times(1)).create(any(UserRepresentation.class));
+            verify(realmResource, never()).roles();
+            verify(resp).close();
+        }
+
+        @Test
+        @DisplayName("409 on a username clash only (homonym) retries with a suffixed username and succeeds")
+        void createUser_409_usernameTaken_retriesWithSuffix() {
+            String userId = "kc-new";
+            Response conflict = conflict();
+            Response created = create201(userId);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            List<String> sentUsernames = new ArrayList<>();
+            when(usersResource.create(any(UserRepresentation.class))).thenAnswer(inv -> {
+                sentUsernames.add(inv.<UserRepresentation>getArgument(0).getUsername());
+                return sentUsernames.size() == 1 ? conflict : created;
+            });
+            when(usersResource.searchByEmail("a@b.com", true)).thenReturn(List.of());
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("USER")).thenReturn(roleResource);
+            when(roleResource.toRepresentation()).thenReturn(new RoleRepresentation());
+            when(usersResource.get(userId)).thenReturn(userResource);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            String result = service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER);
+
+            assertThat(result).isEqualTo(userId);
+            assertThat(sentUsernames).hasSize(2);
+            assertThat(sentUsernames.get(0)).isEqualTo("john.smith");
+            assertThat(sentUsernames.get(1)).matches("john\\.smith\\.\\d+");
+            verify(conflict).close();
+            verify(created).close();
+        }
+
+        @Test
+        @DisplayName("409 username clash on every attempt gives up with IllegalStateException (bounded retry)")
+        void createUser_409_usernameAlwaysTaken_givesUp() {
+            Response resp = conflict();
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(usersResource.searchByEmail("a@b.com", true)).thenReturn(List.of());
+
+            assertThatThrownBy(() -> service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("john.smith");
+
+            verify(usersResource, times(5)).create(any(UserRepresentation.class));
             verify(realmResource, never()).roles();
         }
 
