@@ -26,6 +26,8 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### Faites (cette phase de travail)
 
+- **2026-10-13 — Inscription avec un email déjà utilisé : 409 au lieu de 500** (remonté par le front, parcours e2e en `test.fixme`) : un 409 Keycloak à la création devenait une `IllegalStateException` (500 `APPLICATION_ERROR`). `KeycloakUserManagementServiceImp#createUser` distingue maintenant les deux causes de conflit en relisant l'email (`searchByEmail`) : email pris → `UserAlreadyExistsException` (409 `USER_ALREADY_EXISTS`) ; sinon c'est un homonyme (username = `prenom.nom`), qui ne bloque plus l'inscription : nouvelle tentative avec un suffixe numérique aléatoire (`jean.dupont.4821`), 5 tentatives au plus. 2088 tests unitaires verts ; ITs non relancées. Côté front : réactiver le test e2e en `test.fixme`.
+
 - **2026-10-13 — Préparation de l'intégration front (repo `../cybertech-front`)** :
   - **Client Keycloak `cybertech-front-client`** (confidentiel, Authorization Code + PKCE S256, direct grants OFF, redirects `localhost:3000` + `cybertech.local`, secret dev `dev-keycloak-front-secret-change-me` = celui du chart `front-app-chart`) ajouté à `keycloak/import/cybertech-realm.json` et à sa copie Helm `keycloak-chart/files/`. `--import-realm` ignore un realm déjà présent : sur une base Keycloak existante, lancer `src/main/resources/bash/createKeycloakFrontClient.ps1` (idempotent). `LOCAL_LAUNCH_CHECKLIST.md` B.2 / E / G.1 mis à jour (l'ancien nom `cybertech-frontend` n'est plus utilisé).
   - **`GET /api/v1/services/user/me`** : profil de l'appelant résolu par le `sub` du JWT (le front ne connaît jamais l'UUID local). `UserManagementService#getMe`.
