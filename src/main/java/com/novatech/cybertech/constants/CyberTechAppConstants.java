@@ -87,6 +87,8 @@ public class CyberTechAppConstants {
     // (search also carries filter criteria), so it can't use @PageableDefault — applied as a plain
     // field initializer on the DTO instead, same default value convention as the other resources.
     public static final int DEFAULT_PAGE_SIZE_PRODUCT_SEARCH = 20;
+    // Most values one catalog facet (brands, or one attribute) lists on POST /product/search/facets.
+    public static final int FACET_MAX_VALUES = 50;
     public static final int DEFAULT_RECOMMENDATION_COUNT = 10;
     // Upper bound on the uuids of one GET /product/availability call — a catalog page (max 100 items,
     // see max-page-size) is split by the front; 50 keeps the IN (...) query and the URL short.

@@ -85,6 +85,7 @@ class ProductSearchFlowIT {
     private static final String DELETE_ENDPOINT = "/api/v1/services/admin/management/product/delete/{productUuid}";
     private static final String GET_BY_UUID_ENDPOINT = "/api/v1/services/product/get/{productUuid}";
     private static final String SEARCH_ENDPOINT = "/api/v1/services/product/search";
+    private static final String FACETS_ENDPOINT = "/api/v1/services/product/search/facets";
 
     private static final String ADMIN_KC = "kc-admin-it";
     private static final String USER_KC = "kc-user-it";
@@ -454,6 +455,136 @@ class ProductSearchFlowIT {
     // Helpers
     // =========================================================================================
 
+    // -----------------------------------------------------------------------------------------
+    // Catalog facets — POST /product/search/facets against the real index.
+    // Adds two AMD computers to the seed, so COMPUTER holds:
+    //   DELL XPS 16 (Intel i7, 16 GB, 1000) · HP Omen 32 (Intel i7, 32 GB, 2000)
+    //   LENOVO Legion (AMD Ryzen 7, 16 GB, 1500) · DELL G15 (AMD Ryzen 7, 8 GB, 800)
+    // and MONITOR the Samsung (400).
+    // -----------------------------------------------------------------------------------------
+    @Nested
+    @DisplayName("catalog facets")
+    class CatalogFacets {
+
+        @BeforeEach
+        void addAmdComputers() throws Exception {
+            createProduct(buildComputerCreate("LENOVO Legion", Brand.LENOVO, new BigDecimal("1500.00"), 16, "AMD Ryzen 7"));
+            createProduct(buildComputerCreate("DELL G15", Brand.DELL, new BigDecimal("800.00"), 8, "AMD Ryzen 7"));
+            elasticsearchOperations.indexOps(ProductDocument.class).refresh();
+            await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST)
+                    .untilAsserted(() -> assertThat(productSearchRepository.count()).isEqualTo(5L));
+        }
+
+        @Test
+        @DisplayName("mapping: text attributes have a .keyword sub-field, numeric attributes a numeric type")
+        void mapping_keywordSubFieldAndNumericTypes() {
+            final Map<String, Object> mapping = elasticsearchOperations.indexOps(ProductDocument.class).getMapping();
+            final Map<?, ?> attributes = (Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) mapping.get("properties")).get("attributes")).get("properties");
+            final Map<?, ?> cpu = (Map<?, ?>) attributes.get("cpu");
+            assertThat(((Map<?, ?>) ((Map<?, ?>) cpu.get("fields")).get("keyword")).get("type")).isEqualTo("keyword");
+            assertThat(((Map<?, ?>) attributes.get("ram")).get("type")).isIn("long", "integer");
+        }
+
+        @Test
+        @DisplayName("no filter: every brand, every CPU and the bounds of the category")
+        void category_noFilter() throws Exception {
+            await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() ->
+                    performFacets(baseRequest("COMPUTER").build())
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.totalHits").value(4))
+                            .andExpect(jsonPath("$.brands.length()").value(3))
+                            .andExpect(jsonPath("$.brands[0].value").value("DELL"))
+                            .andExpect(jsonPath("$.brands[0].count").value(2))
+                            .andExpect(jsonPath("$.brands[1].value").value("HP"))
+                            .andExpect(jsonPath("$.brands[2].value").value("LENOVO"))
+                            .andExpect(jsonPath("$.price.min").value(800.0))
+                            .andExpect(jsonPath("$.price.max").value(2000.0))
+                            // Equal counts: alphabetical.
+                            .andExpect(jsonPath("$.attributes.cpu.length()").value(2))
+                            .andExpect(jsonPath("$.attributes.cpu[0].value").value("AMD Ryzen 7"))
+                            .andExpect(jsonPath("$.attributes.cpu[0].count").value(2))
+                            .andExpect(jsonPath("$.attributes.cpu[1].value").value("Intel i7"))
+                            .andExpect(jsonPath("$.attributes.os[0].value").value("Windows 11"))
+                            .andExpect(jsonPath("$.attributes.os[0].count").value(4))
+                            .andExpect(jsonPath("$.numericAttributes.ram.min").value(8.0))
+                            .andExpect(jsonPath("$.numericAttributes.ram.max").value(32.0))
+                            .andExpect(jsonPath("$.numericAttributes.memory.min").value(512.0)));
+        }
+
+        @Test
+        @DisplayName("a ticked brand keeps the other brands listed, CPU counts narrow to that brand, total matches /search")
+        void brandTicked_disjunctive() throws Exception {
+            final ProductSearchRequestDto req = baseRequest("COMPUTER").brands(List.of(Brand.LENOVO)).build();
+
+            await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() -> {
+                performFacets(req)
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.totalHits").value(1))
+                        .andExpect(jsonPath("$.brands.length()").value(3))
+                        .andExpect(jsonPath("$.brands[0].value").value("DELL"))
+                        .andExpect(jsonPath("$.brands[0].count").value(2))
+                        .andExpect(jsonPath("$.brands[2].value").value("LENOVO"))
+                        .andExpect(jsonPath("$.brands[2].count").value(1))
+                        .andExpect(jsonPath("$.attributes.cpu.length()").value(1))
+                        .andExpect(jsonPath("$.attributes.cpu[0].value").value("AMD Ryzen 7"))
+                        .andExpect(jsonPath("$.attributes.cpu[0].count").value(1))
+                        .andExpect(jsonPath("$.numericAttributes.ram.min").value(16.0))
+                        .andExpect(jsonPath("$.numericAttributes.ram.max").value(16.0));
+                assertThat(readTotalElements(performSearch(req).andReturn())).isEqualTo(1);
+            });
+        }
+
+        @Test
+        @DisplayName("a ticked CPU keeps the other CPUs listed and narrows the brands")
+        void cpuTicked_disjunctive() throws Exception {
+            final ProductSearchRequestDto req = baseRequest("COMPUTER").attributes(Map.of("cpu", List.of("Intel i7"))).build();
+
+            await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() ->
+                    performFacets(req)
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.totalHits").value(2))
+                            .andExpect(jsonPath("$.attributes.cpu.length()").value(2))
+                            .andExpect(jsonPath("$.brands.length()").value(2))
+                            .andExpect(jsonPath("$.brands[0].value").value("DELL"))
+                            .andExpect(jsonPath("$.brands[0].count").value(1))
+                            .andExpect(jsonPath("$.brands[1].value").value("HP")));
+        }
+
+        @Test
+        @DisplayName("the keyword restricts every facet")
+        void keyword_restrictsEveryFacet() throws Exception {
+            await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() ->
+                    performFacets(baseRequest("COMPUTER").keyword("Omen").build())
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.totalHits").value(1))
+                            .andExpect(jsonPath("$.brands.length()").value(1))
+                            .andExpect(jsonPath("$.brands[0].value").value("HP"))
+                            .andExpect(jsonPath("$.attributes.cpu[0].value").value("Intel i7"))
+                            .andExpect(jsonPath("$.attributes.cpu[0].count").value(1)));
+        }
+
+        @Test
+        @DisplayName("without a category: every product, no attribute sections")
+        void noCategory_noAttributeSections() throws Exception {
+            await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() ->
+                    performFacets(baseRequest(null).build())
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.totalHits").value(5))
+                            .andExpect(jsonPath("$.brands.length()").value(4))
+                            .andExpect(jsonPath("$.price.min").value(400.0))
+                            .andExpect(jsonPath("$.attributes").doesNotExist())
+                            .andExpect(jsonPath("$.numericAttributes").doesNotExist()));
+        }
+
+        @Test
+        @DisplayName("unknown category: 400 UNKNOWN_PRODUCT_CATEGORY")
+        void unknownCategory_400() throws Exception {
+            performFacets(baseRequest("TOASTER").build())
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("UNKNOWN_PRODUCT_CATEGORY"));
+        }
+    }
+
     private UUID createProduct(final ProductCreateRequestDto dto) throws Exception {
         MvcResult res = mockMvc.perform(post(CREATE_ENDPOINT)
                         .with(JwtTestUtils.jwtAdmin(ADMIN_KC))
@@ -473,8 +604,13 @@ class ProductSearchFlowIT {
 
     private ProductCreateRequestDto buildComputerCreate(final String name, final Brand brand,
                                                         final BigDecimal price, final int ram) {
+        return buildComputerCreate(name, brand, price, ram, "Intel i7");
+    }
+
+    private ProductCreateRequestDto buildComputerCreate(final String name, final Brand brand,
+                                                        final BigDecimal price, final int ram, final String cpu) {
         Map<String, Object> attrs = new LinkedHashMap<>();
-        attrs.put("cpu", "Intel i7");
+        attrs.put("cpu", cpu);
         attrs.put("gpu", "NVIDIA");
         attrs.put("ram", ram);
         attrs.put("os", "Windows 11");
@@ -518,6 +654,14 @@ class ProductSearchFlowIT {
     private org.springframework.test.web.servlet.ResultActions performSearch(final ProductSearchRequestDto req) throws Exception {
         return mockMvc.perform(post(SEARCH_ENDPOINT)
                 .with(JwtTestUtils.jwtUser(USER_KC))
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)));
+    }
+
+    // Public endpoint: no JWT.
+    private org.springframework.test.web.servlet.ResultActions performFacets(final ProductSearchRequestDto req) throws Exception {
+        return mockMvc.perform(post(FACETS_ENDPOINT)
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)));

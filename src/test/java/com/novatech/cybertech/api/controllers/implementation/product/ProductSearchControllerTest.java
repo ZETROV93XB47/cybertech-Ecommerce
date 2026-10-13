@@ -7,8 +7,14 @@ import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
+import com.novatech.cybertech.dto.response.search.FacetValueDto;
+import com.novatech.cybertech.dto.response.search.ProductFacetsResponseDto;
+import com.novatech.cybertech.dto.response.search.RangeFacetDto;
+import com.novatech.cybertech.entities.enums.Brand;
+import com.novatech.cybertech.exceptions.UnknownProductCategoryException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
+import com.novatech.cybertech.services.core.ProductFacetService;
 import com.novatech.cybertech.services.core.ProductManagementService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
@@ -21,7 +27,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -34,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -52,6 +61,7 @@ class ProductSearchControllerTest {
 
     private static final String GET_PRODUCT_BY_UUID_ENDPOINT = "/api/v1/services/product/get/{productUuid}";
     private static final String SEARCH_PRODUCTS_ENDPOINT = "/api/v1/services/product/search";
+    private static final String SEARCH_FACETS_ENDPOINT = "/api/v1/services/product/search/facets";
     private static final String GET_BEST_SELLERS_ENDPOINT = "/api/v1/services/product/best-sellers";
     private static final String GET_AVAILABILITY_ENDPOINT = "/api/v1/services/product/availability";
 
@@ -62,6 +72,9 @@ class ProductSearchControllerTest {
 
     @MockitoBean
     ProductManagementService productService;
+
+    @MockitoBean
+    ProductFacetService productFacetService;
 
     // ----------------------------------------------------------------------
     // GET /get/{productUuid}
@@ -139,6 +152,112 @@ class ProductSearchControllerTest {
                         .accept(APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    // ----------------------------------------------------------------------
+    // POST /search/facets
+    // ----------------------------------------------------------------------
+
+    @Test
+    void shouldGetSearchFacetsAsAnonymousWithShortPublicCache() throws Exception {
+        final ProductSearchRequestDto request = ProductSearchRequestDto.builder()
+                .category("COMPUTER")
+                .brands(List.of(Brand.LENOVO))
+                .build();
+        final Map<String, List<FacetValueDto>> attributes = new LinkedHashMap<>();
+        attributes.put("cpu", List.of(new FacetValueDto("Intel Core i7-13700H", 5)));
+        attributes.put("os", List.of());
+        final ProductFacetsResponseDto facets = ProductFacetsResponseDto.builder()
+                .totalHits(12)
+                .brands(List.of(new FacetValueDto("LENOVO", 12), new FacetValueDto("DELL", 3)))
+                .price(new RangeFacetDto(349.0, 3299.0))
+                .attributes(attributes)
+                .numericAttributes(Map.of("ram", new RangeFacetDto(8.0, 64.0)))
+                .build();
+        when(productFacetService.getFacets(request)).thenReturn(facets);
+
+        mockMvc.perform(post(SEARCH_FACETS_ENDPOINT)
+                        .with(jwtAnonymous())
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(header().string("Cache-Control", "max-age=60, public"))
+                .andExpect(content().json("""
+                        {
+                          "totalHits": 12,
+                          "brands": [ {"value": "LENOVO", "count": 12}, {"value": "DELL", "count": 3} ],
+                          "price": {"min": 349.0, "max": 3299.0},
+                          "attributes": {
+                            "cpu": [ {"value": "Intel Core i7-13700H", "count": 5} ],
+                            "os": []
+                          },
+                          "numericAttributes": { "ram": {"min": 8.0, "max": 64.0} }
+                        }
+                        """, STRICT));
+    }
+
+    @Test
+    void shouldOmitAttributeSectionsFromFacetsWithoutCategory() throws Exception {
+        final ProductFacetsResponseDto facets = ProductFacetsResponseDto.builder()
+                .totalHits(0)
+                .brands(List.of())
+                .price(new RangeFacetDto(null, null))
+                .build();
+        when(productFacetService.getFacets(any(ProductSearchRequestDto.class))).thenReturn(facets);
+
+        mockMvc.perform(post(SEARCH_FACETS_ENDPOINT)
+                        .with(jwtAnonymous())
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"keyword\":\"laptop\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        { "totalHits": 0, "brands": [], "price": {"min": null, "max": null} }
+                        """, STRICT));
+    }
+
+    @Test
+    void shouldRejectFacetsWithInvalidCriteria() throws Exception {
+        final ProductSearchRequestDto invalidDto = ProductSearchRequestDto.builder()
+                .category("COMPUTER")
+                .priceMin(50.0) // below the @Min(100) threshold, as on /search
+                .build();
+
+        mockMvc.perform(post(SEARCH_FACETS_ENDPOINT)
+                        .with(jwtAnonymous())
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(invalidDto)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.errorCode").value(ErrorCode.INVALID_REQUEST.name()));
+        verifyNoInteractions(productFacetService);
+    }
+
+    @Test
+    void shouldRejectFacetsForUnknownCategory() throws Exception {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Unknown product category: TOASTER")
+                .httpStatusCode(400)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.UNKNOWN_PRODUCT_CATEGORY)
+                .build();
+        when(productFacetService.getFacets(any(ProductSearchRequestDto.class)))
+                .thenThrow(new UnknownProductCategoryException("Unknown product category: TOASTER"));
+
+        mockMvc.perform(post(SEARCH_FACETS_ENDPOINT)
+                        .with(jwtAnonymous())
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"category\":\"TOASTER\"}"))
+                .andExpect(status().isBadRequest())
                 .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
     }
 

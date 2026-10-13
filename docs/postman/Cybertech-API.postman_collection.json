@@ -521,6 +521,80 @@
           "response": []
         },
         {
+          "name": "Search facets (public)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product/search/facets",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "product",
+                "search",
+                "facets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"category\": \"COMPUTER\",\n  \"brands\": [\n    \"LENOVO\"\n  ],\n  \"attributes\": {\n    \"cpu\": [\n      \"Intel Core i7-13700H\"\n    ]\n  },\n  \"numericRanges\": {\n    \"ram\": {\n      \"min\": 16\n    }\n  }\n}"
+            },
+            "description": "Catalog facets of a search: same body as /search (`page` and `size` ignored). Returns `totalHits`, `brands`, `price` bounds and, when `category` is given, `attributes` (values of each text attribute of the category JSON Schema) and `numericAttributes` (bounds of each integer / number attribute).\n\nDisjunctive counting: each facet is counted under every active filter except its own (ticking LENOVO keeps the other brands listed). Values sorted by count desc then alphabetically, max 50 per facet. Served with `Cache-Control: max-age=60, public`.\n\n- Public.\n- Success: 200 OK with `ProductFacetsResponseDto`.\n- Errors: 400 `INVALID_REQUEST` (validation, as /search), 400 `UNKNOWN_PRODUCT_CATEGORY`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/services/product/search/facets"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "max-age=60, public"
+                }
+              ],
+              "body": "{\n  \"totalHits\": 3,\n  \"brands\": [\n    {\n      \"value\": \"DELL\",\n      \"count\": 7\n    },\n    {\n      \"value\": \"LENOVO\",\n      \"count\": 3\n    },\n    {\n      \"value\": \"HP\",\n      \"count\": 2\n    }\n  ],\n  \"price\": {\n    \"min\": 349.0,\n    \"max\": 3299.0\n  },\n  \"attributes\": {\n    \"cpu\": [\n      {\n        \"value\": \"Intel Core i7-13700H\",\n        \"count\": 3\n      },\n      {\n        \"value\": \"AMD Ryzen 7 7840HS\",\n        \"count\": 1\n      }\n    ],\n    \"gpu\": [\n      {\n        \"value\": \"NVIDIA RTX 4060\",\n        \"count\": 3\n      }\n    ],\n    \"os\": [\n      {\n        \"value\": \"Windows 11\",\n        \"count\": 3\n      }\n    ],\n    \"connectivity\": [\n      {\n        \"value\": \"Wi-Fi 6E\",\n        \"count\": 3\n      }\n    ],\n    \"displayType\": [\n      {\n        \"value\": \"OLED\",\n        \"count\": 2\n      },\n      {\n        \"value\": \"IPS\",\n        \"count\": 1\n      }\n    ]\n  },\n  \"numericAttributes\": {\n    \"ram\": {\n      \"min\": 16.0,\n      \"max\": 32.0\n    },\n    \"memory\": {\n      \"min\": 512.0,\n      \"max\": 1024.0\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
           "name": "Best sellers (public, paged)",
           "request": {
             "method": "GET",

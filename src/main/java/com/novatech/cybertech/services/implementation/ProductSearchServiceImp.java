@@ -1,6 +1,5 @@
 package com.novatech.cybertech.services.implementation;
 
-import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
@@ -17,23 +16,23 @@ import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_PRODUCT_SEARCH;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.attributeFilters;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.brandsFilter;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.categoryFilter;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.keywordQuery;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.numericRangeFilters;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.priceFilter;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductSearchServiceImp implements ProductSearchService {
 
-    private static final String BRAND = "brand";
-    private static final String PRICE = "price";
-    private static final String NAME_FIELD = "name";
-    private static final String CATEGORY = "category";
-    private static final String DESCRIPTION_FIELD = "description";
     private static final int DEFAULT_PAGE = 0;
 
     private final ElasticsearchOperations elasticsearchOperations;
@@ -41,100 +40,20 @@ public class ProductSearchServiceImp implements ProductSearchService {
     @Override
     public Page<ProductDocument> search(final ProductSearchRequestDto req) {
 
-        List<Query> filters = new ArrayList<>();
-        List<Query> musts = new ArrayList<>();
         final int page = req.getPage() != null ? req.getPage() : DEFAULT_PAGE;
         final int size = req.getSize() != null ? req.getSize() : DEFAULT_PAGE_SIZE_PRODUCT_SEARCH;
-        Pageable pageable = PageRequest.of(page, size);
+        final Pageable pageable = PageRequest.of(page, size);
 
-        // Category filter
-        if (req.getCategory() != null) {
-            filters.add(new Query.Builder()
-                    .term(t -> t.field(CATEGORY).value(req.getCategory()))
-                    .build());
-        }
+        // Criteria are built by ProductSearchQueryUtils, shared with the catalog facets.
+        final List<Query> filters = new ArrayList<>();
+        categoryFilter(req).ifPresent(filters::add);
+        brandsFilter(req).ifPresent(filters::add);
+        priceFilter(req).ifPresent(filters::add);
+        filters.addAll(attributeFilters(req).values());
+        filters.addAll(numericRangeFilters(req).values());
+        final List<Query> musts = keywordQuery(req).stream().toList();
 
-        // Brands filter
-        if (req.getBrands() != null && !req.getBrands().isEmpty()) {
-            List<FieldValue> brandValues = req.getBrands().stream()
-                    .map(Enum::name)
-                    .map(FieldValue::of)
-                    .toList();
-
-            filters.add(new Query.Builder()
-                    .terms(t -> t
-                            .field(BRAND)
-                            .terms(v -> v.value(brandValues))
-                    )
-                    .build());
-        }
-
-        // Keyword search (multiMatch)
-        if (StringUtils.hasText(req.getKeyword())) {
-            musts.add(new Query.Builder()
-                    .multiMatch(mm -> mm
-                            .query(req.getKeyword())
-                            .fields(NAME_FIELD, DESCRIPTION_FIELD)
-                            .fuzziness("AUTO")
-                    )
-                    .build());
-        }
-
-        // Price range filter
-        if (req.getPriceMin() != null || req.getPriceMax() != null) {
-            filters.add(new Query.Builder()
-                    .range(r -> r.number(n -> {
-                        n.field(PRICE);
-                        if (req.getPriceMin() != null) n.gte(req.getPriceMin());
-                        if (req.getPriceMax() != null) n.lte(req.getPriceMax());
-                        return n;
-                    }))
-                    .build());
-        }
-
-        // Category-specific attributes filter
-        if (req.getAttributes() != null && req.getCategory() != null) {
-            String attributesPrefix = "attributes.";
-
-            req.getAttributes().forEach((key, values) -> {
-                if (values != null && !values.isEmpty()) {
-                    String field = attributesPrefix + key + ".keyword";
-
-                    filters.add(new Query.Builder()
-                            .terms(t -> t
-                                    .field(field)
-                                    .terms(v -> v.value(
-                                            values.stream()
-                                                    .map(String::valueOf)
-                                                    .map(FieldValue::of)
-                                                    .toList()
-                                    ))
-                            )
-                            .build());
-                }
-            });
-        }
-
-        // Numeric ranges filter
-        if (req.getNumericRanges() != null && req.getCategory() != null) {
-            String attributesPrefix = "attributes.";
-
-            req.getNumericRanges().forEach((key, range) -> {
-                String field = attributesPrefix + key;
-
-                filters.add(new Query.Builder()
-                        .range(r -> r.number(n -> {
-                            n.field(field);
-                            if (range.getMin() != null) n.gte(range.getMin());
-                            if (range.getMax() != null) n.lte(range.getMax());
-                            return n;
-                        }))
-                        .build());
-            });
-        }
-
-        // Build BoolQuery
-        BoolQuery.Builder boolBuilder = new BoolQuery.Builder();
+        final BoolQuery.Builder boolBuilder = new BoolQuery.Builder();
         if (!musts.isEmpty()) {
             boolBuilder.must(musts);
         }
@@ -142,18 +61,15 @@ public class ProductSearchServiceImp implements ProductSearchService {
             boolBuilder.filter(filters);
         }
 
-        BoolQuery boolQuery = boolBuilder.build();
-        Query query = new Query.Builder().bool(boolQuery).build();
-
-        NativeQuery nativeQuery = NativeQuery.builder()
-                .withQuery(query)
+        final NativeQuery nativeQuery = NativeQuery.builder()
+                .withQuery(Query.of(q -> q.bool(boolBuilder.build())))
                 .withPageable(pageable)
                 .build();
 
-        SearchHits<ProductDocument> hits =
+        final SearchHits<ProductDocument> hits =
                 elasticsearchOperations.search(nativeQuery, ProductDocument.class);
 
-        List<ProductDocument> content = hits.getSearchHits()
+        final List<ProductDocument> content = hits.getSearchHits()
                 .stream()
                 .map(SearchHit::getContent)
                 .toList();

@@ -4,6 +4,8 @@ import com.novatech.cybertech.api.controllers.spec.ProductSearchApiSpec;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
+import com.novatech.cybertech.dto.response.search.ProductFacetsResponseDto;
+import com.novatech.cybertech.services.core.ProductFacetService;
 import com.novatech.cybertech.services.core.ProductManagementService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -27,8 +30,12 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 @RequestMapping(version = APP_API_VERSION, value = PRODUCT_CRUD_CONTROLLER_BASE_PATH)
 public class ProductSearchController implements ProductSearchApiSpec {
 
+    // Public catalog data, no personal data: a short shared cache absorbs repeated filter clicks.
+    private static final Duration FACETS_CACHE_MAX_AGE = Duration.ofMinutes(1);
+
     // Inject service interface instead of concrete impl per project convention
     private final ProductManagementService productService;
+    private final ProductFacetService productFacetService;
 
     @Override
     @GetMapping(value = "/get/{productUuid}", produces = APPLICATION_JSON_VALUE)
@@ -43,6 +50,18 @@ public class ProductSearchController implements ProductSearchApiSpec {
     @PostMapping(value = "/search", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public Page<ProductResponseDto> searchProducts(@Valid @RequestBody final ProductSearchRequestDto productSearchRequestDto) {
         return productService.searchProducts(productSearchRequestDto);
+    }
+
+    /**
+     * Filter values present among the products the same criteria as /search match, with their counts.
+     * {@code page} and {@code size} are ignored; an unknown category is a 400 UNKNOWN_PRODUCT_CATEGORY.
+     */
+    @Override
+    @PostMapping(value = "/search/facets", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<ProductFacetsResponseDto> getSearchFacets(@Valid @RequestBody final ProductSearchRequestDto productSearchRequestDto) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(FACETS_CACHE_MAX_AGE).cachePublic())
+                .body(productFacetService.getFacets(productSearchRequestDto));
     }
 
     @Override

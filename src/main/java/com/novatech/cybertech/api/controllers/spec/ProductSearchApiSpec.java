@@ -4,6 +4,7 @@ import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
+import com.novatech.cybertech.dto.response.search.ProductFacetsResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -52,6 +53,29 @@ public interface ProductSearchApiSpec {
                     @ApiResponse(responseCode = "200", description = "List of products matching the search criteria", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = ProductResponseDto.class)))),
                     @ApiResponse(responseCode = "400", description = "Invalid search criteria", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))})
     Page<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto);
+
+    @Operation(
+            summary = "Catalog facets: filter values and their product counts (public)",
+            description = """
+                    Takes the same body as /search (`page` and `size` are ignored) and returns, in one call, the
+                    values actually present among the matching products with their counts: brands, price bounds
+                    and, when `category` is given, the values of each text attribute and the bounds of each
+                    integer / number attribute of that category's JSON Schema (keys come from the schema).
+
+                    Disjunctive counting: each facet is counted under every active filter except its own, so
+                    ticking a brand keeps the other brands listed with their counts while the attribute counts
+                    narrow to that brand. Keyword and category always apply. `totalHits` matches every filter,
+                    like /search's `page.totalElements`. Values are sorted by count descending then
+                    alphabetically, capped at 50 per facet; blank values are skipped. As on /search,
+                    `attributes` and `numericRanges` are ignored when `category` is absent.
+
+                    Public endpoint, no JWT required. Sent with a short `Cache-Control: public`.
+                    """,
+            requestBody = @RequestBody(required = true, description = "Search criteria, as for /search", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductSearchRequestDto.class))),
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Facets of the matching products", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductFacetsResponseDto.class))),
+                    @ApiResponse(responseCode = "400", description = "Invalid criteria (INVALID_REQUEST) or category without a schema (UNKNOWN_PRODUCT_CATEGORY)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))})
+    ResponseEntity<ProductFacetsResponseDto> getSearchFacets(final ProductSearchRequestDto productSearchRequestDto);
 
     @Operation(summary = "Live availability of a batch of products",
             description = """

@@ -355,6 +355,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+  /api/v1/services/product/search/facets:
+    post:
+      tags:
+      - Product
+      summary: "Catalog facets: filter values and their product counts (public)"
+      description: |
+        Takes the same body as /search (`page` and `size` are ignored) and returns, in one call, the
+        values actually present among the matching products with their counts: brands, price bounds
+        and, when `category` is given, the values of each text attribute and the bounds of each
+        integer / number attribute of that category's JSON Schema (keys come from the schema).
+
+        Disjunctive counting: each facet is counted under every active filter except its own, so
+        ticking a brand keeps the other brands listed with their counts while the attribute counts
+        narrow to that brand. Keyword and category always apply. `totalHits` matches every filter,
+        like /search's `page.totalElements`. Values are sorted by count descending then
+        alphabetically, capped at 50 per facet; blank values are skipped. As on /search,
+        `attributes` and `numericRanges` are ignored when `category` is absent.
+
+        Public endpoint, no JWT required. Sent with a short `Cache-Control: public`.
+      operationId: getSearchFacets
+      parameters:
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      requestBody:
+        description: "Search criteria, as for /search"
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductSearchRequestDto"
+        required: true
+      responses:
+        "200":
+          description: Facets of the matching products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductFacetsResponseDto"
+        "400":
+          description: Invalid criteria (INVALID_REQUEST) or category without a schema
+            (UNKNOWN_PRODUCT_CATEGORY)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
   /api/v1/services/management/order/update:
     post:
       tags:
@@ -3955,6 +4004,66 @@ components:
         max:
           type: number
           format: double
+    FacetValueDto:
+      type: object
+      properties:
+        value:
+          type: string
+          description: "Facet value, as sent back in the search filters."
+          example: LENOVO
+        count:
+          type: integer
+          format: int64
+          description: "Number of products with this value, under every active filter\
+            \ except this facet's own."
+          example: 12
+    ProductFacetsResponseDto:
+      type: object
+      properties:
+        totalHits:
+          type: integer
+          format: int64
+          description: "Number of products matching every filter, the same as /search's\
+            \ page.totalElements."
+          example: 42
+        brands:
+          type: array
+          description: "Brands, by count descending then alphabetically."
+          items:
+            $ref: "#/components/schemas/FacetValueDto"
+        price:
+          $ref: "#/components/schemas/RangeFacetDto"
+          description: Price bounds.
+        attributes:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/FacetValueDto"
+          description: "Values of each text attribute of the category's JSON Schema,\
+            \ by count descending then alphabetically. Present only when a category\
+            \ is given; every text attribute of the schema is a key, possibly with\
+            \ an empty list."
+        numericAttributes:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/RangeFacetDto"
+          description: Bounds of each integer / number attribute of the category's
+            JSON Schema. Present only when a category is given.
+    RangeFacetDto:
+      type: object
+      properties:
+        min:
+          type: number
+          format: double
+          description: Smallest value among the matching products; null when none
+            matches.
+          example: 8
+        max:
+          type: number
+          format: double
+          description: Largest value among the matching products; null when none matches.
+          example: 64
     OrderItemCreateRequestDto:
       type: object
       properties:
