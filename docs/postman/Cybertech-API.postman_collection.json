@@ -1061,7 +1061,7 @@
               "mode": "raw",
               "raw": "{\n  \"uuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\",\n  \"paymentType\": \"VISA\",\n  \"shippingType\": \"EXPRESS\",\n  \"shippingProvider\": \"FEDEX\",\n  \"shippingStreet\": \"21 Rue du Test\",\n  \"shippingCity\": \"Paris\",\n  \"shippingZipCode\": \"75001\",\n  \"shippingCountry\": \"France\",\n  \"itemUpdateRequestDtoList\": [\n    { \"productUuid\": \"11111111-2222-3333-4444-555555555555\", \"quantity\": 2 }\n  ]\n}"
             },
-            "description": "Update shipping options or items on a pending order.\n\n- Roles: USER (own) or ADMIN\n- Success: 200 with updated `OrderResponseDto`."
+            "description": "Update shipping options or items on a pending order.\n\n- Roles: USER (own) or ADMIN\n- Success: 200 with updated `OrderResponseDto`.\n- Pricing: the order keeps the discount it was placed with (terms frozen at placement, even if the campaign was disabled since), re-applied to the new lines (no discount if the new subtotal is below the campaign minimum); shipping follows the new provider/type. The difference with what was already paid is charged (402 if declined) or refunded."
           },
           "event": [
             {

@@ -39,6 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -325,6 +326,27 @@ class StockServiceImpTest {
         // Redis touched exactly once, a SET (refresh/create) — never a delete.
         verify(valueOps, times(1)).set(eq(KEY_PREFIX + orderUuid), eq(ReservationStatus.ACTIVE.name()), eq(EXPECTED_TTL));
         verify(redisTemplate, never()).delete(anyString());
+    }
+
+    @Test
+    @DisplayName("resizeReservation: old rows are deleted AND flushed before the new rows are saved (same product kept -> no unique-key clash)")
+    void resizeReservation_sameProduct_flushesDeleteBeforeReinsert() {
+        final UUID orderUuid = UUID.randomUUID();
+        final UUID productUuid = UUID.randomUUID();
+        final StockEntity oldReservation = reservation(orderUuid, productUuid, 2);
+        final ProductEntity product = productWithStock(productUuid, 10, 2);
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(oldReservation));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.resizeReservation(orderUuid, Map.of(productUuid, 2));
+
+        // Hibernate orders INSERTs before DELETEs at flush: the explicit flush is what keeps the
+        // re-inserted (orderUuid, productUuid) row from hitting the still-present old one.
+        final InOrder inOrder = inOrder(stockRepository);
+        inOrder.verify(stockRepository).deleteByOrderUuid(orderUuid);
+        inOrder.verify(stockRepository).flush();
+        inOrder.verify(stockRepository).save(argThat(row -> row.getProductUuid().equals(productUuid) && row != oldReservation));
+        assertThat(product.getReservedStock()).isEqualTo(2);
     }
 
     @Test

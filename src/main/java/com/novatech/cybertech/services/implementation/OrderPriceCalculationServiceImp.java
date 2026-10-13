@@ -50,8 +50,42 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
 
     @Override
     public PriceCalculationResultDto calculate(final PriceCalculationRequestDto request) {
-        final String discountKey = request.getDiscountKey();
+        // Short-circuit for NO_DISCOUNT_KEY: avoid touching the discount_campaign table.
+        // A missing NO_DISCOUNT row used to break every placeOrder call with
+        // DiscountTypeNotActiveException — there is nothing to look up here.
+        // Otherwise throws DiscountTypeNotActiveException when the campaign is missing,
+        // disabled, or outside its [startsAt, endsAt] window.
+        final DiscountContext context = NO_DISCOUNT_KEY.equals(request.getDiscountKey())
+                ? NO_DISCOUNT_CONTEXT
+                : discountCampaignService.getActiveDiscountContext(request.getDiscountKey());
+        return price(request, context);
+    }
 
+    @Override
+    public PriceCalculationResultDto calculate(final PriceCalculationRequestDto request, final DiscountContext discountTerms) {
+        return price(request, discountTerms != null ? discountTerms : resolveTermsWithoutSnapshot(request.getDiscountKey()));
+    }
+
+    /**
+     * Terms for an order placed before its discount terms were snapshotted: the campaign's current
+     * terms if it is still active, else no discount. Logged in warn either way — the customer may
+     * not get exactly the terms they ordered under.
+     */
+    private DiscountContext resolveTermsWithoutSnapshot(final String discountKey) {
+        if (NO_DISCOUNT_KEY.equals(discountKey)) {
+            return NO_DISCOUNT_CONTEXT;
+        }
+        try {
+            final DiscountContext current = discountCampaignService.getActiveDiscountContext(discountKey);
+            log.warn("No discount terms snapshot for campaign {} — re-pricing with the campaign's current terms", discountKey);
+            return current;
+        } catch (final DiscountTypeNotActiveException e) {
+            log.warn("No discount terms snapshot and campaign {} is no longer active — re-pricing without discount", discountKey);
+            return NO_DISCOUNT_CONTEXT;
+        }
+    }
+
+    private PriceCalculationResultDto price(final PriceCalculationRequestDto request, final DiscountContext context) {
         final BigDecimal baseAmount = request.getItems().stream()
                 .map(this::lineTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
@@ -59,27 +93,6 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
 
         // Include shipping cost computed via ShippingProviderStrategyFactory in final order price (previously omitted)
         final BigDecimal shippingCost = computeShippingCost(request);
-
-        // Short-circuit for NO_DISCOUNT_KEY: avoid touching the discount_campaign table.
-        // A missing NO_DISCOUNT row used to break every placeOrder call with
-        // DiscountTypeNotActiveException — there is nothing to look up here.
-        if (NO_DISCOUNT_KEY.equals(discountKey)) {
-            final BigDecimal finalAmount = baseAmount.add(shippingCost).setScale(2, RoundingMode.HALF_UP);
-
-            return PriceCalculationResultDto.builder()
-                    .baseAmount(baseAmount)
-                    .discountAmount(zero())
-                    .shippingCost(shippingCost)
-                    .finalAmount(finalAmount)
-                    .currencyCode(request.getCurrencyCode())
-                    .discountKey(discountKey)
-                    .appliedDiscount(NO_DISCOUNT_CONTEXT)
-                    .build();
-        }
-
-        // Throws DiscountTypeNotActiveException when the campaign is missing,
-        // disabled, or outside its [startsAt, endsAt] window.
-        final DiscountContext context = discountCampaignService.getActiveDiscountContext(discountKey);
 
         final BigDecimal discountAmount = computeDiscount(baseAmount, request.getItems(), context);
 
@@ -91,7 +104,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
 
         log.info("Price calculation for {} items — base={} discount={} shipping={} final={} ({} / {} / {} / {})",
                 request.getItems().size(), baseAmount, discountAmount, shippingCost, finalAmount,
-                discountKey, request.getCurrencyCode(), request.getShippingProvider(), request.getShippingType());
+                request.getDiscountKey(), request.getCurrencyCode(), request.getShippingProvider(), request.getShippingType());
 
         return PriceCalculationResultDto.builder()
                 .baseAmount(baseAmount)
@@ -99,7 +112,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .shippingCost(shippingCost)
                 .finalAmount(finalAmount)
                 .currencyCode(request.getCurrencyCode())
-                .discountKey(discountKey)
+                .discountKey(request.getDiscountKey())
                 .appliedDiscount(context)
                 .build();
     }

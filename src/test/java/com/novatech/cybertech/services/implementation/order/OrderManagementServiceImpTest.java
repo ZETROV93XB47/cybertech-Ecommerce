@@ -513,7 +513,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("100.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("100.00")).currencyCode(CurrencyCode.EUR)
@@ -539,7 +539,7 @@ class OrderManagementServiceImpTest {
             final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, BigDecimal.ZERO, null);
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(freeProduct));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
                             .finalAmount(BigDecimal.ZERO).currencyCode(CurrencyCode.EUR)
@@ -564,7 +564,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
@@ -592,7 +592,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
@@ -629,7 +629,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
@@ -655,7 +655,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
@@ -688,7 +688,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
@@ -720,7 +720,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
@@ -747,7 +747,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
@@ -773,7 +773,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
@@ -846,7 +846,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("70.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("70.00")).currencyCode(CurrencyCode.EUR)
@@ -904,7 +904,7 @@ class OrderManagementServiceImpTest {
             when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
             when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
                     .thenReturn(PriceCalculationResultDto.builder()
                             .baseAmount(new BigDecimal("99.00")).discountAmount(BigDecimal.ZERO)
                             .finalAmount(new BigDecimal("99.00")).currencyCode(CurrencyCode.EUR)
@@ -934,7 +934,7 @@ class OrderManagementServiceImpTest {
             // request into the PriceCalculationRequestDto for the price-calculation service.
             final ArgumentCaptor<PriceCalculationRequestDto> priceCap =
                     ArgumentCaptor.forClass(PriceCalculationRequestDto.class);
-            verify(orderPriceCalculationService).calculate(priceCap.capture());
+            verify(orderPriceCalculationService).calculate(priceCap.capture(), any());
             assertThat(priceCap.getValue().getShippingProvider()).isEqualTo(ShippingProvider.FEDEX);
             assertThat(priceCap.getValue().getShippingType()).isEqualTo(ShippingType.EXPRESS);
         }

@@ -295,4 +295,34 @@ class OrderPriceCalculationServiceImpTest {
         verify(shippingProviderStrategyFactory).getStrategy(ShippingProvider.DHL);
         verify(shippingProviderService).calculateShippingCost(ShippingType.STANDARD);
     }
+
+    @Test
+    @DisplayName("explicit discount terms (re-pricing an order): applied as-is, the campaign is never looked up")
+    void explicitTerms_campaignNotConsulted() {
+        when(discountStrategyFactory.getStrategy(DiscountCalculationType.PERCENTAGE)).thenReturn(strategy);
+        when(strategy.calculateDiscount(any(BigDecimal.class), anyList(), any(DiscountContext.class)))
+                .thenReturn(new BigDecimal("20.00"));
+        final DiscountContext frozen = percentageContext("BLACK_FRIDAY", new BigDecimal("20"));
+
+        final PriceCalculationResultDto result = service.calculate(request("BLACK_FRIDAY", item("100.00", 1)), frozen);
+
+        assertThat(result.getDiscountAmount()).isEqualByComparingTo("20.00");
+        assertThat(result.getFinalAmount()).isEqualByComparingTo("95.00");
+        assertThat(result.getAppliedDiscount()).isEqualTo(frozen);
+        verify(discountCampaignService, never()).getActiveDiscountContext(any());
+    }
+
+    @Test
+    @DisplayName("no terms snapshot + campaign no longer active: falls back to no discount instead of failing")
+    void noSnapshot_inactiveCampaign_fallsBackToNoDiscount() {
+        when(discountCampaignService.getActiveDiscountContext("BLACK_FRIDAY"))
+                .thenThrow(new DiscountTypeNotActiveException("expired"));
+
+        final PriceCalculationResultDto result = service.calculate(request("BLACK_FRIDAY", item("100.00", 1)), null);
+
+        assertThat(result.getDiscountAmount()).isEqualByComparingTo("0.00");
+        assertThat(result.getFinalAmount()).isEqualByComparingTo("115.00");
+        assertThat(result.getAppliedDiscount().calculationType()).isEqualTo(DiscountCalculationType.NONE);
+        verify(discountStrategyFactory, never()).getStrategy(any());
+    }
 }

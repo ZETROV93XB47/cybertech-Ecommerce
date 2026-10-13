@@ -1,5 +1,10 @@
 package com.novatech.cybertech.integration.order;
 
+import java.math.BigDecimal;
+import com.novatech.cybertech.repositories.DiscountCampaignRepository;
+import com.novatech.cybertech.entities.DiscountCampaignEntity;
+import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.github.f4b6a3.uuid.UuidCreator;
 import com.novatech.cybertech.TestcontainersConfiguration;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
@@ -103,6 +108,9 @@ class OrderFlowIT {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private DiscountCampaignRepository discountCampaignRepository;
 
     @Autowired
     private PaymentAttemptProcessor stripePaymentProcessor;
@@ -294,6 +302,55 @@ class OrderFlowIT {
                         .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
                         .toList());
         assertThat(userOrders).isNotEmpty();
+    }
+
+    // Modifying a discounted order keeps its discount, even once the campaign is disabled: the
+    // terms snapshotted at placement survive the round-trip through MySQL and drive the re-pricing.
+    @Test
+    void updateOrderAddressOnlyKeepsDiscountEvenAfterCampaignIsDisabled() throws Exception {
+        final String promoKey = "IT_PROMO_" + UUID.randomUUID().toString().substring(0, 8);
+        final DiscountCampaignEntity campaign = discountCampaignRepository.save(DiscountCampaignEntity.builder()
+                .discountKey(promoKey)
+                .calculationType(DiscountCalculationType.PERCENTAGE)
+                .percentage(new BigDecimal("20.00"))
+                .enabled(true)
+                .build());
+
+        // 2 x 99.99 = 199.98, -20% = -40.00, + DHL STANDARD 15 -> 174.98
+        addItemToCart(productUuid, 2);
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().discountKey(promoKey).build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(placed.getDiscountAmount()).isEqualByComparingTo("40.00");
+        assertThat(placed.getTotalAmount()).isEqualByComparingTo("174.98");
+
+        campaign.setEnabled(false);
+        discountCampaignRepository.save(campaign);
+
+        final OrderUpdateRequestDto update = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                .uuid(placed.getUuid())
+                .shippingStreet("42 avenue Nouvelle")
+                .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder().productUuid(productUuid).quantity(2).build()))
+                .build();
+        final MvcResult updateResult = mockMvc.perform(post("/api/v1/services/management/order/update")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(update)))
+                .andReturn();
+
+        assertThat(updateResult.getResponse().getStatus()).isEqualTo(200);
+        final OrderResponseDto updated = objectMapper.readValue(updateResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(updated.getTotalAmount()).isEqualByComparingTo("174.98");
+        assertThat(updated.getDiscountAmount()).isEqualByComparingTo("40.00");
+        assertThat(updated.getDiscountKey()).isEqualTo(promoKey);
+        assertThat(updated.getShippingAddress()).startsWith("42 avenue Nouvelle");
+        // Only the placement was charged: no complement, no refund.
+        Mockito.verify(stripePaymentProcessor, Mockito.times(1)).processPayment(any(UUID.class), any(), anyString());
+        Mockito.verify(stripePaymentProcessor, Mockito.never()).refund(any(UUID.class), any(), anyString(), anyString());
     }
 
     // 7) Cancel — places an order then cancels and asserts status flips to CANCELED.

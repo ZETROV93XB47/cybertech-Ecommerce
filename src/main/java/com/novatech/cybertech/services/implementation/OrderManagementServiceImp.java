@@ -15,6 +15,7 @@ import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
+import com.novatech.cybertech.entities.valueObjects.DiscountTermsSnapshot;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.events.OrderUpdatedEvent;
@@ -46,7 +47,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 import static com.novatech.cybertech.entities.enums.OrderStatus.*;
 
 @Slf4j
@@ -235,6 +235,15 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * positive delta, refund the negative delta, or commit the existing reservation when the
      * total is unchanged.
      *
+     * <p><b>Discount:</b> the order keeps the campaign it was placed under, with the terms
+     * snapshotted at that time ({@code OrderEntity#discountTerms}) — not the campaign's current
+     * state, which may have been disabled, edited or may have expired since. The terms are
+     * re-applied to the new lines exactly as at creation; in particular, if the new subtotal falls
+     * below the campaign's {@code minOrderAmount} the discount drops to 0 (and comes back if a later
+     * modification raises the subtotal again). Shipping follows the new provider / type. An order
+     * placed before the snapshot existed falls back to the campaign's current terms if it is still
+     * active, else to no discount, and those terms are then frozen on it.
+     *
      * <p>Callers with a missing JWT {@code sub} now get a clean
      * {@link UserNotFoundException} rather than an NPE on {@code keycloakId.equals(null)}.
      *
@@ -281,7 +290,10 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // 2) Validation
         validateUserBeforeProcessingPayment(order.getUserEntity());//TODO: is it really necessary to make this check here ? maybe make it before launching the order placing process
 
-        // 3) Calculer le total — delegated to OrderPriceCalculationService (no re-discount on updates)
+        // 3) Calculer le total — delegated to OrderPriceCalculationService, with the discount terms
+        // the order was PLACED under (snapshot), never the campaign's current state: re-pricing with
+        // NO_DISCOUNT used to make a customer who only changed their address lose their discount
+        // and get charged a complement. See OrderPriceCalculationService#calculate(request, terms).
         // products.isEmpty() used to default the total to ZERO and fall through to the
         // "no price difference" branch below, which flips the order to PAID — an all-nonexistent
         // product UUID list (findAllByUuidIn silently drops unmatched UUIDs, see
@@ -300,20 +312,28 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         final PriceCalculationRequestDto priceReq = PriceCalculationRequestDto.builder()
                 .items(priceDtos)
-                .discountKey(NO_DISCOUNT_KEY)
+                .discountKey(order.getDiscountKey())
                 .currencyCode(CurrencyCode.fromCode("EUR"))
                 .shippingProvider(dto.getShippingProvider())
                 .shippingType(dto.getShippingType())
                 .build();
 
-        final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceReq);
+        final DiscountTermsSnapshot frozenTerms = order.getDiscountTerms();
+        final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceReq,
+                frozenTerms == null ? null : frozenTerms.toDiscountContext(order.getDiscountKey()));
+        // An order placed before the snapshot existed gets the terms it was just re-priced with
+        // frozen now, so its next modifications stay consistent with this one.
+        if (frozenTerms == null) {
+            order.setDiscountTerms(DiscountTermsSnapshot.from(priceResult.getAppliedDiscount()));
+        }
         final Money total = priceResult.asFinalMoney();
 
         // Calcul du montant déjà payé (Paiements - Remboursements)
         final BigDecimal paidAmount = OrderPaymentUtils.netPaidAmount(order);
 
         BigDecimal difference = total.getAmount().subtract(paidAmount);
-        log.info("Update Order: New Total: {}, Paid: {}, Difference: {}", total.getAmount(), paidAmount, difference);
+        log.info("Update Order: New Total: {} (subtotal {} - discount {} [{}] + shipping {}), Paid: {}, Difference: {}", total.getAmount(),
+                priceResult.getBaseAmount(), priceResult.getDiscountAmount(), order.getDiscountKey(), priceResult.getShippingCost(), paidAmount, difference);
 
         // 4) Update shipping + address + total + statut
         order.setShippingType(dto.getShippingType());

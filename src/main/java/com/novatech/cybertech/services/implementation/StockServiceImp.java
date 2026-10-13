@@ -235,6 +235,10 @@ public class StockServiceImp implements StockService {
                 .filter(r -> r.getReservationStatus() == ACTIVE || r.getReservationStatus() == COMMITTED)
                 .forEach(this::updateStockForRelease);
         stockRepository.deleteByOrderUuid(orderUuid);
+        // Hibernate flushes INSERTs before DELETEs: without this, re-reserving a product the order
+        // already held inserted its new (orderUuid, productUuid) row while the old one still
+        // existed, violating the unique key — every real updateOrder keeping a product failed 500.
+        stockRepository.flush();
 
         final Map<UUID, Integer> ordered = new TreeMap<>(Comparator.comparing(UUID::toString));
         ordered.putAll(newQuantities);
