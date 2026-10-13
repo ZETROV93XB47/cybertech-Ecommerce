@@ -1,5 +1,6 @@
 package com.novatech.cybertech.dto.request.order;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
@@ -14,8 +15,10 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT
 
 @Data
 @Builder
-@NoArgsConstructor
 @AllArgsConstructor
+// Jackson 3 would otherwise bind through the all-args constructor and pass null for an omitted
+// discountKey, bypassing its @Builder.Default (-> 400 "must not be blank" instead of NO_DISCOUNT).
+@NoArgsConstructor(onConstructor_ = @JsonCreator)
 public class OrderPlacingRequestDto {
 
     // Identity (userUuid) removed: identity is authoritatively derived from the JWT subject in the

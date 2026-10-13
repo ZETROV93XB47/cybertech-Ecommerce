@@ -3,7 +3,9 @@ package com.novatech.cybertech.api.controllers.spec;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderQuoteRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
@@ -52,6 +54,36 @@ public interface OrderManagementControllerApiSpec {
     )
     ResponseEntity<OrderResponseDto> placeOrder(
             @Parameter(description = "OrderPlacingRequestDto for placing order", required = true) final OrderPlacingRequestDto orderPlacingRequestDto,
+            @Parameter(hidden = true) final Jwt jwt
+    );
+
+    @Operation(
+            summary = "Quote the order the caller's cart would make (authenticated users only)",
+            description = """
+                    Prices the caller's server-side cart (lines and current product prices come from
+                    the cart, never from the body) with the given shipping options and campaign,
+                    exactly like placing the order would: `totalAmount` equals the total of the order
+                    placed right after with the same options. No side effect: no order, no stock
+                    reservation, no payment. `discountApplied` is false when there is no campaign or
+                    when the subtotal is below the campaign's `minOrderAmount`.
+                    Same rate limit as the cart endpoints.
+                    """,
+            security = @SecurityRequirement(name = "keycloak"),
+            requestBody = @RequestBody(
+                    description = "Shipping options and campaign (discountKey defaults to NO_DISCOUNT).",
+                    required = true,
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderQuoteRequestDto.class))
+            ),
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Quote computed", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderQuoteResponseDto.class))),
+                    @ApiResponse(responseCode = "400", description = "Validation error, or unknown / inactive campaign (DISCOUNT_TYPE_NOT_ACTIVE)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = "The cart is empty (CART_IS_EMPTY)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "429", description = "Too many requests (TOO_MANY_REQUESTS), see Retry-After", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            }
+    )
+    ResponseEntity<OrderQuoteResponseDto> quote(
+            @Parameter(description = "OrderQuoteRequestDto with the shipping options and campaign", required = true) final OrderQuoteRequestDto orderQuoteRequestDto,
             @Parameter(hidden = true) final Jwt jwt
     );
 

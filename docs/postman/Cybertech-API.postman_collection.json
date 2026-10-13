@@ -1013,6 +1013,73 @@
           ]
         },
         {
+          "name": "Quote order (price of my cart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/quote",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "management",
+                "order",
+                "quote"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"discountKey\": \"NO_DISCOUNT\"\n}"
+            },
+            "description": "Price of the order `Place order` would create now from the caller's cart (lines and current prices come from the server cart, never from the body), with the same computation: `totalAmount` equals the total of the order placed right after with the same options. No side effect (no order, no stock reservation, no payment).\n\n- Roles: USER or ADMIN\n- Body: `shippingType`, `shippingProvider`, optional `discountKey` (default `NO_DISCOUNT`).\n- Success: 200 with `OrderQuoteResponseDto` (`subtotalAmount`, `discountKey`, `discountCalculationType`, `discountAmount`, `discountApplied` — false without campaign or below `minOrderAmount` —, `minOrderAmount`, `shippingCost`, `totalAmount`, `currency`).\n- Errors: 409 empty cart (`CART_IS_EMPTY`), 400 unknown/inactive campaign (`DISCOUNT_TYPE_NOT_ACTIVE`) or validation (`INVALID_REQUEST`), 429 rate limit (same budget as the cart)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/services/management/order/quote"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"subtotalAmount\": 2499.99,\n  \"discountKey\": \"NO_DISCOUNT\",\n  \"discountCalculationType\": \"NONE\",\n  \"discountAmount\": 0.00,\n  \"discountApplied\": false,\n  \"minOrderAmount\": null,\n  \"shippingCost\": 15.00,\n  \"totalAmount\": 2514.99,\n  \"currency\": \"EUR\"\n}"
+            }
+          ]
+        },
+        {
           "name": "Cancel order",
           "request": {
             "method": "POST",

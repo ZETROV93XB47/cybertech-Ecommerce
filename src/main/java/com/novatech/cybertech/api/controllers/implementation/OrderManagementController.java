@@ -3,7 +3,9 @@ package com.novatech.cybertech.api.controllers.implementation;
 import com.novatech.cybertech.api.controllers.spec.OrderManagementControllerApiSpec;
 import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderQuoteRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
@@ -44,6 +46,13 @@ public class OrderManagementController implements OrderManagementControllerApiSp
     @PostMapping(value = "/place", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponseDto> placeOrder(@Valid @RequestBody final OrderPlacingRequestDto orderPlacingRequestDto, @AuthenticationPrincipal final Jwt jwt) {
         return ResponseEntity.status(HttpStatus.CREATED).body(orderManagementService.placeOrder(orderPlacingRequestDto, jwt));
+    }
+
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PostMapping(value = "/quote", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<OrderQuoteResponseDto> quote(@Valid @RequestBody final OrderQuoteRequestDto orderQuoteRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.ok(orderManagementService.quote(orderQuoteRequestDto, jwt));
     }
 
 

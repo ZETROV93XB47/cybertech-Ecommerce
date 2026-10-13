@@ -480,6 +480,68 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
       security:
       - keycloak: []
+  /api/v1/services/management/order/quote:
+    post:
+      tags:
+      - Order
+      summary: Quote the order the caller's cart would make (authenticated users only)
+      description: |
+        Prices the caller's server-side cart (lines and current product prices come from
+        the cart, never from the body) with the given shipping options and campaign,
+        exactly like placing the order would: `totalAmount` equals the total of the order
+        placed right after with the same options. No side effect: no order, no stock
+        reservation, no payment. `discountApplied` is false when there is no campaign or
+        when the subtotal is below the campaign's `minOrderAmount`.
+        Same rate limit as the cart endpoints.
+      operationId: quote
+      parameters:
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      requestBody:
+        description: Shipping options and campaign (discountKey defaults to NO_DISCOUNT).
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderQuoteRequestDto"
+        required: true
+      responses:
+        "200":
+          description: Quote computed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderQuoteResponseDto"
+        "400":
+          description: "Validation error, or unknown / inactive campaign (DISCOUNT_TYPE_NOT_ACTIVE)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "401":
+          description: Unauthorized - JWT token missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: The cart is empty (CART_IS_EMPTY)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "429":
+          description: "Too many requests (TOO_MANY_REQUESTS), see Retry-After"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      security:
+      - keycloak: []
   /api/v1/services/management/order/place:
     post:
       tags:
@@ -4064,6 +4126,71 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OrderItemResponseDto"
+    OrderQuoteRequestDto:
+      type: object
+      description: OrderQuoteRequestDto with the shipping options and campaign
+      properties:
+        shippingType:
+          type: string
+          enum:
+          - STANDARD
+          - EXPRESS
+        shippingProvider:
+          type: string
+          enum:
+          - DHL
+          - FEDEX
+        discountKey:
+          type: string
+          default: NO_DISCOUNT
+          description: Campaign to apply; NO_DISCOUNT when omitted.
+          minLength: 1
+      required:
+      - discountKey
+      - shippingProvider
+      - shippingType
+    OrderQuoteResponseDto:
+      type: object
+      properties:
+        subtotalAmount:
+          type: number
+          description: "Sum of the cart lines at the products' current prices, before\
+            \ discount and shipping."
+        discountKey:
+          type: string
+          description: "Campaign the quote was computed with, NO_DISCOUNT if none."
+          example: BLACK_FRIDAY
+        discountCalculationType:
+          type: string
+          description: Calculation type of the campaign (NONE for NO_DISCOUNT).
+          enum:
+          - NONE
+          - PERCENTAGE
+          - FIXED_AMOUNT
+          - BUY_ONE_GET_ONE_FREE
+        discountAmount:
+          type: number
+          description: Discount granted on subtotalAmount; 0 when discountApplied
+            is false.
+        discountApplied:
+          type: boolean
+          description: False when there is no campaign or when subtotalAmount is below
+            minOrderAmount.
+        minOrderAmount:
+          type:
+          - number
+          - "null"
+          description: Minimum subtotal the campaign requires; null when it has none.
+        shippingCost:
+          type: number
+        totalAmount:
+          type: number
+          description: "max(0, subtotalAmount - discountAmount) + shippingCost — what\
+            \ placing the order now would charge."
+        currency:
+          type: string
+          description: ISO 4217 code of every amount.
+          example: EUR
     OrderPlacingRequestDto:
       type: object
       description: OrderPlacingRequestDto for placing order

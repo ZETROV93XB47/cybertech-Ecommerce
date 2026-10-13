@@ -44,6 +44,7 @@ import java.util.function.Supplier;
  *   <li>{@code POST /api/v1/services/user/register} — 5 req / 1 min / IP</li>
  *   <li>{@code POST /api/v1/services/order/place*} — 30 req / 1 min / JWT-sub (or IP fallback)</li>
  *   <li>{@code /api/v1/services/cart/**} — 60 req / 1 min / JWT-sub (or IP fallback)</li>
+ *   <li>{@code POST /api/v1/services/management/order/quote} — same budget as the cart, own bucket</li>
  * </ul>
  *
  * <p>The login policy was deliberately skipped: Cybertech delegates authentication to Keycloak
@@ -66,6 +67,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final String REGISTER_EXACT_PATH = "/api/v1/services/user/register";
     private static final String ORDER_PLACE_PATH_PREFIX = "/api/v1/services/management/order/place";
     private static final String CART_PATH_PREFIX = "/api/v1/services/cart";
+    // Prices the caller's cart: same budget as the cart endpoints, in its own bucket.
+    private static final String ORDER_QUOTE_EXACT_PATH = "/api/v1/services/management/order/quote";
     private static final String TOO_MANY_REQUESTS_MESSAGE = "Too many requests, please retry in %d second(s).";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -186,6 +189,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
                     CART_PATH_PREFIX,
                     false,
                     null,
+                    () -> newBucket(60L, Duration.ofMinutes(1L))),
+            new Policy(
+                    "order.quote",
+                    ORDER_QUOTE_EXACT_PATH,
+                    true,
+                    "POST",
                     () -> newBucket(60L, Duration.ofMinutes(1L)))
     );
 

@@ -117,6 +117,28 @@ class RateLimitFilterTest {
     }
 
     @Test
+    @DisplayName("Order quote has its own bucket with the cart budget: the 61st POST in a minute is a 429")
+    void shouldRateLimitOrderQuoteLikeTheCart() throws Exception {
+        for (int i = 0; i < 60; i++) {
+            MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/services/management/order/quote");
+            req.setRemoteAddr("10.0.0.9");
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            filter.doFilter(req, res, mock(FilterChain.class));
+            assertThat(res.getStatus()).isEqualTo(200);
+        }
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/services/management/order/quote");
+        req.setRemoteAddr("10.0.0.9");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(req, res, chain);
+
+        assertThat(res.getStatus()).isEqualTo(429);
+        verify(chain, times(0)).doFilter(req, res);
+        assertThat(filter.bucketsView()).containsKey("order.quote:ip:10.0.0.9").doesNotContainKey("cart:ip:10.0.0.9");
+    }
+
+    @Test
     @DisplayName("Cart path matches any HTTP method")
     void shouldMatchCartPathAnyMethod() throws Exception {
         MockHttpServletRequest get = new MockHttpServletRequest("GET", "/api/v1/services/cart/list");

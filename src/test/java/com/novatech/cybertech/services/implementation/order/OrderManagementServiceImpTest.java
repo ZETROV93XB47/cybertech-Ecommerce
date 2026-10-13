@@ -28,7 +28,7 @@ import com.novatech.cybertech.events.OrderCreatedEvent;
 import com.novatech.cybertech.events.OrderUpdatedEvent;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.exceptions.CannotCancelOrderException;
-import com.novatech.cybertech.exceptions.CartNotFoundException;
+import com.novatech.cybertech.exceptions.CartIsEmptyException;
 import com.novatech.cybertech.exceptions.FailedRetryingPayment;
 import com.novatech.cybertech.exceptions.NoPreviousPaymentAttemptException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
@@ -297,10 +297,10 @@ class OrderManagementServiceImpTest {
         @DisplayName("creation delegate exception (empty cart, no bank card, validator rejects, stock unavailable, ...) propagates untouched")
         void delegateException_propagates_noPaymentNoEvent() {
             when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId)))
-                    .thenThrow(new CartNotFoundException("Cannot place order: Cart is empty"));
+                    .thenThrow(new CartIsEmptyException("Cannot place order: Cart is empty"));
 
             assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
-                    .isInstanceOf(CartNotFoundException.class);
+                    .isInstanceOf(CartIsEmptyException.class);
 
             verifyNoInteractions(paymentService, eventPublisher, stockService, cartService);
         }

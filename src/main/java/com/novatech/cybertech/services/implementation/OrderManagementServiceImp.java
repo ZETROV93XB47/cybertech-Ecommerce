@@ -1,14 +1,17 @@
 package com.novatech.cybertech.services.implementation;
 
 
+import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
 import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderQuoteRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.entities.*;
@@ -67,6 +70,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * DISTINCT key — see {@link #updateOrder(OrderUpdateRequestDto, Jwt)}.
      */
     private static final String UPDATE_PAYMENT_ACTION = "update";
+
+    private static final String EMPTY_CART_QUOTE_MESSAGE = "Cannot quote an order: Cart is empty";
+    private static final String USER_NOT_FOUND_MESSAGE = "User not found";
 
     private final OrderMapper orderMapper;
 
@@ -516,6 +522,46 @@ public class OrderManagementServiceImp implements OrderManagementService {
         return orderMapper.mapFromEntityToResponseDto(order);
     }
 
+
+    /**
+     * Price the caller's cart as {@link #placeOrder} would — same cart lines at current product
+     * prices, same {@link OrderPriceCalculationService#calculate} — so the quote equals the total
+     * of the order placed right after with the same options (unless a price or the cart changes
+     * in between). Read-only: no order, no stock reservation, no payment.
+     *
+     * <p>{@code discountApplied} is false when there is no campaign or when the subtotal is below
+     * the campaign's {@code minOrderAmount}; an unknown or inactive campaign is a
+     * {@link DiscountTypeNotActiveException} (400), exactly like at placement.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public OrderQuoteResponseDto quote(final OrderQuoteRequestDto req, final Jwt jwt) {
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
+        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException(USER_NOT_FOUND_MESSAGE));
+        final List<CartItemEntity> cartItems = OrderPricingUtils.requireCartItems(user.getCartEntity(), EMPTY_CART_QUOTE_MESSAGE);
+
+        final PriceCalculationResultDto price = orderPriceCalculationService.calculate(
+                OrderPricingUtils.cartPriceRequest(cartItems, req.getDiscountKey(), req.getShippingProvider(), req.getShippingType()));
+
+        final DiscountContext terms = price.getAppliedDiscount();
+        final boolean discountApplied = terms.calculationType() != DiscountCalculationType.NONE
+                && (terms.minOrderAmount() == null || price.getBaseAmount().compareTo(terms.minOrderAmount()) >= 0);
+        log.info("Quote for {} cart line(s): subtotal {} - discount {} [{}, applied={}] + shipping {} = {} ({} {})", cartItems.size(),
+                price.getBaseAmount(), price.getDiscountAmount(), req.getDiscountKey(), discountApplied, price.getShippingCost(),
+                price.getFinalAmount(), req.getShippingProvider(), req.getShippingType());
+
+        return OrderQuoteResponseDto.builder()
+                .subtotalAmount(price.getBaseAmount())
+                .discountKey(price.getDiscountKey())
+                .discountCalculationType(terms.calculationType())
+                .discountAmount(price.getDiscountAmount())
+                .discountApplied(discountApplied)
+                .minOrderAmount(terms.minOrderAmount())
+                .shippingCost(price.getShippingCost())
+                .totalAmount(price.getFinalAmount())
+                .currency(price.getCurrencyCode().getCode())
+                .build();
+    }
 
     /**
      * Convert the caller's cart into a persisted order, reserve stock, attempt payment, and

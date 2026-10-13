@@ -41,7 +41,7 @@ public interface OrderCreationTransactionalDelegate {
      * @return the persisted order, in {@link com.novatech.cybertech.entities.enums.OrderStatus#AWAITING_PAYMENT},
      *         with stock already reserved.
      * @throws com.novatech.cybertech.exceptions.UserNotFoundException   when no user matches {@code keycloakId}.
-     * @throws com.novatech.cybertech.exceptions.CartNotFoundException   when the user's cart is missing or empty.
+     * @throws com.novatech.cybertech.exceptions.CartIsEmptyException    when the user's cart is missing or empty (409 CART_IS_EMPTY).
      * @throws com.novatech.cybertech.exceptions.BankCardNotFoundException when the user has no bank card on file.
      * @throws com.novatech.cybertech.exceptions.NotEnoughStockException when any cart line is no longer available.
      */

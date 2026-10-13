@@ -1,7 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
@@ -12,9 +11,7 @@ import com.novatech.cybertech.entities.OrderItemEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.valueObjects.Address;
-import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.DiscountTermsSnapshot;
-import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.UserRepository;
@@ -44,6 +41,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrderCreationTransactionalDelegateImp implements OrderCreationTransactionalDelegate {
 
+    private static final String EMPTY_CART_MESSAGE = "Cannot place order: Cart is empty";
+
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
     private final StockService stockService;
@@ -57,9 +56,7 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         final CartEntity cart = user.getCartEntity();
-        if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) throw new CartNotFoundException("Cannot place order: Cart is empty");
-
-        final List<CartItemEntity> cartItems = cart.getCartItems();
+        final List<CartItemEntity> cartItems = OrderPricingUtils.requireCartItems(cart, EMPTY_CART_MESSAGE);
 
         final Map<UUID, Integer> quantities = cartItems.stream().collect(Collectors.toMap(item -> item.getProductEntity().getUuid(), CartItemEntity::getQuantity));
 
@@ -69,22 +66,10 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
 
         // Price is read live from the product here — the cart itself carries no frozen price
         // (see CartItemEntity) — this is the moment the price actually gets locked in for the
-        // order, at time of purchase rather than at time of add-to-cart.
-        final List<OrderItemPriceDto> priceDtos = cartItems.stream()
-                .map(item -> OrderItemPriceDto.builder()
-                        .productUuid(item.getProductEntity().getUuid())
-                        .unitPrice(item.getProductEntity().getPrice())
-                        .quantity(item.getQuantity())
-                        .build())
-                .toList();
-
-        final PriceCalculationRequestDto priceRequest = PriceCalculationRequestDto.builder()
-                .items(priceDtos)
-                .discountKey(req.getDiscountKey())
-                .currencyCode(CurrencyCode.fromCode("EUR"))
-                .shippingProvider(req.getShippingProvider())
-                .shippingType(req.getShippingType())
-                .build();
+        // order, at time of purchase rather than at time of add-to-cart. Same request as the
+        // order quote (OrderManagementService#quote), so a quote matches the order placed after it.
+        final PriceCalculationRequestDto priceRequest = OrderPricingUtils.cartPriceRequest(
+                cartItems, req.getDiscountKey(), req.getShippingProvider(), req.getShippingType());
 
         final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceRequest);
         log.info("Order {}: {} line(s) from cart {}, subtotal {} - discount {} + shipping {} = total {} EUR (discountKey={}, shipping={} {})",

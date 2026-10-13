@@ -14,7 +14,7 @@ import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
-import com.novatech.cybertech.exceptions.CartNotFoundException;
+import com.novatech.cybertech.exceptions.CartIsEmptyException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
@@ -147,23 +147,23 @@ class OrderCreationTransactionalDelegateImpTest {
     }
 
     @Test
-    @DisplayName("user with null cart throws CartNotFoundException")
-    void cartMissing_throwsCartNotFound() {
+    @DisplayName("user with null cart throws CartIsEmptyException (409 CART_IS_EMPTY)")
+    void cartMissing_throwsCartIsEmpty() {
         when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(userNoCart()));
 
         assertThatThrownBy(() -> delegate.createAndReserveStock(OrderDtoFixtures.aValidPlaceOrderRequest(), keycloakId))
-                .isInstanceOf(CartNotFoundException.class);
+                .isInstanceOf(CartIsEmptyException.class);
 
         verify(orderRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("user with empty cart throws CartNotFoundException")
-    void cartEmpty_throwsCartNotFound() {
+    @DisplayName("user with empty cart throws CartIsEmptyException (409 CART_IS_EMPTY)")
+    void cartEmpty_throwsCartIsEmpty() {
         when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(userWithEmptyCart()));
 
         assertThatThrownBy(() -> delegate.createAndReserveStock(OrderDtoFixtures.aValidPlaceOrderRequest(), keycloakId))
-                .isInstanceOf(CartNotFoundException.class);
+                .isInstanceOf(CartIsEmptyException.class);
 
         verify(orderRepository, never()).save(any());
     }

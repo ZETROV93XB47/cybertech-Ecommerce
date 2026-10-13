@@ -1,5 +1,8 @@
 package com.novatech.cybertech.integration.order;
 
+import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
 import java.math.BigDecimal;
 import com.novatech.cybertech.repositories.DiscountCampaignRepository;
 import com.novatech.cybertech.entities.DiscountCampaignEntity;
@@ -234,9 +237,7 @@ class OrderFlowIT {
                 });
     }
 
-    // 5) Empty cart → 4xx (currently 404 because OrderManagementServiceImp throws
-    //    CartNotFoundException("Cannot place order: Cart is empty") which the wired
-    //    handler maps to 404 NOT_FOUND. Semantic mismatch: empty cart ≠ missing.
+    // 5) Empty cart → 409 CART_IS_EMPTY (was a 404 CART_NOT_FOUND: empty cart ≠ missing).
     @Test
     void placeOrderWithEmptyCartReturnsErrorPerBug152() throws Exception {
         final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
@@ -248,10 +249,43 @@ class OrderFlowIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(body)))
                 .andExpect(result -> {
-                    final int status = result.getResponse().getStatus();
-                    // 404 today (CartNotFoundException), should arguably be 409/422.
-                    assertThat(status).isBetween(400, 499);
+                    assertThat(result.getResponse().getStatus()).isEqualTo(409);
+                    assertThat(result.getResponse().getContentAsString()).contains("\"errorCode\":\"CART_IS_EMPTY\"");
                 });
+    }
+
+    // Quote: same price as the order placed right after with the same options, no side effect.
+    @Test
+    void quoteEqualsTheTotalOfTheOrderPlacedRightAfter() throws Exception {
+        addItemToCart(productUuid, 2);
+        final int reservedBefore = productRepository.findByUuid(productUuid).orElseThrow().getReservedStock();
+
+        final MvcResult quoteResult = mockMvc.perform(post("/api/v1/services/management/order/quote")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"shippingType\":\"EXPRESS\",\"shippingProvider\":\"FEDEX\"}"))
+                .andReturn();
+        assertThat(quoteResult.getResponse().getStatus()).isEqualTo(200);
+        final OrderQuoteResponseDto quote = objectMapper.readValue(quoteResult.getResponse().getContentAsByteArray(), OrderQuoteResponseDto.class);
+        // 2 x 99.99 + FedEx EXPRESS 25, no discount
+        assertThat(quote.getSubtotalAmount()).isEqualByComparingTo("199.98");
+        assertThat(quote.getShippingCost()).isEqualByComparingTo("25.00");
+        assertThat(quote.getTotalAmount()).isEqualByComparingTo("224.98");
+        assertThat(quote.isDiscountApplied()).isFalse();
+
+        // No side effect: nothing reserved, nothing ordered, nothing charged.
+        assertThat(productRepository.findByUuid(productUuid).orElseThrow().getReservedStock()).isEqualTo(reservedBefore);
+        Mockito.verify(stripePaymentProcessor, Mockito.never()).processPayment(any(UUID.class), any(), anyString());
+
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                                .shippingType(ShippingType.EXPRESS).shippingProvider(ShippingProvider.FEDEX).build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(placed.getTotalAmount()).isEqualByComparingTo(quote.getTotalAmount());
     }
 
     // 6) Happy path — full cart → place → event capture + stock decrement.

@@ -1,7 +1,9 @@
 package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderQuoteRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
@@ -39,6 +41,18 @@ public interface OrderManagementService {
      * @return the freshly persisted order mapped to {@link OrderResponseDto}.
      */
     OrderResponseDto placeOrder(final OrderPlacingRequestDto orderPlacingRequestDto, final Jwt jwt);
+
+    /**
+     * Price the order {@link #placeOrder} would create now from the caller's cart, with the same
+     * computation, WITHOUT any side effect: no order, no stock reservation, no payment.
+     *
+     * @param orderQuoteRequestDto shipping options and campaign to price with.
+     * @param jwt                  caller identity — {@code sub} claim must be non-null.
+     * @return the price breakdown.
+     * @throws com.novatech.cybertech.exceptions.CartIsEmptyException          when the cart is missing or empty (409).
+     * @throws com.novatech.cybertech.exceptions.DiscountTypeNotActiveException when the campaign is unknown or inactive (400).
+     */
+    OrderQuoteResponseDto quote(final OrderQuoteRequestDto orderQuoteRequestDto, final Jwt jwt);
 
     /**
      * Soft-cancel an existing order (status flip to {@code CANCELED} + refunds for prior

@@ -13,6 +13,10 @@ import com.novatech.cybertech.entities.enums.DiscountCalculationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.dto.request.order.OrderQuoteRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
+import com.novatech.cybertech.exceptions.CartIsEmptyException;
+import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
@@ -70,6 +74,7 @@ class OrderManagementControllerTest {
 
     private static final String BASE = "/api/v1/services/management/order";
     private static final String PLACE = BASE + "/place";
+    private static final String QUOTE = BASE + "/quote";
     private static final String CANCEL = BASE + "/cancel";
     private static final String UPDATE = BASE + "/update";
     private static final String RETRY_PAYMENT = BASE + "/retry-payment/{uuid}";
@@ -108,6 +113,26 @@ class OrderManagementControllerTest {
         ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
         verify(orderService).placeOrder(any(OrderPlacingRequestDto.class), jwtCaptor.capture());
         assertThat(jwtCaptor.getValue().getSubject()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldPlaceOrderWithNoDiscountWhenDiscountKeyOmitted() throws Exception {
+        // Regression: Jackson 3 bound through the all-args constructor and passed null for the
+        // omitted discountKey, bypassing its NO_DISCOUNT default -> 400 "must not be blank".
+        when(orderService.placeOrder(any(OrderPlacingRequestDto.class), any(Jwt.class))).thenReturn(OrderDtoFixtures.aSampleOrderResponse());
+
+        mockMvc.perform(post(PLACE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"paymentType\":\"VISA\",\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\","
+                                + "\"shippingStreet\":\"1 rue de Test\",\"shippingCity\":\"Paris\",\"shippingZipCode\":\"75001\",\"shippingCountry\":\"FR\"}"))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<OrderPlacingRequestDto> reqCaptor = ArgumentCaptor.forClass(OrderPlacingRequestDto.class);
+        verify(orderService).placeOrder(reqCaptor.capture(), any(Jwt.class));
+        assertThat(reqCaptor.getValue().getDiscountKey()).isEqualTo("NO_DISCOUNT");
     }
 
     @Test
@@ -161,6 +186,97 @@ class OrderManagementControllerTest {
                         .accept(APPLICATION_JSON)
                         .content(asJsonString(request)))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- POST /quote ----------
+
+    @Test
+    void shouldQuoteOrderSuccessfullyWithNoDiscountByDefault() throws Exception {
+        OrderQuoteResponseDto quote = OrderQuoteResponseDto.builder()
+                .subtotalAmount(new BigDecimal("200.00"))
+                .discountKey("NO_DISCOUNT")
+                .discountCalculationType(DiscountCalculationType.NONE)
+                .discountAmount(new BigDecimal("0.00"))
+                .discountApplied(false)
+                .shippingCost(new BigDecimal("15.00"))
+                .totalAmount(new BigDecimal("215.00"))
+                .currency("EUR")
+                .build();
+        when(orderService.quote(any(OrderQuoteRequestDto.class), any(Jwt.class))).thenReturn(quote);
+
+        mockMvc.perform(post(QUOTE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().json(asJsonString(quote), STRICT))
+                .andExpect(jsonPath("$.discountApplied").value(false))
+                .andExpect(jsonPath("$.minOrderAmount").doesNotExist());
+
+        // discountKey omitted from the body -> NO_DISCOUNT; identity from the JWT.
+        ArgumentCaptor<OrderQuoteRequestDto> reqCaptor = ArgumentCaptor.forClass(OrderQuoteRequestDto.class);
+        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
+        verify(orderService).quote(reqCaptor.capture(), jwtCaptor.capture());
+        assertThat(reqCaptor.getValue().getDiscountKey()).isEqualTo("NO_DISCOUNT");
+        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailQuotingWhenShippingOptionsMissing() throws Exception {
+        mockMvc.perform(post(QUOTE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void shouldFailQuotingWhenCartIsEmptyReturning409() throws Exception {
+        when(orderService.quote(any(OrderQuoteRequestDto.class), any(Jwt.class)))
+                .thenThrow(new CartIsEmptyException("Cannot quote an order: Cart is empty"));
+
+        mockMvc.perform(post(QUOTE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("CART_IS_EMPTY"));
+    }
+
+    @Test
+    void shouldFailQuotingWhenCampaignInactiveReturning400() throws Exception {
+        when(orderService.quote(any(OrderQuoteRequestDto.class), any(Jwt.class)))
+                .thenThrow(new DiscountTypeNotActiveException("EXPIRED_PROMO is not active"));
+
+        mockMvc.perform(post(QUOTE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\",\"discountKey\":\"EXPIRED_PROMO\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("DISCOUNT_TYPE_NOT_ACTIVE"));
+    }
+
+    @Test
+    void shouldFailQuotingWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(post(QUOTE)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\"}"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(orderService);
     }
 
     // ---------- POST /cancel ----------
