@@ -55,17 +55,6 @@ public interface OrderManagementAdminControllerApiSpec {
             @Parameter(hidden = true) final Pageable pageable
     );
 
-    @Operation(summary = "Place an auto-generated order (admin debug helper)",
-            description = "Admin-only debug / load-test utility that forges an order from synthetic cart data via the data generator. Restricted to ADMIN to avoid letting any authenticated user spam orders against another's cart state.",
-            security = @SecurityRequirement(name = "keycloak"),
-            responses = {
-                    @ApiResponse(responseCode = "201", description = "Auto-generated order placed successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Underlying resource (e.g., generated user/product) not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
-            })
-    ResponseEntity<OrderResponseDto> placeOrder2(@Parameter(hidden = true) final Jwt jwt);
-
     @Operation(summary = "Delete an Order by UUID (Admin)",
             description = "Deletes an order based on its unique UUID.",
             security = @SecurityRequirement(name = "keycloak"),

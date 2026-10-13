@@ -27,7 +27,6 @@ import java.util.UUID;
 
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
-import static com.novatech.cybertech.utils.TestUtils.asJsonString;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -39,7 +38,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -59,7 +57,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class OrderManagementAdminControllerTest {
 
     private static final String GET_ALL_ENDPOINT = "/api/v1/services/admin/management/order/get/all";
-    private static final String PLACE_AUTO_ENDPOINT = "/api/v1/services/admin/management/order/place/auto";
     private static final String DELETE_BY_UUID_ENDPOINT = "/api/v1/services/admin/management/order/delete/{uuid}";
     private static final String ADMIN_KEYCLOAK_ID = "keycloak-admin";
     private static final String USER_KEYCLOAK_ID = "keycloak-user";
@@ -143,41 +140,6 @@ class OrderManagementAdminControllerTest {
         ArgumentCaptor<String> userKeycloakIdCaptor = ArgumentCaptor.forClass(String.class);
         verify(orderManagementService).findAllPaged(any(), userKeycloakIdCaptor.capture(), any(Pageable.class));
         assertThat(userKeycloakIdCaptor.getValue()).isEqualTo("kc-target");
-    }
-
-    // ---------- POST /place/auto ----------
-
-    @Test
-    void shouldPlaceOrderViaAutoEndpointAsAdmin() throws Exception {
-        // /place/auto is now ADMIN-only. Use an admin JWT for the happy path.
-        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponse();
-        when(orderManagementService.placeOrder(any(), any(Jwt.class))).thenReturn(response);
-
-        mockMvc.perform(post(PLACE_AUTO_ENDPOINT)
-                        .with(jwtAdmin("admin-id"))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isCreated())
-                .andExpect(content().contentType(APPLICATION_JSON))
-                .andExpect(content().json(asJsonString(response)));
-
-        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
-        verify(orderManagementService).placeOrder(any(), jwtCaptor.capture());
-        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo("admin-id");
-    }
-
-    @Test
-    void shouldRejectPlaceAutoEndpointAsRoleUserReturning403() throws Exception {
-        // The data-generator endpoint must not be reachable by ROLE_USER.
-        mockMvc.perform(post(PLACE_AUTO_ENDPOINT)
-                        .with(jwtUser(USER_KEYCLOAK_ID))
-                        .with(csrf())
-                        .contentType(APPLICATION_JSON)
-                        .accept(APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isForbidden());
     }
 
     // ---------- DELETE /delete/{uuid} ----------

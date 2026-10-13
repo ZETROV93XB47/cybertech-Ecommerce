@@ -1107,35 +1107,6 @@
           "response": []
         },
         {
-          "name": "Place auto / synthetic order (ADMIN)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-API-VERSION", "value": "{{api_version}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/admin/management/order/place/auto",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "services", "admin", "management", "order", "place", "auto"]
-            },
-            "body": { "mode": "raw", "raw": "{}" },
-            "description": "debug/load helper. Builds a synthetic order via `DataGenerator.orderGenerator()`. Lives on `OrderManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `OrderResponseDto`, including the price breakdown: `totalAmount = max(0, subtotalAmount - discountAmount) + shippingCost`, all in `currency`. Orders placed before the breakdown existed return `subtotalAmount`, `discountAmount`, `shippingCost` and `discountCalculationType` as null."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
           "name": "Get order by UUID (USER own / ADMIN any)",
           "request": {
             "method": "GET",

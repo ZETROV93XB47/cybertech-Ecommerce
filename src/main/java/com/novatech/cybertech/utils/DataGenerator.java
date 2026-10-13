@@ -1,8 +1,6 @@
 package com.novatech.cybertech.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import net.datafaker.Faker;
-import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
@@ -231,38 +229,6 @@ public class DataGenerator {
             );
         }
         return users;
-    }
-
-    /**
-     * Build a fully-populated {@link OrderPlacingRequestDto} suitable for happy-path
-     * tests and demo data. Each invocation now produces a fresh {@code userUuid}
-     * (mirroring {@link #generateOrderUpdateRequestDto()}); the previous hard-coded
-     * UUID introduced cross-test coupling.
-     *
-     * @return a freshly-built DTO carrying {@link PaymentType#VISA} / {@link ShippingType#STANDARD}
-     *         / {@link ShippingProvider#FEDEX} defaults, or {@code null} if Jackson
-     *         serialisation unexpectedly fails (preserved legacy contract).
-     */
-    public static OrderPlacingRequestDto orderGenerator() {
-        // userUuid removed from DTO: identity is derived from JWT in the controller/service
-        OrderPlacingRequestDto build = OrderPlacingRequestDto.builder()
-                .shippingStreet(FAKER.address().streetAddress())
-                .shippingCity(FAKER.address().city())
-                .shippingZipCode(FAKER.address().zipCode())
-                .shippingCountry(FAKER.address().country())
-                .shippingType(ShippingType.STANDARD)
-                .shippingProvider(ShippingProvider.FEDEX)
-                .paymentType(PaymentType.VISA)
-                .build();
-
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            objectMapper.writeValueAsString(build);
-            return build;
-        } catch (Exception e) {
-            log.info("e :: ", e);
-        }
-        return null;
     }
 
     public static OrderUpdateRequestDto generateOrderUpdateRequestDto() {

@@ -995,50 +995,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
       security:
       - keycloak: []
-  /api/v1/services/admin/management/order/place/auto:
-    post:
-      tags:
-      - Order Admin
-      summary: Place an auto-generated order (admin debug helper)
-      description: Admin-only debug / load-test utility that forges an order from
-        synthetic cart data via the data generator. Restricted to ADMIN to avoid letting
-        any authenticated user spam orders against another's cart state.
-      operationId: placeOrder2
-      parameters:
-      - name: X-API-VERSION
-        in: header
-        schema:
-          type: string
-          default: 1.0.0
-          enum:
-          - "1.0"
-      responses:
-        "201":
-          description: Auto-generated order placed successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OrderResponseDto"
-        "401":
-          description: Unauthorized - JWT token missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
-        "403":
-          description: Forbidden - ADMIN role required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
-        "404":
-          description: "Underlying resource (e.g., generated user/product) not found"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
-      security:
-      - keycloak: []
   /api/v1/services/admin/discounts:
     get:
       tags:

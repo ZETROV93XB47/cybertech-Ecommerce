@@ -1,6 +1,5 @@
 package com.novatech.cybertech.utils;
 
-import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
@@ -33,7 +32,6 @@ import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -319,52 +317,6 @@ class DataGeneratorTest {
             assertThat(payment.getAmount()).isNotNull();
             assertThat(payment.getAmount().getAmount()).isEqualByComparingTo(BigDecimal.ZERO);
             assertThat(payment.getCreatedAt()).isNotNull();
-        }
-    }
-
-    @Nested
-    @DisplayName("orderGenerator")
-    class OrderGeneratorBug {
-
-        @Test
-        @DisplayName("Should produce a non-null OrderPlacingRequestDto with VISA / FEDEX defaults")
-        void shouldProduceNonNullOrder() {
-            // When
-            final OrderPlacingRequestDto dto = DataGenerator.orderGenerator();
-
-            // Then
-            assertThat(dto).isNotNull();
-            assertThat(dto.getPaymentType()).isEqualTo(PaymentType.VISA);
-            assertThat(dto.getShippingType()).isEqualTo(ShippingType.STANDARD);
-            assertThat(dto.getShippingProvider()).isEqualTo(ShippingProvider.FEDEX);
-            assertThat(dto.getShippingStreet()).isNotBlank();
-            assertThat(dto.getShippingCity()).isNotBlank();
-            assertThat(dto.getShippingZipCode()).isNotBlank();
-            assertThat(dto.getShippingCountry()).isNotBlank();
-            // userUuid removed from DTO: identity is now derived from the JWT in the controller/service.
-
-            Set<ConstraintViolation<OrderPlacingRequestDto>> violations = validator.validate(dto);
-            assertThat(violations).as("orderGenerator() must satisfy bean validation").isEmpty();
-        }
-
-        @Test
-        @DisplayName("orderGenerator() returns a non-null DTO; userUuid no longer on DTO")
-        void orderGeneratorIsNonNull_pinsHistoricalFix() {
-            // This originally pinned a fresh per-call userUuid on the DTO. The DTO no longer
-            // exposes userUuid (identity is JWT-derived) so the assertion is reduced to non-null.
-            final OrderPlacingRequestDto a = DataGenerator.orderGenerator();
-            assertThat(a).isNotNull();
-        }
-
-        @Test
-        @DisplayName("orderGenerator() returns independent DTO instances on consecutive calls")
-        void orderGeneratorProducesIndependentInstances() {
-            // When
-            final OrderPlacingRequestDto a = DataGenerator.orderGenerator();
-            final OrderPlacingRequestDto b = DataGenerator.orderGenerator();
-
-            // Then
-            assertThat(a).isNotSameAs(b);
         }
     }
 
