@@ -1,5 +1,6 @@
 package com.novatech.cybertech.dto.response.order;
 
+import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import lombok.AllArgsConstructor;
@@ -36,6 +37,13 @@ public class PriceCalculationResultDto {
     private CurrencyCode currencyCode;
 
     private String discountKey;
+
+    /**
+     * Terms of the campaign the price was computed with ({@code calculationType = NONE} for
+     * {@code NO_DISCOUNT}). Snapshotted on the order at creation so later re-pricings keep them.
+     * Present even when {@code minOrderAmount} was not reached (then {@link #discountAmount} is 0).
+     */
+    private DiscountContext appliedDiscount;
 
     public Money asFinalMoney() {
         return new Money(finalAmount, currencyCode);

@@ -233,6 +233,16 @@ CREATE TABLE orderTable
     shippingType     VARCHAR(255)   NOT NULL, -- EnumType.STRING
     shippingProvider VARCHAR(255)   NOT NULL, -- EnumType.STRING
     discountType     VARCHAR(255)   NOT NULL, -- EnumType.STRING
+    -- Détail du prix (nullable : commandes antérieures)
+    subtotalAmount          DECIMAL(19, 2),
+    discountAmount          DECIMAL(19, 2),
+    shippingCost            DECIMAL(19, 2),
+    -- Instantané des conditions de la remise au moment de la commande (DiscountTermsSnapshot)
+    discountCalculationType VARCHAR(255),   -- EnumType.STRING
+    discountPercentage      DECIMAL(5, 2),
+    discountFixedAmount     DECIMAL(19, 2),
+    discountMinOrderAmount  DECIMAL(19, 2),
+    discountMaxAmount       DECIMAL(19, 2),
     updatedAt        DATETIME,
 
     -- Relations ManyToOne et OneToOne

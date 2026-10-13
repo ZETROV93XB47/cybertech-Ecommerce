@@ -39,6 +39,10 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT
 public class OrderPriceCalculationServiceImp implements OrderPriceCalculationService {
 
     private static final String NO_SHIPPING_STRATEGY_MESSAGE_PREFIX = "No ShippingProviderService wired for provider ";
+    private static final DiscountContext NO_DISCOUNT_CONTEXT = DiscountContext.builder()
+            .discountKey(NO_DISCOUNT_KEY)
+            .calculationType(DiscountCalculationType.NONE)
+            .build();
 
     private final DiscountStrategyFactory discountStrategyFactory;
     private final DiscountCampaignService discountCampaignService;
@@ -69,6 +73,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                     .finalAmount(finalAmount)
                     .currencyCode(request.getCurrencyCode())
                     .discountKey(discountKey)
+                    .appliedDiscount(NO_DISCOUNT_CONTEXT)
                     .build();
         }
 
@@ -95,6 +100,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .finalAmount(finalAmount)
                 .currencyCode(request.getCurrencyCode())
                 .discountKey(discountKey)
+                .appliedDiscount(context)
                 .build();
     }
 

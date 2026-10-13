@@ -984,7 +984,7 @@
               "mode": "raw",
               "raw": "{\n  \"paymentType\": \"VISA\",\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"shippingStreet\": \"21 Rue du Test\",\n  \"shippingCity\": \"Paris\",\n  \"shippingZipCode\": \"75001\",\n  \"shippingCountry\": \"France\",\n  \"discountKey\": \"NO_DISCOUNT\"\n}"
             },
-            "description": "Place an order from the user's existing cart. Identity comes from the JWT subject (no `userUuid` accepted).\n\n- Roles: USER or ADMIN\n- Success: 201 with `OrderResponseDto`.\n- Errors: 409 empty cart (`CART_IS_EMPTY`), 402 payment failure, 409 stock conflict."
+            "description": "Place an order from the user's existing cart. Identity comes from the JWT subject (no `userUuid` accepted).\n\n- Roles: USER or ADMIN\n- Success: 201 with `OrderResponseDto`, including the price breakdown: `totalAmount = max(0, subtotalAmount - discountAmount) + shippingCost`, all in `currency`. Orders placed before the breakdown existed return `subtotalAmount`, `discountAmount`, `shippingCost` and `discountCalculationType` as null.\n- Errors: 409 empty cart (`CART_IS_EMPTY`), 402 payment failure, 409 stock conflict."
           },
           "event": [
             {
@@ -1008,7 +1008,7 @@
               "status": "Created",
               "code": 201,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"uuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\",\n  \"userUuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"orderDate\": \"2026-10-02\",\n  \"status\": \"PAID\",\n  \"totalAmount\": 2514.99,\n  \"refundedAmount\": 0,\n  \"shippingAddress\": \"21 Rue du Test, 75001 Paris, France\",\n  \"orderItems\": [\n    {\n      \"orderItemUuid\": \"01a0fd1e-fc5c-772c-b23c-51af471b3da9\",\n      \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n      \"productName\": \"Dell XPS 15\",\n      \"quantity\": 1,\n      \"unitPrice\": 2499.99,\n      \"lineItemTotalPrice\": 2499.99\n    }\n  ]\n}"
+              "body": "{\n  \"uuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\",\n  \"userUuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"orderDate\": \"2026-10-02\",\n  \"createdAt\": \"2026-10-02T14:30:05\",\n  \"status\": \"PAID\",\n  \"totalAmount\": 2514.99,\n  \"refundedAmount\": 0,\n  \"currency\": \"EUR\",\n  \"subtotalAmount\": 2499.99,\n  \"discountKey\": \"NO_DISCOUNT\",\n  \"discountCalculationType\": \"NONE\",\n  \"discountAmount\": 0.00,\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"shippingCost\": 15.00,\n  \"shippingAddress\": \"21 Rue du Test, 75001 Paris, France\",\n  \"orderItems\": [\n    {\n      \"orderItemUuid\": \"01a0fd1e-fc5c-772c-b23c-51af471b3da9\",\n      \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n      \"productName\": \"Dell XPS 15\",\n      \"quantity\": 1,\n      \"unitPrice\": 2499.99,\n      \"lineItemTotalPrice\": 2499.99\n    }\n  ]\n}"
             }
           ]
         },
@@ -1120,7 +1120,7 @@
               "path": ["api", "v1", "services", "admin", "management", "order", "place", "auto"]
             },
             "body": { "mode": "raw", "raw": "{}" },
-            "description": "debug/load helper. Builds a synthetic order via `DataGenerator.orderGenerator()`. Lives on `OrderManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `OrderResponseDto`."
+            "description": "debug/load helper. Builds a synthetic order via `DataGenerator.orderGenerator()`. Lives on `OrderManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `OrderResponseDto`, including the price breakdown: `totalAmount = max(0, subtotalAmount - discountAmount) + shippingCost`, all in `currency`. Orders placed before the breakdown existed return `subtotalAmount`, `discountAmount`, `shippingCost` and `discountCalculationType` as null."
           },
           "event": [
             {

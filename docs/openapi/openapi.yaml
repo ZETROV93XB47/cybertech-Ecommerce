@@ -3984,6 +3984,10 @@ components:
         orderDate:
           type: string
           format: date
+        createdAt:
+          type: string
+          format: date-time
+          description: When the order was placed (date and time of orderDate).
         status:
           type: string
           enum:
@@ -3999,8 +4003,57 @@ components:
           - REFUNDED
         totalAmount:
           type: number
+          description: "Amount charged: max(0, subtotalAmount - discountAmount) +\
+            \ shippingCost."
         refundedAmount:
           type: number
+        currency:
+          type: string
+          description: ISO 4217 code of every amount of this order.
+          example: EUR
+        subtotalAmount:
+          type:
+          - number
+          - "null"
+          description: Sum of the order lines before discount and shipping. Null on
+            orders placed before this field existed.
+        discountKey:
+          type: string
+          description: "Campaign the order was placed with, NO_DISCOUNT if none."
+          example: BLACK_FRIDAY
+        discountCalculationType:
+          type:
+          - string
+          - "null"
+          description: Calculation type of the campaign at purchase time (NONE for
+            NO_DISCOUNT). Null on orders placed before this field existed.
+          enum:
+          - NONE
+          - PERCENTAGE
+          - FIXED_AMOUNT
+          - BUY_ONE_GET_ONE_FREE
+        discountAmount:
+          type:
+          - number
+          - "null"
+          description: Discount granted on subtotalAmount; 0 when the campaign minimum
+            was not reached. Null on orders placed before this field existed.
+        shippingType:
+          type: string
+          enum:
+          - STANDARD
+          - EXPRESS
+        shippingProvider:
+          type: string
+          enum:
+          - DHL
+          - FEDEX
+        shippingCost:
+          type:
+          - number
+          - "null"
+          description: Shipping fee for shippingProvider / shippingType. Null on orders
+            placed before this field existed.
         shippingAddress:
           type: string
         orderItems:

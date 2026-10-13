@@ -4,11 +4,13 @@ import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.Address;
+import com.novatech.cybertech.entities.valueObjects.DiscountTermsSnapshot;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -89,6 +91,30 @@ public class OrderEntity extends BaseEntity<Long> {
      */
     @Column(name = "discountType", nullable = false)
     private String discountKey;
+
+    // --- Price breakdown, in the currency of totalAmount. Invariant once set:
+    // totalAmount = max(0, subtotalAmount - discountAmount) + shippingCost.
+    // Null on orders placed before the breakdown was persisted.
+
+    /** Sum of the order lines ({@code unitPrice * quantity}) before discount and shipping. */
+    @Column(name = "subtotalAmount", precision = 19, scale = 2)
+    private BigDecimal subtotalAmount;
+
+    /** Discount granted on {@link #subtotalAmount}; {@code 0} when none applies (or below the campaign minimum). */
+    @Column(name = "discountAmount", precision = 19, scale = 2)
+    private BigDecimal discountAmount;
+
+    /** Shipping fee for {@link #shippingProvider} / {@link #shippingType}. */
+    @Column(name = "shippingCost", precision = 19, scale = 2)
+    private BigDecimal shippingCost;
+
+    /**
+     * Terms of the campaign {@link #discountKey} as they were when the order was placed. Kept
+     * for the order's whole life so a modification re-prices with the same terms. Null on orders
+     * placed before the snapshot existed.
+     */
+    @Embedded
+    private DiscountTermsSnapshot discountTerms;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "userId")

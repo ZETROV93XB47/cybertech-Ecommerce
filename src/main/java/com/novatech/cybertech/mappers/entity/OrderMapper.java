@@ -53,6 +53,9 @@ public interface OrderMapper {
     @Mapping(target = "userUuid", expression = "java(orderEntity.getUserEntity() != null ? orderEntity.getUserEntity().getUuid() : null)")
     @Mapping(target = "orderItems", source = "orderItemEntities")
     @Mapping(target = "totalAmount", source = "totalAmount.amount")
+    @Mapping(target = "currency", source = "totalAmount.currencyCode.code")
+    @Mapping(target = "createdAt", source = "orderDate")
+    @Mapping(target = "discountCalculationType", source = "discountTerms.calculationType")
     @Mapping(target = "refundedAmount", expression = "java(computeRefundedAmount(orderEntity))")
     @Mapping(target = "shippingAddress", expression = "java(mapAddressToString(orderEntity.getShippingAddress()))")
     OrderResponseDto mapFromEntityToResponseDto(final OrderEntity orderEntity);

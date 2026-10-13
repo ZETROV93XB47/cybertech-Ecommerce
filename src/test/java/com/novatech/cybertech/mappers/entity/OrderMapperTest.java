@@ -38,7 +38,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Tech-debt observations carried from SA1.5 (still observable today):
  * <ul>
- *   <li>{@code totalAmount.currencyCode} is dropped (mapped to {@code BigDecimal} only).</li>
  *   <li>{@code mapFromEntityToResponseDto} dereferences {@code userEntity.uuid} without a null
  *       guard — pinned by {@code whenUserEntityNull_thenMappingThrows}.</li>
  *   <li>{@code mapFromOrderPlacingRequestDtoToOrderEntity} silently drops {@code userUuid} and
@@ -123,7 +122,7 @@ class OrderMapperTest {
         }
 
         @Test
-        void shouldMapTotalAmount_dropsCurrency_documentingTechDebt() {
+        void shouldMapTotalAmountAndItsCurrency() {
             OrderEntity entity = OrderEntityBuilder.aValidOrderBuilder()
                     .userEntity(UserEntityBuilder.aValidUser())
                     .totalAmount(new Money(new BigDecimal("250.00"), CurrencyCode.USD))
@@ -132,7 +131,31 @@ class OrderMapperTest {
             OrderResponseDto dto = mapper.mapFromEntityToResponseDto(entity);
 
             assertThat(dto.getTotalAmount()).isEqualByComparingTo(new BigDecimal("250.00"));
-            // Currency is intentionally dropped — only Money.amount is wired to the BigDecimal target.
+            assertThat(dto.getCurrency()).isEqualTo("USD");
+        }
+
+        @Test
+        @DisplayName("order placed before the price breakdown existed: breakdown fields null, the rest still mapped")
+        void legacyOrderWithoutBreakdown_mapsBreakdownAsNull() {
+            OrderEntity entity = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(UserEntityBuilder.aValidUser())
+                    .subtotalAmount(null)
+                    .discountAmount(null)
+                    .shippingCost(null)
+                    .discountTerms(null)
+                    .build();
+
+            OrderResponseDto dto = mapper.mapFromEntityToResponseDto(entity);
+
+            assertThat(dto.getSubtotalAmount()).isNull();
+            assertThat(dto.getDiscountAmount()).isNull();
+            assertThat(dto.getShippingCost()).isNull();
+            assertThat(dto.getDiscountCalculationType()).isNull();
+            assertThat(dto.getTotalAmount()).isEqualByComparingTo(entity.getTotalAmount().getAmount());
+            assertThat(dto.getDiscountKey()).isEqualTo(entity.getDiscountKey());
+            assertThat(dto.getShippingType()).isEqualTo(entity.getShippingType());
+            assertThat(dto.getShippingProvider()).isEqualTo(entity.getShippingProvider());
+            assertThat(dto.getCreatedAt()).isEqualTo(entity.getOrderDate());
         }
 
         @Test

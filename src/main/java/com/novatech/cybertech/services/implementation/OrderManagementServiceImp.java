@@ -7,6 +7,7 @@ import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
+import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderStatusDto;
@@ -25,6 +26,7 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.*;
 import com.novatech.cybertech.utils.ControllerSecurityUtils;
 import com.novatech.cybertech.utils.OrderPaymentUtils;
+import com.novatech.cybertech.utils.OrderPricingUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import com.novatech.cybertech.utils.UserContactUtils;
 import lombok.RequiredArgsConstructor;
@@ -304,8 +306,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .shippingType(dto.getShippingType())
                 .build();
 
-        final BigDecimal amount = orderPriceCalculationService.calculate(priceReq).getFinalAmount();
-        final Money total = Money.of(amount);
+        final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceReq);
+        final Money total = priceResult.asFinalMoney();
 
         // Calcul du montant déjà payé (Paiements - Remboursements)
         final BigDecimal paidAmount = OrderPaymentUtils.netPaidAmount(order);
@@ -322,7 +324,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .zipCode(dto.getShippingZipCode())
                 .country(dto.getShippingCountry())
                 .build());
-        order.setTotalAmount(total);
+        OrderPricingUtils.applyPriceBreakdown(order, priceResult);
 
         // 5) Overwrite des items (selon ton choix)
         //    Ici, je suppose que tu sais reconstruire la liste OrderItemEntity depuis dto + products

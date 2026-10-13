@@ -13,7 +13,7 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
-import com.novatech.cybertech.entities.valueObjects.Money;
+import com.novatech.cybertech.entities.valueObjects.DiscountTermsSnapshot;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
@@ -21,6 +21,7 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.OrderCreationTransactionalDelegate;
 import com.novatech.cybertech.services.core.OrderPriceCalculationService;
 import com.novatech.cybertech.services.core.StockService;
+import com.novatech.cybertech.utils.OrderPricingUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -86,10 +87,9 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
                 .build();
 
         final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceRequest);
-        final Money totalMoney = priceResult.asFinalMoney();
-        final BigDecimal totalAmount = totalMoney.getAmount();
-        log.info("Order {}: {} line(s) from cart {}, total {} EUR (discountKey={}, shipping={} {})", orderUuid, cartItems.size(),
-                cart.getUuid(), totalAmount, req.getDiscountKey(), req.getShippingProvider(), req.getShippingType());
+        log.info("Order {}: {} line(s) from cart {}, subtotal {} - discount {} + shipping {} = total {} EUR (discountKey={}, shipping={} {})",
+                orderUuid, cartItems.size(), cart.getUuid(), priceResult.getBaseAmount(), priceResult.getDiscountAmount(),
+                priceResult.getShippingCost(), priceResult.getFinalAmount(), req.getDiscountKey(), req.getShippingProvider(), req.getShippingType());
 
         final List<OrderItemEntity> orderItems = cartItems.stream()
                 .map(item -> OrderItemEntity.builder()
@@ -104,8 +104,8 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
                 .uuid(orderUuid)
                 .userEntity(user)
                 .orderItemEntities(orderItems)
-                .totalAmount(Money.of(totalAmount))
                 .discountKey(req.getDiscountKey())
+                .discountTerms(DiscountTermsSnapshot.from(priceResult.getAppliedDiscount()))
                 .status(OrderStatus.CREATED)
                 .orderDate(LocalDateTime.now())
                 .shippingProvider(req.getShippingProvider())
@@ -117,6 +117,8 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
                         .country(req.getShippingCountry())
                         .build())
                 .build();
+
+        OrderPricingUtils.applyPriceBreakdown(order, priceResult);
 
         // Lier les items à la commande pour que la clé étrangère orderId soit peuplée lors du save
         orderItems.forEach(item -> item.setOrderEntity(order));

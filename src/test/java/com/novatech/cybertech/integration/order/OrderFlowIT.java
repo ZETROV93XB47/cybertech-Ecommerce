@@ -13,6 +13,8 @@ import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.entities.enums.DiscountCalculationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
@@ -265,6 +267,21 @@ class OrderFlowIT {
                 .andReturn();
 
         assertThat(result.getResponse().getStatus()).isEqualTo(201);
+
+        // Price breakdown: 1 x 99.99, NO_DISCOUNT, DHL STANDARD (15) -> 114.99
+        final OrderResponseDto placed = objectMapper.readValue(result.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(placed.getSubtotalAmount()).isEqualByComparingTo("99.99");
+        assertThat(placed.getDiscountAmount()).isEqualByComparingTo("0.00");
+        assertThat(placed.getShippingCost()).isEqualByComparingTo("15.00");
+        assertThat(placed.getTotalAmount()).isEqualByComparingTo("114.99");
+        assertThat(placed.getCurrency()).isEqualTo("EUR");
+        assertThat(placed.getDiscountCalculationType()).isEqualTo(DiscountCalculationType.NONE);
+
+        // ... and it survives the round-trip through the new MySQL columns.
+        final OrderEntity reloaded = orderRepository.findByUuid(placed.getUuid()).orElseThrow();
+        assertThat(reloaded.getSubtotalAmount()).isEqualByComparingTo("99.99");
+        assertThat(reloaded.getShippingCost()).isEqualByComparingTo("15.00");
+        assertThat(reloaded.getDiscountTerms().getCalculationType()).isEqualTo(DiscountCalculationType.NONE);
 
         // 3) Assert OrderCreatedEvent was published (use ApplicationEvents)
         final long eventCount = applicationEvents.stream(OrderCreatedEvent.class).count();

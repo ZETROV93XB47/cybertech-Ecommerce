@@ -9,7 +9,10 @@ import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.entities.enums.DiscountCalculationType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
@@ -27,6 +30,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -396,6 +401,42 @@ class OrderManagementControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(APPLICATION_JSON))
                 .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldExposeOrderPriceBreakdownInJson() throws Exception {
+        // Contract read by the front (validated with Zod): field names and types of the breakdown.
+        UUID orderUuid = UUID.randomUUID();
+        LocalDateTime placedAt = LocalDateTime.of(2026, 10, 13, 14, 30, 5);
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder()
+                .uuid(orderUuid)
+                .createdAt(placedAt)
+                .currency("EUR")
+                .subtotalAmount(new BigDecimal("200.00"))
+                .discountKey("BLACK_FRIDAY")
+                .discountCalculationType(DiscountCalculationType.PERCENTAGE)
+                .discountAmount(new BigDecimal("30.00"))
+                .shippingType(ShippingType.EXPRESS)
+                .shippingProvider(ShippingProvider.DHL)
+                .shippingCost(new BigDecimal("25.00"))
+                .totalAmount(new BigDecimal("195.00"))
+                .build();
+        when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID))).thenReturn(response);
+
+        mockMvc.perform(get(GET_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdAt").value("2026-10-13T14:30:05"))
+                .andExpect(jsonPath("$.currency").value("EUR"))
+                .andExpect(jsonPath("$.subtotalAmount").value(200.00))
+                .andExpect(jsonPath("$.discountKey").value("BLACK_FRIDAY"))
+                .andExpect(jsonPath("$.discountCalculationType").value("PERCENTAGE"))
+                .andExpect(jsonPath("$.discountAmount").value(30.00))
+                .andExpect(jsonPath("$.shippingType").value("EXPRESS"))
+                .andExpect(jsonPath("$.shippingProvider").value("DHL"))
+                .andExpect(jsonPath("$.shippingCost").value(25.00))
+                .andExpect(jsonPath("$.totalAmount").value(195.00));
     }
 
     @Test
