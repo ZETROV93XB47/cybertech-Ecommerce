@@ -2,6 +2,8 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.annotation.NotificationTypeHandler;
 import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.entities.enums.EmailTemplateType;
+import com.novatech.cybertech.entities.enums.NotificationSubject;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.services.core.AbstractNotification;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +24,11 @@ public class ShippingConfirmationNotification extends AbstractNotification {
     @Override
     protected void prepareContext(final NotificationContext<?> context) {
         final ShippingConfirmationPayload payload = (ShippingConfirmationPayload) context.getPayload();
-        // subject and templatePath are already set by NotificationListener at context construction time.
+        // Set here, like OrderConfirmationNotification does: the handler owns its email format. It
+        // used to rely on NotificationListener filling them in — ShipAllPaidOrdersTasklet never did,
+        // so every shipping confirmation sent by the batch had no template and was never delivered.
+        context.setSubject(NotificationSubject.SHIPPING_CONFIRMATION.getSubject());
+        context.setTemplatePath(EmailTemplateType.SHIPPING_CONFIRMATION.getTemplatePath());
         context.setTemplateVariables(Map.of(
                 USER_NAME_KEY, payload.getUserName(),
                 ORDER_ID_KEY, payload.getOrderUuid(),

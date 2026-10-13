@@ -55,6 +55,8 @@ class ShipOrderTransactionalDelegateTest {
     private ShipOrderTransactionalDelegate delegate;
 
     private static final UUID ORDER_UUID = UUID.randomUUID();
+    /** End of the modification window handed over by the tasklet. */
+    private static final LocalDateTime WINDOW_END = LocalDateTime.of(2026, 10, 6, 12, 0);
 
     private OrderEntity paidOrder() {
         return OrderEntityBuilder.aValidOrderBuilder()
@@ -79,7 +81,7 @@ class ShipOrderTransactionalDelegateTest {
         final OrderEntity stored = paidOrder();
         when(orderRepository.findByUuid(ORDER_UUID)).thenReturn(Optional.of(stored));
 
-        final boolean dispatched = delegate.claimAndShip(order, context(order));
+        final boolean dispatched = delegate.claimAndShip(order, context(order), WINDOW_END);
 
         assertThat(dispatched).isTrue();
         assertThat(stored.getStatus()).isEqualTo(OrderStatus.SHIPPED);
@@ -97,7 +99,7 @@ class ShipOrderTransactionalDelegateTest {
         final OrderEntity order = paidOrder();
         when(orderRepository.findByUuid(ORDER_UUID)).thenReturn(Optional.of(paidOrder()));
 
-        delegate.claimAndShip(order, context(order));
+        delegate.claimAndShip(order, context(order), WINDOW_END);
 
         // The caller's instance is managed by the batch step's session: any change here would be
         // flushed again at the step's commit with a stale @Version.
@@ -114,7 +116,7 @@ class ShipOrderTransactionalDelegateTest {
         stored.setShippedAt(firstShipment);
         when(orderRepository.findByUuid(ORDER_UUID)).thenReturn(Optional.of(stored));
 
-        final boolean dispatched = delegate.claimAndShip(order, context(order));
+        final boolean dispatched = delegate.claimAndShip(order, context(order), WINDOW_END);
 
         assertThat(dispatched).isFalse();
         assertThat(stored.getShippedAt()).isEqualTo(firstShipment);
@@ -126,13 +128,13 @@ class ShipOrderTransactionalDelegateTest {
 
     @Test
     void claimAndShipSkipsDispatchWhenAnotherPathAlreadyClaimedTheOrder() {
-        // ShippingListener committed its claim between the tasklet's findByStatus(PAID) and this call.
+        // An overlapping run committed its claim between the tasklet's query and this call.
         final OrderEntity order = paidOrder();
         final OrderEntity stored = paidOrder();
         stored.setStatus(OrderStatus.SHIPPED);
         when(orderRepository.findByUuid(ORDER_UUID)).thenReturn(Optional.of(stored));
 
-        final boolean dispatched = delegate.claimAndShip(order, context(order));
+        final boolean dispatched = delegate.claimAndShip(order, context(order), WINDOW_END);
 
         assertThat(dispatched).isFalse();
         verifyNoInteractions(shippingDispatcher);
@@ -140,11 +142,37 @@ class ShipOrderTransactionalDelegateTest {
     }
 
     @Test
+    void claimAndShipSkipsAnOrderModifiedAfterTheTaskletQuery() {
+        // updateOrder re-stamped paidAt after the tasklet's query: the window restarted.
+        final OrderEntity order = paidOrder();
+        final OrderEntity stored = paidOrder();
+        stored.setPaidAt(WINDOW_END.plusMinutes(1));
+        when(orderRepository.findByUuid(ORDER_UUID)).thenReturn(Optional.of(stored));
+
+        final boolean dispatched = delegate.claimAndShip(order, context(order), WINDOW_END);
+
+        assertThat(dispatched).isFalse();
+        verifyNoInteractions(shippingDispatcher);
+        verify(orderRepository, never()).saveAndFlush(any(OrderEntity.class));
+    }
+
+    @Test
+    void claimAndShipShipsAnOrderPaidExactlyAtTheEndOfItsWindow() {
+        final OrderEntity order = paidOrder();
+        final OrderEntity stored = paidOrder();
+        stored.setPaidAt(WINDOW_END);
+        when(orderRepository.findByUuid(ORDER_UUID)).thenReturn(Optional.of(stored));
+
+        assertThat(delegate.claimAndShip(order, context(order), WINDOW_END)).isTrue();
+        verify(shippingDispatcher).dispatch(any(ShippingContext.class));
+    }
+
+    @Test
     void claimAndShipThrowsWhenTheOrderNoLongerExists() {
         final OrderEntity order = paidOrder();
         when(orderRepository.findByUuid(ORDER_UUID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> delegate.claimAndShip(order, context(order)))
+        assertThatThrownBy(() -> delegate.claimAndShip(order, context(order), WINDOW_END))
                 .isInstanceOf(OrderNotFoundException.class);
         verifyNoInteractions(shippingDispatcher);
     }

@@ -367,6 +367,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
             if (order.getStatus() != OrderStatus.PAID) {
                 order.setStatus(OrderStatus.PAID);
             }
+            restartModificationWindow(order);
             final OrderEntity saved = orderRepository.save(order);
             return orderMapper.mapFromEntityToResponseDto(saved);
         }
@@ -378,6 +379,9 @@ public class OrderManagementServiceImp implements OrderManagementService {
         final PaymentAttemptStatus paymentStatus = difference.signum() > 0
                 ? chargeDifference(order, difference, dto.getPaymentType(), updateIdempotencyKey)
                 : refundDifference(order, difference.abs());
+        // Cas 2 (refund) leaves the order PAID: restart its window here. Cas 1 (top-up) moved it
+        // back to AWAITING_PAYMENT — the payment webhook re-stamps paidAt when it flips back to PAID.
+        restartModificationWindow(order);
 
         // Explicit save instead of relying on JPA dirty-check
         orderRepository.save(order);
@@ -729,6 +733,17 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * ("already shipped") is only accurate from {@code SHIPPED} onwards, so this gate
      * intentionally still allows updates while the order sits in {@link OrderStatus#AWAITING_SHIPPING}.
      */
+    /**
+     * A successful update of a paid order restarts its modification window: the customer just
+     * changed it, so it gets the full {@code cybertech.shipping.grace-period} again before
+     * {@code ShipAllPaidOrdersTasklet} ships it. No-op for an order that is not (yet) PAID.
+     */
+    private static void restartModificationWindow(final OrderEntity order) {
+        if (order.getStatus() == OrderStatus.PAID) {
+            order.setPaidAt(LocalDateTime.now());
+        }
+    }
+
     private static boolean isOrderAlreadyShipped(OrderEntity orderEntity) {
         return orderEntity.getStatus().getCode() >= SHIPPED.getCode();
     }

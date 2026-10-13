@@ -27,6 +27,13 @@ public interface OrderRepository extends CrudBaseRepository<OrderEntity, Long> {
     List<OrderEntity> findByStatus(OrderStatus status);
 
     /**
+     * PAID orders whose modification window is over: paid at or before {@code paidBefore}. Rows
+     * with a null {@code paidAt} (paid before the column existed) count as already past the window.
+     */
+    @Query("SELECT o FROM OrderEntity o WHERE o.status = :status AND (o.paidAt IS NULL OR o.paidAt <= :paidBefore)")
+    List<OrderEntity> findByStatusPaidBefore(@Param("status") OrderStatus status, @Param("paidBefore") LocalDateTime paidBefore);
+
+    /**
      * {@code SELECT ... FOR UPDATE} on the order row — mirrors {@link ProductRepository#lockByUuid}.
      * Used by {@code updateOrder} so two concurrent updates of the same order (double submit) are
      * serialised: the second one waits, then re-reads the payments the first one recorded, instead

@@ -109,7 +109,36 @@ class ShipPaidOrdersStepIT {
         assertThat(reloaded.getShippedAt()).isEqualTo(firstShipment);
     }
 
+    @Test
+    @DisplayName("PAID order still inside its modification window → left PAID, not shipped")
+    void orderInsideItsModificationWindowIsNotShipped() throws Exception {
+        final UUID orderUuid = seedOrder(OrderStatus.PAID, null, LocalDateTime.now().minusMinutes(5));
+
+        final JobExecution execution = runShipStep();
+
+        assertStepCompleted(execution);
+        final OrderEntity reloaded = orderRepository.findByUuid(orderUuid).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(reloaded.getShippedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("PAID order past its modification window → SHIPPED")
+    void orderPastItsModificationWindowIsShipped() throws Exception {
+        final UUID orderUuid = seedOrder(OrderStatus.PAID, null, LocalDateTime.now().minusMinutes(31));
+
+        final JobExecution execution = runShipStep();
+
+        assertStepCompleted(execution);
+        assertThat(orderRepository.findByUuid(orderUuid).orElseThrow().getStatus()).isEqualTo(OrderStatus.SHIPPED);
+    }
+
     private UUID seedOrder(final OrderStatus status, final LocalDateTime shippedAt) {
+        // paidAt left null: a row paid before the column existed counts as past its window.
+        return seedOrder(status, shippedAt, null);
+    }
+
+    private UUID seedOrder(final OrderStatus status, final LocalDateTime shippedAt, final LocalDateTime paidAt) {
         final UserEntity user = userRepository.save(UserEntityBuilder.aValidUserBuilder()
                 .email("ship-it+" + UUID.randomUUID() + "@example.com")
                 .keycloakId("kc-" + UUID.randomUUID())
@@ -118,6 +147,7 @@ class ShipPaidOrdersStepIT {
                 .userEntity(user)
                 .status(status)
                 .shippedAt(shippedAt)
+                .paidAt(paidAt)
                 .build();
         return orderRepository.save(order).getUuid();
     }

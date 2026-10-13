@@ -4,7 +4,6 @@ import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.ProcessedWebhookEventEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
-import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
 import com.novatech.cybertech.events.PaymentSucceededEvent;
@@ -60,9 +59,7 @@ import static org.mockito.Mockito.when;
  *   <li>{@code handleEvent} livemode mismatch (both directions: livemode=true on a test
  *       deployment AND livemode=false on a prod deployment)</li>
  *   <li>{@code handleEvent} switch — succeeded / failed / refunded / unknown</li>
- *   <li>{@code handlePaymentSucceeded} happy path → publishes {@link PaymentSucceededEvent} only;
- *       {@link OrderPaidEvent} is no longer published from the webhook (it leaves from the PAID
- *       flip, see {@code OrderPaymentConfirmationTransactionalDelegateImp})</li>
+ *   <li>{@code handlePaymentSucceeded} happy path → publishes {@link PaymentSucceededEvent} only</li>
  *   <li>{@code handlePaymentFailed} happy path → publishes {@link PaymentFailedEvent}, terminal
  *       SUCCESS guard drops the failure, missing payment row throws
  *       {@link PaymentNotFoundException}</li>
@@ -360,7 +357,7 @@ class PaymentWebhookServiceImpTest {
     class HandlePaymentSucceeded {
 
         @Test
-        @DisplayName("happy path: flips payment to SUCCESS, publishes PaymentSucceededEvent only — OrderPaidEvent leaves from the PAID flip")
+        @DisplayName("happy path: flips payment to SUCCESS, publishes PaymentSucceededEvent only")
         void happyPathFlipsPaymentAndPublishesPaymentSucceededEventOnly() {
             final String stripePaymentId = "pi_success_happy";
             final OrderEntity order = OrderEntityBuilder.aValidOrder();
@@ -380,9 +377,7 @@ class PaymentWebhookServiceImpTest {
             assertThat(row.getProviderEventId()).isEqualTo(event.getId());
 
             verify(eventPublisher).publishEvent(any(PaymentSucceededEvent.class));
-            // Published here, OrderPaidEvent raced the PAID flip (see
-            // OrderPaymentConfirmationTransactionalDelegateImp) and shipping usually gave up.
-            verify(eventPublisher, never()).publishEvent(any(OrderPaidEvent.class));
+            verifyNoMoreInteractions(eventPublisher);
         }
 
         @Test
@@ -427,8 +422,6 @@ class PaymentWebhookServiceImpTest {
             assertThat(row.getStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
             assertThat(row.getProviderEventId()).isEqualTo(event.getId());
             verify(eventPublisher).publishEvent(any(PaymentFailedEvent.class));
-            // No OrderPaidEvent is published on failure
-            verify(eventPublisher, never()).publishEvent(any(OrderPaidEvent.class));
         }
 
         @Test
@@ -496,9 +489,8 @@ class PaymentWebhookServiceImpTest {
             verify(eventPublisher).publishEvent(any(PaymentRefundedEvent.class));
             verify(attemptRepository, never()).findByStripePaymentID(anyString());
             verify(attemptRepository, never()).save(any(PaymentEntity.class));
-            // The refund path does NOT publish OrderPaidEvent or PaymentSucceededEvent
+            // The refund path does NOT publish PaymentSucceededEvent
             verify(eventPublisher, never()).publishEvent(any(PaymentSucceededEvent.class));
-            verify(eventPublisher, never()).publishEvent(any(OrderPaidEvent.class));
         }
     }
 

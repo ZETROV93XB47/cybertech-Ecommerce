@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  * Routes a {@link ShippingContext} to the configured {@link ShippingProviderService}
  * (DHL, FedEx, ...) selected by the {@link ShippingContext#getShippingProvider()} discriminator.
  *
- * <p>Used by {@link com.novatech.cybertech.listener.ShippingListener} after an order is paid:
+ * <p>Used by {@code ShipOrderTransactionalDelegate} once a paid order's modification window is over:
  * the dispatcher hides the per-provider HTTP/SDK plumbing behind a single call surface.
  */
 @Slf4j

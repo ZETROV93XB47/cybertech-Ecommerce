@@ -52,16 +52,26 @@ public class OrderEntity extends BaseEntity<Long> {
     private OrderStatus status;
 
     /**
-     * Set once, the first time this order is actually handed to a shipping provider — by either
-     * {@code ShippingListener} or {@code ShipOrderTransactionalDelegate}. Unlike {@code status},
+     * Set once, the first time this order is actually handed to a shipping provider by
+     * {@code ShipOrderTransactionalDelegate}. Unlike {@code status},
      * which {@code updateOrder}'s charge-difference path can legitimately regress from
      * {@code AWAITING_SHIPPING} back down to {@code AWAITING_PAYMENT} (to let the payment webhook
      * re-promote it to {@code PAID} and commit the resized stock reservation), this field is never
      * cleared — it is the idempotency marker that stops that regression from triggering a second,
-     * real dispatch call to the carrier once the webhook republishes {@code OrderPaidEvent}.
+     * real dispatch call to the carrier once the webhook re-promotes the order to {@code PAID}.
      */
     @Column(name = "shippedAt")
     private LocalDateTime shippedAt;
+
+    /**
+     * When the order last became fully paid — stamped on the transition to {@code PAID} (payment
+     * webhook) and re-stamped by every successful {@code updateOrder}. Starts the modification
+     * window: {@code ShipAllPaidOrdersTasklet} only ships orders paid for longer than
+     * {@code cybertech.shipping.grace-period}, so a customer can still change a paid order.
+     * Null on rows paid before this column existed — those are shipped without waiting.
+     */
+    @Column(name = "paidAt")
+    private LocalDateTime paidAt;
 
     @Column(name = "shippingType", nullable = false)
     @Enumerated(EnumType.STRING)

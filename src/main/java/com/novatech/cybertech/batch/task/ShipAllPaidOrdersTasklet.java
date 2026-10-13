@@ -17,9 +17,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -31,6 +34,13 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
     private final NotificationRetryableDelivery notificationRetryableDelivery;
     private final ShipOrderTransactionalDelegate shipOrderDelegate;
 
+    /**
+     * How long a PAID order stays modifiable before it is shipped. This tasklet is the only
+     * shipping path: shipping on the payment event left no window to {@code updateOrder} at all.
+     */
+    @Value("${cybertech.shipping.grace-period:30m}")
+    private Duration gracePeriod;
+
     @Override
     public RepeatStatus execute(StepContribution stepContribution, StepArguments stepArguments) {
         log.info("Starting ShipAllAwaitingShippingOrdersTasklet");
@@ -41,10 +51,11 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         // outer session. The per-order claim commits in the delegate's own REQUIRES_NEW
         // transaction on a re-loaded copy — these instances must stay unmodified, or the step's
         // commit would flush them at a stale @Version.
-        final List<OrderEntity> awaitingOrders = orderRepository.findByStatus(OrderStatus.PAID);
+        final LocalDateTime paidBefore = LocalDateTime.now().minus(gracePeriod);
+        final List<OrderEntity> awaitingOrders = orderRepository.findByStatusPaidBefore(OrderStatus.PAID, paidBefore);
 
         if (awaitingOrders.isEmpty()) {
-            log.info("No orders found in PAID status.");
+            log.info("No PAID orders past their {} modification window.", gracePeriod);
             stepContribution.setExitStatus(ExitStatus.COMPLETED);
             return RepeatStatus.FINISHED;
         }
@@ -53,14 +64,15 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
 
         awaitingOrders.forEach(order -> {
             try {
-                processShipping(order);
+                processShipping(order, paidBefore);
             }
             catch (OptimisticLockingFailureException e) {
                 // Catches both OptimisticLockingFailureException and its subclass
                 // ObjectOptimisticLockingFailureException raised by Hibernate/Spring ORM.
-                // Lost the race against ShippingListener (which also ships PAID orders on
-                // OrderPaidEvent). Optimistic locking via @Version on BaseEntity guarantees
-                // exactly one of the two paths wins the claim — the loser silently skips.
+                // The order changed under us: a concurrent updateOrder (the customer edited it
+                // right as its modification window closed) or an overlapping run of this step.
+                // Optimistic locking via @Version on BaseEntity guarantees the claim never
+                // overrides that change — the order is skipped and re-examined on the next run.
                 // The claim+save now lives inside ShipOrderTransactionalDelegate
                 // (REQUIRES_NEW), so the optimistic-lock flush happens at delegate-method exit
                 // and this catch can actually observe the race-loss per order.
@@ -77,7 +89,7 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         return RepeatStatus.FINISHED;
     }
 
-    private void processShipping(OrderEntity order) {
+    private void processShipping(final OrderEntity order, final LocalDateTime paidBefore) {
         final UserEntity user = order.getUserEntity();
         if (user == null) {
             // Structurally possible — userEntity is the only nullable column on orderTable — but
@@ -98,16 +110,16 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
 
         // Atomically claim the order, dispatch, and persist the terminal SHIPPED status — all in
         // one REQUIRES_NEW transaction inside the delegate. The PAID -> AWAITING_SHIPPING claim
-        // flips first so JPA's @Version optimistic locking detects the race against ShippingListener
-        // (which also ships PAID orders on OrderPaidEvent); the loser throws
-        // OptimisticLockingFailureException, caught per-order in execute(...). The SHIPPED transition
+        // flips first so JPA's @Version optimistic locking detects a concurrent change (updateOrder
+        // or an overlapping run of this step); the loser throws OptimisticLockingFailureException,
+        // caught per-order in execute(...). The SHIPPED transition
         // now lives inside the delegate too — doing it here on the detached `order` after the
         // delegate already bumped @Version failed the save with a stale-version optimistic lock.
         //
         // A false return means the order was already shipped once (shippedAt already set) and was
         // re-promoted to PAID by an updateOrder top-up in between — no dispatch happened, so no
         // shipping-confirmation notification must be sent either.
-        if (!shipOrderDelegate.claimAndShip(order, shippingContext)) {
+        if (!shipOrderDelegate.claimAndShip(order, shippingContext, paidBefore)) {
             return;
         }
 
@@ -121,6 +133,7 @@ public class ShipAllPaidOrdersTasklet extends BaseTasklet {
         final NotificationContext notificationContext = NotificationContext.builder()
                 .user(userContactDto)
                 .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChanel(userContactDto.getDefaultCommunicationChanel())
                 .payload(payload)
                 .build();
 

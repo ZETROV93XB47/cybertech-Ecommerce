@@ -3,7 +3,6 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.events.OrderPaidEvent;
 import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
 import com.novatech.cybertech.events.PaymentFailedEvent;
 import com.novatech.cybertech.events.PaymentRefundedEvent;
@@ -22,6 +21,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.Optional;
 import java.util.Set;
@@ -89,6 +89,8 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
         }
 
         order.setStatus(OrderStatus.PAID);
+        // Opens the modification window: ShipAllPaidOrdersTasklet ships it once the grace period is over.
+        order.setPaidAt(LocalDateTime.now());
         orderRepository.save(order);
 
         // Stock/Redis-touching call LAST — see the interface javadoc for why.
@@ -106,12 +108,6 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
                     .userContactDto(UserContactUtils.toUserContact(order.getUserEntity()))
                     .build()));
         }
-
-        // Shipping trigger, published from the transaction that commits PAID so ShippingListener
-        // (AFTER_COMMIT) is guaranteed to read PAID. It used to come straight from the webhook,
-        // alongside PaymentSucceededEvent: the two async listeners then raced, the shipping one
-        // usually saw the order still awaiting payment and gave up, leaving it to the batch.
-        eventPublisher.publishEvent(new OrderPaidEvent(this, order.getUuid()));
     }
 
     /**

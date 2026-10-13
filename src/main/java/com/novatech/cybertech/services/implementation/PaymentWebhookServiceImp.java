@@ -43,7 +43,7 @@ import java.time.LocalDateTime;
  *
  * <p><b>Domain events</b>: {@code payment_intent.succeeded} publishes
  * {@link PaymentSucceededEvent} (consumed by the order-confirmation listener, which flips the order
- * to PAID and only then publishes {@code OrderPaidEvent} for the shipping listener).
+ * to PAID; {@code ShipAllPaidOrdersTasklet} ships it once its modification window is over).
  * {@code payment_intent.payment_failed} publishes {@link PaymentFailedEvent}.
  * {@code charge.refunded} publishes {@link PaymentRefundedEvent}.
  *
@@ -162,12 +162,6 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
      * Handle {@code payment_intent.succeeded}. Flips the payment row to {@link PaymentAttemptStatus#SUCCESS}
      * (no-op if already SUCCESS) and publishes {@link PaymentSucceededEvent} for the order-confirmation
      * listener.
-     *
-     * <p>{@code OrderPaidEvent} is deliberately NOT published here: both events used to leave this
-     * transaction together and their async AFTER_COMMIT listeners ran in parallel, so the shipping
-     * listener usually read the order before the PAID flip had committed and silently gave up.
-     * It is now published by {@code OrderPaymentConfirmationTransactionalDelegateImp}, in the very
-     * transaction that commits PAID.
      *
      * @param event the parsed Stripe {@link Event}
      * @param dto   the rich application-level DTO parsed from the raw payload

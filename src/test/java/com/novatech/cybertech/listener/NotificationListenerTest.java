@@ -13,7 +13,6 @@ import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
-import com.novatech.cybertech.events.OrderShippedEvent;
 import com.novatech.cybertech.services.core.NotificationRetryableDelivery;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,32 +63,6 @@ class NotificationListenerTest {
                         .defaultCommunicationChanel(CommunicationChanel.EMAIL).build())
                 .paymentAttemptStatus(PaymentAttemptStatus.SUCCESS)
                 .build();
-    }
-
-    @Test
-    void onMethodIsAnnotatedTransactionalEventListenerAfterCommit() throws NoSuchMethodException {
-        Method m = NotificationListener.class.getMethod("on", OrderShippedEvent.class);
-        TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
-        assertThat(ann).as("@TransactionalEventListener present").isNotNull();
-        assertThat(ann.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
-    }
-
-    @Test
-    void onShouldDelegateExactlyOnceToRetryableDeliveryWithSippingContext() {
-        OrderEventDto dto = sampleEventDto();
-        OrderShippedEvent event = new OrderShippedEvent(dto);
-
-        listener.on(event);
-
-        ArgumentCaptor<NotificationContext> ctxCap = ArgumentCaptor.forClass(NotificationContext.class);
-        verify(retryableDelivery, times(1)).deliver(ctxCap.capture());
-        verifyNoMoreInteractions(retryableDelivery);
-
-        NotificationContext ctx = ctxCap.getValue();
-        assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.SHIPPING_CONFIRMATION);
-        assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
-        assertThat(ctx.getCommunicationChanel()).isEqualTo(CommunicationChanel.EMAIL);
-        assertThat(ctx.getPayload()).isNotNull();
     }
 
     @Test
