@@ -95,6 +95,7 @@ public class SecurityConfig {
             "/test/upload-image/**",
             "/api/v1/services/product/**",
             "/api/v1/services/discounts/**",
+            "/api/v1/services/shipping/**",
             "/api/v1/services/product-category-schemas/**",
             "/api/v1/webhooks/**",
             // Kubelet probes + Spring Boot health groups (liveness/readiness).

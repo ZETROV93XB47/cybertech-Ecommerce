@@ -1295,6 +1295,85 @@
       ]
     },
     {
+      "name": "Shipping",
+      "description": "Public shipping options and fees.",
+      "item": [
+        {
+          "name": "List shipping options (public)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/shipping/options?provider=DHL",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "shipping",
+                "options"
+              ],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "DHL",
+                  "description": "Optional: DHL or FEDEX. All carriers when omitted.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Every available (provider, type) pair with its fee, sorted by provider then cost. `cost` is exactly the `shippingCost` an order placed with that pair is charged. Served with `Cache-Control: max-age=600, public`.\n\n- Public.\n- Success: 200 OK with `ShippingOptionResponseDto[]` (`provider`, `type`, `cost`, `currency`).\n- Errors: 400 `METHOD_ARGUMENT_TYPE_MISMATCH` for an unknown `provider`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/services/shipping/options"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "max-age=600, public"
+                }
+              ],
+              "body": "[\n  {\n    \"provider\": \"DHL\",\n    \"type\": \"STANDARD\",\n    \"cost\": 15.00,\n    \"currency\": \"EUR\"\n  },\n  {\n    \"provider\": \"DHL\",\n    \"type\": \"EXPRESS\",\n    \"cost\": 25.00,\n    \"currency\": \"EUR\"\n  },\n  {\n    \"provider\": \"FEDEX\",\n    \"type\": \"STANDARD\",\n    \"cost\": 15.00,\n    \"currency\": \"EUR\"\n  },\n  {\n    \"provider\": \"FEDEX\",\n    \"type\": \"EXPRESS\",\n    \"cost\": 25.00,\n    \"currency\": \"EUR\"\n  }\n]"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Review",
       "description": "Product reviews tied to past purchases.",
       "item": [

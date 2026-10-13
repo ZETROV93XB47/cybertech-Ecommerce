@@ -3,6 +3,10 @@ package com.novatech.cybertech.services.core;
 import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
+
+import java.math.BigDecimal;
 
 public interface OrderPriceCalculationService {
 
@@ -27,4 +31,13 @@ public interface OrderPriceCalculationService {
      *                      terms if it is still active, else to no discount (logged in warn).
      */
     PriceCalculationResultDto calculate(PriceCalculationRequestDto request, DiscountContext discountTerms);
+
+    /**
+     * Shipping fee of a (provider, type) pair, rounded to 2 decimals — exactly the
+     * {@code shippingCost} both {@code calculate} methods fold into an order's total.
+     *
+     * @throws com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest when no
+     *         shipping service is wired for {@code shippingProvider}.
+     */
+    BigDecimal calculateShippingCost(ShippingProvider shippingProvider, ShippingType shippingType);
 }

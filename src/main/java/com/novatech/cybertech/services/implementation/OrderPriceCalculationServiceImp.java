@@ -5,6 +5,8 @@ import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
@@ -92,7 +94,7 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .setScale(2, RoundingMode.HALF_UP);
 
         // Include shipping cost computed via ShippingProviderStrategyFactory in final order price (previously omitted)
-        final BigDecimal shippingCost = computeShippingCost(request);
+        final BigDecimal shippingCost = calculateShippingCost(request.getShippingProvider(), request.getShippingType());
 
         final BigDecimal discountAmount = computeDiscount(baseAmount, request.getItems(), context);
 
@@ -117,13 +119,14 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .build();
     }
 
-    private BigDecimal computeShippingCost(final PriceCalculationRequestDto request) {
-        final ShippingProviderService shippingStrategy = shippingProviderStrategyFactory.getStrategy(request.getShippingProvider());
+    @Override
+    public BigDecimal calculateShippingCost(final ShippingProvider shippingProvider, final ShippingType shippingType) {
+        final ShippingProviderService shippingStrategy = shippingProviderStrategyFactory.getStrategy(shippingProvider);
         if (shippingStrategy == null) {
-            throw new NoStrategyFoundForProcessingTheRequest(NO_SHIPPING_STRATEGY_MESSAGE_PREFIX + request.getShippingProvider());
+            throw new NoStrategyFoundForProcessingTheRequest(NO_SHIPPING_STRATEGY_MESSAGE_PREFIX + shippingProvider);
         }
 
-        return shippingStrategy.calculateShippingCost(request.getShippingType()).setScale(2, RoundingMode.HALF_UP);
+        return shippingStrategy.calculateShippingCost(shippingType).setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal computeDiscount(final BigDecimal baseAmount,

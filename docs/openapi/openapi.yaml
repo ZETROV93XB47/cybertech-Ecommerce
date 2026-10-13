@@ -70,6 +70,8 @@ tags:
   description: Admin-only endpoints for product CRUD and image upload
 - name: Recommendations
   description: Endpoints to read the connected user's personalized product recommendations
+- name: Shipping
+  description: Public shipping options and fees
 - name: Discount
   description: Public discount/campaign read endpoints
 paths:
@@ -2077,6 +2079,52 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
       security:
       - keycloak: []
+  /api/v1/services/shipping/options:
+    get:
+      tags:
+      - Shipping
+      summary: List shipping options and their fees (public)
+      description: |
+        Returns one entry per available (provider, type) pair, sorted by provider then
+        by cost. `cost` is exactly the `shippingCost` an order placed with that pair is
+        charged (same computation, rounded to 2 decimals), so a client can show shipping
+        fees before checkout without copying the tariffs.
+
+        Public endpoint — no JWT required. Cacheable for a short time (`Cache-Control: public`).
+      operationId: getShippingOptions
+      parameters:
+      - name: provider
+        in: query
+        description: Restrict the list to one carrier; all carriers when omitted.
+        required: false
+        schema:
+          type: string
+          enum:
+          - DHL
+          - FEDEX
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      responses:
+        "200":
+          description: Shipping options (empty when the requested provider is not
+            available).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShippingOptionResponseDto"
+        "400":
+          description: Unknown `provider` value (METHOD_ARGUMENT_TYPE_MISMATCH)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
   /api/v1/services/review/reviewable:
     get:
       tags:
@@ -4601,6 +4649,28 @@ components:
         priority:
           type: integer
           format: int32
+    ShippingOptionResponseDto:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum:
+          - DHL
+          - FEDEX
+        type:
+          type: string
+          enum:
+          - STANDARD
+          - EXPRESS
+        cost:
+          type: number
+          description: "Shipping fee, exactly the shippingCost an order placed with\
+            \ this provider and type is charged."
+          example: 15.0
+        currency:
+          type: string
+          description: ISO 4217 code of cost.
+          example: EUR
     ReviewableProductDto:
       type: object
       properties:
