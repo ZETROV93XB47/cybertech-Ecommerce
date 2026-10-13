@@ -3,6 +3,7 @@ package com.novatech.cybertech.services.core;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 //TODO: à refactorer plus tard
@@ -48,4 +50,14 @@ public interface ProductManagementService extends CrudBaseService<UUID, ProductC
      * @return one page of {@link ProductResponseDto} ordered by sales rank.
      */
     Page<ProductResponseDto> getBestSellers(final Pageable pageable);
+
+    /**
+     * Live availability ({@code stock - reservedStock}) of a batch of products, read straight from
+     * the database — never cached: stock moves on every reservation, commit, release and expiry.
+     *
+     * @param productUuids 1 to {@code MAX_AVAILABILITY_BATCH_SIZE} product uuids.
+     * @return one entry per EXISTING product; unknown uuids are simply absent from the result.
+     * @throws IllegalArgumentException when the batch is empty or larger than the limit.
+     */
+    List<ProductAvailabilityDto> getAvailability(final Set<UUID> productUuids);
 }

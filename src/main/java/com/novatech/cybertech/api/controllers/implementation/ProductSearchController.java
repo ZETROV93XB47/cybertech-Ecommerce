@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.spec.ProductSearchApiSpec;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.services.core.ProductManagementService;
 import jakarta.validation.Valid;
@@ -9,10 +10,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.novatech.cybertech.constants.CyberTechAppConstants.*;
@@ -47,5 +51,17 @@ public class ProductSearchController implements ProductSearchApiSpec {
             @PageableDefault(size = DEFAULT_PAGE_SIZE_BEST_SELLERS) final Pageable pageable
     ) {
         return ResponseEntity.ok(productService.getBestSellers(pageable));
+    }
+
+    /**
+     * Live stock of a batch of products. {@code no-store}: availability must never be served from a
+     * browser/CDN/BFF cache, unlike the product payload itself.
+     */
+    @Override
+    @GetMapping(value = "/availability", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<ProductAvailabilityDto>> getAvailability(@RequestParam("uuids") final Set<UUID> productUuids) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(productService.getAvailability(productUuids));
     }
 }

@@ -9,16 +9,22 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     APPLICATION_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL),
+    /** No / invalid / expired bearer token (CustomAuthenticationEntryPoint). */
+    AUTHENTICATION_REQUIRED(HttpStatus.UNAUTHORIZED, ErrorCodeType.TECHNICAL),
+    /** RateLimitFilter quota exhausted — the Retry-After header carries the wait in seconds. */
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, ErrorCodeType.TECHNICAL),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.TECHNICAL),
     ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     // Business state conflict, not authorization denial — use 409 instead of 403
     CANNOT_CANCEL_ORDER(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
-    CANNOT_REMOVE_ITEM_FROM_EMPTY_CART(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    /** Removing a line that is not in the cart: a state conflict, not an authorization failure (was 403). */
+    CANNOT_REMOVE_ITEM_FROM_EMPTY_CART(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     ORDER_DOESNT_BELONGS_TO_USER(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     // Retry/business failure, not authorization denial — use 422 instead of 403
     FAILED_UPDATING_ORDER(HttpStatus.UNPROCESSABLE_ENTITY, ErrorCodeType.FUNCTIONAL),
-    CART_IS_EMPTY(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    /** Ordering or decreasing from an empty cart: a state conflict, not an authorization failure (was 403). */
+    CART_IS_EMPTY(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     CART_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     CART_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL),

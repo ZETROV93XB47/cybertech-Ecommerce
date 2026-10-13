@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation.catalog;
 
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.document.ProductDocument;
@@ -427,6 +428,44 @@ class ProductManagementServiceImpTest {
             org.springframework.data.domain.Page<ProductResponseDto> result = service.getBestSellers(pageable);
 
             assertThat(result.getContent()).containsExactly(resp);
+        }
+    }
+
+    @Nested
+    @DisplayName("getAvailability")
+    class GetAvailability {
+
+        @Test
+        @DisplayName("available = stock - reservedStock, clamped at 0; unknown uuids are absent")
+        void getAvailability_mapsStockMinusReserved() {
+            final ProductEntity inStock = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(UUID.randomUUID()).stock(10).reservedStock(3).build();
+            final ProductEntity soldOut = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(UUID.randomUUID()).stock(2).reservedStock(2).build();
+            final ProductEntity overReserved = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(UUID.randomUUID()).stock(1).reservedStock(4).build();
+            final java.util.Set<UUID> requested = java.util.Set.of(inStock.getUuid(), soldOut.getUuid(), overReserved.getUuid(), UUID.randomUUID());
+            when(productRepository.findAllByUuidIn(requested)).thenReturn(List.of(inStock, soldOut, overReserved));
+
+            final List<ProductAvailabilityDto> result = service.getAvailability(requested);
+
+            assertThat(result).containsExactlyInAnyOrder(
+                    new ProductAvailabilityDto(inStock.getUuid(), 7, true),
+                    new ProductAvailabilityDto(soldOut.getUuid(), 0, false),
+                    new ProductAvailabilityDto(overReserved.getUuid(), 0, false));
+        }
+
+        @Test
+        @DisplayName("empty or oversized batch -> IllegalArgumentException, repository untouched")
+        void getAvailability_rejectsInvalidBatchSize() {
+            final java.util.Set<UUID> tooMany = java.util.stream.Stream.generate(UUID::randomUUID).limit(51)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            assertThatThrownBy(() -> service.getAvailability(java.util.Set.of()))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> service.getAvailability(tooMany))
+                    .isInstanceOf(IllegalArgumentException.class);
+            verifyNoInteractions(productRepository);
         }
     }
 }

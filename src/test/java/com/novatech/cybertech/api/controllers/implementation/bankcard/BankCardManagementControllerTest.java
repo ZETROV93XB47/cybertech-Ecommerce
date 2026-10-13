@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation.bankcard;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.BankCardManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
@@ -116,6 +117,7 @@ class BankCardManagementControllerTest {
                 .message("Card already expired")
                 .httpStatusCode(400)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_EXPIRED)
                 .build();
 
         when(bankCardService.addBankCard(eq(KEYCLOAK_ID), any(BankCardCreationRequestDto.class)))
@@ -168,6 +170,7 @@ class BankCardManagementControllerTest {
                 .message("No bank card found for this user.")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_NOT_FOUND)
                 .build();
 
         doThrow(new BankCardNotFoundException("No bank card found for this user."))
@@ -239,6 +242,7 @@ class BankCardManagementControllerTest {
                 .message("Bank card not found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_NOT_FOUND)
                 .build();
 
         when(bankCardService.updateBankCard(eq(KEYCLOAK_ID), any(BankCardUpdateRequestDto.class)))

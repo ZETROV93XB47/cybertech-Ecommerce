@@ -80,7 +80,11 @@ class RateLimitFilterTest {
         assertThat(res.getHeader("Retry-After")).isNotNull();
         assertThat(Long.parseLong(res.getHeader("Retry-After"))).isGreaterThanOrEqualTo(1L);
         assertThat(res.getContentType()).isEqualTo("application/json");
-        assertThat(res.getContentAsString()).contains("too_many_requests").contains("retryAfterSeconds");
+        // Same ErrorResponseDto shape as every other error — one format for clients to parse.
+        assertThat(res.getContentAsString())
+                .contains("\"errorCode\":\"TOO_MANY_REQUESTS\"")
+                .contains("\"httpStatusCode\":429")
+                .contains("\"errorCodeType\":\"TECHNICAL\"");
     }
 
     @Test

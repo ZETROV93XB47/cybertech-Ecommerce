@@ -59,6 +59,20 @@ public interface UserControllerApiSpec {
                                                   @Parameter(hidden = true) final Jwt jwt,
                                                   @Parameter(hidden = true) final Authentication authentication);
 
+    @Operation(summary = "Profile of the authenticated user",
+            description = """
+                    Returns the caller's own profile, resolved from the JWT subject. The front only holds
+                    the Keycloak identity after login, never the local user UUID, so this is how it
+                    reads the current user (no IDOR: there is no identifier to tamper with).
+                    """,
+            security = @SecurityRequirement(name = "keycloak"),
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Caller's profile", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = UserResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "User not found (JWT subject points to a stale Keycloak entry)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<UserResponseDto> getMe(@Parameter(hidden = true) final Jwt jwt);
+
     @Operation(summary = "Self-service profile update for the authenticated user",
             description = """
                     Frontend-gap #3 — patches the authenticated user's own profile (first/last name,

@@ -3,6 +3,7 @@ package com.novatech.cybertech.api.controllers.implementation.userevent;
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.UserEventController;
 import com.novatech.cybertech.api.error.ErrorManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.event.UserEventDto;
 import com.novatech.cybertech.dto.response.userevent.UserEventResponseDto;
@@ -189,6 +190,7 @@ class UserEventControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(post(COLLECT_EVENT_ENDPOINT)

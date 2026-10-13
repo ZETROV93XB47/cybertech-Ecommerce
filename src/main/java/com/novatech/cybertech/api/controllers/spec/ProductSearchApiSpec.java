@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,6 +16,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -49,5 +52,20 @@ public interface ProductSearchApiSpec {
                     @ApiResponse(responseCode = "200", description = "List of products matching the search criteria", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = ProductResponseDto.class)))),
                     @ApiResponse(responseCode = "400", description = "Invalid search criteria", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))})
     Page<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto);
+
+    @Operation(summary = "Live availability of a batch of products",
+            description = """
+                    Returns, for each existing product, the units still sellable right now (stock minus units
+                    reserved by unpaid orders). Read live from the database and served with Cache-Control:
+                    no-store — stock moves on every order. Unknown uuids are absent from the result.
+                    """,
+            parameters = {
+                    @Parameter(name = "uuids", description = "1 to 50 product uuids, comma-separated or repeated", required = true,
+                            array = @ArraySchema(schema = @Schema(implementation = UUID.class)))
+            },
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Availability of the existing products", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = ProductAvailabilityDto.class)))),
+                    @ApiResponse(responseCode = "400", description = "Missing, malformed or more than 50 uuids", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))})
+    ResponseEntity<List<ProductAvailabilityDto>> getAvailability(final Set<UUID> productUuids);
 
 }

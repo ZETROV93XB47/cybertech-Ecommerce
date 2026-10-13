@@ -119,7 +119,7 @@ public class CartServiceImp implements CartService {
      * @param cartCreateRequestDto items to add; each quantity must be {@code >= 1}.
      * @param keycloakId           Keycloak subject of the caller.
      * @return the updated cart DTO.
-     * @throws IllegalStateException     when the per-user lock cannot be acquired within the budget.
+     * @throws CartLockedException       when the per-user lock cannot be acquired within the budget (→ 409, retryable).
      * @throws UserNotFoundException     when no user matches {@code keycloakId}.
      * @throws ProductNotFoundException  when a requested product UUID has no product.
      * @throws NotEnoughStockException   when the resulting total exceeds available stock.
@@ -132,7 +132,7 @@ public class CartServiceImp implements CartService {
         if (!acquired) {
             // Couldn't get the lock in time — surface a retryable error rather than racing.
             log.warn("Could not acquire cart lock for user {} within {}ms — aborting addItemsToCart", LogSafetyUtils.maskUuid(keycloakId), CART_ADD_LOCK_WAIT_MS);
-            throw new IllegalStateException("Cart is temporarily locked by a concurrent operation, please retry.");
+            throw new CartLockedException("Cart is temporarily locked by a concurrent operation, please retry.");
         }
 
         try {

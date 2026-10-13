@@ -22,6 +22,16 @@ public interface UserManagementService extends CrudBaseService<UUID, UserCreateR
     Page<UserResponseDto> getAll(final Pageable pageable);
 
     /**
+     * Profile of the authenticated caller, resolved from the JWT subject — the front only knows the
+     * Keycloak identity after login, never the local user UUID, so it cannot use {@code getByUUID}.
+     *
+     * @param keycloakId the JWT subject of the authenticated caller.
+     * @return the caller mapped to {@link UserResponseDto}.
+     * @throws com.novatech.cybertech.exceptions.UserNotFoundException when no local user matches the subject.
+     */
+    UserResponseDto getMe(final String keycloakId);
+
+    /**
      * Frontend-gap #3 — self-service profile update for the authenticated user.
      *
      * <p>The caller's identity is resolved upstream from the JWT subject and passed in via

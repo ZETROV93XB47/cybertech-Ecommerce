@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation.review;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.ReviewCrudController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
@@ -74,6 +75,7 @@ class ReviewCrudControllerAdditionalTest {
                 .message("No review with the UUID : " + reviewUuid + " found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.REVIEW_NOT_FOUND)
                 .build();
 
         when(reviewService.getByUUID(reviewUuid))
@@ -195,6 +197,7 @@ class ReviewCrudControllerAdditionalTest {
                 .message("Malformed JSON request body")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.MALFORMED_JSON)
                 .build();
 
         mockMvc.perform(post(CREATE_REVIEW_ENDPOINT)
@@ -292,6 +295,7 @@ class ReviewCrudControllerAdditionalTest {
                 .message("User cannot comment on this product (no completed order)")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.COMMENT_POST_NOT_ALLOWED)
                 .build();
 
         when(reviewService.create(any(ReviewCreateRequestDto.class), anyString()))
@@ -320,6 +324,7 @@ class ReviewCrudControllerAdditionalTest {
                 .message("Current review Doesn't belongs to the connected user")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_AUTHOR_OF_REVIEW)
                 .build();
 
         when(reviewService.update(any(ReviewUpdateRequestDto.class), anyString()))
@@ -360,6 +365,7 @@ class ReviewCrudControllerAdditionalTest {
                 .message("No review with the UUID : " + reviewUuid + " found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.REVIEW_NOT_FOUND)
                 .build();
 
         doThrow(new ReviewNotFoundException("No review with the UUID : " + reviewUuid + " found"))

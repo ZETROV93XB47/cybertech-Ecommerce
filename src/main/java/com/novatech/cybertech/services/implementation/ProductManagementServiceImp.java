@@ -3,6 +3,7 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.document.ProductDocument;
@@ -23,13 +24,18 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.MAX_AVAILABILITY_BATCH_SIZE;
 
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductManagementServiceImp implements ProductManagementService {
+
+    static final String AVAILABILITY_BATCH_SIZE_MESSAGE = "Between 1 and " + MAX_AVAILABILITY_BATCH_SIZE + " product uuids are required";
 
     public static final String PRODUCTS_S3_BUCKET_NAME = "cybertech-products";
 
@@ -149,5 +155,25 @@ public class ProductManagementServiceImp implements ProductManagementService {
     @Transactional(readOnly = true)
     public Page<ProductResponseDto> getBestSellers(final Pageable pageable) {
         return productRepository.findBestSellers(pageable).map(productMapper::mapFromEntityToResponseDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductAvailabilityDto> getAvailability(final Set<UUID> productUuids) {
+        if (productUuids == null || productUuids.isEmpty() || productUuids.size() > MAX_AVAILABILITY_BATCH_SIZE) {
+            throw new IllegalArgumentException(AVAILABILITY_BATCH_SIZE_MESSAGE);
+        }
+        // Same "available" definition as the reservation path (StockServiceImp): units pinned to live
+        // reservations are not sellable. Clamped at 0 so a transient over-reservation never shows as negative.
+        return productRepository.findAllByUuidIn(productUuids).stream()
+                .map(product -> {
+                    final int available = Math.max(0, product.getStock() - product.getReservedStock());
+                    return ProductAvailabilityDto.builder()
+                            .productUuid(product.getUuid())
+                            .availableStock(available)
+                            .inStock(available > 0)
+                            .build();
+                })
+                .toList();
     }
 }

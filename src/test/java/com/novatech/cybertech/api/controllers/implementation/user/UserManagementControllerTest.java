@@ -3,6 +3,7 @@ package com.novatech.cybertech.api.controllers.implementation.user;
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.UserManagementController;
 import com.novatech.cybertech.api.error.ErrorManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserSelfUpdateRequestDto;
@@ -64,7 +65,7 @@ class UserManagementControllerTest {
     private static final String GET_USER_BY_UUID_ENDPOINT = "/api/v1/services/user/get/{userUuid}";
     private static final String REGISTER_ENDPOINT = "/api/v1/services/user/register";
     private static final String HEALTH_CHECK_ENDPOINT = "/api/v1/services/user/ok";
-    private static final String UPDATE_ME_ENDPOINT = "/api/v1/services/user/me";
+    private static final String ME_ENDPOINT = "/api/v1/services/user/me";
 
     private static final String KEYCLOAK_ID = "keycloak-test-subject";
 
@@ -139,6 +140,7 @@ class UserManagementControllerTest {
                 .message("No user with the UUID: " + userUuid + " found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
                 .build();
 
         when(userManagementServiceImp.getByUUID(userUuid, KEYCLOAK_ID))
@@ -238,6 +240,7 @@ class UserManagementControllerTest {
                 .message("User already exists")
                 .httpStatusCode(409)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_ALREADY_EXISTS)
                 .build();
 
         when(userManagementServiceImp.create(any(UserCreateRequestDto.class), isNull()))
@@ -273,6 +276,42 @@ class UserManagementControllerTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    // ---------- GET /me ----------
+
+    @Test
+    void getMeShouldReturnCallerProfile() throws Exception {
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder()
+                .keycloakId(KEYCLOAK_ID)
+                .build();
+        when(userManagementServiceImp.getMe(KEYCLOAK_ID)).thenReturn(response);
+
+        mockMvc.perform(get(ME_ENDPOINT)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT))
+                .andExpect(jsonPath("$.keycloakId").doesNotExist());
+
+        verify(userManagementServiceImp).getMe(KEYCLOAK_ID);
+    }
+
+    @Test
+    void getMeShouldRequireAuth() throws Exception {
+        mockMvc.perform(get(ME_ENDPOINT).accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getMeShouldReturn404WhenSubjectHasNoLocalUser() throws Exception {
+        when(userManagementServiceImp.getMe(KEYCLOAK_ID)).thenThrow(new UserNotFoundException("No user"));
+
+        mockMvc.perform(get(ME_ENDPOINT)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+    }
+
     // ---------- PATCH /me (Frontend-gap #3) ----------
 
     @Test
@@ -295,7 +334,7 @@ class UserManagementControllerTest {
         when(userManagementServiceImp.updateMe(eq(KEYCLOAK_ID), any(UserSelfUpdateRequestDto.class)))
                 .thenReturn(response);
 
-        mockMvc.perform(patch(UPDATE_ME_ENDPOINT)
+        mockMvc.perform(patch(ME_ENDPOINT)
                         .with(jwtUser(KEYCLOAK_ID))
                         .with(csrf())
                         .accept(APPLICATION_JSON)
@@ -320,7 +359,7 @@ class UserManagementControllerTest {
         // Anonymous = 401 via CustomAuthenticationEntryPoint (path is not in PUBLIC_URLS).
         final UserSelfUpdateRequestDto dto = UserSelfUpdateRequestDto.builder().firstName("Alice").build();
 
-        mockMvc.perform(patch(UPDATE_ME_ENDPOINT)
+        mockMvc.perform(patch(ME_ENDPOINT)
                         .with(csrf())
                         .accept(APPLICATION_JSON)
                         .contentType(APPLICATION_JSON)
@@ -336,7 +375,7 @@ class UserManagementControllerTest {
                 .lastName("Z")
                 .build();
 
-        mockMvc.perform(patch(UPDATE_ME_ENDPOINT)
+        mockMvc.perform(patch(ME_ENDPOINT)
                         .with(jwtUser(KEYCLOAK_ID))
                         .with(csrf())
                         .accept(APPLICATION_JSON)
@@ -368,7 +407,7 @@ class UserManagementControllerTest {
                 + "\"username\":\"root\""
                 + "}";
 
-        mockMvc.perform(patch(UPDATE_ME_ENDPOINT)
+        mockMvc.perform(patch(ME_ENDPOINT)
                         .with(jwtUser(KEYCLOAK_ID))
                         .with(csrf())
                         .accept(APPLICATION_JSON)

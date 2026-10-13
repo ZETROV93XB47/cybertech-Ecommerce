@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation.order;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.OrderManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
@@ -128,6 +129,7 @@ class OrderManagementControllerTest {
                 .message("Not enough stock for product X")
                 .httpStatusCode(409)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.NOT_ENOUGH_STOCK)
                 .build();
 
         when(orderService.placeOrder(any(OrderPlacingRequestDto.class), any(Jwt.class)))
@@ -193,6 +195,7 @@ class OrderManagementControllerTest {
                 .message("Order not found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ORDER_NOT_FOUND)
                 .build();
 
         when(orderService.cancelOrder(eq(orderUuid), any(Jwt.class)))
@@ -297,6 +300,7 @@ class OrderManagementControllerTest {
                 .message("Order not found for update")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ORDER_NOT_FOUND)
                 .build();
 
         when(orderService.updateOrder(any(OrderUpdateRequestDto.class), any(Jwt.class)))
@@ -342,6 +346,7 @@ class OrderManagementControllerTest {
                 .message("Order not found for retry")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ORDER_NOT_FOUND)
                 .build();
 
         when(orderService.retryPayment(eq(orderUuid), any(Jwt.class)))
@@ -363,6 +368,7 @@ class OrderManagementControllerTest {
                 .message("Invalid value for parameter 'uuid'")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
                 .build();
 
         mockMvc.perform(post(BASE + "/retry-payment/not-a-uuid")
@@ -399,6 +405,7 @@ class OrderManagementControllerTest {
                 .message("No product with the UUID : " + orderUuid + " found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ORDER_NOT_FOUND)
                 .build();
 
         when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID)))

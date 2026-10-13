@@ -3,6 +3,7 @@ package com.novatech.cybertech.api.controllers.implementation.user;
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.UserManagementAdminController;
 import com.novatech.cybertech.api.error.ErrorManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.UserRoleUpdateRequestDto;
@@ -110,6 +111,7 @@ class UserManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(get(GET_ALL_USERS_ENDPOINT)
@@ -172,6 +174,7 @@ class UserManagementAdminControllerTest {
                 .message("User already exists")
                 .httpStatusCode(409)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_ALREADY_EXISTS)
                 .build();
 
         when(userManagementServiceImp.create(any(UserCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
@@ -195,6 +198,7 @@ class UserManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(post(CREATE_USER_ENDPOINT)
@@ -253,6 +257,7 @@ class UserManagementAdminControllerTest {
                 .message(message)
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
                 .build();
 
         when(userManagementServiceImp.update(any(UserUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
@@ -276,6 +281,7 @@ class UserManagementAdminControllerTest {
                 .message("User is not active")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_ACTIVE)
                 .build();
 
         when(userManagementServiceImp.update(any(UserUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
@@ -297,6 +303,7 @@ class UserManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
@@ -357,6 +364,7 @@ class UserManagementAdminControllerTest {
                 .message(message)
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
                 .build();
 
         when(userManagementServiceImp.updateRole(uuid, Role.ADMIN, ADMIN_KEYCLOAK_ID))
@@ -393,6 +401,7 @@ class UserManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
@@ -429,6 +438,7 @@ class UserManagementAdminControllerTest {
                 .message(message)
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
                 .build();
 
         doThrow(new UserNotFoundException(message)).when(userManagementServiceImp).deleteByUUID(uuid, ADMIN_KEYCLOAK_ID);
@@ -447,6 +457,7 @@ class UserManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(delete(DELETE_USER_BY_UUID_ENDPOINT, UUID.randomUUID())

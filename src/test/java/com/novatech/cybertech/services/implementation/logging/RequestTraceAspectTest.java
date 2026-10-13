@@ -5,7 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.novatech.cybertech.annotation.NotTraced;
-import com.novatech.cybertech.api.error.enumpackage.ErrorCodeType;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
@@ -273,7 +273,7 @@ class RequestTraceAspectTest {
             final JoinPoint joinPoint = mock(JoinPoint.class);
             when(joinPoint.getArgs()).thenReturn(new Object[]{new NotEnoughStockException("Not enough stock")});
             final ResponseEntity<ErrorResponseDto> response = ResponseEntity.status(409)
-                    .body(new ErrorResponseDto("Not enough stock", 409, ErrorCodeType.FUNCTIONAL));
+                    .body(ErrorResponseDto.of("Not enough stock", ErrorCode.NOT_ENOUGH_STOCK));
 
             aspect.logHandledError(joinPoint, response);
 
@@ -289,7 +289,7 @@ class RequestTraceAspectTest {
             final JoinPoint joinPoint = mock(JoinPoint.class);
             when(joinPoint.getArgs()).thenReturn(new Object[]{new IllegalStateException("boom")});
             final ResponseEntity<ErrorResponseDto> response = ResponseEntity.status(500)
-                    .body(new ErrorResponseDto("Internal error", 500, ErrorCodeType.TECHNICAL));
+                    .body(ErrorResponseDto.of("Internal error", ErrorCode.APPLICATION_ERROR));
 
             aspect.logHandledError(joinPoint, response);
 

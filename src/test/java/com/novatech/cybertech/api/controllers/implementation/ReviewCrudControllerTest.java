@@ -1,6 +1,7 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
@@ -179,6 +180,7 @@ class ReviewCrudControllerTest {
                 .message("User that's trying to post this comment doesn't exists or is not active")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
                 .build();
 
         when(reviewService.update(reviewUpdateRequestDto, keycloakId)).thenThrow(new UserNotFoundException("User that's trying to post this comment doesn't exists or is not active"));
@@ -210,6 +212,7 @@ class ReviewCrudControllerTest {
                 .message("Current review Doesn't belongs to the connected user")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_AUTHOR_OF_REVIEW)
                 .build();
 
         when(reviewService.update(reviewUpdateRequestDto, keycloakId)).thenThrow(new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user"));
@@ -252,6 +255,7 @@ class ReviewCrudControllerTest {
                 .message("Current review Doesn't belongs to the connected user")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_AUTHOR_OF_REVIEW)
                 .build();
 
         doThrow(new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user"))
@@ -279,6 +283,7 @@ class ReviewCrudControllerTest {
                 .message("User that's trying to delete this comment doesn't exists or is not active")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
                 .build();
 
         doThrow(new UserNotFoundException("User that's trying to delete this comment doesn't exists or is not active"))
@@ -305,6 +310,7 @@ class ReviewCrudControllerTest {
                 .message("No review with the UUID : " + reviewUUID + " found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.REVIEW_NOT_FOUND)
                 .build();
 
         doThrow(new ReviewNotFoundException("No review with the UUID : " + reviewUUID + " found"))

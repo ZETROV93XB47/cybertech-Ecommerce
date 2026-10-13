@@ -2,8 +2,10 @@ package com.novatech.cybertech.api.controllers.implementation.product;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.ProductSearchController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
@@ -20,6 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
@@ -38,6 +41,7 @@ import static org.springframework.test.json.JsonCompareMode.STRICT;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -49,6 +53,7 @@ class ProductSearchControllerTest {
     private static final String GET_PRODUCT_BY_UUID_ENDPOINT = "/api/v1/services/product/get/{productUuid}";
     private static final String SEARCH_PRODUCTS_ENDPOINT = "/api/v1/services/product/search";
     private static final String GET_BEST_SELLERS_ENDPOINT = "/api/v1/services/product/best-sellers";
+    private static final String GET_AVAILABILITY_ENDPOINT = "/api/v1/services/product/availability";
 
     private static final String ADMIN_KEYCLOAK_ID = "admin-keycloak-id";
 
@@ -105,6 +110,7 @@ class ProductSearchControllerTest {
                 .message("No product with the UUID : " + productUuid + " found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.PRODUCT_NOT_FOUND)
                 .build();
 
         when(productService.getByUUID(productUuid, null))
@@ -125,6 +131,7 @@ class ProductSearchControllerTest {
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
                 .build();
 
         mockMvc.perform(get(GET_PRODUCT_BY_UUID_ENDPOINT, "not-a-uuid")
@@ -319,5 +326,49 @@ class ProductSearchControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].uuid").value(productResponseDto.getUuid()))
                 .andExpect(jsonPath("$.page.totalElements").value(1));
+    }
+
+    // ----------------------------------------------------------------------
+    // GET /availability
+    // ----------------------------------------------------------------------
+
+    @Test
+    void shouldReturnLiveAvailabilityAsAnonymousWithNoStore() throws Exception {
+        final UUID first = UUID.randomUUID();
+        final UUID second = UUID.randomUUID();
+        final List<ProductAvailabilityDto> availability = List.of(
+                new ProductAvailabilityDto(first, 4, true),
+                new ProductAvailabilityDto(second, 0, false));
+        when(productService.getAvailability(Set.of(first, second))).thenReturn(availability);
+
+        mockMvc.perform(get(GET_AVAILABILITY_ENDPOINT)
+                        .param("uuids", first + "," + second)
+                        .with(jwtAnonymous())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(content().json(asJsonString(availability), STRICT));
+    }
+
+    @Test
+    void shouldReturn400WhenAvailabilityBatchIsRejected() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        when(productService.getAvailability(Set.of(uuid))).thenThrow(new IllegalArgumentException("Between 1 and 50 product uuids are required"));
+
+        mockMvc.perform(get(GET_AVAILABILITY_ENDPOINT)
+                        .param("uuids", uuid.toString())
+                        .with(jwtAnonymous())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.httpStatusCode").value(400));
+    }
+
+    @Test
+    void shouldReturn400WhenAvailabilityUuidIsMalformed() throws Exception {
+        mockMvc.perform(get(GET_AVAILABILITY_ENDPOINT)
+                        .param("uuids", "not-a-uuid")
+                        .with(jwtAnonymous())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
     }
 }

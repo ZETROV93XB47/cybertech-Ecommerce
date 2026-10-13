@@ -2,7 +2,9 @@ package com.novatech.cybertech.api.error;
 
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.novatech.cybertech.api.error.enumpackage.ErrorCodeType;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
+import com.novatech.cybertech.api.error.model.FieldErrorDto;
 import com.novatech.cybertech.exceptions.AccessTokenRetrievalException;
 import com.novatech.cybertech.exceptions.AccountNotFoundException;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
@@ -10,6 +12,7 @@ import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.exceptions.CannotCancelOrderException;
 import com.novatech.cybertech.exceptions.CannotRemoveItemFromEmptyCartException;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
+import com.novatech.cybertech.exceptions.CartLockedException;
 import com.novatech.cybertech.exceptions.CartItemNotFoundException;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.CommentPostNotAllowedException;
@@ -106,12 +109,13 @@ class ErrorManagementControllerBranchTest {
     }
 
     @Test
-    @DisplayName("CannotRemoveItemFromEmptyCartException → 403 FUNCTIONAL canned message")
-    void cannotRemoveItemFromEmptyCartReturns403() {
+    @DisplayName("CannotRemoveItemFromEmptyCartException → 409 FUNCTIONAL canned message (state conflict, not an authorization failure)")
+    void cannotRemoveItemFromEmptyCartReturns409() {
         final ResponseEntity<ErrorResponseDto> response =
                 controller.handleCannotRemoveItemFromEmptyCartException(new CannotRemoveItemFromEmptyCartException("ignored"));
 
-        assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "Cannot remove item from empty cart.");
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "Cannot remove item from empty cart.");
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.CANNOT_REMOVE_ITEM_FROM_EMPTY_CART);
     }
 
     @Test
@@ -130,6 +134,17 @@ class ErrorManagementControllerBranchTest {
                 new org.springframework.orm.ObjectOptimisticLockingFailureException("CartItemEntity", 42L));
 
         assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, ErrorManagementController.CONCURRENT_MODIFICATION_MESSAGE);
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.CONCURRENT_MODIFICATION);
+    }
+
+    @Test
+    @DisplayName("CartLockedException → retryable 409 CONCURRENT_MODIFICATION (was a raw 500 IllegalStateException)")
+    void cartLockedReturns409() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleCartLockedException(new CartLockedException("Cart is temporarily locked"));
+
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, ErrorManagementController.CONCURRENT_MODIFICATION_MESSAGE);
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.CONCURRENT_MODIFICATION);
     }
 
     @Test
@@ -223,12 +238,13 @@ class ErrorManagementControllerBranchTest {
     }
 
     @Test
-    @DisplayName("CartIsEmptyException → 403 FUNCTIONAL with passthrough message")
-    void cartIsEmptyReturns403() {
+    @DisplayName("CartIsEmptyException → 409 FUNCTIONAL with passthrough message (state conflict, not an authorization failure)")
+    void cartIsEmptyReturns409() {
         final ResponseEntity<ErrorResponseDto> response =
                 controller.handleCartIsEmptyException(new CartIsEmptyException("empty"));
 
-        assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "empty");
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "empty");
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.CART_IS_EMPTY);
     }
 
     @Test
@@ -552,6 +568,18 @@ class ErrorManagementControllerBranchTest {
             assertEnvelope(response, HttpStatus.BAD_REQUEST, ErrorCodeType.TECHNICAL, "Validation failed:");
             assertThat(response.getBody().getMessage()).contains("name (name must not be blank)");
             assertThat(response.getBody().getMessage()).contains("email (email must be a valid address)");
+        }
+
+        @Test
+        @DisplayName("Field errors are also returned one per field, without the rejected value")
+        void fieldErrorsAreReturnedAsStructuredList() throws Exception {
+            final ResponseEntity<ErrorResponseDto> response =
+                    controller.handleMethodArgumentNotValidException(buildMethodArgumentNotValidExceptionWithFieldErrors());
+
+            assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST);
+            assertThat(response.getBody().getFieldErrors()).containsExactly(
+                    FieldErrorDto.builder().field("name").message("name must not be blank").build(),
+                    FieldErrorDto.builder().field("email").message("email must be a valid address").build());
         }
 
         @Test

@@ -1,6 +1,6 @@
 package com.novatech.cybertech.api.error;
 
-import com.novatech.cybertech.api.error.enumpackage.ErrorCodeType;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,11 +25,7 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
 
         log.warn("✖ 401 authentication required on {} {}: {}", request.getMethod(), request.getRequestURI(), authException.getMessage());
 
-        final ErrorResponseDto error = new ErrorResponseDto(
-                "Authentication required",
-                HttpStatus.UNAUTHORIZED.value(),
-                ErrorCodeType.TECHNICAL
-        );
+        final ErrorResponseDto error = ErrorResponseDto.of("Authentication required", ErrorCode.AUTHENTICATION_REQUIRED);
 
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setContentType(APPLICATION_JSON_VALUE);

@@ -193,6 +193,44 @@
           "response": []
         },
         {
+          "name": "Get my profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/user/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "user",
+                "me"
+              ]
+            },
+            "description": "Profile of the authenticated caller, resolved from the JWT subject (no UUID needed).\n\n- Roles: USER or ADMIN.\n- Success: 200 OK with `UserResponseDto`.\n- Errors: 401 without token (`AUTHENTICATION_REQUIRED`), 404 if the subject has no local user (`USER_NOT_FOUND`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
           "name": "Update my profile (self-service)",
           "request": {
             "method": "PATCH",
@@ -500,6 +538,54 @@
               ]
             },
             "description": "Returns the best-selling products by sales count.\n\n- Roles: none (public).\n- Success: 200 with `Page<ProductResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Product availability (public, live stock)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product/availability?uuids=11111111-2222-3333-4444-555555555555",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "product",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "uuids",
+                  "value": "11111111-2222-3333-4444-555555555555",
+                  "description": "1 to 50 product uuids, comma-separated or repeated"
+                }
+              ]
+            },
+            "description": "Live availability (`stock - reservedStock`) of up to 50 products, read from the database and served with `Cache-Control: no-store`.\n\n- Public.\n- Success: 200 OK with `ProductAvailabilityDto[]` (`productUuid`, `availableStock`, `inStock`); unknown uuids are absent.\n- Errors: 400 (`INVALID_REQUEST` / `METHOD_ARGUMENT_TYPE_MISMATCH`) for an empty, malformed or oversized batch."
           },
           "event": [
             {
@@ -898,7 +984,7 @@
               "mode": "raw",
               "raw": "{\n  \"paymentType\": \"VISA\",\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"shippingStreet\": \"21 Rue du Test\",\n  \"shippingCity\": \"Paris\",\n  \"shippingZipCode\": \"75001\",\n  \"shippingCountry\": \"France\",\n  \"discountKey\": \"NO_DISCOUNT\"\n}"
             },
-            "description": "Place an order from the user's existing cart. Identity comes from the JWT subject (no `userUuid` accepted).\n\n- Roles: USER or ADMIN\n- Success: 201 with `OrderResponseDto`.\n- Errors: 400 empty cart, 402 payment failure, 409 stock conflict."
+            "description": "Place an order from the user's existing cart. Identity comes from the JWT subject (no `userUuid` accepted).\n\n- Roles: USER or ADMIN\n- Success: 201 with `OrderResponseDto`.\n- Errors: 409 empty cart (`CART_IS_EMPTY`), 402 payment failure, 409 stock conflict."
           },
           "event": [
             {

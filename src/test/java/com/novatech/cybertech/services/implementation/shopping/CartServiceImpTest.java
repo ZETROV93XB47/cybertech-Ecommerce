@@ -11,6 +11,7 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.exceptions.CannotRemoveItemFromEmptyCartException;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
+import com.novatech.cybertech.exceptions.CartLockedException;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.UnauthorizedCartAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
@@ -145,7 +146,7 @@ class CartServiceImpTest {
             final CartCreateRequestDto req = requestFor(UUID.randomUUID(), 1);
 
             assertThatThrownBy(() -> service.addItemsToCart(req, keycloakId))
-                    .isInstanceOf(IllegalStateException.class)
+                    .isInstanceOf(CartLockedException.class)
                     .hasMessageContaining("temporarily locked");
 
             verifyNoInteractions(cartWriteTransactionalDelegate);

@@ -104,6 +104,14 @@ public class UserManagementServiceImp implements UserManagementService {
         return userMapper.mapFromEntityToResponseDto(user);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public UserResponseDto getMe(final String keycloakId) {
+        final UserEntity user = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new UserNotFoundException("No user with the keycloakId: " + keycloakId + " found"));
+        return userMapper.mapFromEntityToResponseDto(user);
+    }
+
     /**
      * Update a user's profile across Keycloak and the local DB without coupling them in a single
      * outer transaction (Bug 3 — Option B: Keycloak FIRST) — now crash-safe via a durable outbox

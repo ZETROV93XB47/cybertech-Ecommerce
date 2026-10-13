@@ -1,6 +1,6 @@
 package com.novatech.cybertech.api.error;
 
-import com.novatech.cybertech.api.error.enumpackage.ErrorCodeType;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,11 +25,7 @@ public class CustomAccessDeniedHandler implements AccessDeniedHandler {
 
         log.warn("✖ 403 access denied on {} {}: {}", request.getMethod(), request.getRequestURI(), accessDeniedException.getMessage());
 
-        final ErrorResponseDto error = new ErrorResponseDto(
-                "Access denied",
-                HttpStatus.FORBIDDEN.value(),
-                ErrorCodeType.FUNCTIONAL
-        );
+        final ErrorResponseDto error = ErrorResponseDto.of("Access denied", ErrorCode.ACCESS_DENIED);
 
         response.setStatus(HttpStatus.FORBIDDEN.value());
         response.setContentType(APPLICATION_JSON_VALUE);

@@ -1,6 +1,8 @@
 package com.novatech.cybertech.security;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
+import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
@@ -11,11 +13,14 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -61,6 +66,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final String REGISTER_EXACT_PATH = "/api/v1/services/user/register";
     private static final String ORDER_PLACE_PATH_PREFIX = "/api/v1/services/management/order/place";
     private static final String CART_PATH_PREFIX = "/api/v1/services/cart";
+    private static final String TOO_MANY_REQUESTS_MESSAGE = "Too many requests, please retry in %d second(s).";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /**
      * Idle-bucket TTL — a key (policyId + clientId) that is not touched for this duration
@@ -114,11 +121,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         log.warn("Rate limit hit policy={} client={} retryAfter={}s", policy.id(), clientId, retryAfterSeconds);
 
-        // 429 — HttpServletResponse exposes constants only up to SC_GATEWAY_TIMEOUT.
-        response.setStatus(429);
-        response.setHeader("Retry-After", Long.toString(retryAfterSeconds));
-        response.setContentType("application/json");
-        response.getWriter().write("{\"error\":\"too_many_requests\",\"retryAfterSeconds\":" + retryAfterSeconds + "}");
+        // Same ErrorResponseDto shape as every other error (errorCode TOO_MANY_REQUESTS) so clients parse
+        // one format; the wait itself travels in the standard Retry-After header.
+        final ErrorResponseDto error = ErrorResponseDto.of(String.format(TOO_MANY_REQUESTS_MESSAGE, retryAfterSeconds), ErrorCode.TOO_MANY_REQUESTS);
+        response.setStatus(ErrorCode.TOO_MANY_REQUESTS.getResponseStatus().value());
+        response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter().write(OBJECT_MAPPER.writeValueAsString(error));
     }
 
     private Policy matchPolicy(final HttpServletRequest request) {

@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation.product;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.ProductManagementAdminController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
@@ -106,6 +107,7 @@ class ProductManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(get(GET_ALL_PRODUCTS_ENDPOINT)
@@ -161,6 +163,7 @@ class ProductManagementAdminControllerTest {
                 .message("attributes invalid")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.INVALID_REQUEST)
                 .build();
 
         when(productService.create(any(ProductCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
@@ -198,6 +201,7 @@ class ProductManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(post(CREATE_PRODUCT_ENDPOINT)
@@ -275,6 +279,7 @@ class ProductManagementAdminControllerTest {
                 .message("Path UUID and body UUID do not match")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.INVALID_REQUEST)
                 .build();
 
         mockMvc.perform(patch(UPDATE_PRODUCT_ENDPOINT, pathUuid)
@@ -318,6 +323,7 @@ class ProductManagementAdminControllerTest {
                 .message("No product with the UUID : " + productUuid + " found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.PRODUCT_NOT_FOUND)
                 .build();
 
         when(productService.update(any(ProductUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
@@ -360,6 +366,7 @@ class ProductManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(patch(UPDATE_PRODUCT_ENDPOINT, productUuid)
@@ -381,6 +388,7 @@ class ProductManagementAdminControllerTest {
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
                 .build();
 
         mockMvc.perform(patch(UPDATE_PRODUCT_ENDPOINT, "not-a-uuid")
@@ -419,6 +427,7 @@ class ProductManagementAdminControllerTest {
                 .message("No product with the UUID : " + productUuid + " found")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.PRODUCT_NOT_FOUND)
                 .build();
 
         doThrow(new ProductNotFoundException("No product with the UUID : " + productUuid + " found"))
@@ -453,6 +462,7 @@ class ProductManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(delete(DELETE_PRODUCT_ENDPOINT, productUuid)
@@ -470,6 +480,7 @@ class ProductManagementAdminControllerTest {
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
                 .build();
 
         mockMvc.perform(delete(DELETE_PRODUCT_ENDPOINT, "not-a-uuid")
@@ -584,6 +595,7 @@ class ProductManagementAdminControllerTest {
                 .message("Access denied")
                 .httpStatusCode(403)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
                 .build();
 
         mockMvc.perform(multipart(CREATE_PRODUCT_WITH_IMAGE_ENDPOINT)

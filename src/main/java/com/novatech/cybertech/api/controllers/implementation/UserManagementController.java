@@ -138,6 +138,16 @@ public class UserManagementController implements UserControllerApiSpec {
     }
 
     /**
+     * Profile of the authenticated caller, resolved via the JWT subject — no UUID accepted, so no IDOR.
+     */
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @GetMapping(value = "/me", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<UserResponseDto> getMe(@AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.ok(userManagementServiceImp.getMe(jwt.getSubject()));
+    }
+
+    /**
      * Frontend-gap #3 — self-service profile update. Resolves the caller via the JWT subject
      * and delegates to {@link UserManagementService#updateMe(String, UserSelfUpdateRequestDto)};
      * no UUID is accepted from the body, ruling out IDOR by construction.

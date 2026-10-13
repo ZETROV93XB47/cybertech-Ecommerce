@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation.cart;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.CartManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemAddRequestDto;
@@ -281,6 +282,7 @@ class CartManagementControllerTest {
                     .message(message)
                     .httpStatusCode(409)
                     .errorCodeType(FUNCTIONAL)
+                    .errorCode(ErrorCode.NOT_ENOUGH_STOCK)
                     .build();
 
             when(cartService.addItemsToCart(any(CartCreateRequestDto.class), anyString()))
@@ -339,6 +341,7 @@ class CartManagementControllerTest {
                     .message("Invalid value for parameter 'productUuid'")
                     .httpStatusCode(400)
                     .errorCodeType(TECHNICAL)
+                    .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
                     .build();
 
             mockMvc.perform(patch("/api/v1/services/cart/remove/not-a-uuid")
@@ -436,6 +439,7 @@ class CartManagementControllerTest {
                     .message(message)
                     .httpStatusCode(404)
                     .errorCodeType(FUNCTIONAL)
+                    .errorCode(ErrorCode.CART_NOT_FOUND)
                     .build();
             doThrow(new CartNotFoundException(message)).when(cartService).clearCart(anyString());
 

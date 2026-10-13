@@ -1211,6 +1211,44 @@ paths:
       security:
       - keycloak: []
   /api/v1/services/user/me:
+    get:
+      tags:
+      - User
+      summary: Profile of the authenticated user
+      description: |
+        Returns the caller's own profile, resolved from the JWT subject. The front only holds
+        the Keycloak identity after login, never the local user UUID, so this is how it
+        reads the current user (no IDOR: there is no identifier to tamper with).
+      operationId: getMe
+      parameters:
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      responses:
+        "200":
+          description: Caller's profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponseDto"
+        "401":
+          description: Unauthorized - JWT token missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: User not found (JWT subject points to a stale Keycloak entry)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      security:
+      - keycloak: []
     patch:
       tags:
       - User
@@ -2244,6 +2282,49 @@ paths:
                 $ref: "#/components/schemas/ProductResponseDto"
         "400":
           description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+  /api/v1/services/product/availability:
+    get:
+      tags:
+      - Product
+      summary: Live availability of a batch of products
+      description: |
+        Returns, for each existing product, the units still sellable right now (stock minus units
+        reserved by unpaid orders). Read live from the database and served with Cache-Control:
+        no-store — stock moves on every order. Unknown uuids are absent from the result.
+      operationId: getAvailability
+      parameters:
+      - name: uuids
+        in: query
+        description: "1 to 50 product uuids, comma-separated or repeated"
+        required: true
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+          - 1.0.0
+      responses:
+        "200":
+          description: Availability of the existing products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductAvailabilityDto"
+        "400":
+          description: "Missing, malformed or more than 50 uuids"
           content:
             application/json:
               schema:
@@ -3520,6 +3601,70 @@ components:
           enum:
           - TECHNICAL
           - FUNCTIONAL
+        errorCode:
+          type: string
+          enum:
+          - APPLICATION_ERROR
+          - AUTHENTICATION_REQUIRED
+          - TOO_MANY_REQUESTS
+          - RESOURCE_NOT_FOUND
+          - ACCOUNT_NOT_FOUND
+          - CANNOT_CANCEL_ORDER
+          - CANNOT_REMOVE_ITEM_FROM_EMPTY_CART
+          - PRODUCT_NOT_FOUND
+          - ORDER_DOESNT_BELONGS_TO_USER
+          - FAILED_UPDATING_ORDER
+          - CART_IS_EMPTY
+          - CART_NOT_FOUND
+          - CART_ITEM_NOT_FOUND
+          - INVALID_REQUEST
+          - MALFORMED_JSON
+          - METHOD_ARGUMENT_TYPE_MISMATCH
+          - ACCESS_DENIED
+          - ORDER_ALREADY_SHIPPED
+          - ORDER_NOT_FOUND
+          - ORDER_NOT_FUNDED
+          - ORDER_REFUND_FAILED
+          - NO_PREVIOUS_PAYMENT_ATTEMPT_FOUND
+          - PRODUCT_ALREADY_IN_WISHLIST
+          - REVIEW_NOT_FOUND
+          - USER_NOT_FOUND
+          - USER_NOT_ACTIVE
+          - USER_ALREADY_EXISTS
+          - USER_NOT_AUTHOR_OF_REVIEW
+          - WISHLIST_NOT_FOUND
+          - ACCESS_TOKEN_RETRIEVAL_FAILED
+          - BANK_CARD_EXPIRED
+          - BANK_CARD_NOT_FOUND
+          - COMMENT_POST_NOT_ALLOWED
+          - IDEMPOTENCY_KEY_GENERATION_FAILED
+          - NO_STRATEGY_FOUND
+          - NOT_ENOUGH_STOCK
+          - ORDER_SUMMARY_REPORT_JOB_FAILED
+          - CONCURRENT_MODIFICATION
+          - PAYMENT_ALREADY_COMPLETED
+          - PAYMENT_FAILED
+          - PAYMENT_NOT_FOUND
+          - PAYMENT_PROCESSING_ERROR
+          - DISCOUNT_TYPE_NOT_ACTIVE
+          - UNAUTHORIZED_CART_ACCESS
+          - ORDER_NOT_REVIEWABLE
+          - UNKNOWN_PRODUCT_CATEGORY
+          - INVALID_PRODUCT_CATEGORY_SCHEMA
+          - DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD
+          - DISCOUNT_CAMPAIGN_NOT_FOUND
+          - DISCOUNT_CAMPAIGN_ALREADY_EXISTS
+        fieldErrors:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldErrorDto"
+    FieldErrorDto:
+      type: object
+      properties:
+        field:
+          type: string
+        message:
+          type: string
     ProductResponseDto:
       type: object
       properties:
@@ -4432,6 +4577,17 @@ components:
           type: array
           items:
             type: string
+    ProductAvailabilityDto:
+      type: object
+      properties:
+        productUuid:
+          type: string
+          format: uuid
+        availableStock:
+          type: integer
+          format: int32
+        inStock:
+          type: boolean
     OrderStatusDto:
       type: object
       properties:

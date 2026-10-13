@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation.bankcard;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.BankCardAdminController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
@@ -126,6 +127,7 @@ class BankCardAdminControllerTest {
                 .message("Bank card not found by UUID")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_NOT_FOUND)
                 .build();
 
         when(bankCardService.getByUUID(cardUuid))
@@ -145,6 +147,7 @@ class BankCardAdminControllerTest {
                 .message("Invalid value for parameter 'uuid'")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
                 .build();
 
         mockMvc.perform(get(BASE + "/get/not-a-uuid")
@@ -187,6 +190,7 @@ class BankCardAdminControllerTest {
                 .message("Bank card not found for delete")
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_NOT_FOUND)
                 .build();
 
         doThrow(new BankCardNotFoundException("Bank card not found for delete"))

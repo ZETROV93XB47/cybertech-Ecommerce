@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation.wishlist;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.WishlistManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.response.wishlist.WishlistResponseDto;
 import com.novatech.cybertech.exceptions.ProductAlreadyInWishlist;
@@ -110,6 +111,7 @@ class WishlistManagementControllerTest {
                 .message(message)
                 .httpStatusCode(409)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.PRODUCT_ALREADY_IN_WISHLIST)
                 .build();
 
         when(wishlistService.addProductToMyWishlist(anyString(), eq(productUuid)))
@@ -132,6 +134,7 @@ class WishlistManagementControllerTest {
                 .message(message)
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.PRODUCT_NOT_FOUND)
                 .build();
 
         when(wishlistService.addProductToMyWishlist(anyString(), eq(productUuid)))
@@ -153,6 +156,7 @@ class WishlistManagementControllerTest {
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
                 .build();
 
         mockMvc.perform(post("/api/v1/services/wishlist/add/not-a-uuid")
@@ -207,6 +211,7 @@ class WishlistManagementControllerTest {
                 .message(message)
                 .httpStatusCode(404)
                 .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.WISHLIST_NOT_FOUND)
                 .build();
 
         doThrow(new WishlistNotFoundException(message))
@@ -228,6 +233,7 @@ class WishlistManagementControllerTest {
                 .message("Invalid value for parameter 'productUuid'")
                 .httpStatusCode(400)
                 .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
                 .build();
 
         mockMvc.perform(delete("/api/v1/services/wishlist/remove/not-a-uuid")

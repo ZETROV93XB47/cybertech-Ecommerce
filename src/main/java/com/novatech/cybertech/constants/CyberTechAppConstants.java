@@ -87,5 +87,8 @@ public class CyberTechAppConstants {
     // field initializer on the DTO instead, same default value convention as the other resources.
     public static final int DEFAULT_PAGE_SIZE_PRODUCT_SEARCH = 20;
     public static final int DEFAULT_RECOMMENDATION_COUNT = 10;
+    // Upper bound on the uuids of one GET /product/availability call — a catalog page (max 100 items,
+    // see max-page-size) is split by the front; 50 keeps the IN (...) query and the URL short.
+    public static final int MAX_AVAILABILITY_BATCH_SIZE = 50;
     public static final String DEFAULT_SORT_FIELD = "createdAt";
 }

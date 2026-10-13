@@ -253,6 +253,29 @@ class UserManagementServiceImpTest {
                     .hasMessageContaining(id.toString());
         }
 
+        @Test
+        @DisplayName("getMe resolves the caller by keycloakId and maps the entity")
+        void getMe_happyPath() {
+            final String keycloakId = "kc-me-1";
+            final UserEntity entity = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final UserResponseDto expected = UserDtoFixtures.aSampleUserResponse();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(entity));
+            when(userMapper.mapFromEntityToResponseDto(entity)).thenReturn(expected);
+
+            assertThat(service.getMe(keycloakId)).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("getMe throws UserNotFoundException when the subject has no local user")
+        void getMe_notFound_throws() {
+            final String keycloakId = "kc-me-missing";
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getMe(keycloakId))
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining(keycloakId);
+        }
+
     }
 
     // -----------------------------------------------------------------
