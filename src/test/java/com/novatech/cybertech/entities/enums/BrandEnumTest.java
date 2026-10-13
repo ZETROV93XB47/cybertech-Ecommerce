@@ -12,7 +12,7 @@ class BrandEnumTest {
 
     @Test
     void hasExpectedConstantCount() {
-        assertThat(Brand.values()).hasSize(13);
+        assertThat(Brand.values()).hasSize(33);
     }
 
     @ParameterizedTest
@@ -32,5 +32,7 @@ class BrandEnumTest {
         assertThat(Brand.ASUS.getCode()).isEqualTo(1);
         assertThat(Brand.HP.getCode()).isEqualTo(2);
         assertThat(Brand.SAMSUNG.getCode()).isEqualTo(13);
+        assertThat(Brand.LG.getCode()).isEqualTo(14);
+        assertThat(Brand.FITBIT.getCode()).isEqualTo(33);
     }
 }

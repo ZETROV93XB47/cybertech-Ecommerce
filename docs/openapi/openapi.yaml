@@ -3977,6 +3977,26 @@ components:
             - ALTYK
             - GIGABYTE
             - SAMSUNG
+            - LG
+            - AOC
+            - IIYAMA
+            - BENQ
+            - PHILIPS
+            - VIEWSONIC
+            - EIZO
+            - CORSAIR
+            - LDLC
+            - XIAOMI
+            - APPLE
+            - GARMIN
+            - HUAWEI
+            - AMAZFIT
+            - WITHINGS
+            - GOOGLE
+            - POLAR
+            - SUUNTO
+            - COROS
+            - FITBIT
         attributes:
           type: object
           additionalProperties:
@@ -4495,6 +4515,26 @@ components:
           - ALTYK
           - GIGABYTE
           - SAMSUNG
+          - LG
+          - AOC
+          - IIYAMA
+          - BENQ
+          - PHILIPS
+          - VIEWSONIC
+          - EIZO
+          - CORSAIR
+          - LDLC
+          - XIAOMI
+          - APPLE
+          - GARMIN
+          - HUAWEI
+          - AMAZFIT
+          - WITHINGS
+          - GOOGLE
+          - POLAR
+          - SUUNTO
+          - COROS
+          - FITBIT
         category:
           type: string
           minLength: 1
@@ -4791,6 +4831,26 @@ components:
           - ALTYK
           - GIGABYTE
           - SAMSUNG
+          - LG
+          - AOC
+          - IIYAMA
+          - BENQ
+          - PHILIPS
+          - VIEWSONIC
+          - EIZO
+          - CORSAIR
+          - LDLC
+          - XIAOMI
+          - APPLE
+          - GARMIN
+          - HUAWEI
+          - AMAZFIT
+          - WITHINGS
+          - GOOGLE
+          - POLAR
+          - SUUNTO
+          - COROS
+          - FITBIT
         category:
           type: string
         photos:

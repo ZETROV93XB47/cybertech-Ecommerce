@@ -9,9 +9,9 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 /**
- * Seeds the two product category schemas that previously lived as hardcoded Java records
- * ({@code ComputerAttributes}, {@code MonitorAttributes}) so demo data / {@code DataGenerator}
- * keep working out of the box. Mirrors {@link DiscountCampaignInitializer}'s
+ * Seeds the product category schemas the demo catalog needs: the two that previously lived as
+ * hardcoded Java records ({@code ComputerAttributes}, {@code MonitorAttributes}), so demo data /
+ * {@code DataGenerator} keep working out of the box, and SMARTWATCH for the scraped LDLC watches. Mirrors {@link DiscountCampaignInitializer}'s
  * find-or-create-on-startup shape.
  */
 @Slf4j
@@ -46,12 +46,28 @@ public class ProductCategorySchemaInitializer implements ApplicationRunner {
             }
             """;
 
+    // Nothing required: LDLC smartwatch spec sheets are uneven (a cheap watch often lists neither
+    // OS nor battery life), so the importer sends only the attributes a sheet actually has.
+    private static final String SMARTWATCH_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {
+                "os": {"type": "string", "minLength": 1},
+                "caseSize": {"type": "integer", "minimum": 1},
+                "caseMaterial": {"type": "string", "minLength": 1},
+                "batteryLife": {"type": "integer", "minimum": 1},
+                "cellular": {"type": "string", "minLength": 1}
+              }
+            }
+            """;
+
     private final ProductCategorySchemaRepository productCategorySchemaRepository;
 
     @Override
     public void run(final ApplicationArguments args) {
         seedIfMissing("COMPUTER", "Computers", COMPUTER_SCHEMA);
         seedIfMissing("MONITOR", "Monitors", MONITOR_SCHEMA);
+        seedIfMissing("SMARTWATCH", "Smartwatches", SMARTWATCH_SCHEMA);
     }
 
     private void seedIfMissing(final String categoryKey, final String label, final String jsonSchema) {
