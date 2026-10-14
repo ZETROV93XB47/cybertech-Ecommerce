@@ -1,0 +1,18 @@
+# Gorse v0.5 configuration, mounted at /etc/gorse/config.toml by docker-compose.yml.
+#
+# Without this file Gorse ran on its built-in defaults, where no feedback type is positive
+# ("positive_feedback_types": null in its logs), so none of the events sent by GorseSyncTasklet
+# (WISHLIST_ADD included) fed the collaborative filtering. Every key left out keeps Gorse's
+# default; the database settings come from GORSE_CACHE_STORE / GORSE_DATA_STORE in the compose file.
+#
+# Feedback types are the UserEventType names verbatim (GorseMapper#toFeedbackDto). Gorse v0.5 has
+# no per-type weight: a type is either positive, read, or ignored. Keep in sync with UserEventType
+# (GorseConfigConsistencyTest fails when an explicit positive event is missing here).
+
+[recommend.data_source]
+
+# Strong interest: the user acted on the product.
+positive_feedback_types = ["PURCHASE", "ADD_TO_CART", "WISHLIST_ADD", "COMPARE", "RATING_POSITIVE", "REVIEW_POSITIVE"]
+
+# The user saw the product without acting on it (used as negative samples during training).
+read_feedback_types = ["VIEW", "CLICK", "SEARCH_RESULT_CLICK"]

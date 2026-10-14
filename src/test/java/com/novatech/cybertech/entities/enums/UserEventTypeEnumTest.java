@@ -11,8 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class UserEventTypeEnumTest {
 
     @Test
-    void hasSixteenEvents() {
-        assertThat(UserEventType.values()).hasSize(16);
+    void hasSeventeenEvents() {
+        assertThat(UserEventType.values()).hasSize(17);
     }
 
     @ParameterizedTest
@@ -63,8 +63,14 @@ class UserEventTypeEnumTest {
         long negative = Arrays.stream(UserEventType.values())
                 .filter(e -> e.getEventCategory() == EventCategory.NEGATIVE_EVENT).count();
 
-        assertThat(explicit).isEqualTo(7);
+        assertThat(explicit).isEqualTo(8);
         assertThat(implicit).isEqualTo(6);
         assertThat(negative).isEqualTo(3);
+    }
+
+    @Test
+    void compareRanksWithWishlistAdd() {
+        assertThat(UserEventType.COMPARE.getEventCategory()).isEqualTo(EventCategory.EXPLICIT_EVENT);
+        assertThat(UserEventType.COMPARE.getScore()).isEqualTo(UserEventType.WISHLIST_ADD.getScore());
     }
 }

@@ -30,6 +30,7 @@ import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -114,6 +115,32 @@ class UserEventControllerTest {
                 .andExpect(jsonPath("$.sessionId").value(responseDto.getSessionId()))
                 .andExpect(jsonPath("$.productId").value(responseDto.getProductId()))
                 .andExpect(jsonPath("$.eventType").value(responseDto.getEventType().name()));
+    }
+
+    @Test
+    void shouldDeserializeCompareEventFromRawJson() throws Exception {
+        final String body = """
+                {"userId": "ignored", "sessionId": "session-1", "productId": "product-compared", "eventType": "COMPARE"}
+                """;
+        final UserEvent persisted = UserEvent.builder().id("evt-1").userId(USER_KEYCLOAK_ID).sessionId("session-1")
+                .productId("product-compared").eventType(UserEventType.COMPARE).timestamp(Instant.now()).build();
+        when(userEventService.processEvent(any(UserEventDto.class))).thenReturn(persisted);
+        when(userEventMapper.toResponseDto(persisted)).thenReturn(UserEventResponseDto.builder()
+                .id("evt-1").eventType(UserEventType.COMPARE).productId("product-compared").build());
+
+        mockMvc.perform(post(COLLECT_EVENT_ENDPOINT)
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.eventType").value("COMPARE"));
+
+        final org.mockito.ArgumentCaptor<UserEventDto> captor = org.mockito.ArgumentCaptor.forClass(UserEventDto.class);
+        org.mockito.Mockito.verify(userEventService).processEvent(captor.capture());
+        assertThat(captor.getValue().getEventType()).isEqualTo(UserEventType.COMPARE);
+        assertThat(captor.getValue().getProductId()).isEqualTo("product-compared");
     }
 
     @Test

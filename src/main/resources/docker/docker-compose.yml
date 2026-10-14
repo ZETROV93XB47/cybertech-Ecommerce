@@ -94,6 +94,9 @@ services:
     ports:
       - "8088:8088"
       - "8089:8089"
+    volumes:
+      # Positive / read feedback types (UserEventType names); without it Gorse counts no event as positive.
+      - ./gorse/config.toml:/etc/gorse/config.toml:ro
     depends_on:
       mysql:
         condition: service_healthy

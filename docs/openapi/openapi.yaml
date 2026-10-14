@@ -4717,6 +4717,7 @@ components:
           - PURCHASE
           - ADD_TO_CART
           - WISHLIST_ADD
+          - COMPARE
           - RATING_POSITIVE
           - RATING_NEGATIVE
           - REVIEW_POSITIVE
@@ -4756,6 +4757,7 @@ components:
           - PURCHASE
           - ADD_TO_CART
           - WISHLIST_ADD
+          - COMPARE
           - RATING_POSITIVE
           - RATING_NEGATIVE
           - REVIEW_POSITIVE

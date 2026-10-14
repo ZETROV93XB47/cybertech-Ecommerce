@@ -2287,7 +2287,7 @@
               "mode": "raw",
               "raw": "{\n  \"eventType\": \"VIEW\",\n  \"productId\": \"11111111-2222-3333-4444-555555555555\",\n  \"sessionId\": \"sess-9b3c1c2a-fa70-4f29\",\n  \"metadata\": { \"page\": \"product-detail\", \"referrer\": \"home\" }\n}"
             },
-            "description": "Persist a behavioural event in MongoDB. The server overwrites any client-supplied `userId` with the JWT subject.\n\n- Role: USER\n- Success: 201 with the persisted `UserEvent` document.\n- Allowed `eventType` values: PURCHASE, ADD_TO_CART, WISHLIST_ADD, RATING_POSITIVE, RATING_NEGATIVE, REVIEW_POSITIVE, REVIEW_NEGATIVE, VIEW, CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, SEARCH_RESULT_CLICK, REMOVE_FROM_CART, IGNORE_RECOMMENDATION, BOUNCE."
+            "description": "Persist a behavioural event in MongoDB. The server overwrites any client-supplied `userId` with the JWT subject.\n\n- Role: USER\n- Success: 201 with the persisted `UserEvent` document.\n- Allowed `eventType` values: PURCHASE, ADD_TO_CART, WISHLIST_ADD, COMPARE (product added to the comparator; `productId` required), RATING_POSITIVE, RATING_NEGATIVE, REVIEW_POSITIVE, REVIEW_NEGATIVE, VIEW, CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, SEARCH_RESULT_CLICK, REMOVE_FROM_CART, IGNORE_RECOMMENDATION, BOUNCE."
           },
           "event": [
             {

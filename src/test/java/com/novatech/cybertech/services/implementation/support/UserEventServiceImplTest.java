@@ -135,6 +135,24 @@ class UserEventServiceImplTest {
     }
 
     @Test
+    @DisplayName("rejects: COMPARE without productId fails business validation (the compared product is the item)")
+    void compareEventWithoutProductIdIsRejected() {
+        UserEventDto dto = UserEventDtoFixtures.aValidUserEventBuilder()
+                .eventType(UserEventType.COMPARE)
+                .productId(null)
+                .build();
+        UserEvent mapped = newDocFromDto(dto);
+        when(userRepository.existsByKeycloakId(dto.getUserId())).thenReturn(true);
+        when(userEventMapper.toDocument(dto)).thenReturn(mapped);
+
+        assertThatThrownBy(() -> service.processEvent(dto))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("itemId is required");
+
+        verify(userEventRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("accepts: SCROLL_DEPTH_HIGH does NOT require productId — passes business validation")
     void scrollDepthEventWithoutProductIsAllowed() {
         UserEventDto dto = UserEventDtoFixtures.aValidUserEventBuilder()

@@ -11,6 +11,8 @@ public enum UserEventType {
     PURCHASE(5.0, EventCategory.EXPLICIT_EVENT),
     ADD_TO_CART(3.0, EventCategory.EXPLICIT_EVENT),
     WISHLIST_ADD(2.5, EventCategory.EXPLICIT_EVENT),
+    // Product added to the comparator (2 to 3 products of one category): as strong a signal as a wishlist add.
+    COMPARE(2.5, EventCategory.EXPLICIT_EVENT),
     RATING_POSITIVE(2.0, EventCategory.EXPLICIT_EVENT),
     RATING_NEGATIVE(-2.0, EventCategory.EXPLICIT_EVENT),
     REVIEW_POSITIVE(2.5, EventCategory.EXPLICIT_EVENT),

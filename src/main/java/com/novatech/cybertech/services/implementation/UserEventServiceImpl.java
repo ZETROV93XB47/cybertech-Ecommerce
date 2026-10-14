@@ -57,7 +57,7 @@ public class UserEventServiceImpl implements UserEventService {
 
     private boolean requiresItem(UserEventType type) {
         return switch (type) {
-            case VIEW, CLICK, ADD_TO_CART, PURCHASE, WISHLIST_ADD,
+            case VIEW, CLICK, ADD_TO_CART, PURCHASE, WISHLIST_ADD, COMPARE,
                  REMOVE_FROM_CART, SEARCH_RESULT_CLICK,
                  RATING_POSITIVE, RATING_NEGATIVE,
                  REVIEW_POSITIVE, REVIEW_NEGATIVE -> true;

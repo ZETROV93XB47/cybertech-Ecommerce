@@ -72,4 +72,21 @@ class GorseMapperTest {
         assertThat(dto.getItemId()).isEqualTo("product-1");
         assertThat(dto.getTimestamp()).isEqualTo(timestamp);
     }
+
+    @Test
+    @DisplayName("COMPARE is sent to Gorse as feedbackType \"COMPARE\" with the compared product as item")
+    void toFeedbackDto_compare() {
+        final UserEvent event = UserEvent.builder()
+                .userId("kc-42")
+                .sessionId("session-1")
+                .eventType(UserEventType.COMPARE)
+                .productId("product-compared")
+                .timestamp(Instant.now())
+                .build();
+
+        final GorseFeedbackDto dto = mapper.toFeedbackDto(event);
+
+        assertThat(dto.getFeedbackType()).isEqualTo("COMPARE");
+        assertThat(dto.getItemId()).isEqualTo("product-compared");
+    }
 }
