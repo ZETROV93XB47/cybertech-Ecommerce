@@ -3,6 +3,8 @@ package com.novatech.cybertech.services.implementation.support;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.moderation.ModerationResponseDto;
+import com.novatech.cybertech.dto.response.review.ProductReviewsResponseDto;
+import com.novatech.cybertech.dto.response.review.PublicReviewDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
 import com.novatech.cybertech.entities.enums.OrderStatus;
@@ -37,10 +39,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -53,6 +62,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -517,6 +527,8 @@ class ReviewManagementServiceImpTest {
 
             when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
             when(reviewRepository.findByUuid(reviewUuid)).thenReturn(Optional.of(existing));
+            when(moderationService.checkIfIsHateful("better"))
+                    .thenReturn(ModerationResponseDto.builder().label("not_toxic").score(0.95).isHateful(false).build());
             when(reviewRepository.save(existing)).thenReturn(existing);
             when(reviewMapper.mapFromEntityToResponseDto(existing)).thenReturn(responseDto);
 
@@ -551,6 +563,60 @@ class ReviewManagementServiceImpTest {
 
             assertThatThrownBy(() -> service.update(dto, keycloakId))
                     .isInstanceOf(ReviewNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("an edited comment goes through moderation: rejected -> CommentPostNotAllowedException, published text kept")
+        void hatefulEditIsBlockedAndKeepsPublishedText() {
+            ReviewUpdateRequestDto dto = ReviewUpdateRequestDto.builder().reviewUuid(reviewUuid).rating(1).comment("hateful text").build();
+            UserEntity author = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            ReviewEntity existing = ReviewEntityBuilder.aValidReviewBuilder().uuid(reviewUuid).userEntity(author)
+                    .rating(5).comment("Great product").build();
+
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findByUuid(reviewUuid)).thenReturn(Optional.of(existing));
+            when(moderationService.checkIfIsHateful("hateful text"))
+                    .thenReturn(ModerationResponseDto.builder().label("toxic").score(0.97).isHateful(true).build());
+
+            assertThatThrownBy(() -> service.update(dto, keycloakId))
+                    .isInstanceOf(CommentPostNotAllowedException.class);
+
+            assertThat(existing.getComment()).isEqualTo("Great product");
+            verify(reviewRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("a malformed moderation verdict on an edit fails closed, as on create")
+        void editWithNullVerdictFailsClosed() {
+            ReviewUpdateRequestDto dto = ReviewUpdateRequestDto.builder().reviewUuid(reviewUuid).comment("text").build();
+            UserEntity author = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            ReviewEntity existing = ReviewEntityBuilder.aValidReviewBuilder().uuid(reviewUuid).userEntity(author).build();
+
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findByUuid(reviewUuid)).thenReturn(Optional.of(existing));
+            when(moderationService.checkIfIsHateful("text")).thenReturn(ModerationResponseDto.builder().build());
+
+            assertThatThrownBy(() -> service.update(dto, keycloakId))
+                    .isInstanceOf(CommentPostNotAllowedException.class);
+            verify(reviewRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("a rating-only edit leaves the comment alone and skips moderation")
+        void ratingOnlyEditSkipsModeration() {
+            ReviewUpdateRequestDto dto = ReviewUpdateRequestDto.builder().reviewUuid(reviewUuid).rating(3).build();
+            UserEntity author = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            ReviewEntity existing = ReviewEntityBuilder.aValidReviewBuilder().uuid(reviewUuid).userEntity(author).build();
+
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findByUuid(reviewUuid)).thenReturn(Optional.of(existing));
+            when(reviewRepository.save(existing)).thenReturn(existing);
+
+            service.update(dto, keycloakId);
+
+            assertThat(existing.getRating()).isEqualTo(3);
+            assertThat(existing.getComment()).isEqualTo("Great product");
+            verifyNoInteractions(moderationService);
         }
 
         @Test
@@ -713,6 +779,94 @@ class ReviewManagementServiceImpTest {
             org.mockito.ArgumentCaptor<Collection<OrderStatus>> cap = org.mockito.ArgumentCaptor.forClass(Collection.class);
             verify(orderRepository).findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(eq(keycloakId), cap.capture());
             assertThat(cap.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
+        }
+    }
+
+    // ============================ getPublishedReviewsOfProduct ============================
+
+    @Nested
+    class PublishedReviewsOfProduct {
+
+        private ReviewRepository.RatingCount ratingCount(final int rating, final long count) {
+            return new ReviewRepository.RatingCount() {
+                @Override
+                public Integer getRating() {
+                    return rating;
+                }
+
+                @Override
+                public Long getCount() {
+                    return count;
+                }
+            };
+        }
+
+        @Test
+        @DisplayName("average (1 decimal, half-up), count and distribution over every published review; page mapped")
+        void summaryAndPage() {
+            ReviewEntity review = ReviewEntityBuilder.aValidReview();
+            PublicReviewDto publicReview = PublicReviewDto.builder().uuid(review.getUuid()).rating(5).build();
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(productWith(productUuid)));
+            // 2x5 + 1x4 = 14 / 3 = 4.666... -> 4.7
+            when(reviewRepository.countPublishedByRating(productUuid)).thenReturn(List.of(ratingCount(5, 2), ratingCount(4, 1)));
+            when(reviewRepository.findPublishedByProductUuid(eq(productUuid), any(Pageable.class)))
+                    .thenAnswer(inv -> new PageImpl<>(List.of(review), inv.getArgument(1), 3));
+            when(reviewMapper.mapFromEntityToPublicReviewDto(review)).thenReturn(publicReview);
+
+            ProductReviewsResponseDto result = service.getPublishedReviewsOfProduct(productUuid, PageRequest.of(0, 1));
+
+            assertThat(result.getAverageRating()).isEqualByComparingTo(new BigDecimal("4.7"));
+            assertThat(result.getAverageRating().scale()).isEqualTo(1);
+            assertThat(result.getReviewCount()).isEqualTo(3);
+            assertThat(result.getDistribution()).containsExactly(
+                    org.assertj.core.api.Assertions.entry("1", 0L), org.assertj.core.api.Assertions.entry("2", 0L),
+                    org.assertj.core.api.Assertions.entry("3", 0L), org.assertj.core.api.Assertions.entry("4", 1L),
+                    org.assertj.core.api.Assertions.entry("5", 2L));
+            assertThat(result.getReviews().getContent()).containsExactly(publicReview);
+            assertThat(result.getReviews().getMetadata().totalElements()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("no published review: null average, zero count, every rating at 0, empty page")
+        void noReviews() {
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(productWith(productUuid)));
+            when(reviewRepository.countPublishedByRating(productUuid)).thenReturn(List.of());
+            when(reviewRepository.findPublishedByProductUuid(eq(productUuid), any(Pageable.class)))
+                    .thenAnswer(inv -> Page.empty(inv.getArgument(1)));
+
+            ProductReviewsResponseDto result = service.getPublishedReviewsOfProduct(productUuid, PageRequest.of(0, 10));
+
+            assertThat(result.getAverageRating()).isNull();
+            assertThat(result.getReviewCount()).isZero();
+            assertThat(result.getDistribution()).containsOnlyKeys("1", "2", "3", "4", "5").allSatisfy((k, v) -> assertThat(v).isZero());
+            assertThat(result.getReviews().getContent()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("keeps page number and size but always sorts newest first, whatever sort the caller sent")
+        void fixedOrder() {
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(productWith(productUuid)));
+            when(reviewRepository.countPublishedByRating(productUuid)).thenReturn(List.of());
+            when(reviewRepository.findPublishedByProductUuid(eq(productUuid), any(Pageable.class)))
+                    .thenAnswer(inv -> Page.empty(inv.getArgument(1)));
+
+            service.getPublishedReviewsOfProduct(productUuid, PageRequest.of(2, 5, Sort.by("rating")));
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(reviewRepository).findPublishedByProductUuid(eq(productUuid), captor.capture());
+            assertThat(captor.getValue().getPageNumber()).isEqualTo(2);
+            assertThat(captor.getValue().getPageSize()).isEqualTo(5);
+            assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        }
+
+        @Test
+        @DisplayName("unknown product -> ProductNotFoundException, no review query")
+        void unknownProduct() {
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getPublishedReviewsOfProduct(productUuid, PageRequest.of(0, 10)))
+                    .isInstanceOf(ProductNotFoundException.class);
+            verifyNoInteractions(reviewRepository);
         }
     }
 }

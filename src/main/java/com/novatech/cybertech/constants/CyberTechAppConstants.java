@@ -83,6 +83,8 @@ public class CyberTechAppConstants {
     public static final int DEFAULT_PAGE_SIZE_BANK_CARD = 10;
     public static final int DEFAULT_PAGE_SIZE_WISHLIST = 20;
     public static final int DEFAULT_PAGE_SIZE_BEST_SELLERS = 15;
+    // Default page size of GET /review/product/{productUuid} (public reviews of a product page).
+    public static final int DEFAULT_PAGE_SIZE_PRODUCT_REVIEWS = 10;
     // ProductSearchRequestDto carries page/size in its JSON body instead of a Spring Pageable
     // (search also carries filter criteria), so it can't use @PageableDefault — applied as a plain
     // field initializer on the DTO instead, same default value convention as the other resources.

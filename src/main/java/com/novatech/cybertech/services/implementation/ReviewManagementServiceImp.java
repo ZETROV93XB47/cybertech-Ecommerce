@@ -4,6 +4,8 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.moderation.ModerationResponseDto;
+import com.novatech.cybertech.dto.response.review.ProductReviewsResponseDto;
+import com.novatech.cybertech.dto.response.review.PublicReviewDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
 import com.novatech.cybertech.entities.OrderEntity;
@@ -24,13 +26,24 @@ import com.novatech.cybertech.services.core.ReviewManagementService;
 import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PagedModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service
@@ -44,6 +57,13 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
      * PAYMENT_FAILED) and post-cancel statuses must NOT be reviewable.
      */
     private static final Set<OrderStatus> REVIEWABLE_ORDER_STATUSES = EnumSet.of(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
+
+    private static final int MIN_RATING = 1;
+    private static final int MAX_RATING = 5;
+    private static final int AVERAGE_RATING_SCALE = 1;
+    // Newest first; id breaks ties between reviews posted in the same instant so pages never overlap.
+    private static final Sort PUBLISHED_REVIEWS_ORDER = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+    private static final String COMMENT_REJECTED_MESSAGE = "Your comment looks similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.";
 
     private final ReviewMapper reviewMapper;
     private final UserRepository userRepository;
@@ -84,16 +104,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         final ProductEntity product = productRepository.findByUuid(reviewCreateRequestDto.getProductUuid()).orElseThrow(() -> new ProductNotFoundException("Product related to this review doesn't exists"));
 
-        ModerationResponseDto moderationResponseDto = moderationService.checkIfIsHateful(reviewEntity.getComment());
-        // Fail closed on a missing / malformed moderation verdict: a null response or null verdict
-        // means we could NOT confirm the comment is clean, so we reject rather than publish blind.
-        // NOTE: isHateful (not the raw score) is the classifier's verdict — the score alone is just
-        // the confidence for whichever label ("toxic" or its opposite) won, so a clean comment
-        // classified with high confidence would otherwise be rejected, and a toxic comment
-        // classified with low confidence would otherwise slip through.
-        if (moderationResponseDto == null || moderationResponseDto.getIsHateful() == null
-                || moderationResponseDto.getIsHateful())
-            throw new CommentPostNotAllowedException("Your comment looks similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.");
+        assertCommentPassesModeration(reviewEntity.getComment());
 
         reviewEntity.setIsHateful(false);
         reviewEntity.setUserEntity(user);
@@ -124,6 +135,10 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
             review.setRating(reviewCreateRequestDto.getRating());
         }
         if (reviewCreateRequestDto.getComment() != null) {
+            // Reviews are public: an edited comment goes through the same moderation as a new one,
+            // otherwise a clean review could be edited into a hateful one after publication. A
+            // rejected edit throws before the entity is touched, so the published text stays.
+            assertCommentPassesModeration(reviewCreateRequestDto.getComment());
             review.setComment(reviewCreateRequestDto.getComment());
         }
 
@@ -160,6 +175,38 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public ProductReviewsResponseDto getPublishedReviewsOfProduct(final UUID productUuid, final Pageable pageable) {
+        if (productRepository.findByUuid(productUuid).isEmpty()) {
+            throw new ProductNotFoundException("No product with the UUID : " + productUuid + " found");
+        }
+
+        final Map<Integer, Long> countByRating = reviewRepository.countPublishedByRating(productUuid).stream()
+                .collect(Collectors.toMap(ReviewRepository.RatingCount::getRating, ReviewRepository.RatingCount::getCount));
+        final Map<String, Long> distribution = new LinkedHashMap<>();
+        IntStream.rangeClosed(MIN_RATING, MAX_RATING)
+                .forEach(rating -> distribution.put(String.valueOf(rating), countByRating.getOrDefault(rating, 0L)));
+        final long reviewCount = countByRating.values().stream().mapToLong(Long::longValue).sum();
+        final long ratingSum = countByRating.entrySet().stream().mapToLong(e -> e.getKey() * e.getValue()).sum();
+        final BigDecimal averageRating = reviewCount == 0
+                ? null
+                : BigDecimal.valueOf(ratingSum).divide(BigDecimal.valueOf(reviewCount), AVERAGE_RATING_SCALE, RoundingMode.HALF_UP);
+
+        final Pageable page = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), PUBLISHED_REVIEWS_ORDER);
+        final Page<PublicReviewDto> reviews = reviewRepository.findPublishedByProductUuid(productUuid, page)
+                .map(reviewMapper::mapFromEntityToPublicReviewDto);
+
+        log.info("Public reviews of product {}: {} review(s), average {}, page {} ({} item(s))",
+                productUuid, reviewCount, averageRating, reviews.getNumber(), reviews.getNumberOfElements());
+        return ProductReviewsResponseDto.builder()
+                .averageRating(averageRating)
+                .reviewCount(reviewCount)
+                .distribution(distribution)
+                .reviews(new PagedModel<>(reviews))
+                .build();
+    }
+
+    @Override
     @Transactional
     public void deleteByUUID(final UUID uuid, final String keycloakId) {
         final boolean userExists = userRepository.existsByKeycloakIdAndIsActive(keycloakId, true);
@@ -174,6 +221,22 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         reviewRepository.deleteByUuid(uuid);
     }
 
+
+    /**
+     * Fails closed on a missing / malformed moderation verdict: a null response or null verdict
+     * means we could NOT confirm the comment is clean, so we reject rather than publish blind.
+     * NOTE: isHateful (not the raw score) is the classifier's verdict — the score alone is just
+     * the confidence for whichever label ("toxic" or its opposite) won, so a clean comment
+     * classified with high confidence would otherwise be rejected, and a toxic comment
+     * classified with low confidence would otherwise slip through.
+     */
+    private void assertCommentPassesModeration(final String comment) {
+        final ModerationResponseDto moderationResponseDto = moderationService.checkIfIsHateful(comment);
+        if (moderationResponseDto == null || moderationResponseDto.getIsHateful() == null
+                || moderationResponseDto.getIsHateful()) {
+            throw new CommentPostNotAllowedException(COMMENT_REJECTED_MESSAGE);
+        }
+    }
 
     private void checkIfUserAlreadyBoughtThisProduct(ReviewCreateRequestDto reviewCreateRequestDto, String keycloakId, OrderEntity order, UserEntity user) {
         final boolean orderContainsProduct = order.getOrderItemEntities().stream()

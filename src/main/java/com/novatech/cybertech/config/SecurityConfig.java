@@ -96,6 +96,8 @@ public class SecurityConfig {
             "/api/v1/services/product/**",
             "/api/v1/services/discounts/**",
             "/api/v1/services/shipping/**",
+            // Public reviews of a product page (GET only exists under this prefix).
+            "/api/v1/services/review/product/**",
             "/api/v1/services/product-category-schemas/**",
             "/api/v1/webhooks/**",
             // Kubelet probes + Spring Boot health groups (liveness/readiness).

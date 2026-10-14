@@ -2230,6 +2230,55 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
       security:
       - keycloak: []
+  /api/v1/services/review/product/{productUuid}:
+    get:
+      tags:
+      - Review
+      summary: Published reviews of a product (public)
+      description: |
+        Rating summary over every published review of the product (`averageRating` with 1 decimal,
+        null without reviews; `reviewCount`; `distribution` with keys "1" to "5" always present) and
+        one page of those reviews, newest first (`page`, `size` default 10, max 100; any `sort`
+        is ignored). A review rejected by moderation is never listed. Each review carries the
+        author's first name only, never their e-mail, last name or user id.
+
+        Public endpoint, no JWT required. Sent with a short `Cache-Control: public`.
+      operationId: getProductReviews
+      parameters:
+      - name: productUuid
+        in: path
+        description: Product whose reviews to list
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+          - 1.0.0
+      responses:
+        "200":
+          description: Rating summary and one page of published reviews
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductReviewsResponseDto"
+        "400":
+          description: Malformed product uuid (METHOD_ARGUMENT_TYPE_MISMATCH)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: Unknown product (PRODUCT_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
   /api/v1/services/review/get/{reviewUuid}:
     get:
       tags:
@@ -4967,6 +5016,82 @@ components:
         orderDate:
           type: string
           format: date
+    PageMetadata:
+      type: object
+      properties:
+        size:
+          type: integer
+          format: int64
+        number:
+          type: integer
+          format: int64
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int64
+    PagedModelPublicReviewDto:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicReviewDto"
+        page:
+          $ref: "#/components/schemas/PageMetadata"
+    ProductReviewsResponseDto:
+      type: object
+      properties:
+        averageRating:
+          type: number
+          description: "Mean rating over every published review, 1 decimal; null when\
+            \ there is none."
+          example: 4.3
+        reviewCount:
+          type: integer
+          format: int64
+          description: Number of published reviews.
+          example: 12
+        distribution:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+          description: Published reviews per rating; keys "1" to "5" are always present.
+          example:
+            "1": 0
+            "2": 1
+            "3": 1
+            "4": 4
+            "5": 6
+        reviews:
+          $ref: "#/components/schemas/PagedModelPublicReviewDto"
+          description: "One page of published reviews, newest first."
+    PublicReviewDto:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          format: int32
+          description: Rating from 1 to 5.
+          example: 4
+        comment:
+          type: string
+          description: Review text; null when the author left only a rating.
+        authorFirstName:
+          type: string
+          description: Author's first name only; null when the account has none (show
+            e.g. "Client").
+          example: Camille
+        createdAt:
+          type: string
+          format: date
+          description: Day the review was posted (ISO date).
+          example: 2026-10-14
     Pageable:
       type: object
       properties:
@@ -5012,21 +5137,6 @@ components:
           - RETURNED
           - CANCELED
           - REFUNDED
-    PageMetadata:
-      type: object
-      properties:
-        size:
-          type: integer
-          format: int64
-        number:
-          type: integer
-          format: int64
-        totalElements:
-          type: integer
-          format: int64
-        totalPages:
-          type: integer
-          format: int64
     PagedModel:
       type: object
       properties:

@@ -1,10 +1,13 @@
 package com.novatech.cybertech.repositories;
 
 import com.novatech.cybertech.entities.ReviewEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -17,4 +20,26 @@ public interface ReviewRepository extends CrudBaseRepository<ReviewEntity, Long>
      */
     @Query("select r.productEntity.uuid from ReviewEntity r where r.userEntity.keycloakId = :keycloakId")
     Set<UUID> findReviewedProductUuidsByUserKeycloakId(@Param("keycloakId") String keycloakId);
+
+    /**
+     * One page of a product's published reviews (not flagged hateful), author fetched in the same
+     * query since the public listing shows their first name.
+     */
+    @Query(value = "select r from ReviewEntity r join fetch r.userEntity "
+            + "where r.productEntity.uuid = :productUuid and r.isHateful = false",
+            countQuery = "select count(r) from ReviewEntity r "
+                    + "where r.productEntity.uuid = :productUuid and r.isHateful = false")
+    Page<ReviewEntity> findPublishedByProductUuid(@Param("productUuid") UUID productUuid, Pageable pageable);
+
+    /** Number of a product's published reviews per rating; ratings nobody gave are absent. */
+    @Query("select r.rating as rating, count(r) as count from ReviewEntity r "
+            + "where r.productEntity.uuid = :productUuid and r.isHateful = false group by r.rating")
+    List<RatingCount> countPublishedByRating(@Param("productUuid") UUID productUuid);
+
+    /** Projection of {@link #countPublishedByRating}. */
+    interface RatingCount {
+        Integer getRating();
+
+        Long getCount();
+    }
 }

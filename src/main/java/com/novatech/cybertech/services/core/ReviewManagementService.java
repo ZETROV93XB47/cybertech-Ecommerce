@@ -3,8 +3,11 @@ package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
+import com.novatech.cybertech.dto.response.review.ProductReviewsResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
+
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.UUID;
@@ -25,4 +28,14 @@ public interface ReviewManagementService {
      * yields two entries (one per order).
      */
     List<ReviewableProductDto> getReviewableProducts(final String keycloakId);
+
+    /**
+     * Published reviews of a product (not flagged hateful) for its public page: average rating
+     * (1 decimal, null without reviews), count and per-rating distribution over all of them, plus
+     * the requested page, newest first. Only the page number and size of {@code pageable} are
+     * used: the order is fixed.
+     *
+     * @throws com.novatech.cybertech.exceptions.ProductNotFoundException if no product has this uuid.
+     */
+    ProductReviewsResponseDto getPublishedReviewsOfProduct(final UUID productUuid, final Pageable pageable);
 }

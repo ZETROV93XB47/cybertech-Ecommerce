@@ -2,6 +2,7 @@ package com.novatech.cybertech.mappers.entity;
 
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
+import com.novatech.cybertech.dto.response.review.PublicReviewDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.ReviewEntity;
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -147,6 +150,41 @@ class ReviewMapperTest {
         @Test
         void shouldReturnNullForNullCollection() {
             assertThat(mapper.mapFromEntityToResponseDto((Collection<ReviewEntity>) null)).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("mapFromEntityToPublicReviewDto(ReviewEntity)")
+    class ToPublicReview {
+
+        @Test
+        @DisplayName("exposes the author's first name only and the posting day only")
+        void firstNameOnlyAndDayOnly() {
+            UserEntity author = UserEntityBuilder.aValidUserBuilder()
+                    .firstName(" Camille ").lastName("Durand").email("camille.durand@example.com").build();
+            ReviewEntity review = ReviewEntityBuilder.aValidReviewBuilder()
+                    .rating(4).comment("Bon écran").userEntity(author)
+                    .createdAt(LocalDateTime.of(2026, 10, 14, 21, 30)).build();
+
+            PublicReviewDto dto = mapper.mapFromEntityToPublicReviewDto(review);
+
+            assertThat(dto.getUuid()).isEqualTo(review.getUuid());
+            assertThat(dto.getRating()).isEqualTo(4);
+            assertThat(dto.getComment()).isEqualTo("Bon écran");
+            assertThat(dto.getAuthorFirstName()).isEqualTo("Camille");
+            assertThat(dto.getCreatedAt()).isEqualTo(LocalDate.of(2026, 10, 14));
+        }
+
+        @Test
+        @DisplayName("a blank or missing first name, or a missing author, is null")
+        void blankFirstNameIsNull() {
+            ReviewEntity blank = ReviewEntityBuilder.aValidReviewBuilder()
+                    .userEntity(UserEntityBuilder.aValidUserBuilder().firstName("  ").build()).build();
+            ReviewEntity noAuthor = ReviewEntityBuilder.aValidReviewBuilder().userEntity(null).createdAt(null).build();
+
+            assertThat(mapper.mapFromEntityToPublicReviewDto(blank).getAuthorFirstName()).isNull();
+            assertThat(mapper.mapFromEntityToPublicReviewDto(noAuthor).getAuthorFirstName()).isNull();
+            assertThat(mapper.mapFromEntityToPublicReviewDto(noAuthor).getCreatedAt()).isNull();
         }
     }
 }

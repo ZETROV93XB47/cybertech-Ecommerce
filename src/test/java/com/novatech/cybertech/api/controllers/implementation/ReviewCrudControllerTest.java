@@ -5,7 +5,10 @@ import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
+import com.novatech.cybertech.dto.response.review.ProductReviewsResponseDto;
+import com.novatech.cybertech.dto.response.review.PublicReviewDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
+import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.ReviewNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotAuthorOfReviewException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
@@ -15,15 +18,27 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PagedModel;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
 import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNICAL;
+import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAnonymous;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -33,6 +48,7 @@ import static org.springframework.test.json.JsonCompareMode.STRICT;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,6 +62,7 @@ class ReviewCrudControllerTest {
     private static final String GET_REVIEW_BY_UUID_ENDPOINT = "/api/v1/services/review/get/{reviewUuid}";
     private static final String DELETE_REVIEW_BY_UUID_ENDPOINT = "/api/v1/services/review/delete/{reviewUuid}";
     private static final String REVIEWABLE_PRODUCTS_ENDPOINT = "/api/v1/services/review/reviewable";
+    private static final String PRODUCT_REVIEWS_ENDPOINT = "/api/v1/services/review/product/{productUuid}";
 
 
     @Autowired
@@ -353,5 +370,96 @@ class ReviewCrudControllerTest {
     void reviewable_anonymous_returns401() throws Exception {
         mockMvc.perform(get(REVIEWABLE_PRODUCTS_ENDPOINT).accept(APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ----------------------------------------------------------------------
+    // GET /product/{productUuid} (public)
+    // ----------------------------------------------------------------------
+
+    @Test
+    void shouldGetProductReviewsAsAnonymousWithShortPublicCache() throws Exception {
+        final UUID productUuid = UUID.randomUUID();
+        final UUID reviewUuid = UUID.fromString("0f0e0d0c-0b0a-4908-8706-050403020100");
+        final Map<String, Long> distribution = new LinkedHashMap<>();
+        distribution.put("1", 0L);
+        distribution.put("2", 0L);
+        distribution.put("3", 1L);
+        distribution.put("4", 0L);
+        distribution.put("5", 2L);
+        final PublicReviewDto review = PublicReviewDto.builder()
+                .uuid(reviewUuid).rating(5).comment("Parfait").authorFirstName("Camille").createdAt(LocalDate.of(2026, 10, 14)).build();
+        final ProductReviewsResponseDto response = ProductReviewsResponseDto.builder()
+                .averageRating(new BigDecimal("4.3"))
+                .reviewCount(3)
+                .distribution(distribution)
+                .reviews(new PagedModel<>(new PageImpl<>(List.of(review), PageRequest.of(0, 1), 3)))
+                .build();
+        when(reviewService.getPublishedReviewsOfProduct(eq(productUuid), any(Pageable.class))).thenReturn(response);
+
+        mockMvc.perform(get(PRODUCT_REVIEWS_ENDPOINT, productUuid)
+                        .with(jwtAnonymous())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(header().string("Cache-Control", "max-age=60, public"))
+                .andExpect(content().json("""
+                        {
+                          "averageRating": 4.3,
+                          "reviewCount": 3,
+                          "distribution": {"1": 0, "2": 0, "3": 1, "4": 0, "5": 2},
+                          "reviews": {
+                            "content": [
+                              {"uuid": "0f0e0d0c-0b0a-4908-8706-050403020100", "rating": 5, "comment": "Parfait",
+                               "authorFirstName": "Camille", "createdAt": "2026-10-14"}
+                            ],
+                            "page": {"size": 1, "number": 0, "totalElements": 3, "totalPages": 3}
+                          }
+                        }
+                        """, STRICT));
+    }
+
+    @Test
+    void shouldDefaultProductReviewsToTenPerPageAndCapTheSize() throws Exception {
+        final UUID productUuid = UUID.randomUUID();
+        when(reviewService.getPublishedReviewsOfProduct(eq(productUuid), any(Pageable.class)))
+                .thenReturn(ProductReviewsResponseDto.builder().build());
+
+        mockMvc.perform(get(PRODUCT_REVIEWS_ENDPOINT, productUuid).with(jwtAnonymous()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get(PRODUCT_REVIEWS_ENDPOINT, productUuid).param("page", "2").param("size", "1000").with(jwtAnonymous()))
+                .andExpect(status().isOk());
+
+        final org.mockito.ArgumentCaptor<Pageable> captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(reviewService, times(2)).getPublishedReviewsOfProduct(eq(productUuid), captor.capture());
+        assertThat(captor.getAllValues().get(0).getPageSize()).isEqualTo(10);
+        assertThat(captor.getAllValues().get(0).getPageNumber()).isZero();
+        // spring.data.web.pageable.max-page-size
+        assertThat(captor.getAllValues().get(1).getPageSize()).isEqualTo(100);
+        assertThat(captor.getAllValues().get(1).getPageNumber()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldReturn404ForReviewsOfUnknownProduct() throws Exception {
+        final UUID productUuid = UUID.randomUUID();
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("No product with the UUID : " + productUuid + " found")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.PRODUCT_NOT_FOUND)
+                .build();
+        when(reviewService.getPublishedReviewsOfProduct(eq(productUuid), any(Pageable.class)))
+                .thenThrow(new ProductNotFoundException("No product with the UUID : " + productUuid + " found"));
+
+        mockMvc.perform(get(PRODUCT_REVIEWS_ENDPOINT, productUuid).with(jwtAnonymous()).accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldRejectReviewsOfMalformedProductUuid() throws Exception {
+        mockMvc.perform(get(PRODUCT_REVIEWS_ENDPOINT, "not-a-uuid").with(jwtAnonymous()).accept(APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH.name()));
+        verifyNoInteractions(reviewService);
     }
 }

@@ -1520,6 +1520,89 @@
           "response": []
         },
         {
+          "name": "Product reviews (public)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/review/product/:productUuid?page=0&size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "review",
+                "product",
+                ":productUuid"
+              ],
+              "variable": [
+                {
+                  "key": "productUuid",
+                  "value": "11111111-2222-3333-4444-555555555555"
+                }
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Default 10, max 100. Any sort is ignored: newest first."
+                }
+              ]
+            },
+            "description": "Published reviews of a product: `averageRating` (1 decimal, null without reviews), `reviewCount`, `distribution` (keys \"1\" to \"5\" always present) and one page of `PublicReviewDto` (`uuid`, `rating`, `comment`, `authorFirstName` (first name only), `createdAt` (ISO date)), newest first. Reviews rejected by moderation are never listed. Served with `Cache-Control: max-age=60, public`.\n\n- Public.\n- Success: 200 OK with `ProductReviewsResponseDto`.\n- Errors: 404 `PRODUCT_NOT_FOUND`, 400 `METHOD_ARGUMENT_TYPE_MISMATCH` (malformed uuid)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/services/review/product/:productUuid"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "max-age=60, public"
+                }
+              ],
+              "body": "{\n  \"averageRating\": 4.3,\n  \"reviewCount\": 3,\n  \"distribution\": {\n    \"1\": 0,\n    \"2\": 0,\n    \"3\": 0,\n    \"4\": 2,\n    \"5\": 1\n  },\n  \"reviews\": {\n    \"content\": [\n      {\n        \"uuid\": \"0f0e0d0c-0b0a-4908-8706-050403020100\",\n        \"rating\": 4,\n        \"comment\": \"Très bon écran\",\n        \"authorFirstName\": \"Jean\",\n        \"createdAt\": \"2026-10-02\"\n      }\n    ],\n    \"page\": {\n      \"size\": 10,\n      \"number\": 0,\n      \"totalElements\": 3,\n      \"totalPages\": 1\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
           "name": "Create review (USER)",
           "request": {
             "method": "POST",

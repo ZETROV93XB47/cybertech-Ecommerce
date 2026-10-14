@@ -3,6 +3,7 @@ package com.novatech.cybertech.api.controllers.spec;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
+import com.novatech.cybertech.dto.response.review.ProductReviewsResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
 import com.novatech.cybertech.dto.response.review.ReviewableProductDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +13,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
@@ -34,6 +36,25 @@ public interface ReviewCrudControllerApiSpec {
                     @ApiResponse(responseCode = "403", description = "Operation forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Review not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))})
     ResponseEntity<ReviewResponseDto> getReviewByUuid(final UUID reviewUuid);
+
+    @Operation(summary = "Published reviews of a product (public)",
+            description = """
+                    Rating summary over every published review of the product (`averageRating` with 1 decimal,
+                    null without reviews; `reviewCount`; `distribution` with keys "1" to "5" always present) and
+                    one page of those reviews, newest first (`page`, `size` default 10, max 100; any `sort`
+                    is ignored). A review rejected by moderation is never listed. Each review carries the
+                    author's first name only, never their e-mail, last name or user id.
+
+                    Public endpoint, no JWT required. Sent with a short `Cache-Control: public`.
+                    """,
+            parameters = {
+                    @Parameter(name = "productUuid", description = "Product whose reviews to list", required = true, schema = @Schema(implementation = UUID.class))
+            },
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Rating summary and one page of published reviews", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductReviewsResponseDto.class))),
+                    @ApiResponse(responseCode = "400", description = "Malformed product uuid (METHOD_ARGUMENT_TYPE_MISMATCH)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "Unknown product (PRODUCT_NOT_FOUND)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))})
+    ResponseEntity<ProductReviewsResponseDto> getProductReviews(final UUID productUuid, @Parameter(hidden = true) final Pageable pageable);
 
 
     @Operation(summary = "Create a new Review",
