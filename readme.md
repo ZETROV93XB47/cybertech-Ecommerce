@@ -12,7 +12,7 @@
 
 Cybertech est un **backend Spring Boot 4 + frontend Next.js 16** pour une plateforme e-commerce dédiée aux produits informatiques (ordinateurs portables, écrans, smartphones, claviers). La plateforme couvre l'intégralité du parcours client — découverte du catalogue, panier, wishlist, paiement Stripe, livraison, notifications email, reviews modérées — et la totalité de l'arrière-boutique : gestion produits, utilisateurs, commandes, campagnes promotionnelles.
 
-L'architecture est un **monolithe modulaire** organisé en couches (controller → service → repository) avec une séparation par domaine fonctionnel. Les ruptures de charge ont été placées là où elles comptent : **Elasticsearch** pour la recherche, **Redis** pour le cache panier et les locks distribués, **MongoDB** pour les events utilisateur, **Keycloak** pour l'identité, **Stripe** pour le paiement, un **S3 local (RustFS)** pour les images (LocalStack reste utilisé par le déploiement minikube). Les flux asynchrones critiques (notifications, expédition, ré-indexation ES) passent par `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` pour garantir la cohérence transactionnelle, et un service Python externe basé sur **toxic-bert** modère le contenu des reviews.
+L'architecture est un **monolithe modulaire** organisé en couches (controller → service → repository) avec une séparation par domaine fonctionnel. Les ruptures de charge ont été placées là où elles comptent : **Elasticsearch** pour la recherche, **Redis** pour le cache panier et les locks distribués, **MongoDB** pour les events utilisateur, **Keycloak** pour l'identité, **Stripe** pour le paiement, **LocalStack S3** pour les images. Les flux asynchrones critiques (notifications, expédition, ré-indexation ES) passent par `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` pour garantir la cohérence transactionnelle, et un service Python externe basé sur **toxic-bert** modère le contenu des reviews.
 
 Le projet est **observable** (Loki + Grafana en cluster), **testé** (1 681 tests unitaires + Testcontainers ITs + ArchUnit + JaCoCo gate 80 %), **déployable** (Helm charts pour 16 services, Skaffold, Jib, ingress NGINX), et **load-testable** (Gatling 3 avec trois scénarios pré-écrits). Il est dimensionné pour tourner sur **minikube** en projet portfolio mais reste l'expression complète d'un produit prêt pour la production.
 
@@ -103,7 +103,7 @@ Le projet est **observable** (Loki + Grafana en cluster), **testé** (1 681 test
 | Outil | Rôle |
 |---|---|
 | **Stripe CLI** v1.37.1 | Forward des webhooks vers le backend en dev |
-| **RustFS** 1.0.1 | S3 local pour les images produit (persistant, console web) |
+| **LocalStack** 4.13.1 | Émulateur S3 pour les images produit |
 | **Mailpit** | Serveur SMTP dev + UI de revue des emails |
 | **Moderation API** (Flask + `unitary/toxic-bert`) | Modération NLP des reviews, exposée sur :5000 |
 | **Gorse** | Moteur de recommandations (dev only) |
@@ -163,7 +163,7 @@ flowchart LR
 
     subgraph External["Services externes"]
         ST[Stripe API]
-        S3[(RustFS S3<br/>cybertech-products)]
+        S3[(LocalStack S3<br/>cybertech-products)]
         MD[Moderation API<br/>Python + toxic-bert]
         MP[Mailpit SMTP]
         VL[(Vault)]
@@ -464,7 +464,7 @@ sequenceDiagram
 ### Lancement local — back-end
 
 ```bash
-# 1) Démarrer toute l'infra (MySQL, MongoDB, ES, Redis, Keycloak, Vault, RustFS, Mailpit, Gorse, Stripe CLI, moderation-api)
+# 1) Démarrer toute l'infra (MySQL, MongoDB, ES, Redis, Keycloak, Vault, LocalStack, Mailpit, Gorse, Stripe CLI, moderation-api)
 cd src/main/resources/docker
 docker compose up -d
 
@@ -528,8 +528,7 @@ python app.py    # Flask sur :5000, charge unitary/toxic-bert (~600 MB RAM)
 | MongoDB | mongodb://localhost:27017 |
 | Elasticsearch | http://localhost:9200 |
 | Redis | redis://localhost:6379 |
-| RustFS S3 (API) | http://localhost:9000 |
-| RustFS console | http://localhost:9001/rustfs/console/ (`cybertech` / `cybertech-dev-secret`) |
+| LocalStack S3 | http://localhost:4566 |
 | Vault | http://localhost:8200 (token `root` en dev) |
 | Moderation API | http://localhost:5000/analyze |
 | Stripe CLI | forward → http://host.docker.internal:8081/api/v1/webhooks/stripe |

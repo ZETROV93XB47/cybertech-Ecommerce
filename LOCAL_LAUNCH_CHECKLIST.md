@@ -19,7 +19,7 @@ The backend `application.properties` (default profile, no `prod`) hardcodes loca
 | Redis          | `localhost:6379`                     | `spring.data.redis.host`                              | YES (BLOCKER — `spring.cache.type=redis`) |
 | MongoDB        | `mongodb://localhost:27017/userEventsDB` | `spring.data.mongodb.uri`                          | YES (BLOCKER)     |
 | Elasticsearch  | `http://localhost:9200`              | `spring.elasticsearch.uris`                           | YES (BLOCKER)     |
-| RustFS S3      | `http://localhost:9000` (console `http://localhost:9001/rustfs/console/`) | `spring.cloud.aws.s3.endpoint`                        | YES (BLOCKER — bucket `cybertech-products`, created by `s3-init`) |
+| LocalStack S3  | `http://localhost:4566`              | `spring.cloud.aws.s3.endpoint`                        | YES (BLOCKER — bucket `cybertech-products`) |
 | Mailpit        | `localhost:1025` (SMTP) / `:8025` (UI) | `spring.mail.host` / `.port`                        | RECOMMENDED (mail health probe is disabled, but order/notification listeners hit SMTP) |
 | Vault          | `http://localhost:8200`              | `spring.cloud.vault.uri`                              | NOT required — `spring.cloud.vault.enabled=false` in default profile |
 | Stripe CLI     | forwards events to `localhost:8081/api/v1/webhooks/stripe` | n/a                                | RECOMMENDED only for Stripe webhook test |
@@ -31,7 +31,7 @@ The backend `application.properties` (default profile, no `prod`) hardcodes loca
 ```bash
 cd src/main/resources/docker
 # .env file is already present (MYSQL_PORT=3306 etc.)
-docker compose up -d mysql redis mongodb elasticsearch keycloak rustfs s3-init mailpit
+docker compose up -d mysql redis mongodb elasticsearch keycloak localstack mailpit
 # OPTIONAL extras:
 # docker compose up -d moderation-api stripe
 docker compose ps    # verify all are healthy / running
@@ -185,7 +185,7 @@ Follow strictly — Spring Boot won't start if Keycloak/MySQL/Redis/Mongo/ES are
 1. **Bring up third-party services**
    ```bash
    cd src/main/resources/docker
-   docker compose up -d mysql redis mongodb elasticsearch keycloak rustfs s3-init mailpit
+   docker compose up -d mysql redis mongodb elasticsearch keycloak localstack mailpit
    docker compose ps   # wait for all "healthy" / "running"
    ```
 
