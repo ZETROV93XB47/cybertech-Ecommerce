@@ -502,7 +502,7 @@
                         </path>
                     </annotationProcessorPaths>
                     <source>26</source>
-                    <target>25</target>
+                    <target>26</target>
                     <compilerArgs>--enable-preview</compilerArgs>
                 </configuration>
             </plugin>
