@@ -1444,7 +1444,7 @@
                 }
               ]
             },
-            "description": "Every available (provider, type) pair with its fee, sorted by provider then cost. `cost` is exactly the `shippingCost` an order placed with that pair is charged. Served with `Cache-Control: max-age=600, public`.\n\n- Public.\n- Success: 200 OK with `ShippingOptionResponseDto[]` (`provider`, `type`, `cost`, `currency`).\n- Errors: 400 `METHOD_ARGUMENT_TYPE_MISMATCH` for an unknown `provider`."
+            "description": "Every available (provider, type) pair with its fee and indicative delivery time (business days Monday to Friday, holidays ignored; an order placed after `cutoffTime` is handled the next business day), sorted by provider then cost. `cost` is exactly the `shippingCost` an order placed with that pair is charged. Served with `Cache-Control: max-age=600, public`.\n\n- Public.\n- Success: 200 OK with `ShippingOptionResponseDto[]` (`provider`, `type`, `cost`, `currency`, `minDeliveryBusinessDays`, `maxDeliveryBusinessDays`, `cutoffTime` (\"HH:mm\", nullable), `timeZone`).\n- Errors: 400 `METHOD_ARGUMENT_TYPE_MISMATCH` for an unknown `provider`."
           },
           "event": [
             {
@@ -1479,7 +1479,7 @@
                   "value": "max-age=600, public"
                 }
               ],
-              "body": "[\n  {\n    \"provider\": \"DHL\",\n    \"type\": \"STANDARD\",\n    \"cost\": 15.00,\n    \"currency\": \"EUR\"\n  },\n  {\n    \"provider\": \"DHL\",\n    \"type\": \"EXPRESS\",\n    \"cost\": 25.00,\n    \"currency\": \"EUR\"\n  },\n  {\n    \"provider\": \"FEDEX\",\n    \"type\": \"STANDARD\",\n    \"cost\": 15.00,\n    \"currency\": \"EUR\"\n  },\n  {\n    \"provider\": \"FEDEX\",\n    \"type\": \"EXPRESS\",\n    \"cost\": 25.00,\n    \"currency\": \"EUR\"\n  }\n]"
+              "body": "[\n  {\n    \"provider\": \"DHL\",\n    \"type\": \"STANDARD\",\n    \"cost\": 15.00,\n    \"currency\": \"EUR\",\n    \"minDeliveryBusinessDays\": 2,\n    \"maxDeliveryBusinessDays\": 3,\n    \"cutoffTime\": null,\n    \"timeZone\": \"Europe/Paris\"\n  },\n  {\n    \"provider\": \"DHL\",\n    \"type\": \"EXPRESS\",\n    \"cost\": 25.00,\n    \"currency\": \"EUR\",\n    \"minDeliveryBusinessDays\": 1,\n    \"maxDeliveryBusinessDays\": 1,\n    \"cutoffTime\": \"15:00\",\n    \"timeZone\": \"Europe/Paris\"\n  },\n  {\n    \"provider\": \"FEDEX\",\n    \"type\": \"STANDARD\",\n    \"cost\": 15.00,\n    \"currency\": \"EUR\",\n    \"minDeliveryBusinessDays\": 1,\n    \"maxDeliveryBusinessDays\": 2,\n    \"cutoffTime\": null,\n    \"timeZone\": \"Europe/Paris\"\n  },\n  {\n    \"provider\": \"FEDEX\",\n    \"type\": \"EXPRESS\",\n    \"cost\": 25.00,\n    \"currency\": \"EUR\",\n    \"minDeliveryBusinessDays\": 1,\n    \"maxDeliveryBusinessDays\": 1,\n    \"cutoffTime\": \"15:00\",\n    \"timeZone\": \"Europe/Paris\"\n  }\n]"
             }
           ]
         }

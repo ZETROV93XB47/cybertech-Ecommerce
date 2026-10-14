@@ -351,6 +351,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
                 .country(dto.getShippingCountry())
                 .build());
         OrderPricingUtils.applyPriceBreakdown(order, priceResult);
+        // Same clock as at placement (orderDate): only a new shipping option moves the dates.
+        OrderPricingUtils.applyDeliveryEstimate(order, priceResult);
 
         // 5) Overwrite des items (selon ton choix)
         //    Ici, je suppose que tu sais reconstruire la liste OrderItemEntity depuis dto + products

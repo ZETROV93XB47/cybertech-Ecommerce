@@ -69,5 +69,11 @@ public class OrderResponseDto {
 
     private String shippingAddress;
 
+    @Schema(description = "Indicative earliest delivery day (ISO date, business days, holidays ignored); null on orders placed before estimates existed.", example = "2026-10-15", nullable = true)
+    private LocalDate estimatedDeliveryFrom;
+
+    @Schema(description = "Indicative latest delivery day (ISO date); null on orders placed before estimates existed.", example = "2026-10-16", nullable = true)
+    private LocalDate estimatedDeliveryTo;
+
     private List<OrderItemResponseDto> orderItems;
 }

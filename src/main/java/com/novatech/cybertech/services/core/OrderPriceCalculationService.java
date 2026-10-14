@@ -5,6 +5,7 @@ import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.valueObjects.DeliveryWindow;
 
 import java.math.BigDecimal;
 
@@ -40,4 +41,13 @@ public interface OrderPriceCalculationService {
      *         shipping service is wired for {@code shippingProvider}.
      */
     BigDecimal calculateShippingCost(ShippingProvider shippingProvider, ShippingType shippingType);
+
+    /**
+     * Indicative delivery time of a (provider, type) pair — exactly the window both
+     * {@code calculate} methods return, from which an order's estimated delivery dates are set.
+     *
+     * @throws com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest when no
+     *         shipping service is wired for {@code shippingProvider}.
+     */
+    DeliveryWindow getDeliveryWindow(ShippingProvider shippingProvider, ShippingType shippingType);
 }

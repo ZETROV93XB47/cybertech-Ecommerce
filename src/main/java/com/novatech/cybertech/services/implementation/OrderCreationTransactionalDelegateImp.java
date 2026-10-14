@@ -104,6 +104,7 @@ public class OrderCreationTransactionalDelegateImp implements OrderCreationTrans
                 .build();
 
         OrderPricingUtils.applyPriceBreakdown(order, priceResult);
+        OrderPricingUtils.applyDeliveryEstimate(order, priceResult);
 
         // Lier les items à la commande pour que la clé étrangère orderId soit peuplée lors du save
         orderItems.forEach(item -> item.setOrderEntity(order));

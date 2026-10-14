@@ -11,6 +11,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -115,6 +116,17 @@ public class OrderEntity extends BaseEntity<Long> {
      */
     @Embedded
     private DiscountTermsSnapshot discountTerms;
+
+    /**
+     * Indicative delivery dates (both inclusive) for {@link #shippingProvider} / {@link #shippingType},
+     * set when the order is placed or modified from its {@link #orderDate}. Null on orders placed
+     * before the estimate existed.
+     */
+    @Column(name = "estimatedDeliveryFrom")
+    private LocalDate estimatedDeliveryFrom;
+
+    @Column(name = "estimatedDeliveryTo")
+    private LocalDate estimatedDeliveryTo;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "userId")

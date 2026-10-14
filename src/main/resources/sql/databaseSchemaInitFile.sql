@@ -243,6 +243,9 @@ CREATE TABLE orderTable
     discountFixedAmount     DECIMAL(19, 2),
     discountMinOrderAmount  DECIMAL(19, 2),
     discountMaxAmount       DECIMAL(19, 2),
+    -- Dates de livraison indicatives (nullable : commandes antérieures)
+    estimatedDeliveryFrom   DATE,
+    estimatedDeliveryTo     DATE,
     updatedAt        DATETIME,
 
     -- Relations ManyToOne et OneToOne

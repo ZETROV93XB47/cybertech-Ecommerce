@@ -4310,6 +4310,18 @@ components:
             placed before this field existed.
         shippingAddress:
           type: string
+        estimatedDeliveryFrom:
+          type: string
+          format: date
+          description: "Indicative earliest delivery day (ISO date, business days,\
+            \ holidays ignored); null on orders placed before estimates existed."
+          example: 2026-10-15
+        estimatedDeliveryTo:
+          type: string
+          format: date
+          description: Indicative latest delivery day (ISO date); null on orders placed
+            before estimates existed.
+          example: 2026-10-16
         orderItems:
           type: array
           items:
@@ -5002,6 +5014,26 @@ components:
           type: string
           description: ISO 4217 code of cost.
           example: EUR
+        minDeliveryBusinessDays:
+          type: integer
+          format: int32
+          description: "Indicative earliest delivery, in business days (Monday to\
+            \ Friday, holidays ignored) from the day the order is handled."
+          example: 1
+        maxDeliveryBusinessDays:
+          type: integer
+          format: int32
+          description: "Indicative latest delivery, in business days."
+          example: 2
+        cutoffTime:
+          type: string
+          description: Local time (timeZone) after which an order is handled the next
+            business day; null when there is none.
+          example: 15:00
+        timeZone:
+          type: string
+          description: IANA time zone of cutoffTime.
+          example: Europe/Paris
     ReviewableProductDto:
       type: object
       properties:

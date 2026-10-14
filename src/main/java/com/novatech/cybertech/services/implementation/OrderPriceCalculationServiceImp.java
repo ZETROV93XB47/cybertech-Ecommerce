@@ -7,6 +7,7 @@ import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.enums.DiscountCalculationType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.valueObjects.DeliveryWindow;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
@@ -94,7 +95,8 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .setScale(2, RoundingMode.HALF_UP);
 
         // Include shipping cost computed via ShippingProviderStrategyFactory in final order price (previously omitted)
-        final BigDecimal shippingCost = calculateShippingCost(request.getShippingProvider(), request.getShippingType());
+        final ShippingProviderService shippingStrategy = shippingStrategy(request.getShippingProvider());
+        final BigDecimal shippingCost = shippingCostOf(shippingStrategy, request.getShippingType());
 
         final BigDecimal discountAmount = computeDiscount(baseAmount, request.getItems(), context);
 
@@ -116,16 +118,29 @@ public class OrderPriceCalculationServiceImp implements OrderPriceCalculationSer
                 .currencyCode(request.getCurrencyCode())
                 .discountKey(request.getDiscountKey())
                 .appliedDiscount(context)
+                .deliveryWindow(shippingStrategy.getDeliveryWindow(request.getShippingType()))
                 .build();
     }
 
     @Override
     public BigDecimal calculateShippingCost(final ShippingProvider shippingProvider, final ShippingType shippingType) {
+        return shippingCostOf(shippingStrategy(shippingProvider), shippingType);
+    }
+
+    @Override
+    public DeliveryWindow getDeliveryWindow(final ShippingProvider shippingProvider, final ShippingType shippingType) {
+        return shippingStrategy(shippingProvider).getDeliveryWindow(shippingType);
+    }
+
+    private ShippingProviderService shippingStrategy(final ShippingProvider shippingProvider) {
         final ShippingProviderService shippingStrategy = shippingProviderStrategyFactory.getStrategy(shippingProvider);
         if (shippingStrategy == null) {
             throw new NoStrategyFoundForProcessingTheRequest(NO_SHIPPING_STRATEGY_MESSAGE_PREFIX + shippingProvider);
         }
+        return shippingStrategy;
+    }
 
+    private static BigDecimal shippingCostOf(final ShippingProviderService shippingStrategy, final ShippingType shippingType) {
         return shippingStrategy.calculateShippingCost(shippingType).setScale(2, RoundingMode.HALF_UP);
     }
 

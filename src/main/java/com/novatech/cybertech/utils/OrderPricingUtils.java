@@ -76,4 +76,18 @@ public final class OrderPricingUtils {
         order.setDiscountAmount(result.getDiscountAmount());
         order.setShippingCost(result.getShippingCost());
     }
+
+    /**
+     * Sets the order's indicative delivery dates from the delivery window of the shipping option it
+     * was just priced with, counted from its {@code orderDate}. Left untouched when either is missing.
+     */
+    public static void applyDeliveryEstimate(final OrderEntity order, final PriceCalculationResultDto result) {
+        if (result.getDeliveryWindow() == null || order.getOrderDate() == null) {
+            return;
+        }
+        final DeliveryEstimateUtils.DeliveryEstimate estimate =
+                DeliveryEstimateUtils.estimate(result.getDeliveryWindow(), order.getOrderDate());
+        order.setEstimatedDeliveryFrom(estimate.from());
+        order.setEstimatedDeliveryTo(estimate.to());
+    }
 }

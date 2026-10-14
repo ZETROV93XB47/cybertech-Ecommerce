@@ -58,6 +58,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -256,6 +257,22 @@ class OrderUpdateKeepsDiscountTest {
         verify(paymentService).processPayment(any(), any(), charged.capture(), anyString());
         assertThat(charged.getValue().getAmount()).isEqualByComparingTo("10.00");
         verify(paymentService, never()).refund(any(), any(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("a new shipping option moves the estimated delivery dates, still counted from the original orderDate")
+    void shippingChange_recomputesEstimatedDeliveryFromOrderDate() {
+        final OrderEntity order = paidBlackFridayOrder(true);
+        final LocalDateTime placedMondayBeforeCutoff = LocalDateTime.of(2026, 10, 12, 14, 0);
+        order.setOrderDate(placedMondayBeforeCutoff);
+        when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(accepted(TransactionType.PAYMENT, "10.00"));
+
+        service.updateOrder(update(order, 2, ShippingType.EXPRESS), jwt);
+
+        // DHL EXPRESS, Monday 14:00 -> Tuesday.
+        assertThat(order.getOrderDate()).isEqualTo(placedMondayBeforeCutoff);
+        assertThat(order.getEstimatedDeliveryFrom()).isEqualTo(LocalDate.of(2026, 10, 13));
+        assertThat(order.getEstimatedDeliveryTo()).isEqualTo(LocalDate.of(2026, 10, 13));
     }
 
     @Test

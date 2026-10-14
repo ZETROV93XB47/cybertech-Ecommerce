@@ -13,6 +13,8 @@ import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
+import com.novatech.cybertech.entities.valueObjects.DeliveryWindow;
+import com.novatech.cybertech.utils.DeliveryEstimateUtils;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
@@ -288,6 +290,33 @@ class OrderCreationTransactionalDelegateImpTest {
         final OrderEntity saved = cap.getValue();
         assertThat(saved.getTotalAmount().getAmount()).isEqualByComparingTo("37.50");
         assertThat(saved.getTotalAmount().getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
+    }
+
+    @Test
+    @DisplayName("estimated delivery dates set from the priced option's delivery window, counted from orderDate")
+    void estimatedDeliveryDatesFromPricedWindow() {
+        final ProductEntity product = ProductEntityBuilder.aValidProduct();
+        final UserEntity user = userWithCart(product, 1);
+        final DeliveryWindow window = new DeliveryWindow(2, 3, null);
+        when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+        when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                .thenReturn(PriceCalculationResultDto.builder()
+                        .baseAmount(new BigDecimal("10.00"))
+                        .discountAmount(BigDecimal.ZERO)
+                        .finalAmount(new BigDecimal("10.00"))
+                        .currencyCode(CurrencyCode.EUR)
+                        .discountKey(NO_DISCOUNT_KEY)
+                        .deliveryWindow(window)
+                        .build());
+        final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
+        when(orderRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+        delegate.createAndReserveStock(OrderDtoFixtures.aValidPlaceOrderRequest(), keycloakId);
+
+        final OrderEntity saved = cap.getValue();
+        final DeliveryEstimateUtils.DeliveryEstimate expected = DeliveryEstimateUtils.estimate(window, saved.getOrderDate());
+        assertThat(saved.getEstimatedDeliveryFrom()).isEqualTo(expected.from());
+        assertThat(saved.getEstimatedDeliveryTo()).isEqualTo(expected.to());
     }
 
     @Test

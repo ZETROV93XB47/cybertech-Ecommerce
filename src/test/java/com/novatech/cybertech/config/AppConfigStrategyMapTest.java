@@ -6,6 +6,7 @@ import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.valueObjects.DeliveryWindow;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.ShippingProviderService;
@@ -61,6 +62,11 @@ class AppConfigStrategyMapTest {
         @Override
         public String deliver(final String packageId, final ShippingType shippingType) {
             return packageId;
+        }
+
+        @Override
+        public DeliveryWindow getDeliveryWindow(final ShippingType shippingType) {
+            return new DeliveryWindow(1, 1, null);
         }
     }
 

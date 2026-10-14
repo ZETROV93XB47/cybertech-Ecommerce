@@ -14,9 +14,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.LocalTime;
 import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -44,7 +46,10 @@ class ShippingControllerTest {
     @MockitoBean ShippingOptionService shippingOptionService;
 
     private static ShippingOptionResponseDto option(final ShippingProvider provider, final ShippingType type, final String cost) {
-        return ShippingOptionResponseDto.builder().provider(provider).type(type).cost(new BigDecimal(cost)).currency("EUR").build();
+        final boolean express = type == ShippingType.EXPRESS;
+        return ShippingOptionResponseDto.builder().provider(provider).type(type).cost(new BigDecimal(cost)).currency("EUR")
+                .minDeliveryBusinessDays(express ? 1 : 2).maxDeliveryBusinessDays(express ? 1 : 3)
+                .cutoffTime(express ? LocalTime.of(15, 0) : null).timeZone("Europe/Paris").build();
     }
 
     @Test
@@ -62,7 +67,13 @@ class ShippingControllerTest {
                 .andExpect(jsonPath("$[0].type").value("STANDARD"))
                 .andExpect(jsonPath("$[0].cost").value(15.00))
                 .andExpect(jsonPath("$[0].currency").value("EUR"))
-                .andExpect(jsonPath("$[1].type").value("EXPRESS"));
+                .andExpect(jsonPath("$[1].type").value("EXPRESS"))
+                .andExpect(jsonPath("$[0].minDeliveryBusinessDays").value(2))
+                .andExpect(jsonPath("$[0].maxDeliveryBusinessDays").value(3))
+                .andExpect(jsonPath("$[0].cutoffTime").value(nullValue()))
+                .andExpect(jsonPath("$[0].timeZone").value("Europe/Paris"))
+                // Hours and minutes only.
+                .andExpect(jsonPath("$[1].cutoffTime").value("15:00"));
     }
 
     @Test

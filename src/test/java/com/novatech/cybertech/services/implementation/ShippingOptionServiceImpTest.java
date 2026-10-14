@@ -4,7 +4,12 @@ import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
 import com.novatech.cybertech.dto.response.shipping.ShippingOptionResponseDto;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.valueObjects.DeliveryWindow;
+import com.novatech.cybertech.utils.DeliveryEstimateUtils;
+import com.novatech.cybertech.utils.OrderPricingUtils;
+import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.factory.DiscountStrategyFactory;
 import com.novatech.cybertech.factory.ShippingProviderStrategyFactory;
@@ -17,6 +22,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -95,6 +102,42 @@ class ShippingOptionServiceImpTest {
             assertThat(option.getCost())
                     .as("%s %s", option.getProvider(), option.getType())
                     .isEqualTo(priceService.calculate(order).getShippingCost());
+        });
+    }
+
+    @Test
+    @DisplayName("each option carries its carrier's delivery window, the cut-off and the time zone")
+    void deliveryWindowsListed() {
+        assertThat(service.getShippingOptions(null))
+                .extracting(ShippingOptionResponseDto::getProvider, ShippingOptionResponseDto::getType,
+                        ShippingOptionResponseDto::getMinDeliveryBusinessDays, ShippingOptionResponseDto::getMaxDeliveryBusinessDays,
+                        ShippingOptionResponseDto::getCutoffTime, ShippingOptionResponseDto::getTimeZone)
+                .containsExactly(
+                        tuple(ShippingProvider.DHL, ShippingType.STANDARD, 2, 3, null, "Europe/Paris"),
+                        tuple(ShippingProvider.DHL, ShippingType.EXPRESS, 1, 1, LocalTime.of(15, 0), "Europe/Paris"),
+                        tuple(ShippingProvider.FEDEX, ShippingType.STANDARD, 1, 2, null, "Europe/Paris"),
+                        tuple(ShippingProvider.FEDEX, ShippingType.EXPRESS, 1, 1, LocalTime.of(15, 0), "Europe/Paris"));
+    }
+
+    @Test
+    @DisplayName("every listed delivery time is exactly the one an order priced with that option gets its dates from")
+    void listedDeliveryWindow_equalsWindowAppliedToOrder() {
+        final LocalDateTime orderedAt = LocalDateTime.of(2026, 10, 12, 14, 0); // a Monday, before the cut-off
+        service.getShippingOptions(null).forEach(option -> {
+            final PriceCalculationResultDto priced = priceService.calculate(PriceCalculationRequestDto.builder()
+                    .items(List.of(OrderItemPriceDto.builder().productUuid(UUID.randomUUID()).unitPrice(new BigDecimal("42.00")).quantity(1).build()))
+                    .discountKey(NO_DISCOUNT_KEY)
+                    .currencyCode(CurrencyCode.EUR)
+                    .shippingProvider(option.getProvider())
+                    .shippingType(option.getType())
+                    .build());
+            final OrderEntity order = OrderEntity.builder().orderDate(orderedAt).build();
+            OrderPricingUtils.applyDeliveryEstimate(order, priced);
+
+            final DeliveryEstimateUtils.DeliveryEstimate fromOption = DeliveryEstimateUtils.estimate(
+                    new DeliveryWindow(option.getMinDeliveryBusinessDays(), option.getMaxDeliveryBusinessDays(), option.getCutoffTime()), orderedAt);
+            assertThat(order.getEstimatedDeliveryFrom()).as("%s %s", option.getProvider(), option.getType()).isEqualTo(fromOption.from());
+            assertThat(order.getEstimatedDeliveryTo()).as("%s %s", option.getProvider(), option.getType()).isEqualTo(fromOption.to());
         });
     }
 }

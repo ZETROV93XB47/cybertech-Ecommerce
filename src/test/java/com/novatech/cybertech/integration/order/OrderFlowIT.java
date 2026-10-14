@@ -57,6 +57,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import com.novatech.cybertech.dto.response.shipping.ShippingOptionResponseDto;
+import com.novatech.cybertech.entities.valueObjects.DeliveryWindow;
+import com.novatech.cybertech.utils.DeliveryEstimateUtils;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.HashMap;
@@ -286,6 +290,41 @@ class OrderFlowIT {
         assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
         final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
         assertThat(placed.getTotalAmount()).isEqualByComparingTo(quote.getTotalAmount());
+    }
+
+    // Delivery estimate: the dates of the order placed are exactly those its shipping option announces.
+    @Test
+    void placedOrderDeliveryDatesMatchTheShippingOptionAnnounced() throws Exception {
+        addItemToCart(productUuid, 1);
+
+        final MvcResult optionsResult = mockMvc.perform(get("/api/v1/services/shipping/options").param("provider", "DHL")).andReturn();
+        assertThat(optionsResult.getResponse().getStatus()).isEqualTo(200);
+        final ShippingOptionResponseDto express = objectMapper.readValue(optionsResult.getResponse().getContentAsByteArray(),
+                        new TypeReference<List<ShippingOptionResponseDto>>() {
+                        }).stream()
+                .filter(option -> option.getType() == ShippingType.EXPRESS)
+                .findFirst()
+                .orElseThrow();
+        assertThat(express.getMaxDeliveryBusinessDays()).isBetween(1, 3);
+        assertThat(express.getTimeZone()).isEqualTo("Europe/Paris");
+
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                                .shippingType(ShippingType.EXPRESS).shippingProvider(ShippingProvider.DHL).build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+
+        final DeliveryEstimateUtils.DeliveryEstimate announced = DeliveryEstimateUtils.estimate(
+                new DeliveryWindow(express.getMinDeliveryBusinessDays(), express.getMaxDeliveryBusinessDays(), express.getCutoffTime()),
+                placed.getCreatedAt());
+        assertThat(placed.getEstimatedDeliveryFrom()).isEqualTo(announced.from());
+        assertThat(placed.getEstimatedDeliveryTo()).isEqualTo(announced.to());
+        final OrderEntity persisted = orderRepository.findByUuid(placed.getUuid()).orElseThrow();
+        assertThat(persisted.getEstimatedDeliveryFrom()).isEqualTo(announced.from());
+        assertThat(persisted.getEstimatedDeliveryTo()).isEqualTo(announced.to());
     }
 
     // 6) Happy path — full cart → place → event capture + stock decrement.

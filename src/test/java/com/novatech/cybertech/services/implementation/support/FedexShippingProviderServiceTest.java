@@ -1,12 +1,14 @@
 package com.novatech.cybertech.services.implementation.support;
 
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.valueObjects.DeliveryWindow;
 import com.novatech.cybertech.services.implementation.DHLShippingProviderService;
 import com.novatech.cybertech.services.implementation.FedexShippingProviderService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -76,5 +78,19 @@ class FedexShippingProviderServiceTest {
                         .toList())
                 .as("no RestTemplate / WebClient / SDK field — the deliver() method cannot call FedEx")
                 .isEmpty();
+    }
+
+    @Test
+    @DisplayName("EXPRESS: next business day for an order placed by 15:00")
+    void expressDeliveryWindow() {
+        assertThat(fedex.getDeliveryWindow(ShippingType.EXPRESS))
+                .isEqualTo(new DeliveryWindow(1, 1, LocalTime.of(15, 0)));
+    }
+
+    @Test
+    @DisplayName("STANDARD: 1 to 2 business days, no cut-off")
+    void standardDeliveryWindow() {
+        assertThat(fedex.getDeliveryWindow(ShippingType.STANDARD))
+                .isEqualTo(new DeliveryWindow(1, 2, null));
     }
 }
