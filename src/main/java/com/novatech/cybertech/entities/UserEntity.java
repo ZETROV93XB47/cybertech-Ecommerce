@@ -96,6 +96,10 @@ public class UserEntity extends BaseEntity<Long> {
     @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private BankCardEntity bankCardEntity;
 
+    /** Stripe Customer ({@code cus_...}) owning the saved card; created on the first card setup. */
+    @Column(name = "stripeCustomerId", length = 255, unique = true)
+    private String stripeCustomerId;
+
     @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private CartEntity cartEntity;
 

@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation.payment;
 
+import com.novatech.cybertech.dto.data.PaymentSource;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
@@ -23,7 +24,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -40,21 +40,22 @@ import static org.mockito.Mockito.when;
  * <p>The Stripe SDK exposes static factory methods ({@code PaymentIntent.create},
  * {@code Refund.create}) for building remote API calls. We rely on
  * {@link Mockito#mockStatic(Class)} (mockito-inline mock-maker) to intercept
- * those calls without hitting the network. This processor is otherwise
- * dependency-free, so we instantiate it directly and inject the
- * {@code @Value("${stripe.payment-method:}")} default via
- * {@link ReflectionTestUtils} when needed.</p>
+ * those calls without hitting the network. This processor is dependency-free, so we
+ * instantiate it directly.</p>
  *
  * <p>Coverage focus: status mapping (succeeded / requires_payment_method /
  * canceled / processing fallback), refund status mapping (succeeded / failed /
  * canceled / fallback), {@link StripeException} translation into
  * {@link PaymentProcessingException}, and the contract around
- * the configurable {@code defaultPaymentMethod}.</p>
+ * the saved card ({@code customer} + {@code payment_method}, off-session) sent to Stripe.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class StripePaymentAttemptProcessorTest {
 
     private StripePaymentAttemptProcessor processor;
+
+    /** The user's saved card: Stripe Customer + PaymentMethod. */
+    private static final PaymentSource SOURCE = new PaymentSource("cus_test_buyer", "pm_test_saved_card");
 
     private UUID orderUuid;
     private String idempotencyKey;
@@ -63,8 +64,6 @@ class StripePaymentAttemptProcessorTest {
     @BeforeEach
     void setUp() {
         processor = new StripePaymentAttemptProcessor();
-        // default behaviour: no payment-method override
-        ReflectionTestUtils.setField(processor, "defaultPaymentMethod", "");
 
         orderUuid = UUID.fromString("11111111-2222-3333-4444-555555555555");
         idempotencyKey = "idem-key-001";
@@ -110,7 +109,7 @@ class StripePaymentAttemptProcessorTest {
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenReturn(intent);
 
-                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
                 assertThat(result).isNotNull();
                 assertThat(result.status()).isEqualTo(PaymentAttemptStatus.SUCCESS);
@@ -127,7 +126,7 @@ class StripePaymentAttemptProcessorTest {
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenReturn(intent);
 
-                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
                 assertThat(result.status()).isEqualTo(PaymentAttemptStatus.FAILED);
                 assertThat(result.stripePaymentID()).isEqualTo("pi_failed_1");
@@ -143,22 +142,22 @@ class StripePaymentAttemptProcessorTest {
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenReturn(intent);
 
-                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
                 assertThat(result.status()).isEqualTo(PaymentAttemptStatus.FAILED);
             }
         }
 
         @Test
-        @DisplayName("any other Stripe status (e.g. requires_action) falls back to PROCESSING")
+        @DisplayName("any other Stripe status (e.g. requires_capture) falls back to PROCESSING")
         void mapsUnknownStatusToProcessing() {
             try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
-                PaymentIntent intent = stubPaymentIntent("pi_processing_1", "requires_action");
+                PaymentIntent intent = stubPaymentIntent("pi_processing_1", "requires_capture");
                 piMock.when(() -> PaymentIntent.create(
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenReturn(intent);
 
-                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
                 assertThat(result.status()).isEqualTo(PaymentAttemptStatus.PROCESSING);
                 assertThat(result.stripePaymentID()).isEqualTo("pi_processing_1");
@@ -174,7 +173,7 @@ class StripePaymentAttemptProcessorTest {
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenReturn(intent);
 
-                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
                 assertThat(result.status()).isEqualTo(PaymentAttemptStatus.PROCESSING);
             }
@@ -188,7 +187,7 @@ class StripePaymentAttemptProcessorTest {
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenThrow(stripeError("Card declined", "card_declined"));
 
-                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey);
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
                 assertThat(result.status()).isEqualTo(PaymentAttemptStatus.FAILED);
                 assertThat(result.stripePaymentID()).isNull();
@@ -204,7 +203,7 @@ class StripePaymentAttemptProcessorTest {
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenThrow(boom);
 
-                assertThatThrownBy(() -> processor.processPayment(orderUuid, amount, idempotencyKey))
+                assertThatThrownBy(() -> processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE))
                         .isInstanceOf(PaymentProcessingException.class)
                         .hasMessageContaining(orderUuid.toString());
             }
@@ -225,7 +224,7 @@ class StripePaymentAttemptProcessorTest {
                         .thenReturn(intent);
 
                 Money usdAmount = new Money(new BigDecimal("10.00"), CurrencyCode.USD);
-                processor.processPayment(orderUuid, usdAmount, idempotencyKey);
+                processor.processPayment(orderUuid, usdAmount, idempotencyKey, SOURCE);
 
                 piMock.verify(() -> PaymentIntent.create(captor.capture(), optionsCaptor.capture()));
 
@@ -243,65 +242,60 @@ class StripePaymentAttemptProcessorTest {
         }
 
         @Test
-        @DisplayName("when stripe.payment-method is configured, it is forwarded as paymentMethod")
-        void forwardsConfiguredPaymentMethodWhenPresent() {
-            ReflectionTestUtils.setField(processor, "defaultPaymentMethod", "pm_card_visa");
-
+        @DisplayName("charges the user's saved card: customer + payment_method, off_session, card only")
+        void chargesTheSavedCardOffSession() {
             try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
                 ArgumentCaptor<PaymentIntentCreateParams> captor =
                         ArgumentCaptor.forClass(PaymentIntentCreateParams.class);
 
-                PaymentIntent intent = stubPaymentIntent("pi_pm_1", "succeeded");
+                PaymentIntent intent = stubPaymentIntent("pi_saved_card", "succeeded");
                 piMock.when(() -> PaymentIntent.create(
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenReturn(intent);
 
-                processor.processPayment(orderUuid, amount, idempotencyKey);
+                processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
                 piMock.verify(() -> PaymentIntent.create(captor.capture(), any(RequestOptions.class)));
-                assertThat(captor.getValue().getPaymentMethod()).isEqualTo("pm_card_visa");
+                PaymentIntentCreateParams sent = captor.getValue();
+                assertThat(sent.getCustomer()).isEqualTo("cus_test_buyer");
+                assertThat(sent.getPaymentMethod()).isEqualTo("pm_test_saved_card");
+                assertThat(sent.getOffSession()).isEqualTo(true);
+                assertThat(sent.getConfirm()).isTrue();
+                assertThat(sent.getPaymentMethodTypes()).containsExactly("card");
+                // No automatic payment methods: they could pick a redirect-based method.
+                assertThat(sent.getAutomaticPaymentMethods()).isNull();
             }
         }
 
         @Test
-        @DisplayName("blank stripe.payment-method does NOT set paymentMethod on the params")
-        void doesNotSetPaymentMethodWhenBlank() {
-            ReflectionTestUtils.setField(processor, "defaultPaymentMethod", "   ");
-
+        @DisplayName("requires_action (card asks for 3-D Secure, impossible off-session) maps to FAILED")
+        void mapsRequiresActionToFailed() {
             try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
-                ArgumentCaptor<PaymentIntentCreateParams> captor =
-                        ArgumentCaptor.forClass(PaymentIntentCreateParams.class);
-
-                PaymentIntent intent = stubPaymentIntent("pi_pm_blank", "succeeded");
+                PaymentIntent intent = stubPaymentIntent("pi_needs_auth", "requires_action");
                 piMock.when(() -> PaymentIntent.create(
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
                         .thenReturn(intent);
 
-                processor.processPayment(orderUuid, amount, idempotencyKey);
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
-                piMock.verify(() -> PaymentIntent.create(captor.capture(), any(RequestOptions.class)));
-                assertThat(captor.getValue().getPaymentMethod()).isNull();
+                assertThat(result.status()).isEqualTo(PaymentAttemptStatus.FAILED);
+                assertThat(result.stripePaymentID()).isEqualTo("pi_needs_auth");
             }
         }
 
         @Test
-        @DisplayName("null defaultPaymentMethod (unset @Value) leaves paymentMethod unset")
-        void doesNotSetPaymentMethodWhenNull() {
-            ReflectionTestUtils.setField(processor, "defaultPaymentMethod", null);
-
+        @DisplayName("a declined saved card (CardException, e.g. insufficient_funds) maps to FAILED, never throws")
+        void mapsDeclinedSavedCardToFailed() {
             try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
-                ArgumentCaptor<PaymentIntentCreateParams> captor =
-                        ArgumentCaptor.forClass(PaymentIntentCreateParams.class);
-
-                PaymentIntent intent = stubPaymentIntent("pi_pm_null", "succeeded");
+                CardException declined = new CardException("Your card has insufficient funds.", "req_decl",
+                        "card_declined", null, "insufficient_funds", null, 402, null);
                 piMock.when(() -> PaymentIntent.create(
                                 any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
-                        .thenReturn(intent);
+                        .thenThrow(declined);
 
-                processor.processPayment(orderUuid, amount, idempotencyKey);
+                PaymentAttemptResult result = processor.processPayment(orderUuid, amount, idempotencyKey, SOURCE);
 
-                piMock.verify(() -> PaymentIntent.create(captor.capture(), any(RequestOptions.class)));
-                assertThat(captor.getValue().getPaymentMethod()).isNull();
+                assertThat(result.status()).isEqualTo(PaymentAttemptStatus.FAILED);
             }
         }
     }

@@ -36,6 +36,11 @@ public interface OrderManagementControllerApiSpec {
                     Creates a new order for the authenticated user.
                     The request must include the list of products to purchase, quantities,
                     shipping address, and payment type.
+                    The total is charged off-session on the card the user saved through Stripe
+                    (POST /bank-card/setup-intent then /bank-card/add). Without a saved card the order is
+                    not created: 404 BANK_CARD_NOT_FOUND (the frontend offers "add a card"). A declined
+                    card is not an HTTP error: the order is created and becomes PAYMENT_FAILED
+                    (retry with POST /order/retry-payment/{uuid}, possibly after saving another card).
                     Requires a valid JWT token in the Authorization header (Bearer token).
                     """,
             security = @SecurityRequirement(name = "keycloak"),
@@ -49,6 +54,7 @@ public interface OrderManagementControllerApiSpec {
                     @ApiResponse(responseCode = "400", description = "Invalid request or validation error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Forbidden - user not allowed to perform this operation", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "No saved card (BANK_CARD_NOT_FOUND)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error while placing the order", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             }
     )
@@ -64,7 +70,7 @@ public interface OrderManagementControllerApiSpec {
                     the cart, never from the body) with the given shipping options and campaign,
                     exactly like placing the order would: `totalAmount` equals the total of the order
                     placed right after with the same options. No side effect: no order, no stock
-                    reservation, no payment. `discountApplied` is false when there is no campaign or
+                    reservation, no payment. Does not require a saved card. `discountApplied` is false when there is no campaign or
                     when the subtotal is below the campaign's `minOrderAmount`.
                     Same rate limit as the cart endpoints.
                     """,
@@ -142,7 +148,7 @@ public interface OrderManagementControllerApiSpec {
 
     @Operation(
             summary = "Retry payment for a failed order",
-            description = "Retries the payment process for an order that is in PAYMENT_FAILED status. Checks stock availability before proceeding.",
+            description = "Retries the payment of an order in PAYMENT_FAILED status on the user's current saved card (save another card first to pay with it). Checks the saved card, then stock availability, before charging.",
             security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "uuid", description = "The UUID of the order to retry payment for", required = true, schema = @Schema(implementation = UUID.class))
@@ -152,7 +158,7 @@ public interface OrderManagementControllerApiSpec {
                     @ApiResponse(responseCode = "400", description = "Invalid request or Order not in FAILED state", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "404", description = "Order not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "404", description = "Order not found (ORDER_NOT_FOUND) or no saved card (BANK_CARD_NOT_FOUND)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<OrderResponseDto> retryPayment(

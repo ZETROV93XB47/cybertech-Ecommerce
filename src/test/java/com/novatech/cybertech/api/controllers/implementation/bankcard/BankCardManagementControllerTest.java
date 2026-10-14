@@ -1,5 +1,10 @@
 package com.novatech.cybertech.api.controllers.implementation.bankcard;
 
+import static org.mockito.Mockito.verifyNoInteractions;
+import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
+import com.novatech.cybertech.exceptions.PaymentProviderNotConfiguredException;
+import com.novatech.cybertech.exceptions.InvalidCardSetupException;
+import com.novatech.cybertech.dto.response.user.BankCardSetupIntentResponseDto;
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.BankCardManagementController;
 import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
@@ -58,6 +63,7 @@ class BankCardManagementControllerTest {
     private static final String BASE = "/api/v1/services/bank-card";
     private static final String ADD = BASE + "/add";
     private static final String DELETE_USER = BASE + "/delete";
+    private static final String SETUP_INTENT = BASE + "/setup-intent";
     private static final String UPDATE_USER = BASE + "/update";
     private static final String KEYCLOAK_ID = "keycloak-subject-id";
 
@@ -67,7 +73,90 @@ class BankCardManagementControllerTest {
     @MockitoBean
     BankCardManagementService bankCardService;
 
+    // ---------- POST /setup-intent (user) ----------
+
+    @Test
+    void shouldCreateSetupIntentForTheJwtSubject() throws Exception {
+        final BankCardSetupIntentResponseDto response = BankCardSetupIntentResponseDto.builder()
+                .setupIntentId("seti_1")
+                .clientSecret("seti_1_secret_x")
+                .publishableKey("pk_test_x")
+                .build();
+        when(bankCardService.createSetupIntent(KEYCLOAK_ID)).thenReturn(response);
+
+        mockMvc.perform(post(SETUP_INTENT)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(content().json("""
+                        {"setupIntentId":"seti_1","clientSecret":"seti_1_secret_x","publishableKey":"pk_test_x"}
+                        """, STRICT));
+    }
+
+    @Test
+    void shouldReturn503WhenPublishableKeyIsMissing() throws Exception {
+        when(bankCardService.createSetupIntent(KEYCLOAK_ID))
+                .thenThrow(new PaymentProviderNotConfiguredException("stripe.publishable-key is not configured"));
+
+        mockMvc.perform(post(SETUP_INTENT).with(jwtUser(KEYCLOAK_ID)).with(csrf()).accept(APPLICATION_JSON))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.errorCode").value("PAYMENT_PROVIDER_NOT_CONFIGURED"));
+    }
+
+    @Test
+    void shouldRejectSetupIntentWhenAnonymous() throws Exception {
+        mockMvc.perform(post(SETUP_INTENT).with(csrf()).accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(bankCardService);
+    }
+
     // ---------- POST /add (user) ----------
+
+    @Test
+    void shouldRejectTheFormerBodyCarryingACardNumber() throws Exception {
+        // Former contract: the card number travelled to the backend. It must never be accepted again.
+        mockMvc.perform(post(ADD)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("""
+                                {"cardHolderName":"Jane Doe","cardNumber":"4242424242424242",
+                                 "expiryDate":"12/2030","cardType":"VISA"}
+                                """))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(bankCardService);
+    }
+
+    @Test
+    void shouldMapForeignSetupIntentTo403() throws Exception {
+        when(bankCardService.addBankCard(eq(KEYCLOAK_ID), any(BankCardCreationRequestDto.class)))
+                .thenThrow(new UnauthorizedBankCardAccessException("This card setup does not belong to the authenticated user"));
+
+        mockMvc.perform(post(ADD)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(UserDtoFixtures.aValidBankCardCreationRequest())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldMapUnfinishedSetupTo400() throws Exception {
+        when(bankCardService.addBankCard(eq(KEYCLOAK_ID), any(BankCardCreationRequestDto.class)))
+                .thenThrow(new InvalidCardSetupException("Card setup seti_x is not completed"));
+
+        mockMvc.perform(post(ADD)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(UserDtoFixtures.aValidBankCardCreationRequest())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_CARD_SETUP"));
+    }
 
     @Test
     void shouldAddBankCardSuccessfully() throws Exception {

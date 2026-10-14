@@ -1,5 +1,9 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.dto.data.PaymentSource;
+import com.novatech.cybertech.entities.BankCardEntity;
+import com.novatech.cybertech.exceptions.BankCardNotFoundException;
+import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
@@ -34,6 +38,24 @@ public class PaymentServiceImp implements PaymentService {
     private final PaymentStrategyFactory paymentStrategyFactory;
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
+    private final BankCardRepository bankCardRepository;
+
+    /**
+     * The saved card of the order's buyer. {@code getUserEntity().getId()} does not initialise a
+     * lazy proxy, so this works on an order detached from the transaction that created it.
+     *
+     * @throws BankCardNotFoundException when the buyer has no card that Stripe can charge.
+     */
+    private PaymentSource resolvePaymentSource(final OrderEntity order) {
+        final BankCardEntity card = bankCardRepository.findWithUserByUserId(order.getUserEntity().getId())
+                .filter(BankCardEntity::isChargeable)
+                .orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ..."));
+        final String customerId = card.getUserEntity().getStripeCustomerId();
+        if (customerId == null) {
+            throw new BankCardNotFoundException("No bank card set, please, add a bank card and retry ...");
+        }
+        return new PaymentSource(customerId, card.getStripePaymentMethodId());
+    }
 
     @Transactional
     public PaymentEntity processPayment(OrderEntity order, PaymentType paymentType, Money amount, String idempotencyKey) {
@@ -48,6 +70,9 @@ public class PaymentServiceImp implements PaymentService {
                 throw new PaymentAlreadyCompletedForThisOrderException("Payment already completed or in flight for this order");
             }
         }
+
+        // Carte enregistrée de l'acheteur, résolue avant toute écriture : sans carte, rien n'est créé.
+        final PaymentSource source = resolvePaymentSource(order);
 
         // Crée attempt
         PaymentEntity attempt = PaymentEntity.builder()
@@ -77,7 +102,7 @@ public class PaymentServiceImp implements PaymentService {
         PaymentAttemptProcessor processor = paymentStrategyFactory.getServiceFromPaymentType(paymentType);
 
         // Idée: ton processor retourne un résultat (au lieu de muter une entity PaymentEntity)
-        PaymentAttemptResult result = processor.processPayment(order.getUuid(), amount, idempotencyKey);
+        PaymentAttemptResult result = processor.processPayment(order.getUuid(), amount, idempotencyKey, source);
 
         attempt.setStatus(result.status());
         attempt.setStripePaymentID(result.stripePaymentID());

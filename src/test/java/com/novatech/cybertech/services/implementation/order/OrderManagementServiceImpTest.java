@@ -949,6 +949,7 @@ class OrderManagementServiceImpTest {
                                                   final PaymentType lastType,
                                                   final BigDecimal totalAmount) {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            user.setBankCardEntity(BankCardEntityBuilder.aValidBankCardBuilder().userEntity(user).build());
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
             final OrderItemEntity orderItem = OrderItemEntityBuilder.aValidOrderItemBuilder()
                     .productEntity(product).quantity(1).build();
@@ -982,6 +983,32 @@ class OrderManagementServiceImpTest {
             verify(stockService).reserveStock(eq(order.getUuid()), any());
             verify(paymentService).processPayment(eq(order), eq(PaymentType.VISA), eq(order.getTotalAmount()), anyString());
             verify(eventPublisher).publishEvent(any(OrderUpdatedEvent.class));
+        }
+
+        @Test
+        @DisplayName("no saved card: BANK_CARD_NOT_FOUND before any stock reservation or payment")
+        void noSavedCard_failsBeforeReservingStock() {
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
+            order.getUserEntity().setBankCardEntity(null);
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(BankCardNotFoundException.class);
+
+            verifyNoInteractions(paymentService, stockService);
+        }
+
+        @Test
+        @DisplayName("card saved before the Stripe flow (no PaymentMethod) counts as no card")
+        void legacyCard_failsLikeNoCard() {
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
+            order.getUserEntity().getBankCardEntity().setStripePaymentMethodId(null);
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(BankCardNotFoundException.class);
+
+            verifyNoInteractions(paymentService, stockService);
         }
 
         @Test
@@ -1036,6 +1063,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("no previous payment attempt throws NoPreviousPaymentAttemptException")
         void noPreviousAttempt_throws() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            user.setBankCardEntity(BankCardEntityBuilder.aValidBankCardBuilder().userEntity(user).build());
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
             final OrderItemEntity item = OrderItemEntityBuilder.aValidOrderItemBuilder()
                     .productEntity(product).quantity(1).build();
@@ -1338,6 +1366,7 @@ class OrderManagementServiceImpTest {
         @DisplayName("retryPayment builds a unique key via the (String, List) overload — context contains 'retry' + monotonic attempt counter")
         void retryPayment_usesListOverloadWithRetryActionAndCounter() {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            user.setBankCardEntity(BankCardEntityBuilder.aValidBankCardBuilder().userEntity(user).build());
             final ProductEntity product = ProductEntityBuilder.aValidProduct();
             final OrderItemEntity item = OrderItemEntityBuilder.aValidOrderItemBuilder()
                     .productEntity(product).quantity(1).build();

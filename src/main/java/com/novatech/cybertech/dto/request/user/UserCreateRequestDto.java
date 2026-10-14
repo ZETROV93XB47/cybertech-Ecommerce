@@ -4,7 +4,6 @@ import com.novatech.cybertech.entities.enums.CommunicationChanel;
 import com.novatech.cybertech.entities.enums.Sex;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -64,20 +63,6 @@ public class UserCreateRequestDto {
     // Tu peux ajouter une @Pattern pour la complexité du mot de passe si nécessaire
     private String password;
 
-    /**
-     * Optional. Users may sign up without a card and add one later via
-     * {@code POST /api/v1/services/bank-card/add}. When present, registration
-     * delegates to {@code BankCardManagementService.addBankCard} so the same
-     * PCI-DSS rules (encryption + last4 masking, expiry guard) apply.
-     *
-     * <p>{@code @Valid} cascades Bean Validation into this nested DTO (e.g. its
-     * {@code @NotBlank expiryDate}) — without it, a registration payload carrying a bank card
-     * object with missing/blank fields sailed straight past {@code @Valid UserCreateRequestDto}
-     * on the controller and only failed deep inside {@code BankCardManagementServiceImp} as a
-     * raw, unmapped {@link NullPointerException} instead of the clean 400 this now produces.
-     */
-    @Valid
-    private BankCardCreationRequestDto bankCardCreationRequestDto;
 
     /** Null is reported by {@code @NotNull}; this only rejects non-selectable channels (PUSH_NOTIFICATION). */
     @JsonIgnore

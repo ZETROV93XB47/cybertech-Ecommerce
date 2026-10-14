@@ -4,7 +4,6 @@ import net.datafaker.Faker;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
-import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.*;
@@ -179,12 +178,6 @@ public class DataGenerator {
                 .birthDate(LocalDateTime.ofInstant(FAKER.date().birthday().toInstant(), ZoneId.systemDefault()))
                 .password(FAKER.internet().password())
                 .favoriteCommunicationChanel(EMAIL)
-                .bankCardCreationRequestDto(BankCardCreationRequestDto.builder()
-                        .cardHolderName(firstName + " " + lastName)
-                        .cardNumber(FAKER.finance().creditCard())
-                        .expiryDate("12/2029")
-                        .cardType(BankCardType.VISA)
-                        .build())
                 .build();
     }
 

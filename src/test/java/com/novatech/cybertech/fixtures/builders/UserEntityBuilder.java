@@ -38,6 +38,7 @@ public final class UserEntityBuilder {
                         .build())
                 .birthDate(LocalDateTime.now().minusYears(30))
                 .keycloakId("keycloak-" + UUID.randomUUID())
+                .stripeCustomerId("cus_" + UUID.randomUUID().toString().replace("-", ""))
                 .role(Role.USER)
                 .phoneNumber("+33600000000")
                 .isActive(true)

@@ -1,5 +1,11 @@
 package com.novatech.cybertech.services.implementation.payment.core;
 
+import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
+import com.novatech.cybertech.repositories.BankCardRepository;
+import com.novatech.cybertech.exceptions.BankCardNotFoundException;
+import com.novatech.cybertech.entities.BankCardEntity;
+import com.novatech.cybertech.dto.data.PaymentSource;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
@@ -74,13 +80,39 @@ class PaymentServiceImpTest {
     @Mock
     private PaymentAttemptProcessor processor;
 
+    @Mock
+    private BankCardRepository bankCardRepository;
+
+    /** The buyer's saved card, as resolved from the {@link #savedCard()} fixture. */
+    private static final PaymentSource SAVED_CARD = new PaymentSource("cus_buyer", "pm_saved");
+
+    /**
+     * Every order buyer has a chargeable saved card unless a test says otherwise: the service
+     * resolves it before creating the attempt.
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void stubSavedCard() {
+        org.mockito.Mockito.lenient().when(bankCardRepository.findWithUserByUserId(any()))
+                .thenReturn(Optional.of(savedCard()));
+    }
+
+    private static BankCardEntity savedCard() {
+        return BankCardEntityBuilder.aValidBankCardBuilder()
+                .stripePaymentMethodId("pm_saved")
+                .userEntity(UserEntityBuilder.aValidUserBuilder().stripeCustomerId("cus_buyer").build())
+                .build();
+    }
+
     @InjectMocks
     private PaymentServiceImp service;
 
     // ---------- helpers ----------
 
     private OrderEntity newOrder() {
-        return OrderEntityBuilder.aValidOrderBuilder().uuid(UUID.randomUUID()).build();
+        return OrderEntityBuilder.aValidOrderBuilder()
+                .uuid(UUID.randomUUID())
+                .userEntity(UserEntityBuilder.aValidUserBuilder().id(42L).build())
+                .build();
     }
 
     private Money tenEur() {
@@ -109,7 +141,7 @@ class PaymentServiceImpTest {
 
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(order.getUuid(), amount, key))
+            when(processor.processPayment(order.getUuid(), amount, key, SAVED_CARD))
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_123"));
             wireSaveReturnsArg();
 
@@ -124,7 +156,7 @@ class PaymentServiceImpTest {
             assertThat(result.getPaymentType()).isEqualTo(PaymentType.VISA);
             assertThat(result.getTransactionType()).isEqualTo(TransactionType.PAYMENT);
 
-            verify(processor, times(1)).processPayment(order.getUuid(), amount, key);
+            verify(processor, times(1)).processPayment(order.getUuid(), amount, key, SAVED_CARD);
             verify(paymentAttemptRepository, times(2)).save(any(PaymentEntity.class));
         }
 
@@ -135,7 +167,7 @@ class PaymentServiceImpTest {
             final String key = "idem-" + UUID.randomUUID();
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(any(), any(), any()))
+            when(processor.processPayment(any(), any(), any(), any()))
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_inorder"));
             wireSaveReturnsArg();
 
@@ -143,7 +175,7 @@ class PaymentServiceImpTest {
 
             final InOrder ord = inOrder(paymentAttemptRepository, processor);
             ord.verify(paymentAttemptRepository).save(any(PaymentEntity.class));
-            ord.verify(processor).processPayment(any(), any(), any());
+            ord.verify(processor).processPayment(any(), any(), any(), any());
             ord.verify(paymentAttemptRepository).save(any(PaymentEntity.class));
         }
 
@@ -211,7 +243,7 @@ class PaymentServiceImpTest {
                     .build();
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(existing));
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(any(), any(), any()))
+            when(processor.processPayment(any(), any(), any(), any()))
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_retry_ok"));
             wireSaveReturnsArg();
 
@@ -219,7 +251,7 @@ class PaymentServiceImpTest {
 
             assertThat(result.getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
             assertThat(result.getStripePaymentID()).isEqualTo("pi_retry_ok");
-            verify(processor).processPayment(any(), any(), any());
+            verify(processor).processPayment(any(), any(), any(), any());
         }
 
         @Test
@@ -229,7 +261,7 @@ class PaymentServiceImpTest {
             final String key = "idem-fail";
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(any(), any(), any()))
+            when(processor.processPayment(any(), any(), any(), any()))
                     .thenThrow(new PaymentProcessingException("Stripe failed", null));
             wireSaveReturnsArg();
 
@@ -251,7 +283,7 @@ class PaymentServiceImpTest {
             final String key = "idem-failed-result";
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(any(), any(), any()))
+            when(processor.processPayment(any(), any(), any(), any()))
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.FAILED, "pi_fail"));
             wireSaveReturnsArg();
 
@@ -270,7 +302,7 @@ class PaymentServiceImpTest {
             final String key = "idem-ok";
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(any(), any(), any()))
+            when(processor.processPayment(any(), any(), any(), any()))
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_ok"));
             wireSaveReturnsArg();
 
@@ -287,7 +319,7 @@ class PaymentServiceImpTest {
             final String key = "idem-proc";
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(any(), any(), any()))
+            when(processor.processPayment(any(), any(), any(), any()))
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.PROCESSING, "pi_proc"));
             wireSaveReturnsArg();
 
@@ -303,13 +335,13 @@ class PaymentServiceImpTest {
             final String key = "idem-verbatim-XYZ-123";
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.MASTERCARD)).thenReturn(processor);
-            when(processor.processPayment(any(), any(), eq(key)))
+            when(processor.processPayment(any(), any(), eq(key), any()))
                     .thenReturn(PaymentDtoFixtures.aSuccessfulAttemptResult());
             wireSaveReturnsArg();
 
             service.processPayment(order, PaymentType.MASTERCARD, tenEur(), key);
 
-            verify(processor).processPayment(eq(order.getUuid()), any(Money.class), eq(key));
+            verify(processor).processPayment(eq(order.getUuid()), any(Money.class), eq(key), eq(SAVED_CARD));
         }
 
         @Test
@@ -320,7 +352,7 @@ class PaymentServiceImpTest {
             final OrderEntity order = newOrder();
             when(paymentAttemptRepository.findByIdempotencyKey(null)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(any(), any(), any()))
+            when(processor.processPayment(any(), any(), any(), any()))
                     .thenReturn(PaymentDtoFixtures.aSuccessfulAttemptResult());
             wireSaveReturnsArg();
 
@@ -340,6 +372,56 @@ class PaymentServiceImpTest {
             assertThatThrownBy(() ->
                     service.processPayment(null, PaymentType.VISA, tenEur(), "idem-null-order"))
                     .isInstanceOf(NullPointerException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("processPayment — saved card")
+    class SavedCard {
+
+        @Test
+        @DisplayName("charges the buyer's saved card (customer + payment method)")
+        void passesTheSavedCardToTheProcessor() {
+            final OrderEntity order = newOrder();
+            final String key = "idem-" + UUID.randomUUID();
+            when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
+            wireSaveReturnsArg();
+            when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
+            when(processor.processPayment(any(), any(), any(), any()))
+                    .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_1"));
+
+            service.processPayment(order, PaymentType.VISA, tenEur(), key);
+
+            verify(processor).processPayment(order.getUuid(), tenEur(), key, SAVED_CARD);
+        }
+
+        @Test
+        @DisplayName("no saved card: BANK_CARD_NOT_FOUND before any attempt row or Stripe call")
+        void noCardFailsBeforeAnyWrite() {
+            final OrderEntity order = newOrder();
+            final String key = "idem-" + UUID.randomUUID();
+            when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
+            when(bankCardRepository.findWithUserByUserId(any())).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.processPayment(order, PaymentType.VISA, tenEur(), key))
+                    .isInstanceOf(BankCardNotFoundException.class);
+            verify(paymentAttemptRepository, never()).save(any(PaymentEntity.class));
+            verifyNoInteractions(processor);
+        }
+
+        @Test
+        @DisplayName("a card saved before the Stripe flow (no PaymentMethod) counts as no card")
+        void legacyCardWithoutPaymentMethodCountsAsNoCard() {
+            final OrderEntity order = newOrder();
+            final String key = "idem-" + UUID.randomUUID();
+            when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
+            final BankCardEntity legacy = savedCard();
+            legacy.setStripePaymentMethodId(null);
+            when(bankCardRepository.findWithUserByUserId(any())).thenReturn(Optional.of(legacy));
+
+            assertThatThrownBy(() -> service.processPayment(order, PaymentType.VISA, tenEur(), key))
+                    .isInstanceOf(BankCardNotFoundException.class);
+            verifyNoInteractions(processor);
         }
     }
 

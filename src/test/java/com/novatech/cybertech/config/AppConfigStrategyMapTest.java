@@ -1,5 +1,6 @@
 package com.novatech.cybertech.config;
 
+import com.novatech.cybertech.dto.data.PaymentSource;
 import com.novatech.cybertech.annotation.PaymentTypeHandler;
 import com.novatech.cybertech.annotation.ShippingProviderHandler;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
@@ -42,7 +43,7 @@ class AppConfigStrategyMapTest {
     @PaymentTypeHandler({PaymentType.VISA, PaymentType.MASTERCARD})
     static class AnnotatedPaymentProcessor implements PaymentAttemptProcessor {
         @Override
-        public PaymentAttemptResult processPayment(final UUID orderUuid, final Money amount, final String idempotencyKey) {
+        public PaymentAttemptResult processPayment(final UUID orderUuid, final Money amount, final String idempotencyKey, final PaymentSource source) {
             return null;
         }
 

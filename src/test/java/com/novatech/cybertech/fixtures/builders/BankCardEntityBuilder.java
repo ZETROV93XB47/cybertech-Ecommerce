@@ -12,9 +12,8 @@ import java.util.UUID;
  * bypass {@code BaseEntity#prePersist}. Default {@code expiryDate} is set 5 years in the future to
  * avoid spurious expiry validation failures.
  *
- * <p>SA-BankCard-v2 additions: also presets {@code encryptedNumber} and {@code lastFourDigits} so
- * sister tests that construct {@code BankCardEntity} directly keep compiling and exercise a
- * post-fix entity shape without bleeding PCI changes into their setup.</p>
+ * <p>The card is a chargeable Stripe card: it carries a {@code stripePaymentMethodId} (and the
+ * default user a {@code stripeCustomerId}), never a card number.</p>
  */
 public final class BankCardEntityBuilder {
 
@@ -31,7 +30,7 @@ public final class BankCardEntityBuilder {
         return BankCardEntity.builder()
                 .uuid(UUID.randomUUID())
                 .cardHolderName("Jane Doe")
-                .encryptedNumber("ENC:placeholder")
+                .stripePaymentMethodId("pm_" + UUID.randomUUID().toString().replace("-", ""))
                 .lastFourDigits("4242")
                 .expiryDate(LocalDate.now().plusYears(5).format(EXPIRY_FORMAT))
                 .cardType(BankCardType.VISA)

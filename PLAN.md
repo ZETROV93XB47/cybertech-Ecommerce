@@ -27,3 +27,21 @@
 - [x] 8. Suppression : vérifier explicitement que l'abonnement appartient à l'appelant (404 / 403).
 - [x] 9a. Tests ciblés (88 verts, dont un test réel du gateway sans mock), OpenAPI régénéré, dossier Postman « Push notifications », `docs/web-push.md`.
 - [x] 9b. `mvnw test` complet (2281 tests, 0 échec), progress.md, commit.
+
+## Prompt 10 — carte enregistrée chez Stripe (2026-10-14)
+
+Estimation : tout le prompt tient dans une session (le paiement passe par un seul point,
+`PaymentServiceImp.processPayment`). Ordre : code → tests unitaires → ITs → docs → commit.
+
+- [x] 1. `StripeCardGateway` (interface + impl SDK) : Customer, SetupIntent, PaymentMethod (retrieve, attach, update, detach), défaut du Customer.
+- [x] 2. `UserEntity.stripeCustomerId` (Customer créé à la première demande, clé d'idempotence par utilisateur).
+- [x] 3. `POST /bank-card/setup-intent` → `{ clientSecret, publishableKey }` (`stripe.publishable-key`).
+- [x] 4. `POST /bank-card/add` `{ setupIntentId }` : SetupIntent du Customer de l'appelant (sinon 403) et `succeeded` (sinon 400) ; carte remplacée en place, ancienne détachée.
+- [x] 5. `BankCardEntity` : `stripePaymentMethodId` ajouté, `encryptedNumber` retiré ; script SQL (purge des cartes sans PaymentMethod + drop colonne).
+- [x] 6. `PUT /bank-card/update` et `DELETE` (utilisateur et admin) répercutés chez Stripe.
+- [x] 7. Paiement : PaymentIntent avec `customer` + `payment_method` de la carte, `off_session`, `confirm` ; `stripe.payment-method` supprimé ; `decline_code` loggé.
+- [x] 8. Sans carte utilisable : 404 `BANK_CARD_NOT_FOUND` à place / retry-payment (OpenAPI), pas au devis.
+- [x] 9. Inscription : `bankCardCreationRequestDto` retiré de `UserCreateRequestDto`.
+- [x] 10. Webhook : métadonnée `order_uuid` toujours posée (test).
+- [x] 11. Tests unitaires (processeur, service carte, gateway, controller), ITs (flux carte, commande 4242 → PAID, refus → retry → PAID), `mvnw test`.
+- [x] 12. OpenAPI, Postman, progress.md, commit (2328 tests unitaires + 82 ITs verts, gate JaCoCo OK).

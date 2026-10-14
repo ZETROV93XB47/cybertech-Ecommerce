@@ -1,22 +1,31 @@
 package com.novatech.cybertech.services.implementation;
 
-
+import com.novatech.cybertech.dto.data.StripeCardDetailsDto;
+import com.novatech.cybertech.dto.data.StripeSetupIntentDto;
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
+import com.novatech.cybertech.dto.response.user.BankCardSetupIntentResponseDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.entities.enums.BankCardType;
+import com.novatech.cybertech.events.StripePaymentMethodReleasedEvent;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
+import com.novatech.cybertech.exceptions.InvalidCardSetupException;
+import com.novatech.cybertech.exceptions.PaymentProviderNotConfiguredException;
+import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.mappers.entity.BankCardMapper;
 import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.BankCardManagementService;
-import com.novatech.cybertech.services.core.CardEncryptionService;
+import com.novatech.cybertech.services.core.StripeCardGateway;
 import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -27,99 +36,121 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.UUID;
 
+/**
+ * Saved-card management on top of Stripe.
+ *
+ * <p>The browser enters the card in Stripe Elements and confirms a SetupIntent created here; the
+ * backend then reads the resulting PaymentMethod from Stripe and keeps only its id, brand, last
+ * four digits, expiry and holder name. No card number is ever received, logged or stored.</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class BankCardManagementServiceImp implements BankCardManagementService {
 
-    /** Canonical expiry format. Matches {@code BankCardCreationRequestDto} validation. */
+    /** Canonical expiry format, as stored and as accepted by {@link BankCardUpdateRequestDto}. */
     private static final DateTimeFormatter EXPIRY_FORMATTER = DateTimeFormatter.ofPattern("MM/yyyy");
+    private static final String SETUP_INTENT_SUCCEEDED = "succeeded";
+    private static final String NO_CARD_MESSAGE = "No bank card found for this user.";
+    private static final String USER_NOT_FOUND_MESSAGE = "User not found";
+    private static final String FOREIGN_SETUP_MESSAGE = "This card setup does not belong to the authenticated user";
 
     private final BankCardMapper bankCardMapper;
     private final UserRepository userRepository;
     private final BankCardRepository bankCardRepository;
-    private final CardEncryptionService cardEncryptionService;
+    private final StripeCardGateway stripeCardGateway;
+    private final ApplicationEventPublisher eventPublisher;
+
+    @Value("${stripe.publishable-key:}")
+    private String publishableKey;
 
     // --- Méthodes Spécifiques (User Context) ---
 
-    /**
-     * Creates a card for the authenticated user.
-     *
-     * <p>Flow:
-     * <ol>
-     *   <li>Resolve the user by {@code keycloakId}.</li>
-     *   <li>Reject if a card already exists (one-card-per-user business rule).</li>
-     *   <li>Parse the expiry as {@code MM/yyyy}; reject past-dated cards
-     *       with {@link BankCardExpiredException} <i>before</i> any persistence.</li>
-     *   <li>Encrypt the PAN through {@link CardEncryptionService},
-     *       compute {@code lastFourDigits}, and clear the legacy plaintext field so a
-     *       newly-created row never holds the raw PAN.</li>
-     * </ol>
-     * </p>
-     */
     @Override
     @Transactional
-    public BankCardResponseDto addBankCard(String keycloakId, BankCardCreationRequestDto dto) {
-        UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
+    public BankCardSetupIntentResponseDto createSetupIntent(final String keycloakId) {
+        if (publishableKey == null || publishableKey.isBlank()) {
+            throw new PaymentProviderNotConfiguredException("stripe.publishable-key is not configured");
+        }
+        final UserEntity user = findUser(keycloakId);
+        final StripeSetupIntentDto setupIntent = stripeCardGateway.createSetupIntent(ensureStripeCustomer(user));
+        log.info("Stripe setup intent {} created for user {}", setupIntent.id(), user.getUuid());
+        return BankCardSetupIntentResponseDto.builder()
+                .setupIntentId(setupIntent.id())
+                .clientSecret(setupIntent.clientSecret())
+                .publishableKey(publishableKey)
+                .build();
+    }
 
-        if (user.getBankCardEntity() != null) {
-            log.warn("Add bank card rejected: user {} already has card {}", user.getUuid(), user.getBankCardEntity().getUuid());
-            throw new IllegalStateException("User already has a bank card.");
+    @Override
+    @Transactional
+    public BankCardResponseDto addBankCard(final String keycloakId, final BankCardCreationRequestDto dto) {
+        final UserEntity user = findUser(keycloakId);
+        final String customerId = user.getStripeCustomerId();
+        if (customerId == null) {
+            // No Customer yet means no SetupIntent was ever created for this user.
+            throw new UnauthorizedBankCardAccessException(FOREIGN_SETUP_MESSAGE);
         }
 
-        // Expiry validation happens before any mapper/repository touch.
-        validateExpiryNotInThePast(dto.getExpiryDate());
+        final StripeCardDetailsDto card = resolveSucceededSetupCard(dto.getSetupIntentId(), customerId);
+        validateExpiryNotInThePast(YearMonth.of(card.expYear(), card.expMonth()));
+        if (card.customerId() == null) {
+            stripeCardGateway.attachPaymentMethod(card.paymentMethodId(), customerId);
+        }
+        stripeCardGateway.setDefaultPaymentMethod(customerId, card.paymentMethodId());
 
-        BankCardEntity bankCardEntity = bankCardMapper.mapFromCreationRequestToEntity(dto);
-        bankCardEntity.setUserEntity(user);
+        final BankCardEntity bankCard = user.getBankCardEntity() == null
+                ? BankCardEntity.builder().userEntity(user).build()
+                : user.getBankCardEntity();
+        final String previousPaymentMethodId = bankCard.getStripePaymentMethodId();
+        applyStripeCard(bankCard, card, user);
+        final BankCardEntity savedCard = bankCardRepository.save(bankCard);
+        user.setBankCardEntity(savedCard);
 
-        // Encrypt at rest; keep only the last four digits for display.
-        applyPciStorageRules(bankCardEntity, dto.getCardNumber());
-
-        BankCardEntity savedCard = bankCardRepository.save(bankCardEntity);
-        log.info("Bank card {} (**** {}) added for user {}", savedCard.getUuid(), savedCard.getLastFourDigits(), user.getUuid());
+        if (previousPaymentMethodId != null && !previousPaymentMethodId.equals(card.paymentMethodId())) {
+            eventPublisher.publishEvent(new StripePaymentMethodReleasedEvent(previousPaymentMethodId));
+        }
+        log.info("Bank card {} (**** {}) saved for user {}", savedCard.getUuid(), savedCard.getLastFourDigits(), user.getUuid());
         return bankCardMapper.mapFromEntityToResponseDto(savedCard);
     }
 
     @Override
     @Transactional
-    public void deleteBankCard(String keycloakId) {
-        UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-
-        BankCardEntity bankCard = user.getBankCardEntity();
+    public void deleteBankCard(final String keycloakId) {
+        final UserEntity user = findUser(keycloakId);
+        final BankCardEntity bankCard = user.getBankCardEntity();
         if (bankCard == null) {
-            throw new BankCardNotFoundException("No bank card found for this user.");
+            throw new BankCardNotFoundException(NO_CARD_MESSAGE);
         }
 
-        // Suppression via le repository pour déclencher les events JPA si besoin
+        user.setBankCardEntity(null);
         bankCardRepository.delete(bankCard);
+        releaseAtStripe(bankCard);
         log.info("Bank card {} (**** {}) deleted by its owner {}", bankCard.getUuid(), bankCard.getLastFourDigits(), user.getUuid());
     }
 
     /**
-     * Updates the editable fields of the caller's bank card: holder name and expiry date only.
-     * The PAN is WRITE-ONCE — {@link BankCardUpdateRequestDto} no longer carries {@code cardNumber},
-     * so the encrypted-at-rest ciphertext can never be mutated through this path. To
-     * change the card number, delete the card and add a new one.
+     * Updates the holder name and expiry date of the caller's card, at Stripe first (so the
+     * PaymentMethod charged by the next payment carries them) then locally. The card number cannot
+     * change: to use another card, save a new one.
      */
     @Override
     @Transactional
     public BankCardResponseDto updateBankCard(final String keycloakId, final BankCardUpdateRequestDto dto) {
-        UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
-
-        BankCardEntity bankCard = user.getBankCardEntity();
-        if (bankCard == null) {
-            throw new BankCardNotFoundException("No bank card found for this user.");
+        final UserEntity user = findUser(keycloakId);
+        final BankCardEntity bankCard = user.getBankCardEntity();
+        if (bankCard == null || !bankCard.isChargeable()) {
+            throw new BankCardNotFoundException(NO_CARD_MESSAGE);
         }
 
-        // Expiry guard — a card may only be updated to a non-past expiry.
-        if (dto.getExpiryDate() != null && !dto.getExpiryDate().isBlank()) {
-            validateExpiryNotInThePast(dto.getExpiryDate());
-        }
+        final YearMonth expiry = parseExpiry(dto.getExpiryDate());
+        validateExpiryNotInThePast(expiry);
+        stripeCardGateway.updatePaymentMethod(bankCard.getStripePaymentMethodId(), dto.getCardHolderName(),
+                expiry.getMonthValue(), expiry.getYear());
 
-        bankCardMapper.updateEntityFromDto(dto, bankCard);
-
-        BankCardEntity savedCard = bankCardRepository.save(bankCard);
+        bankCard.setCardHolderName(dto.getCardHolderName());
+        bankCard.setExpiryDate(expiry.format(EXPIRY_FORMATTER));
+        final BankCardEntity savedCard = bankCardRepository.save(bankCard);
         log.info("Bank card {} updated by its owner (holder name / expiry)", savedCard.getUuid());
         return bankCardMapper.mapFromEntityToResponseDto(savedCard);
     }
@@ -157,20 +188,24 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
                             uuid,
                             LogSafetyUtils.maskUuid(ownerKeycloakId));
                     bankCardRepository.deleteByUuid(uuid);
+                    releaseAtStripe(card);
                 },
                 () -> log.warn("ADMIN-AUDIT: admin '{}' attempted to delete non-existent bank card {}",
                         LogSafetyUtils.maskUuid(keycloakId), uuid));
     }
 
-        /**
-     * Returns the user's single bank card, already masked for safe API exposure.
+    /**
+     * Returns the user's single chargeable bank card, already masked for safe API exposure. A card
+     * saved before the Stripe flow cannot be charged and is reported as absent, so the frontend
+     * offers to add one.
      *
-     * @throws BankCardNotFoundException if the user has no bank card.
+     * @throws BankCardNotFoundException if the user has no chargeable card.
      */
     @Override
     @Transactional(readOnly = true)
     public BankCardResponseDto getCard(final String keycloakId) {
         final BankCardEntity card = bankCardRepository.findAllByUserEntity_KeycloakId(keycloakId).stream()
+                .filter(BankCardEntity::isChargeable)
                 .findFirst()
                 .orElseThrow(() -> new BankCardNotFoundException("No bank card set for the user"));
 
@@ -179,44 +214,81 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
 
     // --- helpers ----------------------------------------------------------------------
 
-    /**
-     * Enforces that the expiry string is a valid {@code MM/yyyy} month that has
-     * not already passed. Called before any mapping/save on the add-path so we do not waste
-     * a round-trip to the database for obviously-invalid input.
-     */
-    private void validateExpiryNotInThePast(final String expiryDate) {
-        // Defense in depth: callers are expected to validate non-blank upstream (@Valid on the
-        // request DTOs), but this method has no local guarantee of that — YearMonth.parse(null, ...)
-        // throws a raw NullPointerException (not DateTimeParseException), which the catch below
-        // would not have caught.
-        if (expiryDate == null || expiryDate.isBlank()) {
-            throw new IllegalArgumentException("Invalid expiryDate format; expected MM/yyyy, got: " + expiryDate);
+    private UserEntity findUser(final String keycloakId) {
+        return userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new UserNotFoundException(USER_NOT_FOUND_MESSAGE));
+    }
+
+    /** Returns the user's Stripe Customer, creating (and storing) it on first use. */
+    private String ensureStripeCustomer(final UserEntity user) {
+        if (user.getStripeCustomerId() != null) {
+            return user.getStripeCustomerId();
         }
-        final YearMonth expiry;
-        try {
-            expiry = YearMonth.parse(expiryDate, EXPIRY_FORMATTER);
-        } catch (final DateTimeParseException e) {
-            throw new IllegalArgumentException("Invalid expiryDate format; expected MM/yyyy, got: " + expiryDate, e);
-        }
-        if (expiry.isBefore(YearMonth.now())) {
-            throw new BankCardExpiredException("Card is expired (expiry=" + expiryDate + ")");
-        }
+        final String customerId = stripeCardGateway.createCustomer(user.getUuid(), user.getEmail(), fullName(user));
+        user.setStripeCustomerId(customerId);
+        userRepository.save(user);
+        log.info("Stripe customer {} created for user {}", customerId, user.getUuid());
+        return customerId;
     }
 
     /**
-     * Applies PCI-DSS storage rules to a freshly-mapped entity.
-     *
-     * <ul>
-     *   <li>{@code encryptedNumber} gets the AES/GCM ciphertext envelope — the only place
-     *       the PAN is persisted.</li>
-     *   <li>{@code lastFourDigits} caches the last 4 digits for display masking.</li>
-     * </ul>
+     * Reads the card saved by the SetupIntent, after checking that the SetupIntent and its
+     * PaymentMethod belong to the caller's Customer and that Stripe confirmed it.
      */
-    private void applyPciStorageRules(final BankCardEntity entity, final String rawPan) {
-        if (rawPan == null || rawPan.length() < 4) {
-            throw new IllegalArgumentException("PAN must be at least 4 digits long");
+    private StripeCardDetailsDto resolveSucceededSetupCard(final String setupIntentId, final String customerId) {
+        final StripeSetupIntentDto setupIntent = stripeCardGateway.retrieveSetupIntent(setupIntentId);
+        if (!customerId.equals(setupIntent.customerId())) {
+            log.warn("Card setup {} rejected: it belongs to another Stripe customer", setupIntentId);
+            throw new UnauthorizedBankCardAccessException(FOREIGN_SETUP_MESSAGE);
         }
-        entity.setEncryptedNumber(cardEncryptionService.encrypt(rawPan));
-        entity.setLastFourDigits(rawPan.substring(rawPan.length() - 4));
+        if (!SETUP_INTENT_SUCCEEDED.equals(setupIntent.status()) || setupIntent.paymentMethodId() == null) {
+            throw new InvalidCardSetupException("Card setup " + setupIntentId + " is not completed (status "
+                    + setupIntent.status() + ")");
+        }
+        final StripeCardDetailsDto card = stripeCardGateway.retrievePaymentMethod(setupIntent.paymentMethodId());
+        if (card.customerId() != null && !customerId.equals(card.customerId())) {
+            throw new UnauthorizedBankCardAccessException(FOREIGN_SETUP_MESSAGE);
+        }
+        return card;
+    }
+
+    private static void applyStripeCard(final BankCardEntity bankCard, final StripeCardDetailsDto card, final UserEntity user) {
+        bankCard.setStripePaymentMethodId(card.paymentMethodId());
+        bankCard.setCardType(BankCardType.fromStripeBrand(card.brand()));
+        bankCard.setLastFourDigits(card.lastFourDigits());
+        bankCard.setExpiryDate(YearMonth.of(card.expYear(), card.expMonth()).format(EXPIRY_FORMATTER));
+        // Stripe Elements' card field does not collect a name unless the frontend passes one.
+        bankCard.setCardHolderName(card.holderName() == null || card.holderName().isBlank()
+                ? fullName(user)
+                : card.holderName());
+    }
+
+    private void releaseAtStripe(final BankCardEntity bankCard) {
+        if (bankCard.isChargeable()) {
+            eventPublisher.publishEvent(new StripePaymentMethodReleasedEvent(bankCard.getStripePaymentMethodId()));
+        }
+    }
+
+    private static String fullName(final UserEntity user) {
+        return (user.getFirstName() + " " + user.getLastName()).trim();
+    }
+
+    private static YearMonth parseExpiry(final String expiryDate) {
+        // Defense in depth: @Valid on the request DTO already rejects blank/malformed values, but
+        // YearMonth.parse(null, ...) would throw a raw NullPointerException.
+        if (expiryDate == null || expiryDate.isBlank()) {
+            throw new IllegalArgumentException("Invalid expiryDate format; expected MM/yyyy, got: " + expiryDate);
+        }
+        try {
+            return YearMonth.parse(expiryDate, EXPIRY_FORMATTER);
+        } catch (final DateTimeParseException e) {
+            throw new IllegalArgumentException("Invalid expiryDate format; expected MM/yyyy, got: " + expiryDate, e);
+        }
+    }
+
+    private static void validateExpiryNotInThePast(final YearMonth expiry) {
+        if (expiry.isBefore(YearMonth.now())) {
+            throw new BankCardExpiredException("Card is expired (expiry=" + expiry.format(EXPIRY_FORMATTER) + ")");
+        }
     }
 }

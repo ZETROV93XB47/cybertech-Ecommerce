@@ -36,6 +36,7 @@ CREATE TABLE userTable
     isActive                   BOOLEAN      NOT NULL,
     defaultCommunicationChanel VARCHAR(255) NOT NULL, -- EnumType.STRING (supposé)
     numberOfHatefulComments    INT          NOT NULL,
+    stripeCustomerId           VARCHAR(255) UNIQUE,  -- Stripe Customer (cus_...), created on first card setup
 
     PRIMARY KEY (id)
 );
@@ -125,9 +126,11 @@ CREATE TABLE bankCardTable
     updatedAt      DATETIME,
 
     -- Champs spécifiques à BankCardEntity
-    cardHolderName VARCHAR(100) NOT NULL,
-    expiryDate     VARCHAR(7)   NOT NULL, -- MM/YYYY
-    cardType       VARCHAR(255) NOT NULL, -- EnumType.STRING
+    cardHolderName        VARCHAR(100) NOT NULL,
+    expiryDate            VARCHAR(7)   NOT NULL, -- MM/YYYY
+    cardType              VARCHAR(255) NOT NULL, -- EnumType.STRING
+    lastFourDigits        VARCHAR(4),
+    stripePaymentMethodId VARCHAR(255) UNIQUE,   -- Stripe PaymentMethod (pm_...); no card number stored
 
     -- Relation ManyToOne vers UserEntity
     user_id        BIGINT       NOT NULL,

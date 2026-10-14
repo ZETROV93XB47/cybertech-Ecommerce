@@ -1,25 +1,18 @@
 package com.novatech.cybertech.mappers.entity;
 
-import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
-import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.mapstruct.MappingTarget;
 import org.mapstruct.ReportingPolicy;
 
 /**
  * MapStruct mapper for {@link BankCardEntity}.
  *
- * <p>PCI-DSS rationale: the response DTO builds {@code maskedNumber} from
- * {@code lastFourDigits} so the plaintext PAN never leaks out of the server — even if a row
- * was written before the fix, only the last four digits surface via the masked field. We
- * also explicitly ignore {@code encryptedNumber} when producing the response so the base64
- * ciphertext cannot accidentally leak either.</p>
- *
- * <p>Not a {@link BaseMapper}: an update is always applied in place on the loaded entity
- * ({@link #updateEntityFromDto}) so the write-once PAN fields are never rebuilt from a DTO.</p>
+ * <p>The response DTO builds {@code maskedNumber} from {@code lastFourDigits} (reported by
+ * Stripe): the backend never sees more of the card number than that. Entities are built and
+ * updated by {@code BankCardManagementServiceImp} from Stripe's PaymentMethod, never from a
+ * request DTO.</p>
  */
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface BankCardMapper {
@@ -27,15 +20,4 @@ public interface BankCardMapper {
     @Mapping(target = "userUuid", expression = "java(entity.getUserEntity() != null ? entity.getUserEntity().getUuid() : null)")
     @Mapping(target = "maskedNumber", expression = "java(entity.getLastFourDigits() != null ? \"**** **** **** \" + entity.getLastFourDigits() : null)")
     BankCardResponseDto mapFromEntityToResponseDto(BankCardEntity entity);
-
-    @Mapping(target = "userEntity", ignore = true) // Géré manuellement dans le service
-    @Mapping(target = "encryptedNumber", ignore = true) // set by the service via CardEncryptionService
-    @Mapping(target = "lastFourDigits", ignore = true) // computed by the service, never from the raw DTO
-    BankCardEntity mapFromCreationRequestToEntity(BankCardCreationRequestDto dto);
-
-    @Mapping(target = "uuid", ignore = true)
-    @Mapping(target = "userEntity", ignore = true)
-    @Mapping(target = "encryptedNumber", ignore = true)
-    @Mapping(target = "lastFourDigits", ignore = true)
-    void updateEntityFromDto(BankCardUpdateRequestDto dto, @MappingTarget BankCardEntity entity);
 }

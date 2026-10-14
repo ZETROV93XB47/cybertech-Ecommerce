@@ -1,34 +1,28 @@
 package com.novatech.cybertech.dto.request.user;
 
-import com.novatech.cybertech.entities.enums.BankCardType;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-
+/**
+ * Saves the card the browser just confirmed in Stripe Elements.
+ *
+ * <p>Only the SetupIntent id travels: the card number never reaches the backend. The former body
+ * ({@code cardNumber}, {@code expiryDate}...) has no {@code setupIntentId} and is rejected with a 400.</p>
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class BankCardCreationRequestDto {
 
-    @NotBlank(message = "Card holder name cannot be blank")
-    private String cardHolderName;
-
-    @NotBlank(message = "Card number cannot be blank")
-    @Size(min = 13, max = 19, message = "Card number must be between 13 and 19 digits")
-    @Pattern(regexp = "\\d{13,19}", message = "Card number must contain only digits, 13–19 in length")
-    private String cardNumber;
-
-    @NotBlank(message = "Expiry date cannot be blank")
-    @Pattern(regexp = "(0[1-9]|1[0-2])/[0-9]{4}", message = "Expiry date must be in format MM/YYYY")
-    private String expiryDate;
-
-    @NotNull(message = "Card type cannot be null")
-    private BankCardType cardType;
+    @NotBlank(message = "setupIntentId cannot be blank")
+    @Pattern(regexp = "seti_[A-Za-z0-9]+", message = "setupIntentId must be a Stripe SetupIntent id (seti_...)")
+    @Schema(description = "Id of the SetupIntent confirmed by Stripe Elements (returned by POST /bank-card/setup-intent).",
+            example = "seti_1QxYzAbCdEfGhIjK")
+    private String setupIntentId;
 }

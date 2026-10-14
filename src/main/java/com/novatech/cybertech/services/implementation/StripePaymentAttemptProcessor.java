@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.dto.data.PaymentSource;
 import com.novatech.cybertech.annotation.PaymentTypeHandler;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
@@ -19,7 +20,6 @@ import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -38,9 +38,9 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
     private static final String IDEMPOTENCY_KEY = "idempotency_key";
     private static final String STRIPE_API_RESILIENCE_INSTANCE = "stripeApi";
     private static final String REQUIRES_PAYMENT_METHOD = "requires_payment_method";
+    private static final String REQUIRES_ACTION = "requires_action";
 
-    @Value("${stripe.payment-method:}")
-    private String defaultPaymentMethod;
+    private static final String CARD_PAYMENT_METHOD_TYPE = "card";
 
     // Protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
     @Override
@@ -49,7 +49,8 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
     public PaymentAttemptResult processPayment(
             final UUID orderUuid,
             final Money amount,
-            final String idempotencyKey
+            final String idempotencyKey,
+            final PaymentSource source
     ) {
 
         final long amountInMinorUnit = toMinorUnit(amount);
@@ -58,7 +59,8 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
                 orderUuid,
                 amount,
                 amountInMinorUnit,
-                idempotencyKey
+                idempotencyKey,
+                source
         );
 
         final RequestOptions options = RequestOptions.builder()
@@ -66,10 +68,12 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
                 .build();
 
         try {
-            log.info("Creating Stripe PaymentIntent | order={} | amount={} {} | idemKey={}",
+            log.info("Creating Stripe PaymentIntent | order={} | amount={} {} | customer={} | paymentMethod={} | idemKey={}",
                     orderUuid,
                     amount.getAmount(),
                     amount.getCurrencyCode(),
+                    source.customerId(),
+                    source.paymentMethodId(),
                     idempotencyKey
             );
 
@@ -82,6 +86,11 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
                     intent.getId(),
                     intent.getStatus()
             );
+            if (REQUIRES_ACTION.equals(intent.getStatus())) {
+                // Off-session with redirects forbidden: a card that demands 3-D Secure cannot be charged.
+                log.warn("Stripe card requires authentication, treated as declined | order={} | intentId={}",
+                        orderUuid, intent.getId());
+            }
 
             return new PaymentAttemptResult(
                     status,
@@ -173,34 +182,31 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             UUID orderUuid,
             Money amount,
             long amountInMinorUnit,
-            String idempotencyKey
+            String idempotencyKey,
+            PaymentSource source
     ) {
 
-        final PaymentIntentCreateParams.Builder builder = PaymentIntentCreateParams.builder()
+        // Charged on the user's saved card, server-side and without the user present
+        // (off_session): no redirect is possible, so a card requiring authentication is declined.
+        // The order_uuid metadata is how the payment_intent.* webhooks find the order back.
+        return PaymentIntentCreateParams.builder()
                 .setAmount(amountInMinorUnit)
                 .setCurrency(amount.getCurrencyCode().getCode().toLowerCase())
                 .putMetadata(ORDER_UUID, orderUuid.toString())
                 .putMetadata(IDEMPOTENCY_KEY, idempotencyKey)
-                .setAutomaticPaymentMethods(
-                        PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
-                                .setEnabled(true)
-                                .setAllowRedirects(PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
-                                .build()
-                )
-                .setConfirm(true);
-
-        if (defaultPaymentMethod != null && !defaultPaymentMethod.isBlank()) {
-            builder.setPaymentMethod(defaultPaymentMethod);
-        }
-
-        return builder.build();
+                .setCustomer(source.customerId())
+                .setPaymentMethod(source.paymentMethodId())
+                .addPaymentMethodType(CARD_PAYMENT_METHOD_TYPE)
+                .setOffSession(true)
+                .setConfirm(true)
+                .build();
     }
 
     private PaymentAttemptStatus mapStripeStatus(String stripeStatus) {
 
         return switch (stripeStatus) {
             case SUCCEEDED -> PaymentAttemptStatus.SUCCESS;
-            case REQUIRES_PAYMENT_METHOD, CANCELED -> PaymentAttemptStatus.FAILED;
+            case REQUIRES_PAYMENT_METHOD, REQUIRES_ACTION, CANCELED -> PaymentAttemptStatus.FAILED;
             // A plain switch(String) throws its own NPE on a null selector unless `case null` is
             // explicit — Stripe's SDK types status as a plain String with no documented non-null
             // guarantee, so fold null into the same PROCESSING fallback as any other unknown status.
@@ -220,7 +226,7 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
     }
 
     /**
-     * Resilience4j fallback for {@link #processPayment(UUID, Money, String)}. Invoked when the
+     * Resilience4j fallback for {@link #processPayment(UUID, Money, String, PaymentSource)}. Invoked when the
      * circuit breaker is OPEN or after the retry budget is exhausted. The signature must mirror
      * the protected method's args plus a trailing {@link Throwable}.
      */
@@ -229,6 +235,7 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
             final UUID orderUuid,
             final Money amount,
             final String idempotencyKey,
+            final PaymentSource source,
             final Throwable cause
     ) {
         log.error("Stripe processPayment fallback engaged | order={} | cause={}", orderUuid, cause != null ? cause.getMessage() : "<no cause>");

@@ -277,9 +277,6 @@ class DataGeneratorTest {
             assertThat(dto.getBirthDate()).isNotNull();
             assertThat(dto.getPassword()).isNotBlank();
             assertThat(dto.getFavoriteCommunicationChanel()).isNotNull();
-            assertThat(dto.getBankCardCreationRequestDto()).isNotNull();
-            assertThat(dto.getBankCardCreationRequestDto().getExpiryDate()).isEqualTo("12/2029");
-            assertThat(dto.getBankCardCreationRequestDto().getCardHolderName()).isNotBlank();
         }
     }
 

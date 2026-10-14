@@ -1,14 +1,11 @@
 package com.novatech.cybertech.mappers.entity;
 
-import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
-import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.BankCardType;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
-import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -20,78 +17,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit tests for {@link BankCardMapper}. Verifies the existing null-guard on {@code userEntity}
- * still works (the only mapper in the wave that already had one in pre-F2 baseline).
+ * Unit tests for {@link BankCardMapper}: masked response only (entities are built from Stripe's
+ * PaymentMethod by the service, never mapped from a request DTO).
  */
 class BankCardMapperTest {
 
     private final BankCardMapper mapper = Mappers.getMapper(BankCardMapper.class);
-
-    @Nested
-    @DisplayName("mapFromCreationRequestToEntity(BankCardCreationRequestDto)")
-    class FromCreationRequest {
-
-        @Test
-        void shouldMapAllScalarFieldsAndIgnoreUserEntity() {
-            BankCardCreationRequestDto dto = UserDtoFixtures.aValidBankCardCreationRequestBuilder()
-                    .cardHolderName("John Doe")
-                    .cardNumber("4242424242424242")
-                    .expiryDate("12/2099")
-                    .cardType(BankCardType.MASTERCARD)
-                    .build();
-
-            BankCardEntity entity = mapper.mapFromCreationRequestToEntity(dto);
-
-            assertThat(entity).isNotNull();
-            assertThat(entity.getCardHolderName()).isEqualTo("John Doe");
-            assertThat(entity.getExpiryDate()).isEqualTo("12/2099");
-            assertThat(entity.getCardType()).isEqualTo(BankCardType.MASTERCARD);
-            // userEntity is explicitly @Mapping(target = "userEntity", ignore = true).
-            assertThat(entity.getUserEntity()).isNull();
-        }
-
-        @Test
-        void shouldReturnNullForNullSource() {
-            assertThat(mapper.mapFromCreationRequestToEntity(null)).isNull();
-        }
-    }
-
-    @Nested
-    @DisplayName("updateEntityFromDto(BankCardUpdateRequestDto, BankCardEntity)")
-    class UpdateInPlace {
-
-        @Test
-        void shouldOverwriteScalarFieldsButPreserveUserAndUuid() {
-            UserEntity originalUser = UserEntityBuilder.aValidUser();
-            UUID originalUuid = UUID.randomUUID();
-            BankCardEntity entity = BankCardEntityBuilder.aValidBankCardBuilder()
-                    .uuid(originalUuid)
-                    .userEntity(originalUser)
-                    .build();
-            // Write-once PAN: only holder name + expiry are mutable; uuid, user, card number and
-            // card type must be left untouched by the in-place update.
-            BankCardUpdateRequestDto dto = new BankCardUpdateRequestDto(
-                    "New holder",
-                    "06/2099");
-
-            mapper.updateEntityFromDto(dto, entity);
-
-            assertThat(entity.getUuid()).isEqualTo(originalUuid);
-            assertThat(entity.getUserEntity()).isSameAs(originalUser);
-            assertThat(entity.getCardHolderName()).isEqualTo("New holder");
-            assertThat(entity.getExpiryDate()).isEqualTo("06/2099");
-        }
-
-        @Test
-        void shouldNoOpWhenDtoIsNull() {
-            BankCardEntity entity = BankCardEntityBuilder.aValidBankCard();
-            String holderBefore = entity.getCardHolderName();
-
-            mapper.updateEntityFromDto(null, entity);
-
-            assertThat(entity.getCardHolderName()).isEqualTo(holderBefore);
-        }
-    }
 
     @Nested
     @DisplayName("mapFromEntityToResponseDto(BankCardEntity)")
@@ -117,6 +48,19 @@ class BankCardMapperTest {
             assertThat(dto.getExpiryDate()).isEqualTo("12/2099");
             assertThat(dto.getCardType()).isEqualTo(BankCardType.VISA);
             assertThat(dto.getUserUuid()).isEqualTo(userUuid);
+        }
+
+        @Test
+        void shouldExposeOnlyTheMaskedLastFourDigitsNeverThePaymentMethod() {
+            BankCardEntity entity = BankCardEntityBuilder.aValidBankCardBuilder()
+                    .lastFourDigits("0341")
+                    .stripePaymentMethodId("pm_secret_ref")
+                    .build();
+
+            BankCardResponseDto dto = mapper.mapFromEntityToResponseDto(entity);
+
+            assertThat(dto.getMaskedNumber()).isEqualTo("**** **** **** 0341");
+            assertThat(dto.toString()).doesNotContain("pm_secret_ref");
         }
 
         @Test

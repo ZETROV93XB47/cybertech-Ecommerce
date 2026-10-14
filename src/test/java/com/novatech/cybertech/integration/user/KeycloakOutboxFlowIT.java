@@ -114,7 +114,6 @@ class KeycloakOutboxFlowIT {
         final String uniqueEmail = "outbox-it+" + UUID.randomUUID() + "@example.com";
         final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequestBuilder()
                 .email(uniqueEmail)
-                .bankCardCreationRequestDto(null) // same caveat as UserRegistrationFlowIT
                 .build();
 
         mockMvc.perform(post(REGISTER_ENDPOINT)
