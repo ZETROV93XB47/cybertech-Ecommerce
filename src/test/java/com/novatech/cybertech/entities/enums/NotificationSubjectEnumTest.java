@@ -14,6 +14,7 @@ class NotificationSubjectEnumTest {
                 NotificationSubject.ORDER_CANCELLATION,
                 NotificationSubject.ORDER_PENDING_PAYMENT,
                 NotificationSubject.ORDER_CONFIRMATION,
+                NotificationSubject.ORDER_UPDATE,
                 NotificationSubject.PAYMENT_CONFIRMATION,
                 NotificationSubject.SHIPPING_CONFIRMATION);
     }

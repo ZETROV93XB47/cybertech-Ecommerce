@@ -32,7 +32,6 @@ import java.util.UUID;
 @Component
 public class StripeCardGatewayImp implements StripeCardGateway {
 
-    private static final String CARD_PAYMENT_METHOD_TYPE = "card";
     private static final String USER_UUID_METADATA = "userUuid";
     private static final String CUSTOMER_IDEMPOTENCY_PREFIX = "customer-";
 
@@ -55,7 +54,12 @@ public class StripeCardGatewayImp implements StripeCardGateway {
         final SetupIntentCreateParams params = SetupIntentCreateParams.builder()
                 .setCustomer(customerId)
                 .setUsage(SetupIntentCreateParams.Usage.OFF_SESSION)
-                .addPaymentMethodType(CARD_PAYMENT_METHOD_TYPE)
+                // Stripe no longer accepts payment_method_types: methods come from the Dashboard
+                // settings. Redirect-based methods are excluded since the card is charged off-session.
+                .setAutomaticPaymentMethods(SetupIntentCreateParams.AutomaticPaymentMethods.builder()
+                        .setEnabled(true)
+                        .setAllowRedirects(SetupIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
+                        .build())
                 .build();
         return call("create setup intent", () -> toDto(SetupIntent.create(params)));
     }

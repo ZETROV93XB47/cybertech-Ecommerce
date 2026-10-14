@@ -14,6 +14,7 @@ class EmailTemplateTypeEnumTest {
                 EmailTemplateType.ORDER_CANCELLATION,
                 EmailTemplateType.ORDER_PENDING_PAYMENT,
                 EmailTemplateType.ORDER_CONFIRMATION,
+                EmailTemplateType.ORDER_UPDATE,
                 EmailTemplateType.PAYMENT_CONFIRMATION,
                 EmailTemplateType.SHIPPING_CONFIRMATION);
     }

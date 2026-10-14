@@ -40,8 +40,6 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
     private static final String REQUIRES_PAYMENT_METHOD = "requires_payment_method";
     private static final String REQUIRES_ACTION = "requires_action";
 
-    private static final String CARD_PAYMENT_METHOD_TYPE = "card";
-
     // Protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
     @Override
     @Retry(name = STRIPE_API_RESILIENCE_INSTANCE)
@@ -196,7 +194,14 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
                 .putMetadata(IDEMPOTENCY_KEY, idempotencyKey)
                 .setCustomer(source.customerId())
                 .setPaymentMethod(source.paymentMethodId())
-                .addPaymentMethodType(CARD_PAYMENT_METHOD_TYPE)
+                // payment_method_types is rejected by the current Stripe API; automatic payment
+                // methods without redirects is the supported way to forbid any redirect step.
+                .setAutomaticPaymentMethods(
+                        PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                                .setEnabled(true)
+                                .setAllowRedirects(PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
+                                .build()
+                )
                 .setOffSession(true)
                 .setConfirm(true)
                 .build();

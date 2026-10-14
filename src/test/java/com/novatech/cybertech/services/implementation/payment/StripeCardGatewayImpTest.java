@@ -63,7 +63,7 @@ class StripeCardGatewayImpTest {
     }
 
     @Test
-    @DisplayName("createSetupIntent: customer, off-session usage, card only")
+    @DisplayName("createSetupIntent: customer, off-session usage, no redirect-based method")
     void createSetupIntentForOffSessionCard() {
         try (MockedStatic<SetupIntent> setupMock = Mockito.mockStatic(SetupIntent.class)) {
             final SetupIntent intent = setupIntent("seti_1", "cus_1", "requires_payment_method", null);
@@ -77,7 +77,9 @@ class StripeCardGatewayImpTest {
             setupMock.verify(() -> SetupIntent.create(params.capture()));
             assertThat(params.getValue().getCustomer()).isEqualTo("cus_1");
             assertThat(params.getValue().getUsage()).isEqualTo(SetupIntentCreateParams.Usage.OFF_SESSION);
-            assertThat(params.getValue().getPaymentMethodTypes()).containsExactly("card");
+            assertThat(params.getValue().getPaymentMethodTypes()).isNull();
+            assertThat(params.getValue().getAutomaticPaymentMethods().getAllowRedirects())
+                    .isEqualTo(SetupIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER);
         }
     }
 

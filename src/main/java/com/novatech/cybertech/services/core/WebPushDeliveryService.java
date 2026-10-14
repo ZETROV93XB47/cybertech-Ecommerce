@@ -14,8 +14,9 @@ public interface WebPushDeliveryService {
 
     /**
      * Sends to one subscription of the user. A subscription that no longer exists, has expired or
-     * is reported gone by the push service (404/410) is a successful no-op; any other non-2xx
-     * answer or transport failure raises a retryable {@code NotificationDeliveryException}.
+     * is reported gone by the push service (404/410) is a successful no-op. 408, 429, 5xx and
+     * transport failures raise a retryable {@code NotificationDeliveryException}; any other 4xx a
+     * {@code PermanentNotificationFailureException} (recorded FAILED, never retried).
      */
     void sendToSubscription(String keycloakId, UUID subscriptionUuid, String title, String body, UUID orderUuid);
 }

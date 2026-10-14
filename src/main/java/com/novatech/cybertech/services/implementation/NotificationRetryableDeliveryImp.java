@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.exceptions.PermanentNotificationFailureException;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.entities.NotificationEntity;
 import com.novatech.cybertech.entities.enums.NotificationStatus;
@@ -80,6 +81,11 @@ public class NotificationRetryableDeliveryImp implements NotificationRetryableDe
             dispatchAttempt.attemptDispatch(context);
             // Success path: a SENT row with retryCount=0 (see implementation note).
             outcomeRecorder.recordOutcome(context, NotificationStatus.SENT, 0, null);
+        } catch (PermanentNotificationFailureException permanent) {
+            // Rejected by the transport itself: the same request would fail again, so the row is
+            // terminal at once and the batch redrive never picks it up.
+            log.warn("Notification permanently rejected for type={} channel={}: {}", context.getNotificationType(), context.getCommunicationChanel(), permanent.getMessage());
+            outcomeRecorder.recordOutcome(context, NotificationStatus.FAILED, 1, permanent);
         } catch (Throwable t) {
             // Reached once @Retry has exhausted its budget (or short-circuited on an
             // ignore-exception). Persist a PENDING_RETRY row so ops can see it and the Phase 3
@@ -103,6 +109,9 @@ public class NotificationRetryableDeliveryImp implements NotificationRetryableDe
         try {
             dispatchAttempt.attemptDispatch(context);
             outcomeRecorder.updateOutcome(existing, NotificationStatus.SENT, existing.getRetryCount(), null);
+        } catch (PermanentNotificationFailureException permanent) {
+            log.warn("Notification redrive permanently rejected for id={}: {}", existing.getId(), permanent.getMessage());
+            outcomeRecorder.updateOutcome(existing, NotificationStatus.FAILED, existing.getRetryCount() + 1, permanent);
         } catch (Throwable t) {
             log.warn("Notification redrive attempt exhausted for id={}: {}", existing.getId(), t.getMessage());
             outcomeRecorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY,

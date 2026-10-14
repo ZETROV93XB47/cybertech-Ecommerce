@@ -4,6 +4,7 @@ import com.novatech.cybertech.config.WebPushProperties;
 import com.novatech.cybertech.entities.BaseEntity;
 import com.novatech.cybertech.entities.PushSubscriptionEntity;
 import com.novatech.cybertech.exceptions.NotificationDeliveryException;
+import com.novatech.cybertech.exceptions.PermanentNotificationFailureException;
 import com.novatech.cybertech.exceptions.PushServiceNotConfiguredException;
 import com.novatech.cybertech.repositories.PushSubscriptionRepository;
 import com.novatech.cybertech.services.core.SensitiveDataEncryptionService;
@@ -32,6 +33,10 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
     private static final int HTTP_NOT_FOUND = 404;
     private static final int HTTP_SUCCESS_MIN = 200;
     private static final int HTTP_SUCCESS_MAX = 300;
+    private static final int HTTP_REQUEST_TIMEOUT = 408;
+    private static final int HTTP_TOO_MANY_REQUESTS = 429;
+    private static final int HTTP_SERVER_ERROR_MIN = 500;
+    private static final String PUSH_SERVICE_RETURNED = "Web Push service returned HTTP ";
     private static final String TITLE_KEY = "title";
     private static final String BODY_KEY = "body";
     private static final String URL_KEY = "url";
@@ -82,11 +87,24 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
                 encryptionService.decrypt(subscription.getP256dhEncrypted()),
                 encryptionService.decrypt(subscription.getAuthEncrypted()),
                 serializePayload(title, body, orderUuid));
+        if (statusCode >= HTTP_SUCCESS_MIN && statusCode < HTTP_SUCCESS_MAX) {
+            return;
+        }
         if (statusCode == HTTP_GONE || statusCode == HTTP_NOT_FOUND) {
             pushSubscriptionRepository.delete(subscription);
-        } else if (statusCode < HTTP_SUCCESS_MIN || statusCode >= HTTP_SUCCESS_MAX) {
-            throw new NotificationDeliveryException("Web Push service returned HTTP " + statusCode);
+            return;
         }
+        if (isTransient(statusCode)) {
+            throw new NotificationDeliveryException(PUSH_SERVICE_RETURNED + statusCode);
+        }
+        // 400 (malformed), 401/403 (VAPID refused), 413 (payload too large)...: the same request
+        // would be rejected again, so it is neither retried nor redriven.
+        throw new PermanentNotificationFailureException(PUSH_SERVICE_RETURNED + statusCode);
+    }
+
+    /** 408 (timeout), 429 (rate limited) and 5xx may succeed later; any other 4xx will not. */
+    private static boolean isTransient(final int statusCode) {
+        return statusCode == HTTP_REQUEST_TIMEOUT || statusCode == HTTP_TOO_MANY_REQUESTS || statusCode >= HTTP_SERVER_ERROR_MIN;
     }
 
     private static boolean isExpired(final PushSubscriptionEntity subscription) {

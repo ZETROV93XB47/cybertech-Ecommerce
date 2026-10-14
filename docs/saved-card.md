@@ -8,7 +8,8 @@ d'affichage (marque, 4 derniers chiffres, expiration, titulaire).
 
 1. `POST /api/v1/services/bank-card/setup-intent` (USER/ADMIN) : crée le Customer Stripe de
    l'utilisateur à la première demande (email, nom, métadonnée `userUuid`, clé d'idempotence par
-   utilisateur), puis un SetupIntent `usage=off_session`, `payment_method_types=[card]`.
+   utilisateur), puis un SetupIntent `usage=off_session`, `automatic_payment_methods` sans
+   redirection (Stripe n'accepte plus `payment_method_types`).
    Réponse `201 { setupIntentId, clientSecret, publishableKey }`.
 2. Le front initialise Stripe.js avec `publishableKey` et confirme le SetupIntent avec
    `clientSecret` (`stripe.confirmCardSetup`).
@@ -24,7 +25,8 @@ d'affichage (marque, 4 derniers chiffres, expiration, titulaire).
 ## Paiement
 
 `place`, `retry-payment` et le complément d'`update` créent un PaymentIntent avec `customer`,
-`payment_method` de la carte, `payment_method_types=[card]`, `off_session=true`, `confirm=true`.
+`payment_method` de la carte, `automatic_payment_methods` avec `allow_redirects=never`,
+`off_session=true`, `confirm=true`.
 La métadonnée `order_uuid` permet aux webhooks `payment_intent.*` de retrouver la commande.
 Un refus (`CardException`, ou statut `requires_payment_method` / `requires_action`) donne une
 tentative `FAILED` puis `PAYMENT_FAILED` sur la commande ; `place` renvoie toujours 201. Le
@@ -33,9 +35,12 @@ tentative `FAILED` puis `PAYMENT_FAILED` sur la commande ; `place` renvoie toujo
 Sans carte utilisable : 404 `BANK_CARD_NOT_FOUND` à `place` et à `retry-payment` (vérifié avant la
 réservation du stock). Le devis (`quote`) n'exige pas de carte.
 
-Cartes de test : 4242 4242 4242 4242 acceptée ; 4000 0000 0000 0341 enregistrée puis refusée ;
-4000 0000 0000 9995 fonds insuffisants ; 4000 0025 0000 3155 authentification exigée, donc refusée
-(pas de redirection possible hors session).
+Cartes de test et résultat attendu : voir `docs/test-cards.md` (attention, la 9995 « fonds
+insuffisants » est refusée dès l'enregistrement ; pour un échec de paiement, utiliser la 0341).
+
+Côté front : le SetupIntent accepte les moyens de paiement activés dans le Dashboard Stripe (carte,
+et Link sur le compte actuel). Le backend n'enregistre que des cartes : un moyen non carte renvoie
+400 `INVALID_CARD_SETUP`. Utiliser le `CardElement`, ou le `PaymentElement` avec Link désactivé.
 
 ## Configuration
 

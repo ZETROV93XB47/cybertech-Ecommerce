@@ -242,7 +242,7 @@ class StripePaymentAttemptProcessorTest {
         }
 
         @Test
-        @DisplayName("charges the user's saved card: customer + payment_method, off_session, card only")
+        @DisplayName("charges the user's saved card: customer + payment_method, off_session, no redirect")
         void chargesTheSavedCardOffSession() {
             try (MockedStatic<PaymentIntent> piMock = Mockito.mockStatic(PaymentIntent.class)) {
                 ArgumentCaptor<PaymentIntentCreateParams> captor =
@@ -261,9 +261,12 @@ class StripePaymentAttemptProcessorTest {
                 assertThat(sent.getPaymentMethod()).isEqualTo("pm_test_saved_card");
                 assertThat(sent.getOffSession()).isEqualTo(true);
                 assertThat(sent.getConfirm()).isTrue();
-                assertThat(sent.getPaymentMethodTypes()).containsExactly("card");
-                // No automatic payment methods: they could pick a redirect-based method.
-                assertThat(sent.getAutomaticPaymentMethods()).isNull();
+                // Stripe rejects payment_method_types; redirects are forbidden through
+                // automatic_payment_methods instead (off-session: no user to redirect).
+                assertThat(sent.getPaymentMethodTypes()).isNull();
+                assertThat(sent.getAutomaticPaymentMethods().getEnabled()).isTrue();
+                assertThat(sent.getAutomaticPaymentMethods().getAllowRedirects())
+                        .isEqualTo(PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER);
             }
         }
 

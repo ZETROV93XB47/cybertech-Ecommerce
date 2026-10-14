@@ -155,6 +155,30 @@ class WebPushDeliveryServiceImpTest {
         verify(subscriptionRepository, never()).delete(any(PushSubscriptionEntity.class));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {400, 401, 403, 413})
+    void sendTreatsRequestRejectionsAsPermanentNeverRetried(final int status) {
+        stubSubscription(subscription(SUBSCRIPTION_UUID, null));
+        when(properties.isConfigured()).thenReturn(true);
+        when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(status);
+
+        assertThatThrownBy(() -> service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID))
+                .isInstanceOf(com.novatech.cybertech.exceptions.PermanentNotificationFailureException.class)
+                .hasMessageContaining(String.valueOf(status));
+        verify(subscriptionRepository, never()).delete(any(PushSubscriptionEntity.class));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {408, 429, 500, 502})
+    void sendKeepsTimeoutsRateLimitsAndServerErrorsRetryable(final int status) {
+        stubSubscription(subscription(SUBSCRIPTION_UUID, null));
+        when(properties.isConfigured()).thenReturn(true);
+        when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(status);
+
+        assertThatThrownBy(() -> service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID))
+                .isInstanceOf(NotificationDeliveryException.class);
+    }
+
     @Test
     void sendFailsClearlyWhenVapidIsMissing() {
         stubSubscription(subscription(SUBSCRIPTION_UUID, null));

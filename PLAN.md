@@ -45,3 +45,13 @@ Estimation : tout le prompt tient dans une session (le paiement passe par un seu
 - [x] 10. Webhook : métadonnée `order_uuid` toujours posée (test).
 - [x] 11. Tests unitaires (processeur, service carte, gateway, controller), ITs (flux carte, commande 4242 → PAID, refus → retry → PAID), `mvnw test`.
 - [x] 12. OpenAPI, Postman, progress.md, commit (2328 tests unitaires + 82 ITs verts, gate JaCoCo OK).
+
+## Décisions de revue (2026-10-14, suite)
+
+- [x] 5. Web Push : 4xx définitifs (400, 401, 403, 413...) → notification FAILED sans retry ni rejeu batch (404/410 = abonnement supprimé, 408/429/5xx = réessayable).
+- [x] 7. Handler e-mail ORDER_UPDATE (gabarit + tests).
+- [x] 12. S3 local : LocalStack → RustFS (MinIO plus distribué) (volume persistant, console web), config, docs.
+- [x] 2. Base de dev : purge des cartes héritées + cartes de test Stripe pour les utilisateurs (script rejouable) + doc des cartes de test.
+- [x] 14. Supprimer la branche `claude/session-2026-09-25-fixes`.
+- [x] Bug Stripe `payment_method_types` corrigé, paiements réels vérifiés.
+- [x] Tests (2353 verts), progress.md, commit.

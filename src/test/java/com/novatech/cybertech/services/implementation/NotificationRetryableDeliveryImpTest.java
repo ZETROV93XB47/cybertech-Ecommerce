@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.exceptions.PermanentNotificationFailureException;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.entities.NotificationEntity;
 import com.novatech.cybertech.entities.enums.NotificationStatus;
@@ -117,5 +118,39 @@ class NotificationRetryableDeliveryImpTest {
         verify(outcomeRecorder).updateOutcome(eq(existing), eq(NotificationStatus.PENDING_RETRY), eq(9), eq(boom));
         verify(outcomeRecorder, never()).updateOutcome(any(), eq(NotificationStatus.SENT), any(Integer.class), any());
         verify(outcomeRecorder, never()).recordOutcome(any(), any(), any(Integer.class), any());
+    }
+
+    @Test
+    void permanentFailure_isRecordedFailedAtOnceSoTheBatchNeverRedrivesIt() {
+        final PermanentNotificationFailureException rejected = new PermanentNotificationFailureException("Web Push service returned HTTP 403");
+        doThrow(rejected).when(dispatchAttempt).attemptDispatch(any());
+        when(outcomeRecorder.recordOutcome(any(), any(), any(Integer.class), any()))
+                .thenReturn(NotificationEntity.builder().build());
+
+        assertThatCode(() -> delivery.deliver(context)).doesNotThrowAnyException();
+
+        verify(outcomeRecorder).recordOutcome(eq(context), eq(NotificationStatus.FAILED), eq(1), eq(rejected));
+        verify(outcomeRecorder, never()).recordOutcome(any(), eq(NotificationStatus.PENDING_RETRY), any(Integer.class), any());
+    }
+
+    @Test
+    void redeliver_permanentFailure_closesTheRowAsFailed() {
+        final NotificationEntity existing = NotificationEntity.builder().retryCount(3).build();
+        final PermanentNotificationFailureException rejected = new PermanentNotificationFailureException("HTTP 400");
+        doThrow(rejected).when(dispatchAttempt).attemptDispatch(any());
+        when(outcomeRecorder.updateOutcome(any(), any(), any(Integer.class), any()))
+                .thenReturn(existing);
+
+        assertThatCode(() -> delivery.redeliver(context, existing)).doesNotThrowAnyException();
+
+        verify(outcomeRecorder).updateOutcome(eq(existing), eq(NotificationStatus.FAILED), eq(4), eq(rejected));
+        verify(outcomeRecorder, never()).updateOutcome(any(), eq(NotificationStatus.PENDING_RETRY), any(Integer.class), any());
+    }
+
+    @Test
+    void permanentFailureIsNotARetryableDeliveryException() {
+        // NotificationDeliveryException is on the Resilience4j retry allowlist, subclasses included.
+        org.assertj.core.api.Assertions.assertThat(
+                NotificationDeliveryException.class.isAssignableFrom(PermanentNotificationFailureException.class)).isFalse();
     }
 }
