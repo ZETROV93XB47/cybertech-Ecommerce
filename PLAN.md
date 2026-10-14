@@ -55,3 +55,14 @@ Estimation : tout le prompt tient dans une session (le paiement passe par un seu
 - [x] 14. Supprimer la branche `claude/session-2026-09-25-fixes`.
 - [x] Bug Stripe `payment_method_types` corrigé, paiements réels vérifiés.
 - [x] Tests (2353 verts), progress.md, commit.
+
+## Retour à la carte saisie + règle 1111 / 0000 (2026-10-14)
+
+Décision du propriétaire : abandon de la carte enregistrée chez Stripe (prompt 10). La carte est de
+nouveau saisie, chiffrée (AES/GCM) et stockée par le backend. Stripe et le webhook restent.
+
+- [x] 1. Revert de `99abb53` (setup-intent, Customer, PaymentMethod, gateway, migration) en gardant les apports ultérieurs (push, ORDER_UPDATE, RustFS).
+- [x] 2. Règle de paiement : numéro uniquement en `1` → PaymentIntent `pm_card_visa` (réussi) ; tout autre numéro (dont `0000…`) → carte de test Stripe refusée. Webhook inchangé.
+- [x] 3. Garder : carte à l'inscription, `retry-payment` sans carte → 404 avant réservation du stock.
+- [x] 4. Base de dev : `encryptedNumber` rétabli, colonnes Stripe retirées, cartes `1111…` chiffrées pour les 7 comptes.
+- [x] 5. Docs (cartes de test, prompt 10 abandonné), OpenAPI, Postman, tests, progress.md, commit.

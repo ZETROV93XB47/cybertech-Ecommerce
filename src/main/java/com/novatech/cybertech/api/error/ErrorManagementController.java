@@ -428,16 +428,4 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), PUSH_SUBSCRIPTION_NOT_OWNED);
         return new ResponseEntity<>(errorResponseDto, PUSH_SUBSCRIPTION_NOT_OWNED.getResponseStatus());
     }
-
-    @ExceptionHandler(InvalidCardSetupException.class)
-    public ResponseEntity<ErrorResponseDto> handleInvalidCardSetupException(InvalidCardSetupException exception) {
-        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), INVALID_CARD_SETUP);
-        return new ResponseEntity<>(errorResponseDto, INVALID_CARD_SETUP.getResponseStatus());
-    }
-
-    @ExceptionHandler(PaymentProviderNotConfiguredException.class)
-    public ResponseEntity<ErrorResponseDto> handlePaymentProviderNotConfiguredException(PaymentProviderNotConfiguredException exception) {
-        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), PAYMENT_PROVIDER_NOT_CONFIGURED);
-        return new ResponseEntity<>(errorResponseDto, PAYMENT_PROVIDER_NOT_CONFIGURED.getResponseStatus());
-    }
 }

@@ -4,7 +4,6 @@ import com.novatech.cybertech.api.controllers.spec.BankCardControllerApiSpec;
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
-import com.novatech.cybertech.dto.response.user.BankCardSetupIntentResponseDto;
 import com.novatech.cybertech.services.core.BankCardManagementService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -30,13 +29,6 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
     private final BankCardManagementService bankCardService;
 
     // --- Endpoints Sécurisés ---
-
-    @Override
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-    @PostMapping(value = "/setup-intent", produces = APPLICATION_JSON_VALUE)
-    public ResponseEntity<BankCardSetupIntentResponseDto> createSetupIntent(@AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(bankCardService.createSetupIntent(jwt.getSubject()));
-    }
 
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")

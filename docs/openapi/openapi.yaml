@@ -82,9 +82,7 @@ paths:
       tags:
       - Bank Card
       summary: Update current user's bank card
-      description: "Updates the holder name and expiry date of the caller's card,\
-        \ at Stripe (PaymentMethod) and locally. The card number cannot change: save\
-        \ a new card instead."
+      description: Updates the bank card details for the authenticated user.
       operationId: updateBankCard
       parameters:
       - name: X-API-VERSION
@@ -107,13 +105,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BankCardResponseDto"
-        "400":
-          description: "Invalid input, expired date (BANK_CARD_EXPIRED) or change\
-            \ refused by Stripe (INVALID_CARD_SETUP)"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
         "404":
           description: Bank card not found
           content:
@@ -513,9 +504,8 @@ paths:
       tags:
       - Order
       summary: Retry payment for a failed order
-      description: "Retries the payment of an order in PAYMENT_FAILED status on the\
-        \ user's current saved card (save another card first to pay with it). Checks\
-        \ the saved card, then stock availability, before charging."
+      description: Retries the payment process for an order that is in PAYMENT_FAILED
+        status. Checks stock availability before proceeding.
       operationId: retryPayment
       parameters:
       - name: uuid
@@ -559,7 +549,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "404":
-          description: Order not found (ORDER_NOT_FOUND) or no saved card (BANK_CARD_NOT_FOUND)
+          description: Order not found
           content:
             application/json:
               schema:
@@ -582,7 +572,7 @@ paths:
         the cart, never from the body) with the given shipping options and campaign,
         exactly like placing the order would: `totalAmount` equals the total of the order
         placed right after with the same options. No side effect: no order, no stock
-        reservation, no payment. Does not require a saved card. `discountApplied` is false when there is no campaign or
+        reservation, no payment. `discountApplied` is false when there is no campaign or
         when the subtotal is below the campaign's `minOrderAmount`.
         Same rate limit as the cart endpoints.
       operationId: quote
@@ -643,11 +633,6 @@ paths:
         Creates a new order for the authenticated user.
         The request must include the list of products to purchase, quantities,
         shipping address, and payment type.
-        The total is charged off-session on the card the user saved through Stripe
-        (POST /bank-card/setup-intent then /bank-card/add). Without a saved card the order is
-        not created: 404 BANK_CARD_NOT_FOUND (the frontend offers "add a card"). A declined
-        card is not an HTTP error: the order is created and becomes PAYMENT_FAILED
-        (retry with POST /order/retry-payment/{uuid}, possibly after saving another card).
         Requires a valid JWT token in the Authorization header (Bearer token).
       operationId: placeOrder
       parameters:
@@ -686,12 +671,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "403":
           description: Forbidden - user not allowed to perform this operation
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
-        "404":
-          description: No saved card (BANK_CARD_NOT_FOUND)
           content:
             application/json:
               schema:
@@ -826,63 +805,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-  /api/v1/services/bank-card/setup-intent:
-    post:
-      tags:
-      - Bank Card
-      summary: Prepare a card registration (Stripe SetupIntent)
-      description: |
-        Step 1 of saving a card. Creates the caller's Stripe Customer on first use, then an
-        off-session card SetupIntent. The frontend initialises Stripe.js with `publishableKey`,
-        confirms the SetupIntent with `clientSecret` in Stripe Elements (the card number never
-        reaches the backend), then calls POST /bank-card/add with `setupIntentId`.
-      operationId: createSetupIntent
-      parameters:
-      - name: X-API-VERSION
-        in: header
-        schema:
-          type: string
-          default: 1.0.0
-          enum:
-          - "1.0"
-      responses:
-        "201":
-          description: SetupIntent created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BankCardSetupIntentResponseDto"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
-        "500":
-          description: Stripe unavailable (PAYMENT_PROCESSING_ERROR)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
-        "503":
-          description: stripe.publishable-key not configured (PAYMENT_PROVIDER_NOT_CONFIGURED)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
-      security:
-      - keycloak: []
   /api/v1/services/bank-card/add:
     post:
       tags:
       - Bank Card
-      summary: Save the card confirmed in Stripe Elements
-      description: |
-        Step 2 of saving a card. The SetupIntent must belong to the caller's Stripe Customer and be
-        `succeeded`. The card becomes the user's only card and the Customer's default payment method;
-        it replaces a previous card (detached at Stripe). Every payment is then charged on it.
-        Only brand, last four digits, expiry and holder name are stored. A body with a card number
-        (former contract) is rejected with a 400.
+      summary: Add a bank card to current user
+      description: Adds a new bank card for the authenticated user. User can only
+        have one card.
       operationId: addBankCard
       parameters:
       - name: X-API-VERSION
@@ -900,26 +829,25 @@ paths:
         required: true
       responses:
         "201":
-          description: Card saved
+          description: Bank card added successfully
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BankCardResponseDto"
         "400":
-          description: "Invalid body, unknown or unfinished SetupIntent (INVALID_CARD_SETUP),\
-            \ expired card (BANK_CARD_EXPIRED)"
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: User already has a bank card
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "401":
           description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
-        "403":
-          description: SetupIntent of another user (ACCESS_DENIED)
           content:
             application/json:
               schema:
@@ -2934,8 +2862,7 @@ paths:
       - Bank Card
       summary: Get the caller's bank card
       description: Returns the authenticated user's bank card as a masked response
-        DTO (only the last four digits). A card saved before the Stripe flow cannot
-        be charged and is reported as absent (404).
+        DTO (no PAN is exposed).
       operationId: getBankCard
       parameters:
       - name: X-API-VERSION
@@ -3586,8 +3513,7 @@ paths:
       tags:
       - Bank Card
       summary: Delete current user's bank card
-      description: Deletes the bank card associated with the authenticated user and
-        detaches it from the Stripe Customer.
+      description: Deletes the bank card associated with the authenticated user.
       operationId: deleteBankCard
       parameters:
       - name: X-API-VERSION
@@ -3993,8 +3919,6 @@ components:
           - INVALID_PUSH_ENDPOINT
           - PUSH_SUBSCRIPTION_NOT_FOUND
           - PUSH_SUBSCRIPTION_NOT_OWNED
-          - INVALID_CARD_SETUP
-          - PAYMENT_PROVIDER_NOT_CONFIGURED
         fieldErrors:
           type: array
           items:
@@ -4039,6 +3963,34 @@ components:
         addedAt:
           type: string
           format: date-time
+    BankCardCreationRequestDto:
+      type: object
+      properties:
+        cardHolderName:
+          type: string
+          minLength: 1
+        cardNumber:
+          type: string
+          maxLength: 19
+          minLength: 13
+          pattern: "\\d{13,19}"
+        expiryDate:
+          type: string
+          minLength: 1
+          pattern: "(0[1-9]|1[0-2])/[0-9]{4}"
+        cardType:
+          type: string
+          enum:
+          - VISA
+          - MASTERCARD
+          - AMERICAN_EXPRESS
+          - DISCOVER
+          - OTHER
+      required:
+      - cardHolderName
+      - cardNumber
+      - cardType
+      - expiryDate
     UserCreateRequestDto:
       type: object
       properties:
@@ -4088,6 +4040,8 @@ components:
           type: string
           maxLength: 2147483647
           minLength: 8
+        bankCardCreationRequestDto:
+          $ref: "#/components/schemas/BankCardCreationRequestDto"
       required:
       - city
       - country
@@ -4683,30 +4637,6 @@ components:
             $ref: "#/components/schemas/CartItemResponseDto"
         totalPrice:
           type: number
-    BankCardSetupIntentResponseDto:
-      type: object
-      properties:
-        setupIntentId:
-          type: string
-          example: seti_1QxYzAbCdEfGhIjK
-        clientSecret:
-          type: string
-          example: seti_1QxYzAbCdEfGhIjK_secret_abc123
-        publishableKey:
-          type: string
-          example: pk_test_51AbCdEf
-    BankCardCreationRequestDto:
-      type: object
-      properties:
-        setupIntentId:
-          type: string
-          description: Id of the SetupIntent confirmed by Stripe Elements (returned
-            by POST /bank-card/setup-intent).
-          example: seti_1QxYzAbCdEfGhIjK
-          minLength: 1
-          pattern: "seti_[A-Za-z0-9]+"
-      required:
-      - setupIntentId
     UserResponseDto:
       type: object
       properties:

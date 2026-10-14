@@ -49,7 +49,8 @@ public final class UserDtoFixtures {
                 .zipCode("75001")
                 .country("FR")
                 .birthDate(LocalDateTime.now().minusYears(30))
-                .password("Sup3rSecur3!");
+                .password("Sup3rSecur3!")
+                .bankCardCreationRequestDto(aValidBankCardCreationRequest());
     }
 
     public static UserUpdateRequestDto aValidUpdateRequest() {
@@ -73,7 +74,10 @@ public final class UserDtoFixtures {
 
     public static BankCardCreationRequestDto.BankCardCreationRequestDtoBuilder aValidBankCardCreationRequestBuilder() {
         return BankCardCreationRequestDto.builder()
-                .setupIntentId("seti_1TestSetupIntent");
+                .cardHolderName("Jane Doe")
+                .cardNumber("4242424242424242")
+                .expiryDate(LocalDate.now().plusYears(5).format(EXPIRY_FORMAT))
+                .cardType(BankCardType.VISA);
     }
 
     public static UserResponseDto aSampleUserResponse() {

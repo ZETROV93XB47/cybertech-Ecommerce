@@ -13,7 +13,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "bankCardTable")
-@ToString(callSuper = true, exclude = {"userEntity"})
+@ToString(callSuper = true, exclude = {"userEntity", "encryptedNumber"})
 @EqualsAndHashCode(callSuper = true, exclude = {"userEntity"})
 public class BankCardEntity extends BaseEntity<Long> {
 
@@ -25,19 +25,17 @@ public class BankCardEntity extends BaseEntity<Long> {
     private String cardHolderName;
 
     /**
-     * Stripe PaymentMethod ({@code pm_...}) of the card, attached to the user's Customer. Every
-     * payment is charged on it. The card number itself is entered in Stripe Elements and is never
-     * received nor stored by the backend.
+     * At-rest AES/GCM ciphertext of the PAN (base64-encoded IV + ciphertext + tag).
      *
-     * <p>Nullable only for cards saved before the Stripe flow (they held an encrypted number and
-     * cannot be charged): they are purged by {@code sql/migrations/2026-10-14-stripe-saved-card.sql}
-     * and treated as "no card" until then.</p>
+     * <p>Length is generous (512) because the envelope includes a random per-record IV and a
+     * GCM authentication tag — see {@code AesCardEncryptionService} for the full rationale.
+     * Never returned in any response DTO.</p>
      */
-    @Column(name = "stripePaymentMethodId", length = 255, unique = true)
-    private String stripePaymentMethodId;
+    @Column(name = "encryptedNumber", length = 512)
+    private String encryptedNumber;
 
     /**
-     * Last four digits as reported by Stripe, for display. This is the ONLY card-number-derived
+     * Last four digits of the PAN, cached for display. This is the ONLY PAN-derived
      * value that may ever appear in a response, and only embedded in a masked form
      * ({@code "**** **** **** 4242"}).
      */
@@ -50,9 +48,4 @@ public class BankCardEntity extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     @Column(name = "cardType", nullable = false)
     private BankCardType cardType;
-
-    /** {@code true} when the card can be charged (saved through Stripe, not a legacy row). */
-    public boolean isChargeable() {
-        return stripePaymentMethodId != null && !stripePaymentMethodId.isBlank();
-    }
 }

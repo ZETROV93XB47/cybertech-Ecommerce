@@ -986,23 +986,10 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("no saved card: BANK_CARD_NOT_FOUND before any stock reservation or payment")
-        void noSavedCard_failsBeforeReservingStock() {
+        @DisplayName("no card: BANK_CARD_NOT_FOUND before any stock reservation or payment")
+        void noCard_failsBeforeReservingStock() {
             final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
             order.getUserEntity().setBankCardEntity(null);
-            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-
-            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
-                    .isInstanceOf(BankCardNotFoundException.class);
-
-            verifyNoInteractions(paymentService, stockService);
-        }
-
-        @Test
-        @DisplayName("card saved before the Stripe flow (no PaymentMethod) counts as no card")
-        void legacyCard_failsLikeNoCard() {
-            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
-            order.getUserEntity().getBankCardEntity().setStripePaymentMethodId(null);
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
 
             assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))

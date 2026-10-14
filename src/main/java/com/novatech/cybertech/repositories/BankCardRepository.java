@@ -1,12 +1,10 @@
 package com.novatech.cybertech.repositories;
 
-import java.util.Optional;
-import org.springframework.data.repository.query.Param;
-import org.springframework.data.jpa.repository.Query;
 import com.novatech.cybertech.entities.BankCardEntity;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface BankCardRepository extends CrudBaseRepository<BankCardEntity, Long> {
@@ -21,10 +19,6 @@ public interface BankCardRepository extends CrudBaseRepository<BankCardEntity, L
      */
     List<BankCardEntity> findAllByUserEntity_KeycloakId(String keycloakId);
 
-    /**
-     * The card of a user, with the user fetched (its Stripe Customer id is needed to charge it).
-     * Looked up by id so callers holding a detached/lazy {@code UserEntity} proxy can use it.
-     */
-    @Query("select b from BankCardEntity b join fetch b.userEntity u where u.id = :userId")
-    Optional<BankCardEntity> findWithUserByUserId(@Param("userId") Long userId);
+    /** The card of a user, looked up by id so a detached / lazy {@code UserEntity} proxy can be used. */
+    Optional<BankCardEntity> findByUserEntity_Id(Long userId);
 }

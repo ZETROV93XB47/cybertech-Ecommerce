@@ -1,9 +1,10 @@
 package com.novatech.cybertech.services.implementation;
 
-import com.novatech.cybertech.dto.data.PaymentSource;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.repositories.BankCardRepository;
+import com.novatech.cybertech.services.core.CardEncryptionService;
+import com.novatech.cybertech.utils.TestCardPaymentUtils;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
@@ -39,22 +40,19 @@ public class PaymentServiceImp implements PaymentService {
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final IdempotencyKeyServiceGenerator idempotencyKeyService;
     private final BankCardRepository bankCardRepository;
+    private final CardEncryptionService cardEncryptionService;
 
     /**
-     * The saved card of the order's buyer. {@code getUserEntity().getId()} does not initialise a
-     * lazy proxy, so this works on an order detached from the transaction that created it.
+     * The decrypted card number of the order's buyer. {@code getUserEntity().getId()} does not
+     * initialise a lazy proxy, so this works on an order detached from the transaction that created it.
      *
-     * @throws BankCardNotFoundException when the buyer has no card that Stripe can charge.
+     * @throws BankCardNotFoundException when the buyer has no card.
      */
-    private PaymentSource resolvePaymentSource(final OrderEntity order) {
-        final BankCardEntity card = bankCardRepository.findWithUserByUserId(order.getUserEntity().getId())
-                .filter(BankCardEntity::isChargeable)
+    private String buyerCardNumber(final OrderEntity order) {
+        final BankCardEntity card = bankCardRepository.findByUserEntity_Id(order.getUserEntity().getId())
+                .filter(found -> found.getEncryptedNumber() != null)
                 .orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ..."));
-        final String customerId = card.getUserEntity().getStripeCustomerId();
-        if (customerId == null) {
-            throw new BankCardNotFoundException("No bank card set, please, add a bank card and retry ...");
-        }
-        return new PaymentSource(customerId, card.getStripePaymentMethodId());
+        return cardEncryptionService.decrypt(card.getEncryptedNumber());
     }
 
     @Transactional
@@ -71,8 +69,9 @@ public class PaymentServiceImp implements PaymentService {
             }
         }
 
-        // Carte enregistrée de l'acheteur, résolue avant toute écriture : sans carte, rien n'est créé.
-        final PaymentSource source = resolvePaymentSource(order);
+        // Carte de l'acheteur, résolue avant toute écriture : sans carte, rien n'est créé. Son numéro
+        // décide de l'issue (TestCardPaymentUtils : que des 1 = payé, sinon refusé).
+        final String paymentMethod = TestCardPaymentUtils.stripeTestPaymentMethodFor(buyerCardNumber(order));
 
         // Crée attempt
         PaymentEntity attempt = PaymentEntity.builder()
@@ -102,7 +101,7 @@ public class PaymentServiceImp implements PaymentService {
         PaymentAttemptProcessor processor = paymentStrategyFactory.getServiceFromPaymentType(paymentType);
 
         // Idée: ton processor retourne un résultat (au lieu de muter une entity PaymentEntity)
-        PaymentAttemptResult result = processor.processPayment(order.getUuid(), amount, idempotencyKey, source);
+        PaymentAttemptResult result = processor.processPayment(order.getUuid(), amount, idempotencyKey, paymentMethod);
 
         attempt.setStatus(result.status());
         attempt.setStripePaymentID(result.stripePaymentID());

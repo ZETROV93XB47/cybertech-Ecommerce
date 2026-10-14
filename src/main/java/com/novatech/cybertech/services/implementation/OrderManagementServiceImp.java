@@ -1,7 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
 
-import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
@@ -485,8 +484,8 @@ public class OrderManagementServiceImp implements OrderManagementService {
                     "A payment already succeeded or is in flight for order " + orderUuid);
         }
 
-        // 0. A saved card is required: checked before reserving stock, so a user without a card
-        // gets BANK_CARD_NOT_FOUND (the frontend offers "add a card") and no reservation is taken.
+        // 0. A card is required: checked before reserving stock, so a user without a card gets
+        // BANK_CARD_NOT_FOUND (the frontend offers "add a card") and no reservation is taken.
         validateUserBeforeProcessingPayment(order.getUserEntity());
 
         // 1. Vérifier et Réserver le stock (car il a été libéré lors de l'échec précédent)
@@ -741,10 +740,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
     static void validateUserBeforeProcessingPayment(final OrderValidator orderValidatorChain, final UserEntity userEntity) {
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
-                // A card saved before the Stripe flow (no PaymentMethod) cannot be charged: same as no card.
-                .userDefaultBankCard(Optional.ofNullable(userEntity.getBankCardEntity())
-                        .filter(BankCardEntity::isChargeable)
-                        .orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ...")))
+                .userDefaultBankCard(Optional.ofNullable(userEntity.getBankCardEntity()).orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ...")))
                 .build();
 
         orderValidatorChain.validate(orderValidationDto);

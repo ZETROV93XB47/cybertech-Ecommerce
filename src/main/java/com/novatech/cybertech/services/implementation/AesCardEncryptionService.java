@@ -32,11 +32,7 @@ import java.util.Base64;
  *
  * <p><b>Why base64 envelope.</b> Databases and JSON are text-friendly. Storing
  * {@code base64(iv || ciphertext || tag)} in a single {@code VARCHAR} column keeps JPA happy
- * and lets the encrypted columns stay plain {@code String}s.</p>
- *
- * <p><b>Current use.</b> Card numbers are no longer stored (cards live at Stripe, see
- * {@code BankCardManagementServiceImp}); the service now encrypts Web Push subscription data
- * through {@link com.novatech.cybertech.services.core.SensitiveDataEncryptionService}.</p>
+ * and lets the {@code BankCardEntity.encryptedNumber} stay a plain {@code String}.</p>
  *
  * <p><b>Key provisioning.</b> The key is injected from
  * {@code app.security.card-encryption-key} (base64, 32 bytes = AES-256). The

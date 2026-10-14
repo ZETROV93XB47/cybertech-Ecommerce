@@ -2,10 +2,9 @@ package com.novatech.cybertech.services.implementation.payment.core;
 
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
-import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
-import com.novatech.cybertech.entities.BankCardEntity;
-import com.novatech.cybertech.dto.data.PaymentSource;
+import com.novatech.cybertech.services.core.CardEncryptionService;
+import com.novatech.cybertech.repositories.BankCardRepository;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
@@ -83,24 +82,17 @@ class PaymentServiceImpTest {
     @Mock
     private BankCardRepository bankCardRepository;
 
-    /** The buyer's saved card, as resolved from the {@link #savedCard()} fixture. */
-    private static final PaymentSource SAVED_CARD = new PaymentSource("cus_buyer", "pm_saved");
+    @Mock
+    private CardEncryptionService cardEncryptionService;
 
-    /**
-     * Every order buyer has a chargeable saved card unless a test says otherwise: the service
-     * resolves it before creating the attempt.
-     */
+    private static final String PAYING_PM = "pm_card_visa";
+
+    /** Every buyer has a 1111... card (pays) unless a test says otherwise. */
     @org.junit.jupiter.api.BeforeEach
-    void stubSavedCard() {
-        org.mockito.Mockito.lenient().when(bankCardRepository.findWithUserByUserId(any()))
-                .thenReturn(Optional.of(savedCard()));
-    }
-
-    private static BankCardEntity savedCard() {
-        return BankCardEntityBuilder.aValidBankCardBuilder()
-                .stripePaymentMethodId("pm_saved")
-                .userEntity(UserEntityBuilder.aValidUserBuilder().stripeCustomerId("cus_buyer").build())
-                .build();
+    void stubBuyerCard() {
+        org.mockito.Mockito.lenient().when(bankCardRepository.findByUserEntity_Id(any()))
+                .thenReturn(Optional.of(BankCardEntityBuilder.aValidBankCardBuilder().encryptedNumber("enc").build()));
+        org.mockito.Mockito.lenient().when(cardEncryptionService.decrypt("enc")).thenReturn("1111111111111111");
     }
 
     @InjectMocks
@@ -141,7 +133,7 @@ class PaymentServiceImpTest {
 
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
-            when(processor.processPayment(order.getUuid(), amount, key, SAVED_CARD))
+            when(processor.processPayment(order.getUuid(), amount, key, PAYING_PM))
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_123"));
             wireSaveReturnsArg();
 
@@ -156,7 +148,7 @@ class PaymentServiceImpTest {
             assertThat(result.getPaymentType()).isEqualTo(PaymentType.VISA);
             assertThat(result.getTransactionType()).isEqualTo(TransactionType.PAYMENT);
 
-            verify(processor, times(1)).processPayment(order.getUuid(), amount, key, SAVED_CARD);
+            verify(processor, times(1)).processPayment(order.getUuid(), amount, key, PAYING_PM);
             verify(paymentAttemptRepository, times(2)).save(any(PaymentEntity.class));
         }
 
@@ -341,7 +333,7 @@ class PaymentServiceImpTest {
 
             service.processPayment(order, PaymentType.MASTERCARD, tenEur(), key);
 
-            verify(processor).processPayment(eq(order.getUuid()), any(Money.class), eq(key), eq(SAVED_CARD));
+            verify(processor).processPayment(eq(order.getUuid()), any(Money.class), eq(key), eq(PAYING_PM));
         }
 
         @Test
@@ -376,51 +368,53 @@ class PaymentServiceImpTest {
     }
 
     @Nested
-    @DisplayName("processPayment — saved card")
-    class SavedCard {
+    @DisplayName("processPayment — card number decides the outcome")
+    class CardNumberRule {
 
-        @Test
-        @DisplayName("charges the buyer's saved card (customer + payment method)")
-        void passesTheSavedCardToTheProcessor() {
-            final OrderEntity order = newOrder();
-            final String key = "idem-" + UUID.randomUUID();
+        private void stubHappyPath(final String key) {
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
             wireSaveReturnsArg();
             when(paymentStrategyFactory.getServiceFromPaymentType(PaymentType.VISA)).thenReturn(processor);
             when(processor.processPayment(any(), any(), any(), any()))
                     .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_1"));
-
-            service.processPayment(order, PaymentType.VISA, tenEur(), key);
-
-            verify(processor).processPayment(order.getUuid(), tenEur(), key, SAVED_CARD);
         }
 
         @Test
-        @DisplayName("no saved card: BANK_CARD_NOT_FOUND before any attempt row or Stripe call")
+        @DisplayName("1111... card: Stripe test card that pays")
+        void onesCardPays() {
+            final OrderEntity order = newOrder();
+            final String key = "idem-" + UUID.randomUUID();
+            stubHappyPath(key);
+
+            service.processPayment(order, PaymentType.VISA, tenEur(), key);
+
+            verify(processor).processPayment(order.getUuid(), tenEur(), key, "pm_card_visa");
+        }
+
+        @Test
+        @DisplayName("0000... card: Stripe test card that is declined")
+        void zerosCardIsDeclined() {
+            final OrderEntity order = newOrder();
+            final String key = "idem-" + UUID.randomUUID();
+            stubHappyPath(key);
+            when(cardEncryptionService.decrypt("enc")).thenReturn("0000000000000000");
+
+            service.processPayment(order, PaymentType.VISA, tenEur(), key);
+
+            verify(processor).processPayment(order.getUuid(), tenEur(), key, "pm_card_chargeDeclined");
+        }
+
+        @Test
+        @DisplayName("no card: BANK_CARD_NOT_FOUND before any attempt row or Stripe call")
         void noCardFailsBeforeAnyWrite() {
             final OrderEntity order = newOrder();
             final String key = "idem-" + UUID.randomUUID();
             when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
-            when(bankCardRepository.findWithUserByUserId(any())).thenReturn(Optional.empty());
+            when(bankCardRepository.findByUserEntity_Id(any())).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.processPayment(order, PaymentType.VISA, tenEur(), key))
                     .isInstanceOf(BankCardNotFoundException.class);
             verify(paymentAttemptRepository, never()).save(any(PaymentEntity.class));
-            verifyNoInteractions(processor);
-        }
-
-        @Test
-        @DisplayName("a card saved before the Stripe flow (no PaymentMethod) counts as no card")
-        void legacyCardWithoutPaymentMethodCountsAsNoCard() {
-            final OrderEntity order = newOrder();
-            final String key = "idem-" + UUID.randomUUID();
-            when(paymentAttemptRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
-            final BankCardEntity legacy = savedCard();
-            legacy.setStripePaymentMethodId(null);
-            when(bankCardRepository.findWithUserByUserId(any())).thenReturn(Optional.of(legacy));
-
-            assertThatThrownBy(() -> service.processPayment(order, PaymentType.VISA, tenEur(), key))
-                    .isInstanceOf(BankCardNotFoundException.class);
             verifyNoInteractions(processor);
         }
     }

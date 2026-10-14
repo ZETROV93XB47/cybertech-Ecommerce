@@ -62,8 +62,7 @@
   ],
   "variable": [
     { "key": "base_url", "value": "http://localhost:8081", "type": "default" },
-    { "key": "api_version", "value": "1.0", "type": "default" },
-    { "key": "setup_intent_id", "value": "", "type": "default" }
+    { "key": "api_version", "value": "1.0", "type": "default" }
   ],
   "item": [
     {
@@ -1872,44 +1871,6 @@
       "description": "User-owned default card plus admin CRUD over all cards.",
       "item": [
         {
-          "name": "Prepare card setup (USER)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "X-API-VERSION",
-                "value": "{{api_version}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/v1/services/bank-card/setup-intent",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "services",
-                "bank-card",
-                "setup-intent"
-              ]
-            },
-            "description": "Step 1 of saving a card. Creates the caller's Stripe Customer on first use, then an off-session card SetupIntent. The frontend initialises Stripe.js with `publishableKey` and confirms the SetupIntent with `clientSecret` in Stripe Elements, then calls \"Add bank card\" with `setupIntentId`.\n\n- Roles: USER or ADMIN\n- Success: 201 `{ setupIntentId, clientSecret, publishableKey }` (`setup_intent_id` is saved for the next request).\n- Errors: 503 `PAYMENT_PROVIDER_NOT_CONFIGURED` (no `stripe.publishable-key`), 500 Stripe unavailable."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
-                  "if (pm.response.code === 201) { pm.collectionVariables.set(\"setup_intent_id\", pm.response.json().setupIntentId); }"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "Add bank card (USER)",
           "request": {
             "method": "POST",
@@ -1924,9 +1885,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"setupIntentId\": \"{{setup_intent_id}}\"\n}"
+              "raw": "{\n  \"cardHolderName\": \"Jane Doe\",\n  \"cardNumber\": \"4242424242424242\",\n  \"expiryDate\": \"12/2030\",\n  \"cardType\": \"VISA\"\n}"
             },
-            "description": "Step 2 of saving a card: send the id of the SetupIntent that Stripe Elements confirmed in the browser. The card number never reaches the backend; only brand, last four digits, expiry and holder name are stored, plus the Stripe PaymentMethod charged by every payment. A new card replaces the previous one (detached at Stripe). From Postman: run \"Prepare card setup\", confirm the SetupIntent with a test card (Stripe dashboard or `stripe setup_intents confirm {{setup_intent_id}} --payment-method=pm_card_visa`), then send this request.\n\n- Roles: USER or ADMIN\n- Success: 201 with masked `BankCardResponseDto`.\n- Errors: 400 invalid body (a body with `cardNumber` is rejected) / `INVALID_CARD_SETUP` (unknown or unfinished SetupIntent) / `BANK_CARD_EXPIRED`; 403 `ACCESS_DENIED` (SetupIntent of another user)."
+            "description": "Add a bank card to the caller's profile. Card number is encrypted at rest, only the last 4 are kept in plaintext.\n\n- Roles: USER or ADMIN\n- Success: 201 with masked `BankCardResponseDto`."
           },
           "event": [
             {
@@ -1958,7 +1919,7 @@
               "mode": "raw",
               "raw": "{\n  \"cardHolderName\": \"Jane Doe\",\n  \"expiryDate\": \"06/2031\"\n}"
             },
-            "description": "Edit the caller's card holder name and expiry date, at Stripe (PaymentMethod) and locally. The card number cannot change: save a new card instead.\n\n- Roles: USER or ADMIN\n- Success: 200 with masked `BankCardResponseDto`.\n- Errors: 400 `BANK_CARD_EXPIRED` / `INVALID_CARD_SETUP` (Stripe refused), 404 no card."
+            "description": "Edit the caller's card holder name and expiry date (the card number is write-once: delete and re-add to change it).\n\n- Roles: USER or ADMIN\n- Success: 200 with masked `BankCardResponseDto`."
           },
           "event": [
             {
@@ -1985,7 +1946,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "services", "bank-card", "delete"]
             },
-            "description": "Delete the caller's bank card; its PaymentMethod is detached from the Stripe Customer.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content."
+            "description": "Delete the caller's bank card.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content."
           },
           "event": [
             {

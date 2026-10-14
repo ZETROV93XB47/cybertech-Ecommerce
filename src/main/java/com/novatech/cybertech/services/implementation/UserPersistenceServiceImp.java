@@ -8,6 +8,7 @@ import com.novatech.cybertech.entities.enums.Role;
 import com.novatech.cybertech.entities.valueObjects.Address;
 import com.novatech.cybertech.mappers.entity.UserMapper;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.BankCardManagementService;
 import com.novatech.cybertech.services.core.UserPersistenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Persistence-only collaborator for user creation.
  *
- * <p>Extracted from {@link UserManagementServiceImp} so that the database write runs in its own
+ * <p>Extracted from {@link UserManagementServiceImp} so that the database write (and the
+ * bank-card creation, which must share the same SQL transaction) runs in its own
  * {@link Propagation#REQUIRES_NEW} transaction. The orchestrating
  * {@link UserManagementServiceImp#create(UserCreateRequestDto)} stays NON-transactional, which
  * lets it run a compensating Keycloak {@code deleteUser} OUTSIDE any rolling-back TX context if
@@ -35,9 +37,10 @@ public class UserPersistenceServiceImp implements UserPersistenceService {
 
     private final UserMapper userMapper;
     private final UserRepository userRepository;
+    private final BankCardManagementService bankCardManagementService;
 
     /**
-     * Persist the local {@link UserEntity} under a fresh transaction.
+     * Persist the local {@link UserEntity} (and any optional bank card) under a fresh transaction.
      *
      * <p>Uses {@link Propagation#REQUIRES_NEW} so the SQL work is isolated from any caller TX —
      * a rollback here cannot affect the caller, and the caller is free to run its compensating
@@ -67,8 +70,12 @@ public class UserPersistenceServiceImp implements UserPersistenceService {
         // log only the UUID so the entity write stays auditable without leaking PII.
         log.info("Saved user with UUID: {}", savedUser.getUuid());
 
-        // No card at sign-up: a card is saved afterwards through Stripe Elements
-        // (POST /bank-card/setup-intent then /bank-card/add), so no card number reaches the backend.
+        // Bank card is optional. When provided, delegate to BankCardManagementService.addBankCard
+        // so PCI-DSS rules (PAN encryption + last4 masking, expiry guard) are applied. The call
+        // must stay inside this TX so a card persistence failure also rolls back the user insert.
+        if (req.getBankCardCreationRequestDto() != null) {
+            bankCardManagementService.addBankCard(keycloakId, req.getBankCardCreationRequestDto());
+        }
 
         return userMapper.mapFromEntityToResponseDto(savedUser);
     }

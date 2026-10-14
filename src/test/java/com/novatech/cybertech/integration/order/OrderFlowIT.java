@@ -36,6 +36,7 @@ import com.novatech.cybertech.repositories.CartRepository;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.CardEncryptionService;
 import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
@@ -123,6 +124,11 @@ class OrderFlowIT {
     private PaymentAttemptProcessor stripePaymentProcessor;
 
     @Autowired
+    private CardEncryptionService cardEncryptionService;
+
+    private static final String PAYING_CARD_NUMBER = "1111111111111111";
+
+    @Autowired
     private ApplicationEvents applicationEvents;
 
     @Autowired
@@ -136,7 +142,7 @@ class OrderFlowIT {
     void seed() {
         // Reset the @Primary mock between tests — default to SUCCESS.
         Mockito.reset(stripePaymentProcessor);
-        Mockito.when(stripePaymentProcessor.processPayment(any(UUID.class), any(), anyString(), any()))
+        Mockito.when(stripePaymentProcessor.processPayment(any(UUID.class), any(), anyString(), anyString()))
                 .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_" + UUID.randomUUID()));
         Mockito.when(stripePaymentProcessor.refund(any(UUID.class), any(), anyString(), anyString()))
                 .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "re_" + UUID.randomUUID()));
@@ -160,8 +166,12 @@ class OrderFlowIT {
         productRepository.save(product);
         productUuid = product.getUuid();
 
+        // Encrypted by the real AES service: PaymentServiceImp decrypts it to pick the Stripe test
+        // PaymentMethod (only 1s = paying card, see TestCardPaymentUtils).
         final BankCardEntity card = BankCardEntityBuilder.aValidBankCardBuilder()
                 .userEntity(user)
+                .encryptedNumber(cardEncryptionService.encrypt(PAYING_CARD_NUMBER))
+                .lastFourDigits("1111")
                 .build();
         bankCardRepository.save(card);
     }
@@ -279,7 +289,7 @@ class OrderFlowIT {
 
         // No side effect: nothing reserved, nothing ordered, nothing charged.
         assertThat(productRepository.findByUuid(productUuid).orElseThrow().getReservedStock()).isEqualTo(reservedBefore);
-        Mockito.verify(stripePaymentProcessor, Mockito.never()).processPayment(any(UUID.class), any(), anyString(), any());
+        Mockito.verify(stripePaymentProcessor, Mockito.never()).processPayment(any(UUID.class), any(), anyString(), anyString());
 
         final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
                         .with(jwtUser(keycloakId))
@@ -422,7 +432,7 @@ class OrderFlowIT {
         assertThat(updated.getDiscountKey()).isEqualTo(promoKey);
         assertThat(updated.getShippingAddress()).startsWith("42 avenue Nouvelle");
         // Only the placement was charged: no complement, no refund.
-        Mockito.verify(stripePaymentProcessor, Mockito.times(1)).processPayment(any(UUID.class), any(), anyString(), any());
+        Mockito.verify(stripePaymentProcessor, Mockito.times(1)).processPayment(any(UUID.class), any(), anyString(), anyString());
         Mockito.verify(stripePaymentProcessor, Mockito.never()).refund(any(UUID.class), any(), anyString(), anyString());
     }
 
@@ -493,7 +503,7 @@ class OrderFlowIT {
     void retryPaymentAfterInitialFailureEventuallyPays() throws Exception {
         // 1) Stub the processor to FAIL on first call, SUCCESS on the retry.
         Mockito.reset(stripePaymentProcessor);
-        Mockito.when(stripePaymentProcessor.processPayment(any(UUID.class), any(), anyString(), any()))
+        Mockito.when(stripePaymentProcessor.processPayment(any(UUID.class), any(), anyString(), anyString()))
                 .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.FAILED, "pi_fail_" + UUID.randomUUID()))
                 .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_ok_" + UUID.randomUUID()));
 

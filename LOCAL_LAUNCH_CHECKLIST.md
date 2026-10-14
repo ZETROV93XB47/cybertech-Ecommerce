@@ -230,7 +230,8 @@ curl -i -X POST http://localhost:8081/api/v1/services/user/register \
     "email": "alice@example.com",
     "password": "Passw0rd!",
     "firstName": "Alice",
-    "lastName": "Tester"
+    "lastName": "Tester",
+    "bankCardCreationRequestDto": null
   }'
 ```
 - 201 Created. If 500 with a Keycloak admin error → the `keycloak.client.user.management.client.secret` is out of sync (Section B.4).
@@ -245,8 +246,7 @@ curl -i -X POST http://localhost:8081/api/v1/services/user/register \
 - From the homepage product list, "Add to cart". Network: `POST /api/v1/services/cart/add` returns 200.
 
 ### F.5 Place order
-- Save a card first: the frontend calls `POST /api/v1/services/bank-card/setup-intent`, confirms it in Stripe Elements with a test card (4242 4242 4242 4242 accepted; 4000 0000 0000 0341 saved then declined; 4000 0000 0000 9995 insufficient funds; 4000 0025 0000 3155 needs authentication, so declined off-session), then `POST /bank-card/add` with `setupIntentId`. Needs `STRIPE_PUBLISHABLE_KEY` (pk_test_ of the same Stripe account as `stripe.api.key`).
-- Frontend posts `POST /api/v1/services/management/order/place`. Backend charges the saved card off-session (PaymentIntent with the user's Stripe Customer and PaymentMethod); without a card: 404 `BANK_CARD_NOT_FOUND`. Order shows up in `/account/orders`.
+- Frontend posts `POST /api/v1/services/management/order/place`. Backend creates a Stripe test PaymentIntent whose outcome depends on the user's card number: only `1`s → PAID, anything else (`0000…`) → PAYMENT_FAILED (see `docs/test-cards.md`). Order shows up in `/account/orders`.
 
 ### F.6 Backend-only smoke
 - Swagger UI: <http://localhost:8081/swagger-ui.html> — anonymous, public per `SecurityConfig.PUBLIC_URLS`.

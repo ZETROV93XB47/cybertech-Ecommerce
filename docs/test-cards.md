@@ -1,52 +1,41 @@
-# Cartes de test Stripe
+# Cartes de test : réussir ou faire échouer un paiement
 
-Le backend débite toujours la carte que l'utilisateur a enregistrée chez Stripe, hors session (sans
-l'utilisateur, sans redirection possible). Seules les clés `sk_test_` / `pk_test_` sont utilisées :
-aucun argent réel ne circule. Comportements vérifiés le 2026-10-14 contre l'API Stripe (mode test),
-avec exactement les paramètres du backend.
+Projet portfolio : aucune vraie carte n'est débitée. L'utilisateur saisit un numéro de carte
+(inscription ou `POST /api/v1/services/bank-card/add`), le backend le chiffre (AES/GCM) et en garde
+les 4 derniers chiffres pour l'affichage. Au paiement, **le numéro décide de l'issue** :
 
-## Quelle carte pour quel résultat
+| Numéro saisi | Paiement | Commande |
+|---|---|---|
+| uniquement des `1` (ex. `1111 1111 1111 1111`) | accepté | **PAID** |
+| uniquement des `0` (ex. `0000 0000 0000 0000`) | refusé | **PAYMENT_FAILED** |
+| tout autre numéro (ex. `4242 4242 4242 4242`) | refusé | **PAYMENT_FAILED** |
 
-| Carte (Stripe Elements) | Jeton serveur | Enregistrement | Paiement | Commande |
-|---|---|---|---|---|
-| `4242 4242 4242 4242` | `pm_card_visa` | OK | accepté | **PAID** |
-| `5555 5555 5555 4444` | `pm_card_mastercard` | OK | accepté | **PAID** |
-| `4000 0000 0000 0341` | `pm_card_chargeCustomerFail` | OK | refusé (`card_declined` / `generic_decline`) | **PAYMENT_FAILED** |
-| `4000 0027 6000 3184` | `pm_card_authenticationRequired` | OK (3-D Secure à l'enregistrement dans Elements) | refusé (`authentication_required`) | **PAYMENT_FAILED** |
-| `4000 0025 0000 3155` | `pm_card_authenticationRequiredOnSetup` | 3-D Secure demandé à l'enregistrement | accepté si le 3-D Secure a été validé dans Elements, sinon `authentication_required` | PAID / PAYMENT_FAILED |
-| `4000 0000 0000 9995` | - | **refusé** (`insufficient_funds` dès l'enregistrement) | - | impossible à tester |
+Le numéro doit faire 13 à 19 chiffres. Date d'expiration future, type de carte au choix.
 
-Pour toutes les cartes : n'importe quelle date d'expiration future, n'importe quel CVC à 3 chiffres,
-n'importe quel code postal.
+## Comment c'est joué
 
-À retenir :
-- pour faire **échouer** un paiement, utiliser **0341** (la carte s'enregistre, chaque paiement est
-  refusé). La 9995 ne sert pas : Stripe la refuse dès l'enregistrement ;
-- pour tester « échec puis relance réussie » : enregistrer la 0341, passer commande
-  (PAYMENT_FAILED), enregistrer la 4242, puis `POST /order/retry-payment/{uuid}` (PAID) ;
-- les cartes créées par jeton expirent un an après leur création (expiration affichée MM/AAAA).
+`TestCardPaymentUtils` traduit le numéro en carte de test Stripe, et le paiement passe réellement
+par Stripe en mode test (clé `sk_test_` de `stripe.api.key`, aucun compte personnel nécessaire) :
 
-## Donner une carte à un compte de dev sans le front
+- que des `1` → PaymentIntent confirmé avec `pm_card_visa` → `succeeded` ;
+- sinon → `pm_card_chargeDeclined` → refus `card_declined / generic_decline`.
 
-`src/main/java/com/novatech/cybertech/utils/stripe/seedTestCards.py` fait côté serveur ce que fait
-Stripe Elements : il réutilise ou crée le Customer Stripe de l'utilisateur (aucune donnée
-personnelle envoyée, seulement son UUID), attache la carte de test, en fait la carte par défaut et
-l'écrit dans `bankCardTable` (la carte précédente est remplacée et détachée chez Stripe).
+Le webhook Stripe (`payment_intent.succeeded` / `payment_intent.payment_failed`, relayé en local par
+le conteneur `stripe-cli`) fait ensuite passer la commande en PAID ou PAYMENT_FAILED, comme avant.
 
-```bash
-cd src/main/java/com/novatech/cybertech/utils/stripe
-python seedTestCards.py --list-cards
-python seedTestCards.py --email admin@email.com --email hideyoshi.tanaseda@email.com   # Visa 4242
-python seedTestCards.py --email someone@example.com --card declined                     # 0341
-```
+Vérifié de bout en bout le 2026-10-14 sur le stack de dev : `1111…` → PAID, `0000…` et `4242…` →
+PAYMENT_FAILED.
 
-Prérequis : le stack Docker démarré (conteneur `mysqlEcommerce`), `pip install requests`. La clé
-Stripe est lue dans `application.properties` (`stripe.api.key`) ou dans `STRIPE_API_KEY`.
+## Scénarios utiles
 
-Après un changement de compte Stripe (`stripe.api.key`), relancer le script pour chaque compte :
-les Customers inconnus du nouveau compte sont recréés.
+- **Paiement réussi** : carte `1111 1111 1111 1111`, passer commande.
+- **Paiement refusé puis relance réussie** : carte `0000 0000 0000 0000`, passer commande
+  (PAYMENT_FAILED), supprimer la carte et enregistrer `1111…`, puis
+  `POST /api/v1/services/management/order/retry-payment/{uuid}` (PAID).
+- **Sans carte** : `place` et `retry-payment` répondent 404 `BANK_CARD_NOT_FOUND` (vérifié avant la
+  réservation du stock pour `retry-payment`).
 
-## Comptes de dev déjà équipés (2026-10-14)
+## Comptes de dev équipés (2026-10-14)
 
-Visa 4242 pour : `hideyoshi.tanaseda@email.com`, `admin@email.com` et les 5 comptes
-`e2e.cart.*@example.com` du front (les seuls qui avaient une carte avant le passage à Stripe).
+Carte `1111…` (paie) pour `hideyoshi.tanaseda@email.com`, `admin@email.com` et les 5 comptes
+`e2e.cart.*@example.com` du front.

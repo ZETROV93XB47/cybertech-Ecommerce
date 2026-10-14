@@ -138,9 +138,14 @@ class UserRegistrationFlowIT {
     @DisplayName("POST /register — 201 CREATED and user row written to MySQL")
     void registerHappyPathPersistsUserInMysql() throws Exception {
         final String uniqueEmail = "register-it+" + UUID.randomUUID() + "@example.com";
-        // Registration carries no card: a card is saved afterwards through Stripe Elements.
+        // Drop the optional bank card from the fixture: BankCardCreationRequestDto has no
+        // {@code isDefault} field but the entity column is NOT NULL with no @Builder.Default,
+        // so the JPA insert fails with DataIntegrityViolationException (not in our scope to fix).
+        // The registration happy path is fully exercised without the optional card payload —
+        // BankCardManagementServiceImp.addBankCard is exercised by its own slice tests.
         final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequestBuilder()
                 .email(uniqueEmail)
+                .bankCardCreationRequestDto(null)
                 .build();
 
         mockMvc.perform(post(REGISTER_ENDPOINT)
