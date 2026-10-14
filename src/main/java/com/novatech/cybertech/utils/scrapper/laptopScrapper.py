@@ -7,6 +7,17 @@ Usage :
     python laptopScrapper.py                                  # toutes les catégories
     python laptopScrapper.py --categories MONITOR SMARTWATCH  # seulement certaines
     python laptopScrapper.py --limit 50                       # 50 produits max par catégorie
+    python laptopScrapper.py --delay 5                        # pause entre deux pages (secondes)
+
+Reprise : products.json est réécrit après CHAQUE produit, et un produit déjà présent (même
+sourceUrl) n'est pas re-scrapé ; les images déjà téléchargées ne sont pas re-téléchargées et la
+liste des URL de chaque catégorie est gardée dans urls_<catégorie>.json. Relancer la même commande
+après une interruption reprend donc où le script s'était arrêté, sans rien perdre ni re-solliciter
+le site pour ce qui est déjà récupéré.
+
+Blocage : si LDLC répond 403 / 429 (ou une page de refus), le script s'arrête aussitôt, en ayant
+sauvegardé tout ce qu'il a récupéré. Il ne cherche pas à contourner le blocage : attendre qu'il soit
+levé, puis relancer avec un --delay plus grand.
 
 Chaque produit du JSON porte sa "category" (clé de ProductCategorySchemaEntity côté backend) ;
 dataLoader.py s'en sert pour choisir le mapping d'attributs et l'envoyer à l'API.
@@ -33,24 +44,71 @@ CATEGORY_URLS = {
 
 OUTPUT_JSON = "products.json"
 IMAGES_DIR = "images"
+URLS_CACHE = "urls_{}.json"
 
-# Pause entre deux fiches produit, pour ne pas marteler le site.
-DELAY_BETWEEN_PRODUCTS_S = 0.5
+# Pause par défaut entre deux pages chargées (liste ou fiche), pour ne pas surcharger le site.
+DEFAULT_DELAY_S = 3.0
+
+# Réponses qui signifient "on ne veut plus de toi" : on s'arrête net.
+BLOCKED_STATUSES = {403, 429}
+BLOCKED_PAGE_MARKERS = ("access denied", "accès refusé", "too many requests", "captcha")
+
+# Signatures des formats d'image acceptés (la galerie LDLC contient aussi des vignettes vidéo
+# qui renvoient une page HTML : elles ne doivent pas finir en .jpg).
+IMAGE_SIGNATURES = (b"\xff\xd8\xff", b"\x89PNG", b"RIFF", b"GIF8")
+
+
+class BlockedError(Exception):
+    """LDLC refuse nos requêtes : on arrête tout (après sauvegarde)."""
 
 
 def sanitize_filename(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "_", name)
 
 
-def download_image(url, filename):
+def is_image_file(path):
     try:
-        img = requests.get(url, timeout=10).content
-        with open(filename, "wb") as f:
-            f.write(img)
+        with open(path, "rb") as f:
+            return f.read(4).startswith(IMAGE_SIGNATURES)
+    except OSError:
+        return False
+
+
+def download_image(url, filename):
+    """
+    Télécharge une image si elle n'est pas déjà là. Renvoie True si le fichier final est une image.
+    Une réponse qui n'est pas une image (vignette vidéo, page d'erreur) est ignorée.
+    """
+    if is_image_file(filename):
         return True
+    try:
+        response = requests.get(url, timeout=10)
     except Exception as e:
         print("Erreur téléchargement image:", e)
         return False
+    if response.status_code in BLOCKED_STATUSES:
+        raise BlockedError(f"HTTP {response.status_code} sur l'image {url}")
+    if response.status_code != 200 or not response.content.startswith(IMAGE_SIGNATURES):
+        print(f"  image ignorée (pas une image : HTTP {response.status_code}, {response.headers.get('content-type')}) : {url}")
+        if os.path.exists(filename):
+            os.remove(filename)  # reste d'un précédent run qui avait enregistré du HTML
+        return False
+    with open(filename, "wb") as f:
+        f.write(response.content)
+    return True
+
+
+def goto(page, url, delay):
+    """Charge une page ; lève BlockedError si LDLC refuse la requête."""
+    time.sleep(delay)
+    response = page.goto(url)
+    page.wait_for_load_state("networkidle")
+    status = response.status if response else None
+    if status in BLOCKED_STATUSES:
+        raise BlockedError(f"HTTP {status} sur {url}")
+    title = (page.title() or "").lower()
+    if any(marker in title for marker in BLOCKED_PAGE_MARKERS):
+        raise BlockedError(f"page de refus sur {url} (titre : {page.title()!r})")
 
 
 def parse_price(raw_price: str) -> float:
@@ -66,9 +124,8 @@ def parse_price(raw_price: str) -> float:
     return float(f"{match.group(1)}.{cents}")
 
 
-def extract_product_data(page, product_url, category):
-    page.goto(product_url)
-    page.wait_for_load_state("networkidle")
+def extract_product_data(page, product_url, category, delay):
+    goto(page, product_url, delay)
 
     # --- TITRE ---
     title_el = page.query_selector("h1")
@@ -117,7 +174,7 @@ def extract_product_data(page, product_url, category):
         if hd and hd not in image_urls:
             image_urls.append(hd)
 
-    category_images_dir = os.path.join(IMAGES_DIR, category.lower())
+    category_images_dir = f"{IMAGES_DIR}/{category.lower()}"
     os.makedirs(category_images_dir, exist_ok=True)
     downloaded_images = []
     base_name = sanitize_filename(title) or "product"
@@ -168,9 +225,31 @@ def is_wanted(product):
     return True
 
 
-def collect_product_urls(page, category_url, limit):
-    page.goto(category_url)
-    page.wait_for_load_state("networkidle")
+def load_json(path, default):
+    if not os.path.exists(path):
+        return default
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_json(path, data):
+    """Écriture atomique : un arrêt brutal pendant l'écriture ne corrompt jamais le fichier."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def collect_product_urls(page, category, limit, delay):
+    """URL des fiches d'une catégorie, gardées dans urls_<catégorie>.json pour la reprise."""
+    cache = URLS_CACHE.format(category.lower())
+    cached = load_json(cache, None)
+    if cached:
+        print(f"{len(cached)} URL relues depuis {cache} (supprimer le fichier pour re-parcourir la liste)")
+        return cached[:limit] if limit else cached
+
+    category_url = CATEGORY_URLS[category]
+    goto(page, category_url, delay)
 
     # La pagination n'affiche que quelques numéros (1 2 3 … 30) : on prend le plus grand
     # et on parcourt toutes les pages jusqu'à lui.
@@ -179,15 +258,14 @@ def collect_product_urls(page, category_url, limit):
         num = link.get_attribute("data-page")
         if num and num.isdigit():
             last_page = max(last_page, int(num))
-    print(f"Pages détectées : 1 → {last_page}")
+    print(f"Pages détectées : 1 à {last_page}")
 
     product_urls = []
     for page_num in range(1, last_page + 1):
         url = page_url(category_url, page_num)
         print(f"  Page {page_num} : {url}")
         if page_num > 1:
-            page.goto(url)
-            page.wait_for_load_state("networkidle")
+            goto(page, url, delay)
 
         for item in page.query_selector_all("li.pdt-item a[href*='/fiche/']"):
             href = item.get_attribute("href")
@@ -197,42 +275,53 @@ def collect_product_urls(page, category_url, limit):
         if limit and len(product_urls) >= limit:
             break
 
+    if not limit:
+        # Liste complète seulement : une liste tronquée par --limit ne doit pas servir à la reprise.
+        save_json(cache, product_urls)
     return product_urls[:limit] if limit else product_urls
 
 
-def scrape(categories, limit):
-    all_products = []
+def scrape(categories, limit, delay):
+    # Reprise : on repart des produits déjà sauvegardés (toutes catégories confondues).
+    all_products = load_json(OUTPUT_JSON, [])
+    done_urls = {p["sourceUrl"] for p in all_products}
+    print(f"{len(all_products)} produit(s) déjà dans {OUTPUT_JSON}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
+        try:
+            for category in categories:
+                print(f"\n===== {category} : {CATEGORY_URLS[category]} =====")
+                product_urls = collect_product_urls(page, category, limit, delay)
+                todo = [u for u in product_urls if u not in done_urls]
+                print(f"{len(product_urls)} produit(s) pour {category}, {len(todo)} restant(s) à scraper")
 
-        for category in categories:
-            print(f"\n===== {category} : {CATEGORY_URLS[category]} =====")
-            product_urls = collect_product_urls(page, CATEGORY_URLS[category], limit)
-            print(f"{len(product_urls)} produit(s) trouvé(s) pour {category}")
-
-            kept = 0
-            for idx, url in enumerate(product_urls, start=1):
-                print(f"\n[{category} {idx}/{len(product_urls)}] {url}")
-                try:
-                    data = extract_product_data(page, url, category)
+                for idx, url in enumerate(todo, start=1):
+                    print(f"\n[{category} {idx}/{len(todo)}] {url}")
+                    try:
+                        data = extract_product_data(page, url, category, delay)
+                    except BlockedError:
+                        raise
+                    except Exception as e:
+                        print(f"Erreur sur {url} : {e}")
+                        continue
                     if is_wanted(data):
                         all_products.append(data)
-                        kept += 1
+                        done_urls.add(url)
+                        save_json(OUTPUT_JSON, all_products)
                     else:
-                        print("  → ignoré (hors catégorie : accessoire, téléphone non smartphone)")
-                except Exception as e:
-                    print(f"Erreur sur {url} : {e}")
-                time.sleep(DELAY_BETWEEN_PRODUCTS_S)
-            print(f"\n{kept} produit(s) {category} gardé(s)")
+                        print("  -> ignoré (hors catégorie : accessoire, téléphone non smartphone)")
+        except BlockedError as e:
+            print(f"\nSTOP : LDLC refuse les requêtes ({e}).")
+            print(f"   {len(all_products)} produit(s) sauvegardé(s) dans {OUTPUT_JSON}.")
+            print("   Attendre la levée du blocage, puis relancer la même commande (avec un --delay plus grand) : "
+                  "le script reprendra où il s'est arrêté.")
+        finally:
+            browser.close()
 
-        browser.close()
-
-    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
-        json.dump(all_products, f, indent=4, ensure_ascii=False)
-
-    print(f"\nScraping terminé. {len(all_products)} produits sauvegardés dans {OUTPUT_JSON}")
+    save_json(OUTPUT_JSON, all_products)
+    print(f"\nTerminé. {len(all_products)} produits dans {OUTPUT_JSON}")
 
 
 if __name__ == "__main__":
@@ -241,5 +330,7 @@ if __name__ == "__main__":
                         help="Catégories à scraper (défaut : toutes)")
     parser.add_argument("--limit", type=int, default=0,
                         help="Nombre max de produits par catégorie (défaut : tous)")
+    parser.add_argument("--delay", type=float, default=DEFAULT_DELAY_S,
+                        help=f"Pause en secondes avant chaque page chargée (défaut : {DEFAULT_DELAY_S})")
     args = parser.parse_args()
-    scrape(args.categories, args.limit)
+    scrape(args.categories, args.limit, args.delay)

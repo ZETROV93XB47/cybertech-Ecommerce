@@ -37,3 +37,8 @@ build/
 
 ### Docker local runtime volumes ###
 src/main/resources/docker/mailpit-data/
+### LDLC scraper output (utils/scrapper)
+src/main/java/com/novatech/cybertech/utils/scrapper/images/
+src/main/java/com/novatech/cybertech/utils/scrapper/products.json
+src/main/java/com/novatech/cybertech/utils/scrapper/urls_*.json
+src/main/java/com/novatech/cybertech/utils/scrapper/*.tmp

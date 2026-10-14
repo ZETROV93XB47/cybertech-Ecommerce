@@ -103,6 +103,17 @@ def compact(attributes):
     return {k: v for k, v in attributes.items() if v not in (None, 0, "")}
 
 
+IMAGE_SIGNATURES = (b"\xff\xd8\xff", b"\x89PNG", b"RIFF", b"GIF8")
+
+
+def is_image_file(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read(4).startswith(IMAGE_SIGNATURES)
+    except OSError:
+        return False
+
+
 def brand_key(value):
     """'BenQ' -> 'BENQ', 'LG Electronics' -> 'LGELECTRONICS' : comparaison sans casse ni ponctuation."""
     return re.sub(r"[^A-Z0-9]", "", value.upper())
@@ -299,9 +310,11 @@ def send_product_to_api(product, token, allowed_brands):
     }
 
     category = product.get("category", DEFAULT_CATEGORY)
-    image_paths = product["images"]  # 1 à N photos, pas de nombre fixe
+    # 1 à N photos, pas de nombre fixe ; un fichier qui n'est pas une image (vignette vidéo enregistrée
+    # en .jpg par une ancienne version du scraper) n'est pas envoyé.
+    image_paths = [path for path in product["images"] if is_image_file(path)]
     if not image_paths:
-        raise SkipProduct("aucune image")
+        raise SkipProduct("aucune image valide")
     brand = resolve_brand(product, allowed_brands)
     mapped_attributes = ATTRIBUTE_MAPPERS[category](product["attributes"])
 
