@@ -2,6 +2,8 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.config.WebPushProperties;
 import com.novatech.cybertech.entities.PushSubscriptionEntity;
+import com.novatech.cybertech.exceptions.NotificationDeliveryException;
+import com.novatech.cybertech.exceptions.PushServiceNotConfiguredException;
 import com.novatech.cybertech.repositories.PushSubscriptionRepository;
 import com.novatech.cybertech.services.core.SensitiveDataEncryptionService;
 import com.novatech.cybertech.services.core.WebPushGateway;
@@ -15,21 +17,28 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class WebPushDeliveryServiceImpTest {
 
     private static final String USER_ID = "kc-user";
     private static final UUID ORDER_UUID = UUID.randomUUID();
+    private static final UUID SUBSCRIPTION_UUID = UUID.randomUUID();
+    private static final String ENDPOINT = "https://fcm.googleapis.com/fcm/send/device";
+    private static final String TITLE = "Paiement confirmé";
+    private static final String BODY = "Le paiement de votre commande a été confirmé.";
 
     @Mock
     private PushSubscriptionRepository subscriptionRepository;
@@ -52,88 +61,118 @@ class WebPushDeliveryServiceImpTest {
                 new ObjectMapper());
         lenient().when(encryptionService.decrypt(anyString())).thenAnswer(invocation ->
                 invocation.getArgument(0, String.class).substring("enc:".length()));
+        lenient().when(properties.getOrderDetailsUrlTemplate()).thenReturn("/account/orders/{orderUuid}");
     }
 
     @Test
-    void sendBuildsGenericPayloadAndUsesDecryptedSubscriptionData() {
-        when(subscriptionRepository.findAllByUserEntity_KeycloakId(USER_ID))
-                .thenReturn(List.of(subscription(null)));
+    void findActiveSubscriptionUuidsReturnsLiveOnesAndDeletesExpiredOnes() {
+        final PushSubscriptionEntity live = subscription(UUID.randomUUID(), null);
+        final PushSubscriptionEntity futureExpiry = subscription(UUID.randomUUID(), Instant.now().plusSeconds(3600));
+        final PushSubscriptionEntity expired = subscription(UUID.randomUUID(), Instant.now().minusSeconds(1));
+        when(subscriptionRepository.findAllByUserEntity_KeycloakIdOrderByCreatedAtAsc(USER_ID))
+                .thenReturn(List.of(live, expired, futureExpiry));
+
+        assertThat(service.findActiveSubscriptionUuids(USER_ID))
+                .containsExactly(live.getUuid(), futureExpiry.getUuid());
+        verify(subscriptionRepository).delete(expired);
+        verify(subscriptionRepository, never()).delete(live);
+    }
+
+    @Test
+    void sendBuildsGenericPayloadForTheTargetedSubscriptionOnly() {
+        stubSubscription(subscription(SUBSCRIPTION_UUID, null));
         when(properties.isConfigured()).thenReturn(true);
         when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(201);
 
-        service.sendToUser(USER_ID, "Paiement confirmé", "Le paiement de votre commande a été confirmé.", ORDER_UUID);
+        service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID);
 
         final ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
-        verify(webPushGateway).send(
-                org.mockito.ArgumentMatchers.eq("https://fcm.googleapis.com/fcm/send/device"),
-                org.mockito.ArgumentMatchers.eq("p256dh"),
-                org.mockito.ArgumentMatchers.eq("auth"),
-                payload.capture());
+        verify(webPushGateway).send(eq(ENDPOINT), eq("p256dh"), eq("auth"), payload.capture());
         assertThat(payload.getValue())
-                .contains("\"title\":\"Paiement confirmé\"")
-                .contains("\"body\":\"Le paiement de votre commande a été confirmé.\"")
+                .contains("\"title\":\"" + TITLE + "\"")
+                .contains("\"body\":\"" + BODY + "\"")
                 .contains("\"orderUuid\":\"" + ORDER_UUID + "\"")
                 .contains("\"url\":\"/account/orders/" + ORDER_UUID + "\"");
     }
 
     @Test
-    void sendDeletesExpiredSubscriptionsWithoutCallingProvider() {
-        final PushSubscriptionEntity expired = subscription(Instant.now().minusSeconds(1));
-        when(subscriptionRepository.findAllByUserEntity_KeycloakId(USER_ID)).thenReturn(List.of(expired));
-
-        service.sendToUser(USER_ID, "title", "body", ORDER_UUID);
-
-        verify(subscriptionRepository).delete(expired);
-        verify(webPushGateway, never()).send(anyString(), anyString(), anyString(), anyString());
-    }
-
-    @Test
-    void sendDeletesProviderGoneSubscriptions() {
-        final PushSubscriptionEntity subscription = subscription(null);
-        when(subscriptionRepository.findAllByUserEntity_KeycloakId(USER_ID)).thenReturn(List.of(subscription));
+    void sendUsesConfiguredOrderDetailsPath() {
+        stubSubscription(subscription(SUBSCRIPTION_UUID, null));
         when(properties.isConfigured()).thenReturn(true);
-        when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(410);
+        when(properties.getOrderDetailsUrlTemplate()).thenReturn("/mon-compte/commandes/{orderUuid}/suivi");
+        when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(201);
 
-        service.sendToUser(USER_ID, "title", "body", ORDER_UUID);
+        service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID);
 
-        verify(subscriptionRepository).delete(subscription);
+        final ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(webPushGateway).send(anyString(), anyString(), anyString(), payload.capture());
+        assertThat(payload.getValue()).contains("\"url\":\"/mon-compte/commandes/" + ORDER_UUID + "/suivi\"");
     }
 
     @Test
-    void sendRaisesRetryableFailureForProviderServerErrors() {
-        when(subscriptionRepository.findAllByUserEntity_KeycloakId(USER_ID))
-                .thenReturn(List.of(subscription(null)));
-        when(properties.isConfigured()).thenReturn(true);
-        when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(503);
+    void sendIsNoOpWhenSubscriptionWasRemovedSinceFanOut() {
+        when(subscriptionRepository.findByUuidAndUserEntity_KeycloakId(SUBSCRIPTION_UUID, USER_ID))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.sendToUser(USER_ID, "title", "body", ORDER_UUID))
-                .isInstanceOf(com.novatech.cybertech.exceptions.NotificationDeliveryException.class)
-                .hasMessageContaining("503");
-    }
-
-    @Test
-    void sendDoesNotRequireVapidConfigurationWhenUserHasNoSubscriptions() {
-        when(subscriptionRepository.findAllByUserEntity_KeycloakId(USER_ID)).thenReturn(List.of());
-
-        service.sendToUser(USER_ID, "title", "body", ORDER_UUID);
+        service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID);
 
         verify(properties, never()).isConfigured();
         verify(webPushGateway, never()).send(anyString(), anyString(), anyString(), anyString());
     }
 
     @Test
-    void sendFailsClearlyWhenSubscriptionsExistButVapidIsMissing() {
-        when(subscriptionRepository.findAllByUserEntity_KeycloakId(USER_ID))
-                .thenReturn(List.of(subscription(null)));
-        when(properties.isConfigured()).thenReturn(false);
+    void sendDeletesExpiredSubscriptionWithoutCallingProvider() {
+        final PushSubscriptionEntity expired = subscription(SUBSCRIPTION_UUID, Instant.now().minusSeconds(1));
+        stubSubscription(expired);
 
-        assertThatThrownBy(() -> service.sendToUser(USER_ID, "title", "body", ORDER_UUID))
-                .isInstanceOf(com.novatech.cybertech.exceptions.PushServiceNotConfiguredException.class);
+        service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID);
+
+        verify(subscriptionRepository).delete(expired);
+        verify(webPushGateway, never()).send(anyString(), anyString(), anyString(), anyString());
     }
 
-    private static PushSubscriptionEntity subscription(final Instant expirationTime) {
+    @Test
+    void sendDeletesSubscriptionReportedGoneByProvider() {
+        final PushSubscriptionEntity subscription = subscription(SUBSCRIPTION_UUID, null);
+        stubSubscription(subscription);
+        when(properties.isConfigured()).thenReturn(true);
+        when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(410);
+
+        service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID);
+
+        verify(subscriptionRepository).delete(subscription);
+    }
+
+    @Test
+    void sendRaisesRetryableFailureForProviderServerErrors() {
+        stubSubscription(subscription(SUBSCRIPTION_UUID, null));
+        when(properties.isConfigured()).thenReturn(true);
+        when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(503);
+
+        assertThatThrownBy(() -> service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID))
+                .isInstanceOf(NotificationDeliveryException.class)
+                .hasMessageContaining("503");
+        verify(subscriptionRepository, never()).delete(any(PushSubscriptionEntity.class));
+    }
+
+    @Test
+    void sendFailsClearlyWhenVapidIsMissing() {
+        stubSubscription(subscription(SUBSCRIPTION_UUID, null));
+        when(properties.isConfigured()).thenReturn(false);
+
+        assertThatThrownBy(() -> service.sendToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, ORDER_UUID))
+                .isInstanceOf(PushServiceNotConfiguredException.class);
+    }
+
+    private void stubSubscription(final PushSubscriptionEntity subscription) {
+        when(subscriptionRepository.findByUuidAndUserEntity_KeycloakId(SUBSCRIPTION_UUID, USER_ID))
+                .thenReturn(Optional.of(subscription));
+    }
+
+    private static PushSubscriptionEntity subscription(final UUID uuid, final Instant expirationTime) {
         return PushSubscriptionEntity.builder()
-                .endpointEncrypted("enc:https://fcm.googleapis.com/fcm/send/device")
+                .uuid(uuid)
+                .endpointEncrypted("enc:" + ENDPOINT)
                 .p256dhEncrypted("enc:p256dh")
                 .authEncrypted("enc:auth")
                 .expirationTime(expirationTime)

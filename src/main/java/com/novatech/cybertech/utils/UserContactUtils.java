@@ -2,6 +2,7 @@ package com.novatech.cybertech.utils;
 
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.entities.enums.CommunicationChanel;
 
 /**
  * Builds the {@link UserContactDto} every notification path needs (order confirmation, payment
@@ -20,7 +21,7 @@ public final class UserContactUtils {
                 .name(user.getFirstName())
                 .phoneNumber(user.getPhoneNumber())
                 .keycloakId(user.getKeycloakId())
-                .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
+                .defaultCommunicationChanel(CommunicationChanel.favoriteOrDefault(user.getFavoriteCommunicationChanel()))
                 .build();
     }
 }

@@ -1486,6 +1486,144 @@
       ]
     },
     {
+      "name": "Push notifications",
+      "description": "Browser Web Push subscriptions. Push is not a favorite communication channel: payment-confirmed and order-shipped pushes are always sent, in addition to e-mail/SMS, to every browser the user subscribed (5 browsers max, the oldest is replaced). See `docs/web-push.md`.",
+      "item": [
+        {
+          "name": "Get VAPID public key (public)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/notifications/push/public-key",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "notifications",
+                "push",
+                "public-key"
+              ]
+            },
+            "description": "Key the browser passes as `applicationServerKey` to `pushManager.subscribe()`.\n\n- Public.\n- Success: 200 OK `{ \"publicKey\": \"...\" }`.\n- Errors: 503 `PUSH_SERVICE_NOT_CONFIGURED` when VAPID keys are not set."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register browser subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"endpoint\": \"https://fcm.googleapis.com/fcm/send/replace-with-browser-endpoint\",\n  \"expirationTime\": null,\n  \"keys\": {\n    \"p256dh\": \"<65-byte uncompressed P-256 key, base64url>\",\n    \"auth\": \"<16-byte secret, base64url>\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/notifications/push/subscriptions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "notifications",
+                "push",
+                "subscriptions"
+              ]
+            },
+            "description": "Body = the browser's `PushSubscription.toJSON()`. The owner is the JWT subject.\n\n- USER.\n- Success: 201 Created `{ \"uuid\": \"...\" }` (same endpoint again = update). A 6th browser replaces the user's oldest subscription.\n- Errors: 400 `INVALID_PUSH_ENDPOINT` (not HTTPS / push-service host not allowed), 400 invalid keys, 409 `PUSH_SUBSCRIPTION_CONFLICT` (endpoint owned by another account), 503 `PUSH_SERVICE_NOT_CONFIGURED`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove browser subscription",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/notifications/push/subscriptions/:subscriptionUuid",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "notifications",
+                "push",
+                "subscriptions",
+                ":subscriptionUuid"
+              ],
+              "variable": [
+                {
+                  "key": "subscriptionUuid",
+                  "value": "3f6c1a2b-8d4e-4f5a-9b6c-7d8e9f0a1b2c"
+                }
+              ]
+            },
+            "description": "Call on logout or when the user turns notifications off.\n\n- USER.\n- Success: 204 No Content.\n- Errors: 403 `PUSH_SUBSCRIPTION_NOT_OWNED` (another user's subscription), 404 `PUSH_SUBSCRIPTION_NOT_FOUND` (already removed or replaced: treat as unsubscribed)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Review",
       "description": "Product reviews tied to past purchases.",
       "item": [

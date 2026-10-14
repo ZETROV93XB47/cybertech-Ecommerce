@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.config.WebPushProperties;
+import com.novatech.cybertech.entities.BaseEntity;
 import com.novatech.cybertech.entities.PushSubscriptionEntity;
 import com.novatech.cybertech.exceptions.NotificationDeliveryException;
 import com.novatech.cybertech.exceptions.PushServiceNotConfiguredException;
@@ -14,10 +15,13 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static com.novatech.cybertech.config.WebPushProperties.ORDER_UUID_PLACEHOLDER;
 
 @Slf4j
 @Service
@@ -32,7 +36,7 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
     private static final String BODY_KEY = "body";
     private static final String URL_KEY = "url";
     private static final String ORDER_UUID_KEY = "orderUuid";
-    private static final String ORDER_DETAILS_PATH = "/account/orders/";
+    private static final String SUBSCRIPTION_GONE_LOG = "Push subscription {} no longer exists, skipping delivery";
 
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final SensitiveDataEncryptionService encryptionService;
@@ -41,55 +45,47 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
     private final ObjectMapper objectMapper;
 
     @Override
-    public boolean hasSubscriptions(final String keycloakId) {
-        return pushSubscriptionRepository.existsByUserEntity_KeycloakId(keycloakId);
+    public List<UUID> findActiveSubscriptionUuids(final String keycloakId) {
+        final Map<Boolean, List<PushSubscriptionEntity>> byExpiry =
+                pushSubscriptionRepository.findAllByUserEntity_KeycloakIdOrderByCreatedAtAsc(keycloakId).stream()
+                        .collect(Collectors.partitioningBy(WebPushDeliveryServiceImp::isExpired));
+        byExpiry.get(true).forEach(pushSubscriptionRepository::delete);
+        return byExpiry.get(false).stream()
+                .map(BaseEntity::getUuid)
+                .toList();
     }
 
     @Override
-    public void sendToUser(final String keycloakId, final String title, final String body, final UUID orderUuid) {
-        final List<PushSubscriptionEntity> subscriptions =
-                pushSubscriptionRepository.findAllByUserEntity_KeycloakId(keycloakId);
-        if (subscriptions.isEmpty()) {
+    public void sendToSubscription(final String keycloakId,
+                                   final UUID subscriptionUuid,
+                                   final String title,
+                                   final String body,
+                                   final UUID orderUuid) {
+        final PushSubscriptionEntity subscription = pushSubscriptionRepository
+                .findByUuidAndUserEntity_KeycloakId(subscriptionUuid, keycloakId)
+                .orElse(null);
+        if (subscription == null) {
+            // Unsubscribed (or replaced by a newer browser) between fan-out and delivery / redrive.
+            log.info(SUBSCRIPTION_GONE_LOG, subscriptionUuid);
             return;
         }
-        final List<PushSubscriptionEntity> activeSubscriptions = subscriptions.stream()
-                .filter(subscription -> !isExpired(subscription))
-                .toList();
-        subscriptions.stream()
-                .filter(WebPushDeliveryServiceImp::isExpired)
-                .forEach(pushSubscriptionRepository::delete);
-        if (activeSubscriptions.isEmpty()) {
+        if (isExpired(subscription)) {
+            pushSubscriptionRepository.delete(subscription);
             return;
         }
         if (!webPushProperties.isConfigured()) {
             throw new PushServiceNotConfiguredException();
         }
 
-        final String payload = serializePayload(title, body, orderUuid);
-        final List<NotificationDeliveryException> failures = new ArrayList<>();
-
-        activeSubscriptions.forEach(subscription -> {
-            try {
-                final int statusCode = webPushGateway.send(
-                        encryptionService.decrypt(subscription.getEndpointEncrypted()),
-                        encryptionService.decrypt(subscription.getP256dhEncrypted()),
-                        encryptionService.decrypt(subscription.getAuthEncrypted()),
-                        payload);
-                if (statusCode == HTTP_GONE || statusCode == HTTP_NOT_FOUND) {
-                    pushSubscriptionRepository.delete(subscription);
-                } else if (statusCode < HTTP_SUCCESS_MIN || statusCode >= HTTP_SUCCESS_MAX) {
-                    failures.add(new NotificationDeliveryException(
-                            "Web Push service returned HTTP " + statusCode));
-                }
-            } catch (NotificationDeliveryException exception) {
-                failures.add(exception);
-            }
-        });
-
-        if (!failures.isEmpty()) {
-            final NotificationDeliveryException failure = failures.removeFirst();
-            failures.forEach(failure::addSuppressed);
-            throw failure;
+        final int statusCode = webPushGateway.send(
+                encryptionService.decrypt(subscription.getEndpointEncrypted()),
+                encryptionService.decrypt(subscription.getP256dhEncrypted()),
+                encryptionService.decrypt(subscription.getAuthEncrypted()),
+                serializePayload(title, body, orderUuid));
+        if (statusCode == HTTP_GONE || statusCode == HTTP_NOT_FOUND) {
+            pushSubscriptionRepository.delete(subscription);
+        } else if (statusCode < HTTP_SUCCESS_MIN || statusCode >= HTTP_SUCCESS_MAX) {
+            throw new NotificationDeliveryException("Web Push service returned HTTP " + statusCode);
         }
     }
 
@@ -102,7 +98,8 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
         final LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
         payload.put(TITLE_KEY, title);
         payload.put(BODY_KEY, body);
-        payload.put(URL_KEY, ORDER_DETAILS_PATH + orderUuid);
+        payload.put(URL_KEY, webPushProperties.getOrderDetailsUrlTemplate()
+                .replace(ORDER_UUID_PLACEHOLDER, orderUuid.toString()));
         payload.put(ORDER_UUID_KEY, orderUuid);
         try {
             return objectMapper.writeValueAsString(payload);

@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * A small, redrive-friendly snapshot of a {@link NotificationContext}.
@@ -43,6 +44,8 @@ public class NotificationRedrivePayload {
 
     private NotificationType notificationType;
     private CommunicationChanel communicationChanel;
+    /** Targeted browser subscription for Web Push, so a redrive never re-sends to other browsers. */
+    private UUID pushSubscriptionUuid;
     private String subject;
     private String templatePath;
     private UserContactDto userContact;
@@ -64,6 +67,7 @@ public class NotificationRedrivePayload {
         return NotificationContext.<NotificationPayload>builder()
                 .notificationType(notificationType)
                 .communicationChanel(communicationChanel)
+                .pushSubscriptionUuid(pushSubscriptionUuid)
                 .subject(subject)
                 .templatePath(templatePath)
                 .user(userContact)
@@ -83,6 +87,7 @@ public class NotificationRedrivePayload {
         return NotificationRedrivePayload.builder()
                 .notificationType(context.getNotificationType())
                 .communicationChanel(context.getCommunicationChanel())
+                .pushSubscriptionUuid(context.getPushSubscriptionUuid())
                 .subject(context.getSubject())
                 .templatePath(context.getTemplatePath())
                 .userContact(context.getUser())

@@ -8,6 +8,8 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.exceptions.InvalidPushEndpointException;
 import com.novatech.cybertech.exceptions.PushServiceNotConfiguredException;
 import com.novatech.cybertech.exceptions.PushSubscriptionConflictException;
+import com.novatech.cybertech.exceptions.PushSubscriptionNotFoundException;
+import com.novatech.cybertech.exceptions.PushSubscriptionNotOwnedException;
 import com.novatech.cybertech.repositories.PushSubscriptionRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.SensitiveDataEncryptionService;
@@ -24,10 +26,12 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
@@ -40,6 +44,7 @@ class PushSubscriptionServiceImpTest {
     private static final String PUBLIC_KEY = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[65]);
     private static final String AUTH_SECRET = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[16]);
     private static final UUID SUBSCRIPTION_UUID = UUID.randomUUID();
+    private static final int MAX_SUBSCRIPTIONS = 5;
 
     @Mock
     private PushSubscriptionRepository subscriptionRepository;
@@ -60,6 +65,7 @@ class PushSubscriptionServiceImpTest {
         user = UserEntityBuilder.aValidUserBuilder().keycloakId(USER_ID).build();
         lenient().when(properties.isConfigured()).thenReturn(true);
         lenient().when(properties.getAllowedEndpointHosts()).thenReturn(List.of("fcm.googleapis.com"));
+        lenient().when(properties.getMaxSubscriptionsPerUser()).thenReturn(MAX_SUBSCRIPTIONS);
     }
 
     @Test
@@ -132,10 +138,100 @@ class PushSubscriptionServiceImpTest {
     }
 
     @Test
-    void deleteScopesTheDeleteToTheAuthenticatedUser() {
+    void registerNewBrowserBelowLimitEvictsNothing() {
+        stubNewRegistration();
+        when(subscriptionRepository.findAllByUserEntity_KeycloakIdOrderByCreatedAtAsc(USER_ID))
+                .thenReturn(existingSubscriptions(MAX_SUBSCRIPTIONS - 1));
+
+        service.register(USER_ID, validRequest());
+
+        verify(subscriptionRepository, never()).deleteAll(any());
+    }
+
+    @Test
+    void registerSixthBrowserReplacesTheOldestSubscription() {
+        stubNewRegistration();
+        final List<PushSubscriptionEntity> existing = existingSubscriptions(MAX_SUBSCRIPTIONS);
+        when(subscriptionRepository.findAllByUserEntity_KeycloakIdOrderByCreatedAtAsc(USER_ID)).thenReturn(existing);
+
+        service.register(USER_ID, validRequest());
+
+        verify(subscriptionRepository).deleteAll(List.of(existing.getFirst()));
+    }
+
+    @Test
+    void registerAboveLimitAfterLoweringItKeepsOnlyTheNewestBrowsers() {
+        stubNewRegistration();
+        final List<PushSubscriptionEntity> existing = existingSubscriptions(MAX_SUBSCRIPTIONS + 2);
+        when(subscriptionRepository.findAllByUserEntity_KeycloakIdOrderByCreatedAtAsc(USER_ID)).thenReturn(existing);
+
+        service.register(USER_ID, validRequest());
+
+        // 7 existing + 1 new must end at 5: the 3 oldest go.
+        verify(subscriptionRepository).deleteAll(existing.subList(0, 3));
+    }
+
+    @Test
+    void registerSameBrowserAgainNeverEvicts() {
+        final PushSubscriptionEntity existing = PushSubscriptionEntity.builder().id(1L).userEntity(user).build();
+        when(userRepository.findByKeycloakIdAndIsActive(USER_ID, true)).thenReturn(Optional.of(user));
+        when(subscriptionRepository.findByEndpointHash(any())).thenReturn(Optional.of(existing));
+        when(encryptionService.encrypt(any())).thenAnswer(invocation -> "encrypted:" + invocation.getArgument(0));
+        when(subscriptionRepository.save(existing)).thenReturn(existing);
+
+        service.register(USER_ID, validRequest());
+
+        verify(subscriptionRepository, never()).findAllByUserEntity_KeycloakIdOrderByCreatedAtAsc(any());
+        verify(subscriptionRepository, never()).deleteAll(any());
+    }
+
+    @Test
+    void deleteRemovesSubscriptionOwnedByCaller() {
+        final PushSubscriptionEntity subscription = PushSubscriptionEntity.builder()
+                .uuid(SUBSCRIPTION_UUID).userEntity(user).build();
+        when(subscriptionRepository.findByUuid(SUBSCRIPTION_UUID)).thenReturn(Optional.of(subscription));
+
         service.delete(USER_ID, SUBSCRIPTION_UUID);
 
-        verify(subscriptionRepository).deleteByUuidAndUserEntity_KeycloakId(SUBSCRIPTION_UUID, USER_ID);
+        verify(subscriptionRepository).delete(subscription);
+    }
+
+    @Test
+    void deleteRejectsSubscriptionOfAnotherUserWithoutDeleting() {
+        final UserEntity otherUser = UserEntityBuilder.aValidUserBuilder().keycloakId("other-user").build();
+        when(subscriptionRepository.findByUuid(SUBSCRIPTION_UUID)).thenReturn(Optional.of(
+                PushSubscriptionEntity.builder().uuid(SUBSCRIPTION_UUID).userEntity(otherUser).build()));
+
+        assertThatThrownBy(() -> service.delete(USER_ID, SUBSCRIPTION_UUID))
+                .isInstanceOf(PushSubscriptionNotOwnedException.class);
+        verify(subscriptionRepository, never()).delete(any(PushSubscriptionEntity.class));
+    }
+
+    @Test
+    void deleteUnknownSubscriptionIsNotFound() {
+        when(subscriptionRepository.findByUuid(SUBSCRIPTION_UUID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.delete(USER_ID, SUBSCRIPTION_UUID))
+                .isInstanceOf(PushSubscriptionNotFoundException.class);
+        verify(subscriptionRepository, never()).delete(any(PushSubscriptionEntity.class));
+    }
+
+    private void stubNewRegistration() {
+        when(userRepository.findByKeycloakIdAndIsActive(USER_ID, true)).thenReturn(Optional.of(user));
+        when(subscriptionRepository.findByEndpointHash(any())).thenReturn(Optional.empty());
+        when(encryptionService.encrypt(any())).thenAnswer(invocation -> "encrypted:" + invocation.getArgument(0));
+        when(subscriptionRepository.save(any(PushSubscriptionEntity.class)))
+                .thenReturn(PushSubscriptionEntity.builder().uuid(SUBSCRIPTION_UUID).build());
+    }
+
+    private List<PushSubscriptionEntity> existingSubscriptions(final int count) {
+        return IntStream.range(0, count)
+                .<PushSubscriptionEntity>mapToObj(index -> PushSubscriptionEntity.builder()
+                        .id((long) index + 1)
+                        .uuid(UUID.randomUUID())
+                        .userEntity(user)
+                        .build())
+                .toList();
     }
 
     private static PushSubscriptionRequestDto validRequest() {

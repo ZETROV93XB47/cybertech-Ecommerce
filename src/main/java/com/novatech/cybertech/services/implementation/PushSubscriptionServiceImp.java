@@ -8,6 +8,8 @@ import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.exceptions.InvalidPushEndpointException;
 import com.novatech.cybertech.exceptions.PushServiceNotConfiguredException;
 import com.novatech.cybertech.exceptions.PushSubscriptionConflictException;
+import com.novatech.cybertech.exceptions.PushSubscriptionNotFoundException;
+import com.novatech.cybertech.exceptions.PushSubscriptionNotOwnedException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.repositories.PushSubscriptionRepository;
 import com.novatech.cybertech.repositories.UserRepository;
@@ -23,6 +25,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.Base64;
@@ -64,6 +67,9 @@ public class PushSubscriptionServiceImp implements PushSubscriptionService {
                 })
                 .orElseGet(PushSubscriptionEntity::new);
 
+        if (subscription.getId() == null) {
+            evictOldestBeyondLimit(keycloakId);
+        }
         subscription.setEndpointHash(endpointHash);
         subscription.setEndpointEncrypted(encryptionService.encrypt(request.getEndpoint()));
         subscription.setP256dhEncrypted(encryptionService.encrypt(request.getKeys().getP256dh()));
@@ -80,7 +86,25 @@ public class PushSubscriptionServiceImp implements PushSubscriptionService {
     @Override
     @Transactional
     public void delete(final String keycloakId, final UUID subscriptionUuid) {
-        pushSubscriptionRepository.deleteByUuidAndUserEntity_KeycloakId(subscriptionUuid, keycloakId);
+        final PushSubscriptionEntity subscription = pushSubscriptionRepository.findByUuid(subscriptionUuid)
+                .orElseThrow(PushSubscriptionNotFoundException::new);
+        if (!subscription.getUserEntity().getKeycloakId().equals(keycloakId)) {
+            throw new PushSubscriptionNotOwnedException();
+        }
+        pushSubscriptionRepository.delete(subscription);
+    }
+
+    /**
+     * Makes room for one new browser: keeps at most {@code max-subscriptions-per-user - 1} existing
+     * subscriptions, deleting the oldest ones (a browser the user stopped using is the likely one).
+     */
+    private void evictOldestBeyondLimit(final String keycloakId) {
+        final List<PushSubscriptionEntity> existing =
+                pushSubscriptionRepository.findAllByUserEntity_KeycloakIdOrderByCreatedAtAsc(keycloakId);
+        final int toEvict = existing.size() - (webPushProperties.getMaxSubscriptionsPerUser() - 1);
+        if (toEvict > 0) {
+            pushSubscriptionRepository.deleteAll(existing.subList(0, toEvict));
+        }
     }
 
     private URI validateEndpoint(final String rawEndpoint) {

@@ -7,6 +7,7 @@ import lombok.*;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -22,6 +23,11 @@ public class NotificationContext<T extends NotificationPayload> {
     private String templatePath;
     private NotificationType notificationType;
     private CommunicationChanel communicationChanel;
+    /**
+     * Web Push only: the one browser subscription this notification targets. Push is fanned out
+     * one notification per subscription so a failing browser is retried (and audited) alone.
+     */
+    private UUID pushSubscriptionUuid;
     @Builder.Default
     private Map<String, Object> templateVariables = new HashMap<>();
 }

@@ -1,5 +1,6 @@
 package com.novatech.cybertech.utils;
 
+import com.novatech.cybertech.entities.enums.CommunicationChanel;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
@@ -20,5 +21,14 @@ class UserContactUtilsTest {
         assertThat(contact.getPhoneNumber()).isEqualTo(user.getPhoneNumber());
         assertThat(contact.getKeycloakId()).isEqualTo(user.getKeycloakId());
         assertThat(contact.getDefaultCommunicationChanel()).isEqualTo(user.getFavoriteCommunicationChanel());
+    }
+
+    @Test
+    void legacyPushFavoriteFallsBackToEmailSoTheUserStillGetsOrderMails() {
+        final UserEntity user = UserEntityBuilder.aValidUserBuilder().build();
+        user.setFavoriteCommunicationChanel(CommunicationChanel.PUSH_NOTIFICATION);
+
+        assertThat(UserContactUtils.toUserContact(user).getDefaultCommunicationChanel())
+                .isEqualTo(CommunicationChanel.EMAIL);
     }
 }

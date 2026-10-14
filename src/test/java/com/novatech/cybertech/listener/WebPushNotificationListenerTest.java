@@ -21,10 +21,13 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,6 +35,8 @@ class WebPushNotificationListenerTest {
 
     private static final UUID ORDER_UUID = UUID.randomUUID();
     private static final String KEYCLOAK_ID = "kc-user";
+    private static final UUID FIRST_BROWSER = UUID.randomUUID();
+    private static final UUID SECOND_BROWSER = UUID.randomUUID();
 
     @Mock
     private NotificationRetryableDelivery retryableDelivery;
@@ -43,8 +48,9 @@ class WebPushNotificationListenerTest {
     private WebPushNotificationListener listener;
 
     @Test
-    void paymentConfirmedSendsPushOnPushChannel() {
-        when(webPushDeliveryService.hasSubscriptions(KEYCLOAK_ID)).thenReturn(true);
+    void paymentConfirmedSendsOnePushPerBrowserSubscription() {
+        when(webPushDeliveryService.findActiveSubscriptionUuids(KEYCLOAK_ID))
+                .thenReturn(List.of(FIRST_BROWSER, SECOND_BROWSER));
         listener.onPaymentConfirmed(new OrderPaymentConfirmedEvent(OrderEventDto.builder()
                 .orderUuid(ORDER_UUID)
                 .totalAmount(BigDecimal.TEN)
@@ -54,15 +60,20 @@ class WebPushNotificationListenerTest {
 
         final ArgumentCaptor<com.novatech.cybertech.dto.data.NotificationContext> captor =
                 ArgumentCaptor.forClass(com.novatech.cybertech.dto.data.NotificationContext.class);
-        verify(retryableDelivery).deliver(captor.capture());
-        assertThat(captor.getValue().getNotificationType()).isEqualTo(NotificationType.PAYMENT_CONFIRMATION);
-        assertThat(captor.getValue().getCommunicationChanel()).isEqualTo(CommunicationChanel.PUSH_NOTIFICATION);
-        assertThat(captor.getValue().getUser().getKeycloakId()).isEqualTo(KEYCLOAK_ID);
+        verify(retryableDelivery, times(2)).deliver(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(com.novatech.cybertech.dto.data.NotificationContext::getPushSubscriptionUuid)
+                .containsExactly(FIRST_BROWSER, SECOND_BROWSER);
+        assertThat(captor.getAllValues()).allSatisfy(context -> {
+            assertThat(context.getNotificationType()).isEqualTo(NotificationType.PAYMENT_CONFIRMATION);
+            assertThat(context.getCommunicationChanel()).isEqualTo(CommunicationChanel.PUSH_NOTIFICATION);
+            assertThat(context.getUser().getKeycloakId()).isEqualTo(KEYCLOAK_ID);
+        });
     }
 
     @Test
     void shippedOrderSendsPushOnPushChannel() {
-        when(webPushDeliveryService.hasSubscriptions(KEYCLOAK_ID)).thenReturn(true);
+        when(webPushDeliveryService.findActiveSubscriptionUuids(KEYCLOAK_ID)).thenReturn(List.of(FIRST_BROWSER));
         listener.onOrderShipped(new OrderShippedEvent(OrderEventDto.builder()
                 .orderUuid(ORDER_UUID)
                 .orderStatus(OrderStatus.SHIPPED)
@@ -76,6 +87,30 @@ class WebPushNotificationListenerTest {
         verify(retryableDelivery).deliver(captor.capture());
         assertThat(captor.getValue().getNotificationType()).isEqualTo(NotificationType.SHIPPING_CONFIRMATION);
         assertThat(captor.getValue().getCommunicationChanel()).isEqualTo(CommunicationChanel.PUSH_NOTIFICATION);
+        assertThat(captor.getValue().getPushSubscriptionUuid()).isEqualTo(FIRST_BROWSER);
+    }
+
+    @Test
+    void userWithoutBrowserSubscriptionGetsNoPush() {
+        when(webPushDeliveryService.findActiveSubscriptionUuids(KEYCLOAK_ID)).thenReturn(List.of());
+
+        listener.onPaymentConfirmed(new OrderPaymentConfirmedEvent(OrderEventDto.builder()
+                .orderUuid(ORDER_UUID)
+                .totalAmount(BigDecimal.TEN)
+                .userContactDto(userContact())
+                .build()));
+
+        verifyNoInteractions(retryableDelivery);
+    }
+
+    @Test
+    void userWithoutKeycloakIdIsSkippedWithoutQueryingSubscriptions() {
+        listener.onOrderShipped(new OrderShippedEvent(OrderEventDto.builder()
+                .orderUuid(ORDER_UUID)
+                .userContactDto(UserContactDto.builder().email("customer@example.com").build())
+                .build()));
+
+        verifyNoInteractions(webPushDeliveryService, retryableDelivery);
     }
 
     @Test

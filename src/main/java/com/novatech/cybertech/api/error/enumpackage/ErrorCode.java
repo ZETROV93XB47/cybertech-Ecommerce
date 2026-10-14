@@ -75,7 +75,11 @@ public enum ErrorCode {
     DISCOUNT_CAMPAIGN_ALREADY_EXISTS(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     PUSH_SERVICE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, ErrorCodeType.TECHNICAL),
     PUSH_SUBSCRIPTION_CONFLICT(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
-    INVALID_PUSH_ENDPOINT(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL);
+    INVALID_PUSH_ENDPOINT(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
+    /** Unsubscribe called with a subscription UUID that does not exist (or was already replaced). */
+    PUSH_SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
+    /** Unsubscribe called on a subscription registered by another account. */
+    PUSH_SUBSCRIPTION_NOT_OWNED(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;

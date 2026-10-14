@@ -10,9 +10,8 @@ public interface PushSubscriptionRepository extends CrudBaseRepository<PushSubsc
 
     Optional<PushSubscriptionEntity> findByEndpointHash(String endpointHash);
 
-    List<PushSubscriptionEntity> findAllByUserEntity_KeycloakId(String keycloakId);
+    /** Oldest first, so the subscription limit evicts the least recently registered browser. */
+    List<PushSubscriptionEntity> findAllByUserEntity_KeycloakIdOrderByCreatedAtAsc(String keycloakId);
 
-    boolean existsByUserEntity_KeycloakId(String keycloakId);
-
-    long deleteByUuidAndUserEntity_KeycloakId(UUID uuid, String keycloakId);
+    Optional<PushSubscriptionEntity> findByUuidAndUserEntity_KeycloakId(UUID uuid, String keycloakId);
 }

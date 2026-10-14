@@ -2,6 +2,8 @@ package com.novatech.cybertech.dto.request.user;
 
 import com.novatech.cybertech.entities.enums.CommunicationChanel;
 import com.novatech.cybertech.entities.enums.Sex;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -37,6 +39,8 @@ public class UserCreateRequestDto {
     private String phoneNumber;
 
     @NotNull(message = "Communication chanel cannot be null")
+    @Schema(allowableValues = {"EMAIL", "SMS"},
+            description = "E-mail or SMS. Web Push is not a choice: it is always sent in addition, to subscribed browsers.")
     private CommunicationChanel favoriteCommunicationChanel;
 
     @NotBlank(message = "Street cannot be blank")
@@ -75,4 +79,11 @@ public class UserCreateRequestDto {
     @Valid
     private BankCardCreationRequestDto bankCardCreationRequestDto;
 
+    /** Null is reported by {@code @NotNull}; this only rejects non-selectable channels (PUSH_NOTIFICATION). */
+    @JsonIgnore
+    @Schema(hidden = true)
+    @AssertTrue(message = "Favorite communication chanel must be EMAIL or SMS")
+    public boolean isFavoriteCommunicationChanelSelectable() {
+        return favoriteCommunicationChanel == null || favoriteCommunicationChanel.isUserSelectable();
+    }
 }

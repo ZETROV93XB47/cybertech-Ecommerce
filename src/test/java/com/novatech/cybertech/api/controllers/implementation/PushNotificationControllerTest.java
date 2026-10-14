@@ -1,5 +1,8 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
+import com.novatech.cybertech.exceptions.PushSubscriptionNotOwnedException;
+import com.novatech.cybertech.exceptions.PushSubscriptionNotFoundException;
+import static org.mockito.Mockito.doThrow;
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.error.ErrorManagementController;
 import com.novatech.cybertech.config.WebPushProperties;
@@ -113,5 +116,25 @@ class PushNotificationControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deleteSubscriptionOfAnotherUserIsForbidden() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        doThrow(new PushSubscriptionNotOwnedException()).when(subscriptionService).delete(USER_ID, uuid);
+
+        mockMvc.perform(delete(BASE_PATH + "/subscriptions/" + uuid).with(jwtUser(USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("PUSH_SUBSCRIPTION_NOT_OWNED"));
+    }
+
+    @Test
+    void deleteUnknownSubscriptionIsNotFound() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        doThrow(new PushSubscriptionNotFoundException()).when(subscriptionService).delete(USER_ID, uuid);
+
+        mockMvc.perform(delete(BASE_PATH + "/subscriptions/" + uuid).with(jwtUser(USER_ID)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PUSH_SUBSCRIPTION_NOT_FOUND"));
     }
 }

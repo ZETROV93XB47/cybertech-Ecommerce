@@ -416,4 +416,16 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), INVALID_PUSH_ENDPOINT);
         return new ResponseEntity<>(errorResponseDto, INVALID_PUSH_ENDPOINT.getResponseStatus());
     }
+
+    @ExceptionHandler(PushSubscriptionNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handlePushSubscriptionNotFoundException(PushSubscriptionNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), PUSH_SUBSCRIPTION_NOT_FOUND);
+        return new ResponseEntity<>(errorResponseDto, PUSH_SUBSCRIPTION_NOT_FOUND.getResponseStatus());
+    }
+
+    @ExceptionHandler(PushSubscriptionNotOwnedException.class)
+    public ResponseEntity<ErrorResponseDto> handlePushSubscriptionNotOwnedException(PushSubscriptionNotOwnedException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), PUSH_SUBSCRIPTION_NOT_OWNED);
+        return new ResponseEntity<>(errorResponseDto, PUSH_SUBSCRIPTION_NOT_OWNED.getResponseStatus());
+    }
 }

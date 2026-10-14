@@ -28,4 +28,19 @@ class CommunicationChanelEnumTest {
         assertThat(CommunicationChanel.SMS.getCode()).isEqualTo(2);
         assertThat(CommunicationChanel.PUSH_NOTIFICATION.getCode()).isEqualTo(3);
     }
+
+    @Test
+    void onlyEmailAndSmsCanBeChosenAsFavorite() {
+        assertThat(CommunicationChanel.EMAIL.isUserSelectable()).isTrue();
+        assertThat(CommunicationChanel.SMS.isUserSelectable()).isTrue();
+        assertThat(CommunicationChanel.PUSH_NOTIFICATION.isUserSelectable()).isFalse();
+    }
+
+    @Test
+    void favoriteOrDefaultKeepsSelectableChannelsAndFallsBackToEmail() {
+        assertThat(CommunicationChanel.favoriteOrDefault(CommunicationChanel.SMS)).isEqualTo(CommunicationChanel.SMS);
+        assertThat(CommunicationChanel.favoriteOrDefault(CommunicationChanel.EMAIL)).isEqualTo(CommunicationChanel.EMAIL);
+        assertThat(CommunicationChanel.favoriteOrDefault(CommunicationChanel.PUSH_NOTIFICATION)).isEqualTo(CommunicationChanel.EMAIL);
+        assertThat(CommunicationChanel.favoriteOrDefault(null)).isEqualTo(CommunicationChanel.EMAIL);
+    }
 }

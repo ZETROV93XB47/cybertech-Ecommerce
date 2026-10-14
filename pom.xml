@@ -154,12 +154,46 @@
             <groupId>nl.martijndwars</groupId>
             <artifactId>web-push</artifactId>
             <version>5.1.2</version>
+            <!-- 5.1.2 is the latest release; its transitive versions carry known CVEs. Only PushService
+                 (Apache HttpAsyncClient) is used: the AsyncHttpClient-based PushAsyncService and the CLI
+                 (jcommander) are excluded, and BouncyCastle / jose4j are pinned to patched versions below. -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.asynchttpclient</groupId>
+                    <artifactId>async-http-client</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.beust</groupId>
+                    <artifactId>jcommander</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>bcprov-jdk15on</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bitbucket.b_c</groupId>
+                    <artifactId>jose4j</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <!-- web-push exposes JoseException in its send() API although jose4j is runtime-scoped upstream. -->
         <dependency>
             <groupId>org.bitbucket.b_c</groupId>
             <artifactId>jose4j</artifactId>
-            <version>0.7.9</version>
+            <version>0.9.7</version>
+        </dependency>
+        <!-- Runtime-scoped upstream; WebPushGatewayImp sends web-push's prepared request through one shared,
+             timeout-bounded async client instead of the deprecated per-call PushService#sendAsync. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpasyncclient</artifactId>
+            <version>4.1.5</version>
+        </dependency>
+        <!-- web-push loads VAPID / subscription keys through the "BC" JCA provider (registered by WebPushGatewayImp). -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.86</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

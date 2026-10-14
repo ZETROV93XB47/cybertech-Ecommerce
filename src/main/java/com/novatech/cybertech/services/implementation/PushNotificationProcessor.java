@@ -32,6 +32,11 @@ public class PushNotificationProcessor implements NotificationProcessor {
             throw new IllegalStateException("Authenticated user identity is required for Web Push delivery");
         }
 
+        final UUID subscriptionUuid = notificationContext.getPushSubscriptionUuid();
+        if (subscriptionUuid == null) {
+            throw new IllegalStateException("Web Push delivery targets one subscription; none was set on the context");
+        }
+
         final UUID orderUuid = extractOrderUuid(notificationContext);
         final String title;
         final String body;
@@ -46,7 +51,7 @@ public class PushNotificationProcessor implements NotificationProcessor {
                     "Web Push is not supported for NotificationType=" + notificationContext.getNotificationType());
         }
 
-        webPushDeliveryService.sendToUser(keycloakId, title, body, orderUuid);
+        webPushDeliveryService.sendToSubscription(keycloakId, subscriptionUuid, title, body, orderUuid);
     }
 
     private static UUID extractOrderUuid(final NotificationContext<?> notificationContext) {

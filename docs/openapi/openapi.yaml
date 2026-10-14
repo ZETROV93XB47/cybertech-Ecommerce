@@ -72,6 +72,8 @@ tags:
   description: Endpoints to read the connected user's personalized product recommendations
 - name: Shipping
   description: Public shipping options and fees
+- name: Push notifications
+  description: Browser push subscription management
 - name: Discount
   description: Public discount/campaign read endpoints
 paths:
@@ -404,6 +406,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+  /api/v1/services/notifications/push/subscriptions:
+    post:
+      tags:
+      - Push notifications
+      summary: Register or update this browser's push subscription
+      description: "The authenticated JWT subject owns the subscription; any user\
+        \ identifier in the body is ignored/not accepted. A user keeps at most 5 browsers\
+        \ (cybertech.web-push.max-subscriptions-per-user): registering one more replaces\
+        \ the oldest."
+      operationId: register_1
+      parameters:
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSubscriptionRequestDto"
+        required: true
+      responses:
+        "201":
+          description: Subscription registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushSubscriptionResponseDto"
   /api/v1/services/management/order/update:
     post:
       tags:
@@ -2535,6 +2568,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+  /api/v1/services/notifications/push/public-key:
+    get:
+      tags:
+      - Push notifications
+      summary: Get the public VAPID key
+      operationId: getPublicKey
+      parameters:
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      responses:
+        "200":
+          description: Public VAPID key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushPublicKeyResponseDto"
+        "503":
+          description: Web Push is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
   /api/v1/services/management/order/status/{uuid}:
     get:
       tags:
@@ -3311,6 +3371,42 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
       security:
       - keycloak: []
+  /api/v1/services/notifications/push/subscriptions/{subscriptionUuid}:
+    delete:
+      tags:
+      - Push notifications
+      summary: Remove one of the authenticated user's push subscriptions
+      operationId: delete_1
+      parameters:
+      - name: subscriptionUuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      responses:
+        "204":
+          description: Subscription removed
+        "403":
+          description: Subscription belongs to another user
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: Subscription not found (already removed or replaced by a newer
+            browser)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
   /api/v1/services/cart/decreaseQuantity:
     delete:
       tags:
@@ -3507,7 +3603,7 @@ paths:
       tags:
       - Product Category Schema Admin
       summary: Delete a product category schema (Admin)
-      operationId: delete_1
+      operationId: delete_2
       parameters:
       - name: categoryKey
         in: path
@@ -3818,6 +3914,11 @@ components:
           - DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD
           - DISCOUNT_CAMPAIGN_NOT_FOUND
           - DISCOUNT_CAMPAIGN_ALREADY_EXISTS
+          - PUSH_SERVICE_NOT_CONFIGURED
+          - PUSH_SUBSCRIPTION_CONFLICT
+          - INVALID_PUSH_ENDPOINT
+          - PUSH_SUBSCRIPTION_NOT_FOUND
+          - PUSH_SUBSCRIPTION_NOT_OWNED
         fieldErrors:
           type: array
           items:
@@ -3915,10 +4016,11 @@ components:
           minLength: 1
         favoriteCommunicationChanel:
           type: string
+          description: "E-mail or SMS. Web Push is not a choice: it is always sent\
+            \ in addition, to subscribed browsers."
           enum:
           - EMAIL
           - SMS
-          - PUSH_NOTIFICATION
         street:
           type: string
           minLength: 1
@@ -4143,6 +4245,41 @@ components:
           format: double
           description: Largest value among the matching products; null when none matches.
           example: 64
+    PushSubscriptionKeysDto:
+      type: object
+      properties:
+        p256dh:
+          type: string
+          maxLength: 256
+          minLength: 0
+        auth:
+          type: string
+          maxLength: 128
+          minLength: 0
+      required:
+      - auth
+      - p256dh
+    PushSubscriptionRequestDto:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          maxLength: 2048
+          minLength: 0
+        keys:
+          $ref: "#/components/schemas/PushSubscriptionKeysDto"
+        expirationTime:
+          type: integer
+          format: int64
+      required:
+      - endpoint
+      - keys
+    PushSubscriptionResponseDto:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
     OrderItemCreateRequestDto:
       type: object
       properties:
@@ -5152,6 +5289,11 @@ components:
           format: int32
         inStock:
           type: boolean
+    PushPublicKeyResponseDto:
+      type: object
+      properties:
+        publicKey:
+          type: string
     OrderStatusDto:
       type: object
       properties:

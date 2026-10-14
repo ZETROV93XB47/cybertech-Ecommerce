@@ -1,5 +1,7 @@
 package com.novatech.cybertech.api.controllers.implementation.user;
 
+import static org.mockito.Mockito.verifyNoInteractions;
+import com.novatech.cybertech.entities.enums.CommunicationChanel;
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.UserManagementController;
 import com.novatech.cybertech.api.error.ErrorManagementController;
@@ -427,5 +429,20 @@ class UserManagementControllerTest {
                 .doesNotContainIgnoringCase("status=")
                 .doesNotContainIgnoringCase("email=")
                 .doesNotContainIgnoringCase("username=");
+    }
+
+    @Test
+    void registerRejectsPushAsFavoriteChannelReturning400() throws Exception {
+        final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequest();
+        request.setFavoriteCommunicationChanel(CommunicationChanel.PUSH_NOTIFICATION);
+
+        mockMvc.perform(post(REGISTER_ENDPOINT)
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")));
+        verifyNoInteractions(userManagementServiceImp);
     }
 }
