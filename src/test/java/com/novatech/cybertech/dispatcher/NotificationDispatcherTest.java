@@ -86,6 +86,25 @@ class NotificationDispatcherTest {
     }
 
     @Test
+    void explicitContextChannelOverridesUsersDefaultChannel() {
+        final NotificationContext context = NotificationContext.builder()
+                .notificationType(NotificationType.ORDER_CONFIRMATION)
+                .user(UserContactDto.builder()
+                        .email("jane@example.com")
+                        .defaultCommunicationChanel(CommunicationChanel.EMAIL)
+                        .build())
+                .communicationChanel(CommunicationChanel.PUSH_NOTIFICATION)
+                .build();
+        when(notificationStrategyFactory.getStrategy(NotificationType.ORDER_CONFIRMATION)).thenReturn(notification);
+        when(notificationProcessorStrategyFactory.getStrategy(CommunicationChanel.PUSH_NOTIFICATION)).thenReturn(processor);
+
+        dispatcher.dispatch(context);
+
+        verify(notificationProcessorStrategyFactory).getStrategy(CommunicationChanel.PUSH_NOTIFICATION);
+        verify(notification).sendNotification(eq(context), eq(processor));
+    }
+
+    @Test
     void dispatchShouldThrowWhenNotificationStrategyMissing() {
         NotificationContext context = contextWith(CommunicationChanel.EMAIL);
         when(notificationStrategyFactory.getStrategy(NotificationType.ORDER_CONFIRMATION)).thenReturn(null);

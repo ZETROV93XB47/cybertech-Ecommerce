@@ -18,6 +18,7 @@ class UserContactUtilsTest {
         assertThat(contact.getEmail()).isEqualTo(user.getEmail());
         assertThat(contact.getName()).isEqualTo(user.getFirstName());
         assertThat(contact.getPhoneNumber()).isEqualTo(user.getPhoneNumber());
+        assertThat(contact.getKeycloakId()).isEqualTo(user.getKeycloakId());
         assertThat(contact.getDefaultCommunicationChanel()).isEqualTo(user.getFavoriteCommunicationChanel());
     }
 }

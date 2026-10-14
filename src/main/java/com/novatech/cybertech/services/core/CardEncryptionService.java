@@ -14,7 +14,7 @@ package com.novatech.cybertech.services.core;
  * different bean without touching call sites. Implementations must be deterministic for the
  * decrypt path: {@code decrypt(encrypt(pan)).equals(pan)} for any well-formed PAN.</p>
  */
-public interface CardEncryptionService {
+public interface CardEncryptionService extends SensitiveDataEncryptionService {
 
     /**
      * Encrypts a PAN for at-rest storage.

@@ -19,6 +19,7 @@ public final class UserContactUtils {
                 .email(user.getEmail())
                 .name(user.getFirstName())
                 .phoneNumber(user.getPhoneNumber())
+                .keycloakId(user.getKeycloakId())
                 .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
                 .build();
     }

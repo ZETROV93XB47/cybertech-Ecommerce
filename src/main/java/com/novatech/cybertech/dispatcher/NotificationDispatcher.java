@@ -44,11 +44,14 @@ public class NotificationDispatcher {
         final UserContactDto user = context.getUser();
 
         final AbstractNotification notification = notificationStrategyFactory.getStrategy(context.getNotificationType());
-        final NotificationProcessor processor = notificationProcessorStrategyFactory.getStrategy(user.getDefaultCommunicationChanel());
+        final var channel = context.getCommunicationChanel() != null
+                ? context.getCommunicationChanel()
+                : user.getDefaultCommunicationChanel();
+        final NotificationProcessor processor = notificationProcessorStrategyFactory.getStrategy(channel);
 
         if (notification == null || processor == null) {
-            log.error("Aucune stratégie trouvée pour NotificationType={} ou CommunicationType={}", context.getNotificationType(), user.getDefaultCommunicationChanel());
-            throw new NoStrategyFoundForProcessingTheRequest("Aucune stratégie trouvée pour NotificationType=" + context.getNotificationType() + " ou CommunicationType=" + user.getDefaultCommunicationChanel());
+            log.error("Aucune stratégie trouvée pour NotificationType={} ou CommunicationType={}", context.getNotificationType(), channel);
+            throw new NoStrategyFoundForProcessingTheRequest("Aucune stratégie trouvée pour NotificationType=" + context.getNotificationType() + " ou CommunicationType=" + channel);
         }
 
         // Bridge: dynamically inject the processor into the notification at dispatch time.

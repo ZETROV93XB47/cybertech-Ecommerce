@@ -29,6 +29,7 @@ public class CyberTechAppConstants {
     public static final String DISCOUNT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/discounts";
     public static final String DISCOUNT_PUBLIC_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/discounts";
     public static final String SHIPPING_PUBLIC_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/shipping";
+    public static final String PUSH_NOTIFICATION_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/notifications/push";
 
     /**
      * Reserved {@code discountKey} meaning "no discount applied" — the only campaign

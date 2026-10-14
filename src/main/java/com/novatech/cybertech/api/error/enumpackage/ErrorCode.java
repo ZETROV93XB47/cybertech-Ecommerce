@@ -72,7 +72,10 @@ public enum ErrorCode {
     /** Admin looked up / updated / deleted a discount campaign key that does not exist. */
     DISCOUNT_CAMPAIGN_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     /** Admin tried to create a discount campaign under a key that is already taken. */
-    DISCOUNT_CAMPAIGN_ALREADY_EXISTS(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL);
+    DISCOUNT_CAMPAIGN_ALREADY_EXISTS(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
+    PUSH_SERVICE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, ErrorCodeType.TECHNICAL),
+    PUSH_SUBSCRIPTION_CONFLICT(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
+    INVALID_PUSH_ENDPOINT(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL);
 
     private final HttpStatus responseStatus;
     private final ErrorCodeType errorCodeType;

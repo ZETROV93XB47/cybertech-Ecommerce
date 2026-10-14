@@ -36,6 +36,7 @@ public class TestSecurityConfig {
             "/api/v1/services/review/get/**",
             "/api/v1/services/discounts/**",
             "/api/v1/services/shipping/**",
+            "/api/v1/services/notifications/push/public-key",
             // Public reviews of a product page (GET only exists under this prefix).
             "/api/v1/services/review/product/**",
             "/api/v1/services/product-category-schemas/**",

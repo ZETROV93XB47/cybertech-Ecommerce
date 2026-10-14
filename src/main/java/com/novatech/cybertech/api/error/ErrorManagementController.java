@@ -398,4 +398,22 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), INVALID_PRODUCT_CATEGORY_SCHEMA);
         return new ResponseEntity<>(errorResponseDto, INVALID_PRODUCT_CATEGORY_SCHEMA.getResponseStatus());
     }
+
+    @ExceptionHandler(PushServiceNotConfiguredException.class)
+    public ResponseEntity<ErrorResponseDto> handlePushServiceNotConfiguredException(PushServiceNotConfiguredException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), PUSH_SERVICE_NOT_CONFIGURED);
+        return new ResponseEntity<>(errorResponseDto, PUSH_SERVICE_NOT_CONFIGURED.getResponseStatus());
+    }
+
+    @ExceptionHandler(PushSubscriptionConflictException.class)
+    public ResponseEntity<ErrorResponseDto> handlePushSubscriptionConflictException(PushSubscriptionConflictException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), PUSH_SUBSCRIPTION_CONFLICT);
+        return new ResponseEntity<>(errorResponseDto, PUSH_SUBSCRIPTION_CONFLICT.getResponseStatus());
+    }
+
+    @ExceptionHandler(InvalidPushEndpointException.class)
+    public ResponseEntity<ErrorResponseDto> handleInvalidPushEndpointException(InvalidPushEndpointException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), INVALID_PUSH_ENDPOINT);
+        return new ResponseEntity<>(errorResponseDto, INVALID_PUSH_ENDPOINT.getResponseStatus());
+    }
 }

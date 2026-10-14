@@ -104,4 +104,7 @@ public class UserEntity extends BaseEntity<Long> {
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<RecommendationEntity> recommendations = new HashSet<>();
+
+    @OneToMany(mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<PushSubscriptionEntity> pushSubscriptions = new HashSet<>();
 }

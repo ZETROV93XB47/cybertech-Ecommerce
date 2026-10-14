@@ -6,8 +6,10 @@ import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.events.OrderShippedEvent;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.repositories.OrderRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +17,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -28,6 +31,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
 
 /**
  * Unit tests for {@link ShipOrderTransactionalDelegate}.
@@ -50,6 +54,9 @@ class ShipOrderTransactionalDelegateTest {
 
     @Mock
     private ShippingDispatcher shippingDispatcher;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ShipOrderTransactionalDelegate delegate;
@@ -92,6 +99,23 @@ class ShipOrderTransactionalDelegateTest {
         inOrder.verify(orderRepository).saveAndFlush(stored);
         inOrder.verify(shippingDispatcher).dispatch(any(ShippingContext.class));
         inOrder.verify(orderRepository).save(stored);
+    }
+
+    @Test
+    void claimAndShipPublishesEventForTheCommittedShippedTransition() {
+        final OrderEntity order = paidOrder();
+        final OrderEntity stored = paidOrder();
+        stored.setUserEntity(UserEntityBuilder.aValidUserBuilder().build());
+        when(orderRepository.findByUuid(ORDER_UUID)).thenReturn(Optional.of(stored));
+
+        assertThat(delegate.claimAndShip(order, context(order), WINDOW_END)).isTrue();
+
+        final org.mockito.ArgumentCaptor<OrderShippedEvent> captor =
+                org.mockito.ArgumentCaptor.forClass(OrderShippedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().getOrderEventDto().getOrderUuid()).isEqualTo(ORDER_UUID);
+        assertThat(captor.getValue().getOrderEventDto().getUserContactDto().getKeycloakId())
+                .isEqualTo(stored.getUserEntity().getKeycloakId());
     }
 
     @Test

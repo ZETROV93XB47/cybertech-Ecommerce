@@ -1,13 +1,17 @@
 package com.novatech.cybertech.batch.task;
 
 import com.novatech.cybertech.dispatcher.ShippingDispatcher;
+import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.ShippingContext;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.events.OrderShippedEvent;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.utils.UserContactUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +38,7 @@ public class ShipOrderTransactionalDelegate {
 
     private final OrderRepository orderRepository;
     private final ShippingDispatcher shippingDispatcher;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Atomically claim a PAID order (PAID → AWAITING_SHIPPING) and dispatch shipping.
@@ -102,6 +107,15 @@ public class ShipOrderTransactionalDelegate {
 
         current.setStatus(OrderStatus.SHIPPED);
         orderRepository.save(current);
+        if (current.getUserEntity() != null) {
+            eventPublisher.publishEvent(new OrderShippedEvent(OrderEventDto.builder()
+                    .orderUuid(current.getUuid())
+                    .orderStatus(current.getStatus())
+                    .shippingType(current.getShippingType())
+                    .shippingProvider(current.getShippingProvider())
+                    .userContactDto(UserContactUtils.toUserContact(current.getUserEntity()))
+                    .build()));
+        }
         return true;
     }
 }
