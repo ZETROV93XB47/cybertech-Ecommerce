@@ -1,5 +1,10 @@
 # Plan
 
+- [x] **Scraper LDLC — cible de cette session (< 2 h estimées, environ 30 min)** :
+  - [x] `src/main/java/com/novatech/cybertech/utils/scrapper/laptopScrapper.py` — récupérer un JSON temporaire valide après échec Windows de `os.replace`, réessayer les verrous transitoires et signaler clairement un verrou persistant.
+  - [x] `src/main/java/com/novatech/cybertech/utils/scrapper/test_laptopScrapper.py` — tester sauvegarde atomique, retry, conservation/récupération des données temporaires (4 tests réussis).
+  - [x] Package `com.novatech.cybertech.utils.scrapper` (script Python embarqué; pas de classe Java ou module Maven à tester) — tests Python ciblés et `py_compile` réussis.
+  - [x] `CLAUDE.md` et `progress.md` — normes demandées et checkpoint de progression mis à jour.
 - [x] Vérifier le workflow GitHub Actions et les exigences du POM Maven racine.
 - [x] Aligner le workflow sur le wrapper Maven et Java 26.
 - [x] Valider le wrapper et le build Maven du module racine `com.novatech.cybertech` (tests Surefire; les tests Failsafe ne sont pas activés sans le profil d'intégration).

@@ -27,6 +27,8 @@ import argparse
 import time
 import json
 import os
+import glob
+import tempfile
 import requests
 import re
 
@@ -48,6 +50,8 @@ URLS_CACHE = "urls_{}.json"
 
 # Pause par défaut entre deux pages chargées (liste ou fiche), pour ne pas surcharger le site.
 DEFAULT_DELAY_S = 3.0
+SAVE_REPLACE_ATTEMPTS = 5
+SAVE_RETRY_DELAY_S = 1.0
 
 # Réponses qui signifient "on ne veut plus de toi" : on s'arrête net.
 BLOCKED_STATUSES = {403, 429}
@@ -226,6 +230,20 @@ def is_wanted(product):
 
 
 def load_json(path, default):
+    recovery_files = [path + ".tmp"] + glob.glob(path + ".*.tmp")
+    target_mtime = os.path.getmtime(path) if os.path.exists(path) else float("-inf")
+    for recovery_path in sorted(
+            (candidate for candidate in recovery_files if os.path.exists(candidate)
+             and os.path.getmtime(candidate) > target_mtime),
+            key=os.path.getmtime, reverse=True):
+        try:
+            with open(recovery_path, "r", encoding="utf-8") as f:
+                recovered_data = json.load(f)
+        except json.JSONDecodeError:
+            print(f"Fichier temporaire ignoré (JSON incomplet) : {recovery_path}")
+            continue
+        print(f"Reprise depuis la dernière sauvegarde temporaire : {recovery_path}")
+        return recovered_data
     if not os.path.exists(path):
         return default
     with open(path, "r", encoding="utf-8") as f:
@@ -233,11 +251,27 @@ def load_json(path, default):
 
 
 def save_json(path, data):
-    """Écriture atomique : un arrêt brutal pendant l'écriture ne corrompt jamais le fichier."""
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    """Écriture atomique avec reprise sur verrou temporaire du fichier cible."""
+    directory = os.path.dirname(os.path.abspath(path))
+    prefix = os.path.basename(path) + "."
+    tmp = None
+    with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=directory, prefix=prefix, suffix=".tmp", delete=False) as f:
+        tmp = f.name
         json.dump(data, f, indent=4, ensure_ascii=False)
-    os.replace(tmp, path)
+
+    for attempt in range(SAVE_REPLACE_ATTEMPTS):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as e:
+            if attempt == SAVE_REPLACE_ATTEMPTS - 1:
+                raise PermissionError(
+                    f"Impossible de remplacer {path!r} : le fichier est probablement ouvert "
+                    f"ou verrouillé par une autre application. Fermez-la puis relancez le scraper ; "
+                    f"la sauvegarde complète est conservée dans {tmp!r}."
+                ) from e
+            time.sleep(SAVE_RETRY_DELAY_S)
 
 
 def collect_product_urls(page, category, limit, delay):

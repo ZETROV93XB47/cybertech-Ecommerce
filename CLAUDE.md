@@ -7,6 +7,20 @@ what to do next, divide the progress.md in 3 differents seciton with the first s
 section being a list of the task that has been done and the following tasks and the 3rd section being remarqs related to
 these taks.
 
+## Project Context
+- This is a Spring Boot e-commerce application (Java).
+- Use JUnit 5 and Mockito for tests.
+- Follow the existing package structure and naming conventions.
+
+## Testing Standards
+- Target 80%+ test coverage for new code.
+- When generating tests in bulk, run the full test suite after each subagent completes to catch broken tests early.
+- Fix any broken tests before moving to the next task.
+
+## Long-Running Work
+- For large test/documentation generation tasks, checkpoint progress to a status file (for example, `PROGRESS.md`) after each major milestone.
+- Prefer sequential verified steps over maximally parallel subagents to reduce rework when usage limits interrupt execution.
+
 ## Code Style & Patterns
 - **Suis les patterns existants du code.** Avant d'ajouter une nouvelle classe ou un nouveau pattern, regarde si le projet a déjà une convention en place (interface avant impl, exception custom + handler dans `ErrorManagementController`, event + listener AFTER_COMMIT, `*ApiSpec` pour OpenAPI, `UserPersistenceService` pour saga Keycloak/DB...). La cohérence avec l'existant prime sur la "meilleure pratique théorique".
 - **Controllers propres à 100%.** Aucune méthode utilitaire (helper d'auth, extraction JWT, validation custom...) ne doit vivre dans un controller. Migre-la dans `com.novatech.cybertech.utils.ControllerSecurityUtils` ou une classe `*Utils` dédiée selon la nature.

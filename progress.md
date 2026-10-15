@@ -1,10 +1,12 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : 2026-10-14 — branche `develop_back`._
+_Dernière mise à jour : 2026-10-15 — branche `develop_back`._
 
 ---
 
 ## 1. SITTREP
+
+Session du 2026-10-15 : correction du crash Windows du scraper LDLC pendant le remplacement atomique de `products.json`. Le fichier temporaire laissé par l'échec est valide et contient 1 921 produits, contre 1 920 dans le fichier cible ; la reprise automatique permet de conserver le produit récupéré. Quatre tests Python ciblés et la compilation syntaxique passent.
 
 Session du 2026-10-14 (fin) : **prompt 10 abandonné** sur décision du propriétaire (pas de compte Stripe, rien de rattaché à lui). Retour à la carte saisie, chiffrée (AES/GCM) et stockée par le backend, carte à l'inscription rétablie. Nouvelle règle : un numéro uniquement en `1` paie, tout autre numéro (dont `0000…`) est refusé ; l'issue est jouée par Stripe en mode test (`pm_card_visa` / `pm_card_chargeDeclined`) et le webhook reste la source de vérité. Vérifié de bout en bout sur le stack de dev (`1111…` → PAID, `0000…` / `4242…` → PAYMENT_FAILED). `./mvnw test` : 2317 tests, 0 échec (15 ignorés). Plan Gorse prêt : `docs/plans/2026-10-14-gorse-recommandations.md`.
 
@@ -44,6 +46,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### Faites (cette phase de travail)
 
+- **2026-10-15 — Sauvegarde/reprise scraper LDLC Windows** : analyse de `PermissionError [WinError 5]` sur `os.replace`; le `products.json.tmp` présent est un JSON valide avec un produit de plus que la cible. `load_json` récupère le fichier temporaire valide le plus récent ; `save_json` utilise un temporaire unique, réessaie cinq fois les verrous transitoires et conserve le fichier complet avec un message explicite en cas de verrou persistant. Quatre tests Python et `py_compile` réussis (voir `PLAN.md`).
 - **2026-10-14 — S3 local : retour à LocalStack sur `develop_back`.** Sur décision du propriétaire, l'essai RustFS (compose `rustfs` + `s3-init`, `application.properties` sur `:9000`, readme / checklist) est isolé dans la branche **`feat/rustfs-local-s3`** (un commit au-dessus de `develop_back`, fusionnable tel quel s'il est retenu). `develop_back` revient à LocalStack 4.13.1 (`:4566`, `localstack/init-aws.sh`), avec sa limite connue : le bucket est vidé à chaque redémarrage du conteneur.
 - **2026-10-14 — Abandon du prompt 10, règle de carte 1111 / 0000.** Revert de `99abb53` (setup-intent, Customer et PaymentMethod Stripe, `StripeCardGateway`, listener de détachement, migration SQL, `BankCardFlowIT`) ; `StripeCardGatewayImp`, le script `seedTestCards.py` et `docs/saved-card.md` supprimés. Conservé : `retry-payment` sans carte → 404 `BANK_CARD_NOT_FOUND` **avant** la réservation du stock, et tout ce qui a suivi (push, `ORDER_UPDATE`, RustFS). Nouveau `TestCardPaymentUtils` : que des `1` → `pm_card_visa`, sinon `pm_card_chargeDeclined` ; `PaymentServiceImp` déchiffre la carte de l'acheteur (`BankCardRepository.findByUserEntity_Id`, sûr sur une commande détachée) avant de créer la tentative et passe le PaymentMethod au processeur ; `stripe.payment-method` supprimé. Tests : `TestCardPaymentUtilsTest` (9), `PaymentServiceImpTest` (+3 : 1111 paie, 0000 refusé, sans carte), `StripePaymentAttemptProcessorTest` (PaymentMethod transmis, sans redirection), `OrderManagementServiceImpTest` (+1 retry sans carte). **Base de dev** : `encryptedNumber` rétabli, colonnes `stripePaymentMethodId` / `stripeCustomerId` supprimées, les 7 comptes équipés ont une carte `1111…` chiffrée avec la clé de dev. `docs/test-cards.md` réécrit.
 - **2026-10-14 — Décisions de revue.**
@@ -233,6 +236,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ## 3. Remarques
 
+- **Scraper LDLC (2026-10-15)** : un `PermissionError` au remplacement atomique sous Windows survient typiquement quand `products.json` est ouvert ou momentanément verrouillé. Le `.tmp` généré contient la dernière sauvegarde complète ; fermer l'application qui tient le JSON ouvert avant de relancer le scraper. Le loader reprend désormais automatiquement le plus récent fichier temporaire valide.
 - **Prompt 10 abandonné** : les entrées « carte enregistrée chez Stripe » plus bas sont de l'historique (code retiré). À dire au front : plus de Stripe Elements ni de setup-intent ; formulaire de carte classique (`POST /bank-card/add` avec `cardNumber`, ou à l'inscription) ; `1111…` paie, le reste échoue. Le helper e2e qui envoie une carte à l'inscription refonctionne (mettre `1111…` pour que les commandes passent).
 - **Clé Stripe** : la clé de test partagée suffit pour cette règle (aucun compte nécessaire) ; si Stripe la révoque un jour, les paiements échoueront en erreur technique (PAYMENT_PROCESSING_ERROR).
 
