@@ -64,4 +64,9 @@ public class DiscountCampaignEntity extends BaseEntity<Long> {
 
     @Column(name = "priority")
     private Integer priority;
+
+    // URL publique (ou chemin) du visuel de la promotion affiché côté front. Nullable pour ne pas
+    // casser les enregistrements existants.
+    @Column(name = "promoImageUrl", length = 2048)
+    private String promoImageUrl;
 }
