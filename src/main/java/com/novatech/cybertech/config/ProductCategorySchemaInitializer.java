@@ -30,7 +30,18 @@ public class ProductCategorySchemaInitializer implements ApplicationRunner {
                 "os": {"type": "string", "minLength": 1},
                 "connectivity": {"type": "string", "minLength": 1},
                 "displayType": {"type": "string", "minLength": 1},
-                "memory": {"type": "integer", "minimum": 32}
+                "memory": {"type": "integer", "minimum": 32},
+                "screenSizeInches": {"type": "number", "exclusiveMinimum": 0},
+                "screenResolution": {"type": "string", "minLength": 1},
+                "screenRefreshRateHz": {"type": "integer", "minimum": 1},
+                "panelType": {"type": "string", "minLength": 1},
+                "weightKg": {"type": "number", "exclusiveMinimum": 0},
+                "batteryCapacityWh": {"type": "number", "exclusiveMinimum": 0},
+                "touchscreen": {"type": "boolean"},
+                "convertible": {"type": "boolean"},
+                "cpuCores": {"type": "integer", "minimum": 1},
+                "storageType": {"type": "string", "minLength": 1},
+                "wirelessStandard": {"type": "string", "minLength": 1}
               },
               "required": ["cpu", "gpu", "ram", "os", "connectivity", "displayType", "memory"]
             }
@@ -41,7 +52,21 @@ public class ProductCategorySchemaInitializer implements ApplicationRunner {
               "type": "object",
               "properties": {
                 "resolution": {"type": "string", "minLength": 1},
-                "refreshRate": {"type": "integer", "minimum": 60}
+                "refreshRate": {"type": "integer", "minimum": 60},
+                "screenSizeInches": {"type": "number", "exclusiveMinimum": 0},
+                "aspectRatio": {"type": "string", "minLength": 1},
+                "panelType": {"type": "string", "minLength": 1},
+                "responseTimeMs": {"type": "number", "exclusiveMinimum": 0},
+                "brightnessNits": {"type": "number", "exclusiveMinimum": 0},
+                "contrastRatio": {"type": "string", "minLength": 1},
+                "hdr": {"type": "boolean"},
+                "curved": {"type": "boolean"},
+                "adaptiveSync": {"type": "string", "minLength": 1},
+                "videoInputs": {"type": "string", "minLength": 1},
+                "weightKg": {"type": "number", "exclusiveMinimum": 0},
+                "widthMm": {"type": "number", "exclusiveMinimum": 0},
+                "heightMm": {"type": "number", "exclusiveMinimum": 0},
+                "depthMm": {"type": "number", "exclusiveMinimum": 0}
               },
               "required": ["resolution", "refreshRate"]
             }
@@ -58,7 +83,18 @@ public class ProductCategorySchemaInitializer implements ApplicationRunner {
                 "os": {"type": "string", "minLength": 1},
                 "memory": {"type": "integer", "minimum": 1},
                 "connectivity": {"type": "string", "minLength": 1},
-                "formFactor": {"type": "string", "minLength": 1}
+                "formFactor": {"type": "string", "minLength": 1},
+                "storageType": {"type": "string", "minLength": 1},
+                "storageInterface": {"type": "string", "minLength": 1},
+                "powerSupplyW": {"type": "integer", "minimum": 1},
+                "videoMemoryGB": {"type": "integer", "minimum": 1},
+                "wirelessStandard": {"type": "string", "minLength": 1},
+                "ethernetController": {"type": "string", "minLength": 1},
+                "opticalDrive": {"type": "string", "minLength": 1},
+                "widthMm": {"type": "number", "exclusiveMinimum": 0},
+                "heightMm": {"type": "number", "exclusiveMinimum": 0},
+                "depthMm": {"type": "number", "exclusiveMinimum": 0},
+                "weightKg": {"type": "number", "exclusiveMinimum": 0}
               },
               "required": ["cpu", "ram", "memory"]
             }
@@ -73,7 +109,22 @@ public class ProductCategorySchemaInitializer implements ApplicationRunner {
                 "cpu": {"type": "string", "minLength": 1},
                 "storage": {"type": "integer", "minimum": 1},
                 "screenSize": {"type": "number", "exclusiveMinimum": 0},
-                "network": {"type": "string", "minLength": 1}
+                "network": {"type": "string", "minLength": 1},
+                "screenResolution": {"type": "string", "minLength": 1},
+                "ramGB": {"type": "integer", "minimum": 1},
+                "batteryCapacityMah": {"type": "integer", "minimum": 1},
+                "weightG": {"type": "number", "exclusiveMinimum": 0},
+                "heightMm": {"type": "number", "exclusiveMinimum": 0},
+                "widthMm": {"type": "number", "exclusiveMinimum": 0},
+                "thicknessMm": {"type": "number", "exclusiveMinimum": 0},
+                "dualSim": {"type": "boolean"},
+                "simFormat": {"type": "string", "minLength": 1},
+                "nfc": {"type": "boolean"},
+                "fastCharging": {"type": "boolean"},
+                "wirelessCharging": {"type": "boolean"},
+                "waterResistant": {"type": "boolean"},
+                "foldable": {"type": "boolean"},
+                "coreCount": {"type": "integer", "minimum": 1}
               }
             }
             """;
@@ -88,7 +139,17 @@ public class ProductCategorySchemaInitializer implements ApplicationRunner {
                 "caseSize": {"type": "integer", "minimum": 1},
                 "caseMaterial": {"type": "string", "minLength": 1},
                 "batteryLife": {"type": "integer", "minimum": 1},
-                "cellular": {"type": "string", "minLength": 1}
+                "cellular": {"type": "string", "minLength": 1},
+                "touchscreen": {"type": "boolean"},
+                "colorDisplay": {"type": "boolean"},
+                "bluetooth": {"type": "boolean"},
+                "wifi": {"type": "boolean"},
+                "compatibleIphone": {"type": "boolean"},
+                "strapSize": {"type": "string", "minLength": 1},
+                "strapMaterial": {"type": "string", "minLength": 1},
+                "strapColor": {"type": "string", "minLength": 1},
+                "nfc": {"type": "boolean"},
+                "batteryCapacityMah": {"type": "integer", "minimum": 1}
               }
             }
             """;

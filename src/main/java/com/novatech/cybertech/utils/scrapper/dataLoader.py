@@ -85,6 +85,55 @@ def extract_float(value):
     return float(match.group(0).replace(",", ".")) if match else None
 
 
+def extract_measure(value, target_unit):
+    """Convertit une mesure LDLC en unité cible ; renvoie None si valeur/unité inconnue."""
+    if not value:
+        return None
+    match = re.search(
+        r"(\d+(?:[.,]\d+)?)\s*(kg|g|mm|cm|m|wh|w|mah|ms|cd/m²|cd/m2)(?![a-z])",
+        value,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    amount = float(match.group(1).replace(",", "."))
+    source_unit = match.group(2).lower().replace("²", "2")
+    conversions = {
+        ("g", "kg"): 0.001,
+        ("kg", "g"): 1000,
+        ("cm", "mm"): 10,
+        ("m", "mm"): 1000,
+        ("mm", "cm"): 0.1,
+        ("cm", "m"): 0.01,
+        ("mm", "m"): 0.001,
+        ("cd/m2", "cd/m2"): 1,
+        ("mah", "mah"): 1,
+        ("wh", "wh"): 1,
+        ("w", "w"): 1,
+        ("ms", "ms"): 1,
+    }
+    if source_unit == target_unit.lower():
+        return amount
+    factor = conversions.get((source_unit, target_unit.lower()))
+    return amount * factor if factor is not None else None
+
+
+def extract_bool(value):
+    """Convertit les valeurs LDLC Oui/Non en booléen, sans fabriquer de valeur si c'est ambigu."""
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if normalized.startswith(("oui", "yes", "true")):
+        return True
+    if normalized.startswith(("non", "no", "false")):
+        return False
+    return None
+
+
+def normalize_text(value):
+    return re.sub(r"\s+", " ", value).strip() if value else None
+
+
 def extract_storage_gb(value):
     """
     "SSD 1 To" -> 1024 ; "SSD 512 Go" -> 512 ; "2 To" -> 2048 ; illisible -> 0
@@ -100,7 +149,13 @@ def extract_storage_gb(value):
 
 def compact(attributes):
     """Retire les attributs absents de la fiche (None, 0, chaîne vide) : rien n'est envoyé à leur place."""
-    return {k: v for k, v in attributes.items() if v not in (None, 0, "")}
+    return {
+        key: value
+        for key, value in attributes.items()
+        if value is not None
+        and value != ""
+        and (isinstance(value, bool) or not isinstance(value, (int, float)) or value != 0)
+    }
 
 
 IMAGE_SIGNATURES = (b"\xff\xd8\xff", b"\x89PNG", b"RIFF", b"GIF8")
@@ -151,8 +206,7 @@ def resolve_brand(product, allowed_brands):
 # -----------------------------
 def map_attributes_ldlc_to_computer(raw):
     """
-    Convertit les attributs LDLC en attributs conformes au JSON Schema
-    de la catégorie COMPUTER (ProductCategorySchemaEntity).
+    Convertit les caractéristiques écran, mémoire, batterie et connectivité en unités normalisées.
     """
 
     def map_connectivity(raw):
@@ -182,15 +236,24 @@ def map_attributes_ldlc_to_computer(raw):
         "connectivity": map_connectivity(raw),
         "displayType": spec(raw, "type d'écran", "type de dalle", "écran") or "Unknown display",
         "memory": extract_storage_gb(spec(raw, "configuration disque(s)", "disque fourni", "stockage", "memory")),
+        "screenSizeInches": extract_float(spec(raw, "taille de l'écran")),
+        "screenResolution": normalize_text(spec(raw, "résolution max")),
+        "screenRefreshRateHz": extract_int(spec(raw, "taux de rafraîchissement")),
+        "panelType": spec(raw, "type de dalle"),
+        "weightKg": extract_measure(spec(raw, "poids"), "kg"),
+        "batteryCapacityWh": extract_measure(spec(raw, "capacité de la batterie"), "wh"),
+        "touchscreen": extract_bool(spec(raw, "ecran tactile")),
+        "convertible": extract_bool(spec(raw, "hybride / convertible")),
+        "cpuCores": extract_int(spec(raw, "nombre de core")) or None,
+        "storageType": spec(raw, "type de disque"),
+        "wirelessStandard": spec(raw, "norme(s) réseau sans-fil"),
     }
 
 
 def map_attributes_ldlc_to_desktop(raw):
     """
-    Schéma DESKTOP (tour PC, sans écran) : cpu, ram (Go) et memory (Go) obligatoires ;
-    gpu, os, connectivity, formFactor si la fiche les donne.
-    LDLC : "Type de processeur", "Taille de la mémoire : 16 Go", "Disque fourni : SSD 1 To",
-    "Chipset graphique", "Norme(s) réseau sans-fil", "Format du boitier : Moyen Tour".
+    Convertit les caractéristiques de stockage, alimentation, réseau et dimensions des tours.
+    cpu, ram et memory restent les attributs obligatoires du schéma DESKTOP.
     """
     attributes = compact({
         "cpu": spec(raw, "processeur", "type de processeur"),
@@ -200,6 +263,17 @@ def map_attributes_ldlc_to_desktop(raw):
         "memory": extract_storage_gb(spec(raw, "configuration disque(s)", "disque fourni", "stockage")),
         "connectivity": spec(raw, "norme(s) réseau sans-fil"),
         "formFactor": spec(raw, "format du boitier", "format du boîtier", "format de pc"),
+        "storageType": spec(raw, "type de disque système"),
+        "storageInterface": spec(raw, "interface avec l'ordinateur disque dur système"),
+        "powerSupplyW": extract_int(spec(raw, "puissance")) or None,
+        "videoMemoryGB": extract_int(spec(raw, "taille mémoire vidéo")) or None,
+        "wirelessStandard": spec(raw, "norme(s) réseau sans-fil"),
+        "ethernetController": spec(raw, "nombre de ports/contrôleur ethernet"),
+        "opticalDrive": spec(raw, "lecteur optique"),
+        "widthMm": extract_measure(spec(raw, "largeur"), "mm"),
+        "heightMm": extract_measure(spec(raw, "hauteur"), "mm"),
+        "depthMm": extract_measure(spec(raw, "profondeur"), "mm"),
+        "weightKg": extract_measure(spec(raw, "poids"), "kg"),
     })
     missing = [k for k in ("cpu", "ram", "memory") if k not in attributes]
     if missing:
@@ -209,9 +283,8 @@ def map_attributes_ldlc_to_desktop(raw):
 
 def map_attributes_ldlc_to_smartphone(raw):
     """
-    Schéma SMARTPHONE (aucun attribut obligatoire) : os, cpu, storage (Go), screenSize (pouces),
-    network ("5G"/"4G"). LDLC : "Système d'exploitation : Apple iOS 27", "Processeur : Apple A20 Pro",
-    "Stockage : 1 To", "Taille d'écran : 7.6 pouces", "Fréquence : 5G".
+    Convertit l'écran, la mémoire, la batterie, les dimensions, les SIM et fonctions radio.
+    Les dimensions sont en mm, le poids en g, le stockage en Go et la batterie en mAh.
     """
     return compact({
         "os": spec(raw, "système d'exploitation"),
@@ -219,13 +292,28 @@ def map_attributes_ldlc_to_smartphone(raw):
         "storage": extract_storage_gb(spec(raw, "stockage", "capacité")),
         "screenSize": extract_float(spec(raw, "taille d'écran", "taille de l'écran")),
         "network": spec(raw, "fréquence"),
+        "screenResolution": normalize_text(spec(raw, "définition écran")),
+        "ramGB": extract_int(spec(raw, "taille mémoire ram")) or None,
+        "batteryCapacityMah": extract_int(spec(raw, "capacité de la batterie")) or None,
+        "weightG": extract_measure(spec(raw, "poids"), "g"),
+        "heightMm": extract_measure(spec(raw, "hauteur"), "mm"),
+        "widthMm": extract_measure(spec(raw, "largeur"), "mm"),
+        "thicknessMm": extract_measure(spec(raw, "epaisseur"), "mm"),
+        "dualSim": extract_bool(spec(raw, "dual sim")),
+        "simFormat": spec(raw, "format(s) sim"),
+        "nfc": extract_bool(spec(raw, "nfc")),
+        "fastCharging": extract_bool(spec(raw, "charge rapide")),
+        "wirelessCharging": extract_bool(spec(raw, "compatible chargeur à induction")),
+        "waterResistant": extract_bool(spec(raw, "étanche")),
+        "foldable": extract_bool(spec(raw, "pliable")),
+        "coreCount": extract_int(spec(raw, "nombre de core")) or None,
     })
 
 
 def map_attributes_ldlc_to_monitor(raw):
     """
-    Schéma MONITOR : resolution (string, obligatoire), refreshRate (integer >= 60, obligatoire).
-    LDLC : "Résolution Max : 2560 x 1440 pixels", "Fréquence verticale maxi : 180 Hz".
+    Convertit les caractéristiques d'affichage et les dimensions des moniteurs.
+    resolution et refreshRate restent obligatoires ; les nouveaux détails sont facultatifs.
     """
     resolution = spec(raw, "résolution max", "résolution")
     refresh_rate = extract_int(spec(raw, "fréquence verticale maxi", "fréquence de rafraîchissement"))
@@ -233,17 +321,40 @@ def map_attributes_ldlc_to_monitor(raw):
         raise SkipProduct("résolution absente de la fiche")
     if refresh_rate < 60:
         raise SkipProduct(f"fréquence absente ou < 60 Hz ({refresh_rate})")
-    return {
+    sync_values = [
+        (spec(raw, "nvidia g-sync"), "NVIDIA G-SYNC"),
+        (spec(raw, "amd freesync", "freesync"), "AMD FreeSync"),
+        (spec(raw, "g-sync"), "G-SYNC"),
+        (spec(raw, "adaptive-sync"), "Adaptive-Sync"),
+    ]
+    supported_sync = [label for value, label in sync_values if extract_bool(value) is True]
+    if not supported_sync and any(extract_bool(value) is False for value, _ in sync_values):
+        supported_sync = ["None"]
+
+    return compact({
         "resolution": re.sub(r"\s*pixels?$", "", resolution, flags=re.IGNORECASE),
         "refreshRate": refresh_rate,
-    }
+        "screenSizeInches": extract_float(spec(raw, "taille de l'écran")),
+        "aspectRatio": spec(raw, "format de l'écran"),
+        "panelType": spec(raw, "type de dalle"),
+        "responseTimeMs": extract_measure(spec(raw, "temps de réponse"), "ms"),
+        "brightnessNits": extract_measure(spec(raw, "luminosité"), "cd/m2"),
+        "contrastRatio": normalize_text(spec(raw, "contraste")),
+        "hdr": extract_bool(spec(raw, "hdr (high dynamique range)")),
+        "curved": extract_bool(spec(raw, "écran incurvé")),
+        "adaptiveSync": ", ".join(supported_sync) if supported_sync else None,
+        "videoInputs": normalize_text(spec(raw, "entrées vidéo")),
+        "weightKg": extract_measure(spec(raw, "poids"), "kg"),
+        "widthMm": extract_measure(spec(raw, "largeur"), "mm"),
+        "heightMm": extract_measure(spec(raw, "hauteur"), "mm"),
+        "depthMm": extract_measure(spec(raw, "profondeur"), "mm"),
+    })
 
 
 def map_attributes_ldlc_to_smartwatch(raw):
     """
-    Schéma SMARTWATCH (aucun attribut obligatoire, les fiches LDLC des montres sont inégales) :
-    os, caseSize (mm), caseMaterial, batteryLife (heures), cellular ("Oui"/"Non").
-    Les attributs absents de la fiche ne sont pas envoyés (pas de valeur "Unknown").
+    Convertit les fonctions écran, radio et bracelet d'une montre quand la fiche les fournit.
+    Les spécifications absentes ne sont pas envoyées.
     """
     return compact({
         "os": spec(raw, "système d'exploitation"),
@@ -251,6 +362,16 @@ def map_attributes_ldlc_to_smartwatch(raw):
         "caseMaterial": spec(raw, "matière du boîtier"),
         "batteryLife": extract_int(spec(raw, "autonomie")),
         "cellular": spec(raw, "données cellulaires"),
+        "touchscreen": extract_bool(spec(raw, "ecran tactile")),
+        "colorDisplay": extract_bool(spec(raw, "ecran couleur")),
+        "bluetooth": extract_bool(spec(raw, "bluetooth")),
+        "wifi": extract_bool(spec(raw, "wi-fi")),
+        "compatibleIphone": extract_bool(spec(raw, "compatible iphone")),
+        "strapSize": spec(raw, "taille du bracelet"),
+        "strapMaterial": spec(raw, "matière du bracelet"),
+        "strapColor": spec(raw, "couleur du bracelet"),
+        "nfc": extract_bool(spec(raw, "nfc")),
+        "batteryCapacityMah": extract_int(spec(raw, "capacité de la batterie")) or None,
     })
 
 
