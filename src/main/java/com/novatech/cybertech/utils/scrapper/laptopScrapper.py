@@ -8,12 +8,18 @@ Usage :
     python laptopScrapper.py --categories MONITOR SMARTWATCH  # seulement certaines
     python laptopScrapper.py --limit 50                       # 50 produits max par catégorie
     python laptopScrapper.py --delay 5                        # pause entre deux pages (secondes)
+    python laptopScrapper.py --resume-category SMARTWATCH --resume-after 388
+                                                              # reprendre après la 388e URL SMARTWATCH
 
 Reprise : products.json est réécrit après CHAQUE produit, et un produit déjà présent (même
 sourceUrl) n'est pas re-scrapé ; les images déjà téléchargées ne sont pas re-téléchargées et la
 liste des URL de chaque catégorie est gardée dans urls_<catégorie>.json. Relancer la même commande
 après une interruption reprend donc où le script s'était arrêté, sans rien perdre ni re-solliciter
 le site pour ce qui est déjà récupéré.
+
+Reprise manuelle : --resume-category et --resume-after vont ensemble. Le numéro est la position
+(à partir de 1) dans la liste des URL de cette catégorie ; les produits jusqu'à cette position sont
+ignorés. Ce mode ne traite que la catégorie indiquée.
 
 Blocage : si LDLC répond 403 / 429 (ou une page de refus), le script s'arrête aussitôt, en ayant
 sauvegardé tout ce qu'il a récupéré. Il ne cherche pas à contourner le blocage : attendre qu'il soit
@@ -315,24 +321,37 @@ def collect_product_urls(page, category, limit, delay):
     return product_urls[:limit] if limit else product_urls
 
 
-def scrape(categories, limit, delay):
+def pending_product_urls(product_urls, done_urls, resume_after=0):
+    return [
+        (index, url)
+        for index, url in enumerate(product_urls, start=1)
+        if index > resume_after and url not in done_urls
+    ]
+
+
+def scrape(categories, limit, delay, resume_category=None, resume_after=0):
     # Reprise : on repart des produits déjà sauvegardés (toutes catégories confondues).
     all_products = load_json(OUTPUT_JSON, [])
     done_urls = {p["sourceUrl"] for p in all_products}
     print(f"{len(all_products)} produit(s) déjà dans {OUTPUT_JSON}")
+    selected_categories = [resume_category] if resume_category else categories
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         try:
-            for category in categories:
+            for category in selected_categories:
                 print(f"\n===== {category} : {CATEGORY_URLS[category]} =====")
                 product_urls = collect_product_urls(page, category, limit, delay)
-                todo = [u for u in product_urls if u not in done_urls]
+                todo = pending_product_urls(
+                    product_urls,
+                    done_urls,
+                    resume_after if category == resume_category else 0,
+                )
                 print(f"{len(product_urls)} produit(s) pour {category}, {len(todo)} restant(s) à scraper")
 
-                for idx, url in enumerate(todo, start=1):
-                    print(f"\n[{category} {idx}/{len(todo)}] {url}")
+                for idx, url in todo:
+                    print(f"\n[{category} {idx}/{len(product_urls)}] {url}")
                     try:
                         data = extract_product_data(page, url, category, delay)
                     except BlockedError:
@@ -366,5 +385,15 @@ if __name__ == "__main__":
                         help="Nombre max de produits par catégorie (défaut : tous)")
     parser.add_argument("--delay", type=float, default=DEFAULT_DELAY_S,
                         help=f"Pause en secondes avant chaque page chargée (défaut : {DEFAULT_DELAY_S})")
+    parser.add_argument("--resume-category", choices=list(CATEGORY_URLS),
+                        help="Catégorie à reprendre (le mode de reprise ne traite que cette catégorie)")
+    parser.add_argument("--resume-after", type=int,
+                        help="Dernière position terminée dans la liste de cette catégorie (indexée à partir de 1)")
     args = parser.parse_args()
-    scrape(args.categories, args.limit, args.delay)
+    if (args.resume_category is None) != (args.resume_after is None):
+        parser.error("--resume-category et --resume-after doivent être fournis ensemble")
+    if args.resume_after is not None and args.resume_after < 1:
+        parser.error("--resume-after doit être supérieur ou égal à 1")
+    if args.resume_category is not None and args.resume_category not in args.categories:
+        parser.error("--resume-category doit aussi figurer dans --categories")
+    scrape(args.categories, args.limit, args.delay, args.resume_category, args.resume_after or 0)

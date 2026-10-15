@@ -1,5 +1,6 @@
 # Plan
 
+- [x] **Reprise manuelle du scraper par catégorie et position** : ajouter `--resume-category` + `--resume-after`, conserver un index stable dans la progression, tester les URLs déjà enregistrées et documenter l'usage.
 - [x] **Scraper LDLC — cible de cette session (< 2 h estimées, environ 30 min)** :
   - [x] `src/main/java/com/novatech/cybertech/utils/scrapper/laptopScrapper.py` — récupérer un JSON temporaire valide après échec Windows de `os.replace`, réessayer les verrous transitoires et signaler clairement un verrou persistant.
   - [x] `src/main/java/com/novatech/cybertech/utils/scrapper/test_laptopScrapper.py` — tester sauvegarde atomique, retry, conservation/récupération des données temporaires (4 tests réussis).

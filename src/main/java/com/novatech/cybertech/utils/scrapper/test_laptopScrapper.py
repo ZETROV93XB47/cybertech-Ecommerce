@@ -81,5 +81,24 @@ class SaveJsonTest(unittest.TestCase):
             self.assertEqual(expected, laptopScrapper.load_json(target, []))
 
 
+class ResumeScrapeTest(unittest.TestCase):
+    def test_pending_urls_resume_after_category_position_and_keep_original_indices(self):
+        urls = [f"https://example.test/product/{index}" for index in range(1, 6)]
+        done_urls = {urls[3]}
+
+        self.assertEqual(
+            [(5, urls[4])],
+            laptopScrapper.pending_product_urls(urls, done_urls, resume_after=3),
+        )
+
+    def test_pending_urls_skip_saved_products_without_renumbering(self):
+        urls = [f"https://example.test/product/{index}" for index in range(1, 4)]
+
+        self.assertEqual(
+            [(1, urls[0]), (3, urls[2])],
+            laptopScrapper.pending_product_urls(urls, {urls[1]}),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
