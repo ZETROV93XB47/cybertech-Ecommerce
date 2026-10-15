@@ -27,7 +27,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@PaymentTypeHandler({PaymentType.MASTERCARD, PaymentType.VISA})
+@PaymentTypeHandler({PaymentType.MASTERCARD, PaymentType.VISA, PaymentType.APPLE_PAY, PaymentType.GOOGLE_PAY})
 public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
 
     private static final String FAILED = "failed";
