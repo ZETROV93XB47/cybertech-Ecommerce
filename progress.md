@@ -1,10 +1,12 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : 2026-10-15 — branche `develop_back`._
+_Dernière mise à jour : 2026-10-16 — branche `develop_back`._
 
 ---
 
 ## 1. SITTREP
+
+Session du 2026-10-16 : `OrderValidationDto` ne transporte plus `BankCardEntity`. Le point de construction extrait de la carte uniquement `expiryDate` dans le nouveau `BankCardValidationDto`, consommé par `BankCardValidityValidator`. Tests ciblés : 31 verts ; `.\mvnw.cmd -B test` : 2 321 tests, 0 échec, 15 ignorés.
 
 Session du 2026-10-15 (suite) : schémas enrichis pour COMPUTER, MONITOR, DESKTOP, SMARTPHONE et SMARTWATCH. Les nouvelles propriétés sont facultatives ; les champs obligatoires préexistants sont inchangés. Migration `src/main/resources/sql/migrations/2026-10-15-product-category-attributes.sql` appliquée à `mysqlEcommerce` (les cinq valeurs JSON restent valides, 16 à 20 propriétés par catégorie). `ProductCategorySchemaInitializer` contient les mêmes schémas pour les nouvelles bases. `dataLoader.py` convertit les nouveaux champs et unités (dimensions mm, poids kg/g, tailles en pouces, booléens inclus même à false). Vérifications : 8 tests Java, 13 tests Python, compilation Python ; aucun champ émis par le mapper n’est absent des schémas actifs en base.
 
@@ -50,6 +52,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### Faites (cette phase de travail)
 
+- **2026-10-16 — DTO de validation de commande sans entité** : `OrderValidationDto` reçoit désormais un `BankCardValidationDto` contenant seulement la date d'expiration ; `OrderManagementServiceImp` projette cette valeur depuis l'entité avant transmission. Les tests couvrent la projection et la validation de carte. 31 tests ciblés verts, suite Maven complète : 2 321 tests, 0 échec, 15 ignorés.
 - **2026-10-15 — Schémas d'attributs des cinq catégories** : ajout des attributs validés dans `ProductCategorySchemaInitializer` et migration SQL réexécutable appliquée à la base Docker `mysqlEcommerce`. Champs optionnels, anciens `required` conservés. Les cinq mappers de `dataLoader.py` remplissent ces champs à partir des fiches LDLC et normalisent les unités ; les tests Java/Python passent.
 - **2026-10-15 — Sauvegarde/reprise scraper LDLC Windows** : analyse de `PermissionError [WinError 5]` sur `os.replace`; le `products.json.tmp` présent est un JSON valide avec un produit de plus que la cible. `load_json` récupère le fichier temporaire valide le plus récent ; `save_json` utilise un temporaire unique, réessaie cinq fois les verrous transitoires et conserve le fichier complet avec un message explicite en cas de verrou persistant. Quatre tests Python et `py_compile` réussis (voir `PLAN.md`).
 - **2026-10-15 — Reprise manuelle scraper LDLC** : `--resume-category SMARTWATCH --resume-after 388` reprend à la 389e URL de la liste `SMARTWATCH`, sans traiter les autres catégories. La sortie affiche désormais les positions originales de la liste pour qu'un numéro reste stable lors d'un redémarrage ; les URL déjà sauvegardées sont toujours ignorées. Six tests Python et `py_compile` réussis.
@@ -242,6 +245,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ## 3. Remarques
 
+- **Validation de commande** : `OrderValidationDto` ne doit contenir que des données de validation ; si une nouvelle règle bancaire apparaît, ajouter uniquement les champs nécessaires à `BankCardValidationDto`, sans y réintroduire `BankCardEntity` ni ses données sensibles.
 - **Schémas produit (2026-10-15)** : après l'application SQL, démarrer/redémarrer le backend pour que `ProductCategorySchemaCache` recharge les schémas depuis MySQL. Le `dataLoader.py` actuel rencontre encore 15 moniteurs dont la fiche n'a pas `fréquence verticale maxi` ; il les ignorait déjà avant cette extension, car `refreshRate` reste obligatoire (minimum 60 Hz).
 - **Scraper LDLC (2026-10-15)** : un `PermissionError` au remplacement atomique sous Windows survient typiquement quand `products.json` est ouvert ou momentanément verrouillé. Le `.tmp` généré contient la dernière sauvegarde complète ; fermer l'application qui tient le JSON ouvert avant de relancer le scraper. Le loader reprend désormais automatiquement le plus récent fichier temporaire valide.
 - **Prompt 10 abandonné** : les entrées « carte enregistrée chez Stripe » plus bas sont de l'historique (code retiré). À dire au front : plus de Stripe Elements ni de setup-intent ; formulaire de carte classique (`POST /bank-card/add` avec `cardNumber`, ou à l'inscription) ; `1111…` paie, le reste échoue. Le helper e2e qui envoie une carte à l'inscription refonctionne (mettre `1111…` pour que les commandes passent).

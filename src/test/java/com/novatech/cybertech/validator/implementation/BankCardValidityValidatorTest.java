@@ -1,11 +1,9 @@
 package com.novatech.cybertech.validator.implementation;
 
 import com.novatech.cybertech.dto.data.OrderValidationDto;
-import com.novatech.cybertech.entities.BankCardEntity;
-import com.novatech.cybertech.entities.enums.BankCardType;
+import com.novatech.cybertech.dto.data.BankCardValidationDto;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
-import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,19 +33,18 @@ class BankCardValidityValidatorTest {
 
     private final BankCardValidityValidator validator = new BankCardValidityValidator();
 
-    private OrderValidationDto dtoWithCard(BankCardEntity card) {
+    private OrderValidationDto dtoWithCard(BankCardValidationDto card) {
         return OrderValidationDto.builder()
                 .isUserActive(true)
                 .productIds(List.of(1L))
                 .productsByQuantityMap(Map.of(UUID.randomUUID(), 1))
-                .userDefaultBankCard(card)
+                .bankCardValidationDto(card)
                 .build();
     }
 
-    private BankCardEntity cardExpiring(YearMonth ym) {
-        return BankCardEntityBuilder.aValidBankCardBuilder()
+    private BankCardValidationDto cardExpiring(YearMonth ym) {
+        return BankCardValidationDto.builder()
                 .expiryDate(ym.format(EXPIRY))
-                .cardType(BankCardType.VISA)
                 .build();
     }
 
@@ -55,7 +52,7 @@ class BankCardValidityValidatorTest {
     @DisplayName("Non-expired card: passes and propagates to the next link")
     void nonExpiredCardPassesAndPropagates() {
         validator.setNext(nextValidator);
-        BankCardEntity card = cardExpiring(YearMonth.now().plusYears(2));
+        BankCardValidationDto card = cardExpiring(YearMonth.now().plusYears(2));
         OrderValidationDto dto = dtoWithCard(card);
 
         validator.validate(dto);
@@ -67,7 +64,7 @@ class BankCardValidityValidatorTest {
     @DisplayName("Expired card: throws BankCardExpiredException and short-circuits the chain")
     void expiredCardThrowsAndShortCircuits() {
         validator.setNext(nextValidator);
-        BankCardEntity card = cardExpiring(YearMonth.now().minusYears(2));
+        BankCardValidationDto card = cardExpiring(YearMonth.now().minusYears(2));
         OrderValidationDto dto = dtoWithCard(card);
 
         assertThatThrownBy(() -> validator.validate(dto))
@@ -81,7 +78,7 @@ class BankCardValidityValidatorTest {
     @DisplayName("Boundary: card expiring this month is still valid (prod uses end-of-month)")
     void cardExpiringThisMonthIsStillValid() {
         validator.setNext(nextValidator);
-        BankCardEntity card = cardExpiring(YearMonth.now());
+        BankCardValidationDto card = cardExpiring(YearMonth.now());
         OrderValidationDto dto = dtoWithCard(card);
 
         validator.validate(dto);
@@ -92,7 +89,7 @@ class BankCardValidityValidatorTest {
     @Test
     @DisplayName("Boundary: card expired last month throws BankCardExpiredException")
     void cardExpiringLastMonthIsExpired() {
-        BankCardEntity card = cardExpiring(YearMonth.now().minusMonths(1));
+        BankCardValidationDto card = cardExpiring(YearMonth.now().minusMonths(1));
         OrderValidationDto dto = dtoWithCard(card);
 
         assertThatThrownBy(() -> validator.validate(dto))
@@ -111,13 +108,11 @@ class BankCardValidityValidatorTest {
     @Test
     @DisplayName("Malformed expiry date: DateConverter returns null and triggers NPE on isAfter")
     void malformedExpiryDateThrowsNpe() {
-        BankCardEntity card = BankCardEntityBuilder.aValidBankCardBuilder()
+        BankCardValidationDto card = BankCardValidationDto.builder()
                 .expiryDate("not-a-date")
                 .build();
         OrderValidationDto dto = dtoWithCard(card);
 
-        // DateConverter.convertExpiryDateToLocalDate returns null on parse failure;
-        // LocalDate.now().isAfter(null) throws NPE — pinned as a defensive-null gap.
         assertThatThrownBy(() -> validator.validate(dto))
                 .isInstanceOf(NullPointerException.class);
     }

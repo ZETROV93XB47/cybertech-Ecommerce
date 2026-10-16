@@ -77,3 +77,13 @@ nouveau saisie, chiffrée (AES/GCM) et stockée par le backend. Stripe et le web
 - [x] 3. Garder : carte à l'inscription, `retry-payment` sans carte → 404 avant réservation du stock.
 - [x] 4. Base de dev : `encryptedNumber` rétabli, colonnes Stripe retirées, cartes `1111…` chiffrées pour les 7 comptes.
 - [x] 5. Docs (cartes de test, prompt 10 abandonné), OpenAPI, Postman, tests, progress.md, commit.
+
+## OrderValidationDto — extraction des données bancaires (2026-10-16)
+
+Estimation : périmètre estimé à moins de 2 h, probablement 20–30 min. Aucun sous-agent requis.
+
+- [x] `com.novatech.cybertech.dto.data` — créer `BankCardValidationDto` avec les seules données consommées par la validation (`expiryDate`).
+- [x] `OrderValidationDto`, `BankCardValidityValidator`, `OrderManagementServiceImp` — remplacer l'entité bancaire par le sous-DTO et projeter l'entité au point de construction.
+- [x] Tests : `BankCardValidityValidatorTest`, `OrderCreationTransactionalDelegateImpTest`, `ActiveUserValidatorTest`, `ChainableOrderValidatorTest` — adapter les constructions et vérifier la projection de l'expiration.
+- [x] Lancer les tests ciblés Maven (31 verts) puis `.\mvnw.cmd -B test` (2 321 tests, 0 échec, 15 ignorés).
+- [x] Actualiser `progress.md`, vérifier le diff et committer uniquement les fichiers de cette tâche.

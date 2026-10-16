@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 
+import com.novatech.cybertech.dto.data.BankCardValidationDto;
 import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
@@ -738,9 +739,13 @@ public class OrderManagementServiceImp implements OrderManagementService {
      * own {@link OrderValidator} instance (separate bean).
      */
     static void validateUserBeforeProcessingPayment(final OrderValidator orderValidatorChain, final UserEntity userEntity) {
+        final BankCardEntity bankCardEntity = Optional.ofNullable(userEntity.getBankCardEntity())
+                .orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ..."));
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
-                .userDefaultBankCard(Optional.ofNullable(userEntity.getBankCardEntity()).orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ...")))
+                .bankCardValidationDto(BankCardValidationDto.builder()
+                        .expiryDate(bankCardEntity.getExpiryDate())
+                        .build())
                 .build();
 
         orderValidatorChain.validate(orderValidationDto);

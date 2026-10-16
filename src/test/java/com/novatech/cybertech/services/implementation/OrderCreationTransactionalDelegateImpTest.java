@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.dto.data.BankCardValidationDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
@@ -250,6 +251,25 @@ class OrderCreationTransactionalDelegateImpTest {
         ord.verify(orderValidatorChain).validate(any(OrderValidationDto.class));
         ord.verify(orderRepository).save(any(OrderEntity.class));
         ord.verify(stockService).reserveStock(any(UUID.class), any());
+    }
+
+    @Test
+    @DisplayName("order validation receives only the bank-card expiry date")
+    void validatorReceivesBankCardValidationData() {
+        final ProductEntity product = ProductEntityBuilder.aValidProduct();
+        final UserEntity user = userWithCart(product, 1);
+        user.setBankCardEntity(BankCardEntityBuilder.aValidBankCardBuilder()
+                .expiryDate("12/2035")
+                .build());
+        when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+        when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        delegate.createAndReserveStock(OrderDtoFixtures.aValidPlaceOrderRequest(), keycloakId);
+
+        final ArgumentCaptor<OrderValidationDto> validationDto = ArgumentCaptor.forClass(OrderValidationDto.class);
+        verify(orderValidatorChain).validate(validationDto.capture());
+        assertThat(validationDto.getValue().getBankCardValidationDto())
+                .isEqualTo(BankCardValidationDto.builder().expiryDate("12/2035").build());
     }
 
     @Test

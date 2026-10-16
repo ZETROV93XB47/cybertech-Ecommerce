@@ -31,7 +31,7 @@ class ActiveUserValidatorTest {
                 .isUserActive(active)
                 .productIds(List.of(1L))
                 .productsByQuantityMap(Map.of(UUID.randomUUID(), 1))
-                .userDefaultBankCard(null)
+                .bankCardValidationDto(null)
                 .build();
     }
 

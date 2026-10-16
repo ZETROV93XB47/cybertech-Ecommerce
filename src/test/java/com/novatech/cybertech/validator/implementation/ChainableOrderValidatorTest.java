@@ -53,7 +53,7 @@ class ChainableOrderValidatorTest {
                 .isUserActive(true)
                 .productIds(List.of(1L))
                 .productsByQuantityMap(java.util.Map.of(UUID.randomUUID(), 1))
-                .userDefaultBankCard(null)
+                .bankCardValidationDto(null)
                 .build();
     }
 

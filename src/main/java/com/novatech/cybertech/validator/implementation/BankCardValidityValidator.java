@@ -17,16 +17,11 @@ public class BankCardValidityValidator extends ChainableOrderValidator {
     @Override
     public void validate(final OrderValidationDto orderValidationDto) {
 
-        // Defensive: today the only construction site (OrderManagementServiceImp
-        // .validateUserBeforeProcessingPayment) already guards this via
-        // Optional.ofNullable(...).orElseThrow(BankCardNotFoundException), but OrderValidationDto
-        // itself has no @NotNull on this field — guard here too so this validator's own contract
-        // doesn't silently depend on a caller it cannot see.
-        if (orderValidationDto.getUserDefaultBankCard() == null) {
+        if (orderValidationDto.getBankCardValidationDto() == null) {
             throw new BankCardNotFoundException("No default bank card associated with this order");
         }
 
-        if (LocalDate.now().isAfter(convertExpiryDateToLocalDate(orderValidationDto.getUserDefaultBankCard().getExpiryDate())))
+        if (LocalDate.now().isAfter(convertExpiryDateToLocalDate(orderValidationDto.getBankCardValidationDto().getExpiryDate())))
             throw new BankCardExpiredException("Bank card expired");
         log.info("Bank card valid");
         nextStep(orderValidationDto);

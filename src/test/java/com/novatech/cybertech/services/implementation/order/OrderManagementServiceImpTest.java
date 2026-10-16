@@ -1,7 +1,6 @@
 package com.novatech.cybertech.services.implementation.order;
 
 import com.novatech.cybertech.dto.data.OrderEventDto;
-import com.novatech.cybertech.dto.data.OrderValidationDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
