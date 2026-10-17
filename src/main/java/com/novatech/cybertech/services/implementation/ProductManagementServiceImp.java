@@ -111,6 +111,16 @@ public class ProductManagementServiceImp implements ProductManagementService {
         final ProductEntity existing = productRepository.lockByUuid(uuid)
                 .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + uuid + " found"));
 
+        final String effectiveCategory = productUpdateRequestDto.getCategory() != null
+                ? productUpdateRequestDto.getCategory()
+                : existing.getCategory();
+        final var effectiveAttributes = productUpdateRequestDto.getAttributes() != null
+                ? productUpdateRequestDto.getAttributes()
+                : existing.getAttributes();
+        if (productUpdateRequestDto.getCategory() != null || productUpdateRequestDto.getAttributes() != null) {
+            productValidationService.validateAttributes(effectiveCategory, effectiveAttributes);
+        }
+
         if (productUpdateRequestDto.getName() != null) existing.setName(productUpdateRequestDto.getName());
         if (productUpdateRequestDto.getPrice() != null) existing.setPrice(productUpdateRequestDto.getPrice());
         if (productUpdateRequestDto.getBrand() != null) existing.setBrand(productUpdateRequestDto.getBrand());
@@ -119,9 +129,6 @@ public class ProductManagementServiceImp implements ProductManagementService {
         if (productUpdateRequestDto.getStock() != null) existing.setStock(productUpdateRequestDto.getStock());
         if (productUpdateRequestDto.getDescription() != null) existing.setDescription(productUpdateRequestDto.getDescription());
         if (productUpdateRequestDto.getAttributes() != null) {
-            // Re-validate against the (possibly just-changed) category so attributes and
-            // category can never diverge — attributes were previously write-once at creation.
-            productValidationService.validateAttributes(existing.getCategory(), productUpdateRequestDto.getAttributes());
             existing.setAttributes(productUpdateRequestDto.getAttributes());
         }
 

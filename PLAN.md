@@ -87,3 +87,12 @@ Estimation : périmètre estimé à moins de 2 h, probablement 20–30 min. Aucu
 - [x] Tests : `BankCardValidityValidatorTest`, `OrderCreationTransactionalDelegateImpTest`, `ActiveUserValidatorTest`, `ChainableOrderValidatorTest` — adapter les constructions et vérifier la projection de l'expiration.
 - [x] Lancer les tests ciblés Maven (31 verts) puis `.\mvnw.cmd -B test` (2 321 tests, 0 échec, 15 ignorés).
 - [x] Actualiser `progress.md`, vérifier le diff et committer uniquement les fichiers de cette tâche.
+
+## Revalidation des attributs lors du changement de catégorie (2026-10-17)
+
+- [x] Examiner le chemin `ProductManagementServiceImp.update` et ses tests de modification de produit.
+- [x] Revalider les attributs existants contre la nouvelle catégorie quand la requête change la catégorie sans fournir `attributes`.
+- [x] Ajouter des tests pour catégorie seule (valide/invalide) et préserver le comportement de mise à jour des attributs.
+- [x] Exécuter `ProductManagementServiceImpTest` : 22 tests verts.
+- [x] Exécuter la suite complète Maven : 2 323 tests, 0 échec, 15 ignorés.
+- [x] Actualiser `progress.md`, vérifier le diff et committer uniquement les fichiers de cette correction.

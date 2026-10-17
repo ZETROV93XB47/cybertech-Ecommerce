@@ -29,6 +29,7 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -282,6 +283,58 @@ class ProductManagementServiceImpTest {
             assertThat(existing.getPhotos()).containsExactly("old-photo");
             assertThat(existing.getStock()).isEqualTo(7);
             assertThat(existing.getDescription()).isEqualTo("old desc");
+        }
+
+        @Test
+        @DisplayName("category-only update validates existing attributes against the requested category")
+        void update_categoryOnly_validatesExistingAttributesAgainstNewCategory() {
+            UUID id = UUID.randomUUID();
+            Map<String, Object> existingAttributes = Map.of("ramGB", 16);
+            ProductUpdateRequestDto req = new ProductUpdateRequestDto();
+            req.setProductUuid(id);
+            req.setCategory("SMARTPHONE");
+            ProductEntity existing = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(id)
+                    .category("COMPUTER")
+                    .attributes(existingAttributes)
+                    .build();
+
+            when(productRepository.lockByUuid(id)).thenReturn(Optional.of(existing));
+            when(productRepository.save(existing)).thenReturn(existing);
+            when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.update(req, "kc-admin");
+
+            verify(productValidationService).validateAttributes("SMARTPHONE", existingAttributes);
+            assertThat(existing.getCategory()).isEqualTo("SMARTPHONE");
+            assertThat(existing.getAttributes()).isSameAs(existingAttributes);
+        }
+
+        @Test
+        @DisplayName("category-only update with incompatible existing attributes fails before saving")
+        void update_categoryOnly_invalidExistingAttributes_doesNotSave() {
+            UUID id = UUID.randomUUID();
+            Map<String, Object> existingAttributes = Map.of("ramGB", 16);
+            ProductUpdateRequestDto req = new ProductUpdateRequestDto();
+            req.setProductUuid(id);
+            req.setCategory("SMARTPHONE");
+            ProductEntity existing = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(id)
+                    .category("COMPUTER")
+                    .attributes(existingAttributes)
+                    .build();
+            org.mockito.Mockito.doThrow(new IllegalArgumentException("attributes do not match category"))
+                    .when(productValidationService).validateAttributes("SMARTPHONE", existingAttributes);
+            when(productRepository.lockByUuid(id)).thenReturn(Optional.of(existing));
+
+            assertThatThrownBy(() -> service.update(req, "kc-admin"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("attributes do not match category");
+
+            assertThat(existing.getCategory()).isEqualTo("COMPUTER");
+            verify(productRepository, never()).save(any());
+            verifyNoInteractions(productSearchRepository);
         }
 
         @Test
