@@ -1,0 +1,45 @@
+# ============================================================
+# LOKI — single-binary log backend.
+# Filesystem storage; TSDB schema v13. Single replica.
+# Backend pushes logs via Spring Boot logstash-logback-encoder + a
+# log shipper (e.g. promtail / alloy) — out of scope for this chart.
+# ============================================================
+
+image:
+  repository: grafana/loki
+  tag: 3.2.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  httpPort: 3100
+  grpcPort: 9095
+
+persistence:
+  enabled: true
+  size: 5Gi
+  accessMode: ReadWriteOnce
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+probes:
+  liveness:
+    path: /ready
+    initialDelaySeconds: 45
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readiness:
+    path: /ready
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5

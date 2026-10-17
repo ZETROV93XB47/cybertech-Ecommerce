@@ -1,0 +1,98 @@
+# Plan
+
+- [x] **Étendre les attributs des cinq catégories** :
+  - [x] Mettre à jour les schémas par défaut de `ProductCategorySchemaInitializer` en gardant tous les nouveaux champs facultatifs.
+  - [x] Ajouter et exécuter une migration SQL ciblée des cinq schémas existants dans `mysqlEcommerce`.
+  - [x] Adapter les cinq mappeurs de `dataLoader.py` aux champs LDLC, unités normalisées et booléens.
+  - [x] Tester les schémas Java et les conversions Python, puis contrôler les produits scrapés existants.
+- [x] **Reprise manuelle du scraper par catégorie et position** : ajouter `--resume-category` + `--resume-after`, conserver un index stable dans la progression, tester les URLs déjà enregistrées et documenter l'usage.
+- [x] **Scraper LDLC — cible de cette session (< 2 h estimées, environ 30 min)** :
+  - [x] `src/main/java/com/novatech/cybertech/utils/scrapper/laptopScrapper.py` — récupérer un JSON temporaire valide après échec Windows de `os.replace`, réessayer les verrous transitoires et signaler clairement un verrou persistant.
+  - [x] `src/main/java/com/novatech/cybertech/utils/scrapper/test_laptopScrapper.py` — tester sauvegarde atomique, retry, conservation/récupération des données temporaires (4 tests réussis).
+  - [x] Package `com.novatech.cybertech.utils.scrapper` (script Python embarqué; pas de classe Java ou module Maven à tester) — tests Python ciblés et `py_compile` réussis.
+  - [x] `CLAUDE.md` et `progress.md` — normes demandées et checkpoint de progression mis à jour.
+- [x] Vérifier le workflow GitHub Actions et les exigences du POM Maven racine.
+- [x] Aligner le workflow sur le wrapper Maven et Java 26.
+- [x] Valider le wrapper et le build Maven du module racine `com.novatech.cybertech` (tests Surefire; les tests Failsafe ne sont pas activés sans le profil d'intégration).
+- [x] Mettre à jour `progress.md` avec le résultat et les prochaines étapes.
+
+## Web Push
+
+- [x] Implémenter l'entité et le dépôt d'abonnements, le service d'inscription/révocation et l'API authentifiée (JPA, repository, service, DTO, controller/spec).
+- [x] Implémenter la configuration VAPID, la validation des endpoints Web Push, le processeur push et son intégration au système de notification.
+- [x] Déclencher le push de confirmation de paiement et d'expédition uniquement après commit.
+- [x] Ajouter les tests unitaires de services/processeur/listeners et tests MVC d'abonnement; exécuter les tests ciblés puis `.\mvnw.cmd -B clean verify` (BUILD SUCCESS, 2243 tests, 0 échec, 0 erreur, 15 ignorés).
+- [x] Documenter la configuration front/VAPID requise et mettre à jour `progress.md`.
+- [ ] Intégrer le Service Worker et l'interface d'abonnement dans le dépôt frontend, configurer les clés VAPID dans Vault et valider les notifications sur un navigateur réel.
+- [ ] Vérifier le diff et l'état Git puis committer uniquement les changements de cette tâche, sans embarquer les fichiers déjà staged/non suivis.
+
+## Web Push — correctifs de revue (2026-10-14)
+
+- [x] 1. Enregistrer le fournisseur BouncyCastle (sinon chaque envoi échoue en `NoSuchProviderException`).
+- [x] 2. Un envoi par appareil (contexte de notification ciblé sur un abonnement) : un échec ne renvoie plus le push aux autres appareils.
+- [x] 3. Le push n'est plus un canal favori : toujours envoyé en plus de l'e-mail/SMS ; `PUSH_NOTIFICATION` refusé à l'inscription, repli sur EMAIL pour les comptes existants.
+- [x] 4. Envoi asynchrone avec délai maximal configurable (client HTTP async partagé + timeout ; `PushService#sendAsync` est déprécié et sans timeout).
+- [x] 5. 5 appareils maximum par utilisateur (le plus ancien est remplacé).
+- [x] 6. `PushService` construit une seule fois ; chemin de la page commande en propriété.
+- [x] 7. CVE : jose4j 0.7.9 → 0.9.7, bcprov-jdk18on 1.86, exclusion de async-http-client / jcommander (inutilisés).
+- [x] 8. Suppression : vérifier explicitement que l'abonnement appartient à l'appelant (404 / 403).
+- [x] 9a. Tests ciblés (88 verts, dont un test réel du gateway sans mock), OpenAPI régénéré, dossier Postman « Push notifications », `docs/web-push.md`.
+- [x] 9b. `mvnw test` complet (2281 tests, 0 échec), progress.md, commit.
+
+## Prompt 10 — carte enregistrée chez Stripe (2026-10-14)
+
+Estimation : tout le prompt tient dans une session (le paiement passe par un seul point,
+`PaymentServiceImp.processPayment`). Ordre : code → tests unitaires → ITs → docs → commit.
+
+- [x] 1. `StripeCardGateway` (interface + impl SDK) : Customer, SetupIntent, PaymentMethod (retrieve, attach, update, detach), défaut du Customer.
+- [x] 2. `UserEntity.stripeCustomerId` (Customer créé à la première demande, clé d'idempotence par utilisateur).
+- [x] 3. `POST /bank-card/setup-intent` → `{ clientSecret, publishableKey }` (`stripe.publishable-key`).
+- [x] 4. `POST /bank-card/add` `{ setupIntentId }` : SetupIntent du Customer de l'appelant (sinon 403) et `succeeded` (sinon 400) ; carte remplacée en place, ancienne détachée.
+- [x] 5. `BankCardEntity` : `stripePaymentMethodId` ajouté, `encryptedNumber` retiré ; script SQL (purge des cartes sans PaymentMethod + drop colonne).
+- [x] 6. `PUT /bank-card/update` et `DELETE` (utilisateur et admin) répercutés chez Stripe.
+- [x] 7. Paiement : PaymentIntent avec `customer` + `payment_method` de la carte, `off_session`, `confirm` ; `stripe.payment-method` supprimé ; `decline_code` loggé.
+- [x] 8. Sans carte utilisable : 404 `BANK_CARD_NOT_FOUND` à place / retry-payment (OpenAPI), pas au devis.
+- [x] 9. Inscription : `bankCardCreationRequestDto` retiré de `UserCreateRequestDto`.
+- [x] 10. Webhook : métadonnée `order_uuid` toujours posée (test).
+- [x] 11. Tests unitaires (processeur, service carte, gateway, controller), ITs (flux carte, commande 4242 → PAID, refus → retry → PAID), `mvnw test`.
+- [x] 12. OpenAPI, Postman, progress.md, commit (2328 tests unitaires + 82 ITs verts, gate JaCoCo OK).
+
+## Décisions de revue (2026-10-14, suite)
+
+- [x] 5. Web Push : 4xx définitifs (400, 401, 403, 413...) → notification FAILED sans retry ni rejeu batch (404/410 = abonnement supprimé, 408/429/5xx = réessayable).
+- [x] 7. Handler e-mail ORDER_UPDATE (gabarit + tests).
+- [x] 12. S3 local : LocalStack → RustFS (MinIO plus distribué) (volume persistant, console web), config, docs.
+- [x] 2. Base de dev : purge des cartes héritées + cartes de test Stripe pour les utilisateurs (script rejouable) + doc des cartes de test.
+- [x] 14. Supprimer la branche `claude/session-2026-09-25-fixes`.
+- [x] Bug Stripe `payment_method_types` corrigé, paiements réels vérifiés.
+- [x] Tests (2353 verts), progress.md, commit.
+
+## Retour à la carte saisie + règle 1111 / 0000 (2026-10-14)
+
+Décision du propriétaire : abandon de la carte enregistrée chez Stripe (prompt 10). La carte est de
+nouveau saisie, chiffrée (AES/GCM) et stockée par le backend. Stripe et le webhook restent.
+
+- [x] 1. Revert de `99abb53` (setup-intent, Customer, PaymentMethod, gateway, migration) en gardant les apports ultérieurs (push, ORDER_UPDATE, RustFS).
+- [x] 2. Règle de paiement : numéro uniquement en `1` → PaymentIntent `pm_card_visa` (réussi) ; tout autre numéro (dont `0000…`) → carte de test Stripe refusée. Webhook inchangé.
+- [x] 3. Garder : carte à l'inscription, `retry-payment` sans carte → 404 avant réservation du stock.
+- [x] 4. Base de dev : `encryptedNumber` rétabli, colonnes Stripe retirées, cartes `1111…` chiffrées pour les 7 comptes.
+- [x] 5. Docs (cartes de test, prompt 10 abandonné), OpenAPI, Postman, tests, progress.md, commit.
+
+## OrderValidationDto — extraction des données bancaires (2026-10-16)
+
+Estimation : périmètre estimé à moins de 2 h, probablement 20–30 min. Aucun sous-agent requis.
+
+- [x] `com.novatech.cybertech.dto.data` — créer `BankCardValidationDto` avec les seules données consommées par la validation (`expiryDate`).
+- [x] `OrderValidationDto`, `BankCardValidityValidator`, `OrderManagementServiceImp` — remplacer l'entité bancaire par le sous-DTO et projeter l'entité au point de construction.
+- [x] Tests : `BankCardValidityValidatorTest`, `OrderCreationTransactionalDelegateImpTest`, `ActiveUserValidatorTest`, `ChainableOrderValidatorTest` — adapter les constructions et vérifier la projection de l'expiration.
+- [x] Lancer les tests ciblés Maven (31 verts) puis `.\mvnw.cmd -B test` (2 321 tests, 0 échec, 15 ignorés).
+- [x] Actualiser `progress.md`, vérifier le diff et committer uniquement les fichiers de cette tâche.
+
+## Revalidation des attributs lors du changement de catégorie (2026-10-17)
+
+- [x] Examiner le chemin `ProductManagementServiceImp.update` et ses tests de modification de produit.
+- [x] Revalider les attributs existants contre la nouvelle catégorie quand la requête change la catégorie sans fournir `attributes`.
+- [x] Ajouter des tests pour catégorie seule (valide/invalide) et préserver le comportement de mise à jour des attributs.
+- [x] Exécuter `ProductManagementServiceImpTest` : 22 tests verts.
+- [x] Exécuter la suite complète Maven : 2 323 tests, 0 échec, 15 ignorés.
+- [x] Actualiser `progress.md`, vérifier le diff et committer uniquement les fichiers de cette correction.

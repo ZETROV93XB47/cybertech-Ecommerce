@@ -8,13 +8,14 @@ import java.math.BigDecimal;
 
 @Entity
 @Getter
+@Setter
 @SuperBuilder
-@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
 @Table(name = "orderItemTable")
-public class OrderItemEntity extends BaseEntity {
+@ToString(callSuper = true, exclude = {"orderEntity", "productEntity"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderEntity", "productEntity"})
+public class OrderItemEntity extends BaseEntity<Long> {
 
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
@@ -25,11 +26,11 @@ public class OrderItemEntity extends BaseEntity {
     @Column(name = "subtotal", precision = 10, scale = 2, nullable = false)
     private BigDecimal subtotal;
 
-    @ManyToOne(fetch = FetchType.EAGER,cascade=CascadeType.ALL)
+    @ManyToOne(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinColumn(name = "orderId", nullable = false)
     private OrderEntity orderEntity;
 
-    @ManyToOne(fetch = FetchType.EAGER,cascade=CascadeType.ALL)
+    @ManyToOne(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinColumn(name = "productEntity", nullable = false)
     private ProductEntity productEntity;
 }

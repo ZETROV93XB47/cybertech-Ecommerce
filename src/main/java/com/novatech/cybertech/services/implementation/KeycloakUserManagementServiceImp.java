@@ -1,0 +1,193 @@
+package com.novatech.cybertech.services.implementation;
+
+import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
+import com.novatech.cybertech.entities.enums.Role;
+import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
+import com.novatech.cybertech.services.core.KeycloakUserManagementService;
+import jakarta.ws.rs.core.Response;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.resource.UserResource;
+import org.keycloak.admin.client.resource.UsersResource;
+import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
+
+/**
+ * See {@link KeycloakUserManagementService} for the contract's intent.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class KeycloakUserManagementServiceImp implements KeycloakUserManagementService {
+
+    private static final String EMAIL_ALREADY_USED_MESSAGE = "An account already exists with this email";
+    private static final int MAX_USERNAME_ATTEMPTS = 5;
+    private static final int USERNAME_SUFFIX_BOUND = 10_000;
+
+    @Value("${keycloak.client.user.management.realm}")
+    private String realm;
+    private final Keycloak keycloakClient;
+
+
+    /**
+     * A Keycloak 409 means either the email or the username is taken. A taken email is a real
+     * duplicate account → {@link UserAlreadyExistsException} (409 USER_ALREADY_EXISTS). A taken
+     * username only means another person shares the same first/last name (the username is derived
+     * from them), which must not block sign-up → retry with a random numeric suffix.
+     */
+    @Override
+    public String createUser(String email, String firstName, String lastName, String rawPassword, Role role) {
+
+        final UsersResource users = keycloakClient.realm(realm).users();
+
+        UserRepresentation userRepresentation = getUserRepresentation(email, firstName, lastName, rawPassword);
+        final String baseUsername = userRepresentation.getUsername();
+
+        for (int attempt = 1; ; attempt++) {
+            try (Response resp = users.create(userRepresentation)) {
+                if (resp.getStatus() != Response.Status.CONFLICT.getStatusCode()) {
+                    return handleCreateResponse(users, resp, role);
+                }
+                if (searchByEmail(email).isPresent()) {
+                    throw new UserAlreadyExistsException(EMAIL_ALREADY_USED_MESSAGE);
+                }
+                if (attempt >= MAX_USERNAME_ATTEMPTS) {
+                    throw new IllegalStateException("Keycloak user creation failed: no free username derived from '" + baseUsername + "' after " + attempt + " attempts");
+                }
+                log.info("Keycloak username '{}' already taken — retrying with a suffix", userRepresentation.getUsername());
+                userRepresentation.setUsername(baseUsername + "." + ThreadLocalRandom.current().nextInt(USERNAME_SUFFIX_BOUND));
+            }
+        }
+    }
+
+    private String handleCreateResponse(final UsersResource users, final Response resp, final Role role) {
+        if (resp.getStatus() != 201) {
+            String msg = resp.readEntity(String.class);
+            throw new IllegalStateException("Keycloak user creation failed: " + resp.getStatus() + " " + msg);
+        }
+
+        // L’ID est dans le Location header: .../users/{id}
+        if (resp.getLocation() == null) {
+            throw new IllegalStateException("Keycloak user creation returned 201 but no Location header");
+        }
+
+        String userId = getUserKeycloakId(resp.getLocation().toString());
+
+        log.info("userID : {}", userId);
+
+        RoleRepresentation userRole = keycloakClient.realm(realm)
+                .roles()
+                .get(role.name())
+                .toRepresentation();
+
+        log.info("userRole : {}", userRole);
+
+        users.get(userId).roles().realmLevel().add(List.of(userRole));
+        return userId;
+    }
+
+    private static String getUserKeycloakId(String locationHeaderValue) {
+        return locationHeaderValue.substring(locationHeaderValue.lastIndexOf('/') + 1);
+    }
+
+    private UserRepresentation getUserRepresentation(String email, String firstName, String lastName, String rawPassword) {
+        UserRepresentation userRepresentation = new UserRepresentation();
+        userRepresentation.setUsername(createUserNameFromFirstNameAndLastName(firstName, lastName, email));
+        userRepresentation.setEmail(email);
+        userRepresentation.setFirstName(firstName);
+        userRepresentation.setLastName(lastName);
+        userRepresentation.setEnabled(true);
+        userRepresentation.setEmailVerified(true);
+
+        CredentialRepresentation cred = new CredentialRepresentation();
+        cred.setType(CredentialRepresentation.PASSWORD);
+        cred.setTemporary(false);
+        cred.setValue(rawPassword);
+        userRepresentation.setCredentials(List.of(cred));
+        return userRepresentation;
+    }
+
+    /**
+     * Idempotent (404-tolerant) delete. The outbox reconciliation job may re-issue a delete for a
+     * user already removed by the synchronous path — a 404 from Keycloak therefore counts as
+     * success. Any other non-2xx status is surfaced (it would previously be silently swallowed
+     * because the returned {@link Response} was never inspected).
+     */
+    @Override
+    public void deleteUser(String keycloakUserId) {
+        try (Response resp = keycloakClient.realm(realm).users().delete(keycloakUserId)) {
+            final int status = resp.getStatus();
+            if (status == Response.Status.NOT_FOUND.getStatusCode()) {
+                log.info("Keycloak user {} already absent on delete — treating as done (idempotent)", keycloakUserId);
+            } else if (status >= 400) {
+                throw new IllegalStateException("Keycloak user delete failed: " + status);
+            }
+        }
+    }
+
+    /**
+     * Reconciliation lookup: resolve a Keycloak user id by exact email, or empty if none.
+     * Used by the outbox job to detect a crash-orphan (Keycloak user with no DB row).
+     */
+    @Override
+    public Optional<String> searchByEmail(final String email) {
+        return keycloakClient.realm(realm).users().searchByEmail(email, true).stream()
+                .findFirst()
+                .map(UserRepresentation::getId);
+    }
+
+    private String createUserNameFromFirstNameAndLastName(final String firstName, final String lastName, final String email) {
+        if ((!StringUtils.isEmpty(firstName)) && (!StringUtils.isEmpty(lastName))) {
+            return firstName.trim().toLowerCase() + "." + lastName.trim().toLowerCase();
+        }
+        return email.split("@")[0];
+    }
+
+    @Override
+    public void updateUser(String keycloakId, UserUpdateRequestDto userUpdateRequestDto) {
+        UserResource userResource = keycloakClient.realm(realm).users().get(keycloakId);
+        UserRepresentation userRep = userResource.toRepresentation();
+
+        if (userUpdateRequestDto.getFirstName() != null) userRep.setFirstName(userUpdateRequestDto.getFirstName());
+        if (userUpdateRequestDto.getLastName() != null) userRep.setLastName(userUpdateRequestDto.getLastName());
+        if (userUpdateRequestDto.getEmail() != null) userRep.setEmail(userUpdateRequestDto.getEmail());
+
+        userResource.update(userRep);
+
+        if (userUpdateRequestDto.getRole() != null) {
+            replaceRealmRole(keycloakId, userUpdateRequestDto.getRole());
+        }
+    }
+
+    /**
+     * Swaps the user's single managed realm role for {@code role}. Every {@link Role} value is
+     * removed first — Keycloak silently no-ops removing a role the user doesn't currently hold —
+     * so a user never ends up holding both USER and ADMIN at once, regardless of which one they
+     * started with.
+     */
+    private void replaceRealmRole(final String keycloakId, final Role role) {
+        final var realmRoles = keycloakClient.realm(realm).roles();
+        final List<RoleRepresentation> managedRoles = Arrays.stream(Role.values())
+                .map(r -> realmRoles.get(r.name()).toRepresentation())
+                .toList();
+
+        final var userRealmRoles = keycloakClient.realm(realm).users().get(keycloakId).roles().realmLevel();
+        userRealmRoles.remove(managedRoles);
+
+        final RoleRepresentation target = managedRoles.stream()
+                .filter(r -> r.getName().equals(role.name()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Realm role not found: " + role.name()));
+        userRealmRoles.add(List.of(target));
+    }
+}

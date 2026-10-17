@@ -1,0 +1,14 @@
+# Dashboards-as-code: each JSON in ../dashboards/ is loaded into a single
+# ConfigMap and mounted at /var/lib/grafana/dashboards. The dashboards
+# provider above (file type) picks them up on Grafana startup.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  labels:
+    app: grafana
+data:
+{{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}

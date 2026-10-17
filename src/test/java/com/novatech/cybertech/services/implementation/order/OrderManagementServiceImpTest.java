@@ -1,0 +1,1626 @@
+package com.novatech.cybertech.services.implementation.order;
+
+import com.novatech.cybertech.dto.data.OrderEventDto;
+import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
+import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
+import com.novatech.cybertech.entities.BankCardEntity;
+import com.novatech.cybertech.entities.CartEntity;
+import com.novatech.cybertech.entities.CartItemEntity;
+import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.OrderItemEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
+import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.PaymentType;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.enums.TransactionType;
+import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
+import com.novatech.cybertech.entities.valueObjects.Money;
+import com.novatech.cybertech.events.OrderCreatedEvent;
+import com.novatech.cybertech.events.OrderUpdatedEvent;
+import com.novatech.cybertech.exceptions.BankCardNotFoundException;
+import com.novatech.cybertech.exceptions.CannotCancelOrderException;
+import com.novatech.cybertech.exceptions.CartIsEmptyException;
+import com.novatech.cybertech.exceptions.FailedRetryingPayment;
+import com.novatech.cybertech.exceptions.NoPreviousPaymentAttemptException;
+import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
+import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
+import com.novatech.cybertech.exceptions.PaymentAlreadyCompletedForThisOrderException;
+import com.novatech.cybertech.exceptions.PaymentFailedException;
+import com.novatech.cybertech.exceptions.PaymentProcessingException;
+import com.novatech.cybertech.exceptions.OrderNotFoundException;
+import com.novatech.cybertech.exceptions.OrderNotFundedException;
+import com.novatech.cybertech.exceptions.OrderRefundFailedException;
+import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.exceptions.UserNotFoundException;
+import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.CartEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.CartItemEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.OrderItemEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
+import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
+import com.novatech.cybertech.mappers.entity.OrderMapper;
+import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.repositories.ProductRepository;
+import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.CartService;
+import com.novatech.cybertech.services.core.IdempotencyKeyServiceGenerator;
+import com.novatech.cybertech.services.core.OrderCancellationTransactionalDelegate;
+import com.novatech.cybertech.services.core.OrderCreationTransactionalDelegate;
+import com.novatech.cybertech.services.core.OrderPriceCalculationService;
+import com.novatech.cybertech.services.core.PaymentService;
+import com.novatech.cybertech.services.core.StockService;
+import com.novatech.cybertech.services.implementation.OrderManagementServiceImp;
+import com.novatech.cybertech.validator.core.OrderValidator;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * Mockito unit tests for {@link OrderManagementServiceImp}.
+ *
+ * <p>Recreates the full order-service test surface (50 tests in 7 nested groups) and re-verifies
+ * the stock-release-on-payment-failure fix (2026-04-23). The brief
+ * mentioned an {@code OrderPriceCalculationService} dependency, but the actual
+ * production source on this branch does NOT inject it — only the original 9 dependencies remain
+ * ({@link OrderMapper}, {@link StockService}, {@link PaymentService}, {@link UserRepository},
+ * {@link OrderRepository}, {@link ProductRepository}, {@link OrderValidator},
+ * {@link ApplicationEventPublisher}, {@link IdempotencyKeyServiceGenerator}). Trusting the source
+ * over the brief, we mock only the actual constructor deps.</p>
+ */
+@ExtendWith(MockitoExtension.class)
+class OrderManagementServiceImpTest {
+
+    @Mock OrderMapper orderMapper;
+    @Mock CartService cartService;
+    @Mock StockService stockService;
+    @Mock PaymentService paymentService;
+    @Mock UserRepository userRepository;
+    @Mock OrderRepository orderRepository;
+    @Mock ProductRepository productRepository;
+    @Mock OrderValidator orderValidator;
+    @Mock ApplicationEventPublisher eventPublisher;
+    @Mock IdempotencyKeyServiceGenerator idempotencyKeyService;
+    @Mock OrderPriceCalculationService orderPriceCalculationService;
+    @Mock OrderCancellationTransactionalDelegate orderCancellationTransactionalDelegate;
+    @Mock OrderCreationTransactionalDelegate orderCreationTransactionalDelegate;
+
+    @InjectMocks OrderManagementServiceImp service;
+
+    Jwt jwt;
+    String keycloakId;
+
+    @BeforeEach
+    void setUp() {
+        keycloakId = "kc-" + UUID.randomUUID();
+        jwt = mock(Jwt.class);
+        lenient().when(jwt.getSubject()).thenReturn(keycloakId);
+
+        // Both overloads stubbed lenient — placeOrder/updateOrder use (String,List<String>),
+        // retryPayment uses (String,String).
+        lenient().when(idempotencyKeyService.generateKey(anyString(), anyList()))
+                .thenReturn("idem-key-list");
+        lenient().when(idempotencyKeyService.generateKey(anyString(), anyString()))
+                .thenReturn("idem-key-str");
+
+        // Mapper just needs to return SOMETHING non-null when service maps the saved entity for the response.
+        lenient().when(orderMapper.mapFromEntityToResponseDto(any(OrderEntity.class)))
+                .thenReturn(OrderDtoFixtures.aSampleOrderResponse());
+
+        // Default stub for orderPriceCalculationService — tests that need a specific amount override this.
+        // Includes a non-null shippingCost reflecting the SHIPPING-INT integration so any consumer that
+        // starts reading getShippingCost() will see a deterministic value.
+        lenient().when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class)))
+                .thenReturn(PriceCalculationResultDto.builder()
+                        .baseAmount(new BigDecimal("10.00"))
+                        .discountAmount(BigDecimal.ZERO)
+                        .shippingCost(new BigDecimal("5.00"))
+                        .finalAmount(new BigDecimal("10.00"))
+                        .currencyCode(CurrencyCode.EUR)
+                        .discountKey(NO_DISCOUNT_KEY)
+                        .build());
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        // The admin-bypass tests below mutate the SecurityContextHolder to inject ROLE_ADMIN.
+        // Clearing here keeps those mutations from leaking into sibling tests / parallel runs.
+        SecurityContextHolder.clearContext();
+    }
+
+    /**
+     * Helper to install an authentication carrying the requested role into the
+     * {@link SecurityContextHolder} — drives {@code OrderManagementServiceImp.isCurrentCallerAdmin()}.
+     */
+    private static void setAuthenticatedRole(final String role) {
+        final TestingAuthenticationToken auth = new TestingAuthenticationToken("test-user", "n/a", role);
+        auth.setAuthenticated(true);
+        final SecurityContext ctx = SecurityContextHolder.createEmptyContext();
+        ctx.setAuthentication(auth);
+        SecurityContextHolder.setContext(ctx);
+    }
+
+    // ---- helpers --------------------------------------------------------
+
+    // CartItemEntity carries no price of its own — the line's price is always the linked
+    // product's live price, so this helper takes no separate unitPrice parameter.
+    private UserEntity userWithCart(final ProductEntity product, final int quantity) {
+        final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                .keycloakId(keycloakId)
+                .bankCardEntity(BankCardEntityBuilder.aValidBankCard())
+                .build();
+        final CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder()
+                .productEntity(product)
+                .quantity(quantity)
+                .build();
+        final CartEntity cart = CartEntityBuilder.aValidCartBuilder()
+                .userEntity(user)
+                .cartItems(new ArrayList<>(List.of(item)))
+                .build();
+        user.setCartEntity(cart);
+        return user;
+    }
+
+    // Represents what OrderCreationTransactionalDelegate.createAndReserveStock would have
+    // returned — used by placeOrder's orchestration-only tests (see PlaceOrder / CrossCutting).
+    private OrderEntity placedOrder(final ProductEntity product, final int quantity, final Money total) {
+        final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                .keycloakId(keycloakId)
+                .bankCardEntity(BankCardEntityBuilder.aValidBankCard())
+                .build();
+        final OrderItemEntity item = OrderItemEntityBuilder.aValidOrderItemBuilder()
+                .productEntity(product).quantity(quantity).build();
+        return OrderEntityBuilder.aValidOrderBuilder()
+                .userEntity(user)
+                .status(OrderStatus.AWAITING_PAYMENT)
+                .totalAmount(total)
+                .orderItemEntities(new ArrayList<>(List.of(item)))
+                .build();
+    }
+
+    private PaymentEntity paymentWith(final PaymentAttemptStatus status, final TransactionType transactionType,
+                                       final PaymentType type, final Money amount, final LocalDateTime createdAt) {
+        return PaymentEntityBuilder.aValidPaymentBuilder()
+                .status(status)
+                .transactionType(transactionType)
+                .paymentType(type)
+                .amount(amount)
+                .createdAt(createdAt)
+                .build();
+    }
+
+    private OrderResponseDto stubMappedResponse() {
+        return OrderDtoFixtures.aSampleOrderResponse();
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("placeOrder")
+    class PlaceOrder {
+
+        // OrderManagementServiceImp.placeOrder no longer builds the order itself — it delegates
+        // to OrderCreationTransactionalDelegate (see OrderCreationTransactionalDelegateImpTest for
+        // cart/validator/pricing/stock-reservation coverage) and only orchestrates the payment
+        // attempt + failure compensation + event publishing around whatever order comes back
+        // (see the outer class's placedOrder(...) helper).
+
+        @Test
+        @DisplayName("happy path: delegates order creation, processes payment, publishes event, in order")
+        void happyPath_delegatesProcessesPaysAndPublishes_inOrder() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("50.00")).build();
+            final Money total = new Money(new BigDecimal("100.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 2, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(OrderPlacingRequestDto.class), eq(keycloakId)))
+                    .thenReturn(order);
+
+            final PaymentEntity attempt = paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT,
+                    PaymentType.VISA, total, LocalDateTime.now());
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(attempt);
+
+            final OrderResponseDto resp = service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
+
+            assertThat(resp).isNotNull();
+
+            final InOrder ord = inOrder(orderCreationTransactionalDelegate, cartService, paymentService, eventPublisher);
+            ord.verify(orderCreationTransactionalDelegate).createAndReserveStock(any(OrderPlacingRequestDto.class), eq(keycloakId));
+            // Cart cache refreshed once the creation transaction (which emptied the cart) committed.
+            ord.verify(cartService).clearCart(keycloakId);
+            ord.verify(paymentService).processPayment(eq(order), any(), eq(total), anyString());
+            ord.verify(eventPublisher).publishEvent(any(OrderCreatedEvent.class));
+            verify(stockService, never()).releaseStock(any());
+        }
+
+        @Test
+        @DisplayName("null JWT subject throws UserNotFoundException without ever calling the creation delegate")
+        void placeOrder_nullJwtSubject_shouldThrowUserNotFound() {
+            when(jwt.getSubject()).thenReturn(null);
+
+            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
+                    .isInstanceOf(UserNotFoundException.class)
+                    .hasMessageContaining("JWT subject missing");
+
+            verifyNoInteractions(orderCreationTransactionalDelegate, paymentService, eventPublisher);
+        }
+
+        @Test
+        @DisplayName("creation delegate exception (empty cart, no bank card, validator rejects, stock unavailable, ...) propagates untouched")
+        void delegateException_propagates_noPaymentNoEvent() {
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId)))
+                    .thenThrow(new CartIsEmptyException("Cannot place order: Cart is empty"));
+
+            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
+                    .isInstanceOf(CartIsEmptyException.class);
+
+            verifyNoInteractions(paymentService, eventPublisher, stockService, cartService);
+        }
+
+        @Test
+        @DisplayName("payment FAILED (business decline) releases stock reservation, event published with FAILED status")
+        void paymentFailure_releasesStockReservation() {
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
+
+            final PaymentEntity failed = paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT,
+                    PaymentType.VISA, total, LocalDateTime.now());
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(failed);
+
+            service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
+
+            verify(stockService).releaseStock(order.getUuid());
+            final ArgumentCaptor<OrderCreatedEvent> evtCap = ArgumentCaptor.forClass(OrderCreatedEvent.class);
+            verify(eventPublisher).publishEvent(evtCap.capture());
+            assertThat(evtCap.getValue().getOrderEventDto().getPaymentAttemptStatus())
+                    .isEqualTo(PaymentAttemptStatus.FAILED);
+        }
+
+        @Test
+        @DisplayName("payment SUCCESS does not release stock")
+        void paymentSuccess_doesNotReleaseStock() {
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA, total, LocalDateTime.now()));
+
+            service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
+
+            verify(stockService, never()).releaseStock(any());
+        }
+
+        /**
+         * Regression test for the bug documented in progress.md: {@code PaymentServiceImp.processPayment}
+         * is itself {@code @Transactional} and used to PARTICIPATE in {@code placeOrder}'s own
+         * transaction — a {@link PaymentProcessingException} (Stripe infra failure, not a business
+         * decline) marked that shared transaction rollback-only before {@code placeOrder} could ever
+         * react, wiping the order that had just been created. Now that order creation commits on its
+         * own bean ({@link OrderCreationTransactionalDelegate}) before payment is attempted, the same
+         * exception can only degrade the outcome to the same AWAITING_PAYMENT/released-stock state a
+         * business decline already gets — the order itself must survive.
+         */
+        @Test
+        @DisplayName("Stripe infra failure (PaymentProcessingException) does not roll back the order — releases stock, degrades to FAILED, returns normally")
+        void stripeInfraFailure_degradesGracefully_orderSurvives() {
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenThrow(new PaymentProcessingException("Stripe unavailable", null));
+
+            final OrderResponseDto resp = service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
+
+            // Does NOT throw — the already-committed order is returned, not lost.
+            assertThat(resp).isNotNull();
+            verify(stockService).releaseStock(order.getUuid());
+            final ArgumentCaptor<OrderCreatedEvent> evtCap = ArgumentCaptor.forClass(OrderCreatedEvent.class);
+            verify(eventPublisher).publishEvent(evtCap.capture());
+            assertThat(evtCap.getValue().getOrderEventDto().getPaymentAttemptStatus())
+                    .isEqualTo(PaymentAttemptStatus.FAILED);
+        }
+
+        @Test
+        @DisplayName("a non-PaymentProcessingException from processPayment still propagates (catch is narrowly scoped)")
+        void otherPaymentException_stillPropagates() {
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenThrow(new PaymentAlreadyCompletedForThisOrderException("already completed"));
+
+            assertThatThrownBy(() -> service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt))
+                    .isInstanceOf(PaymentAlreadyCompletedForThisOrderException.class);
+
+            verify(stockService, never()).releaseStock(any());
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("idempotency key context includes productUuid:quantity from the order's own persisted items")
+        void idempotencyKey_derivedFromOrderItemsWithQuantity() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().build();
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 3, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA, total, LocalDateTime.now()));
+
+            service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
+
+            @SuppressWarnings("unchecked")
+            final ArgumentCaptor<List<String>> contextCap = ArgumentCaptor.forClass(List.class);
+            verify(idempotencyKeyService).generateKey(eq(order.getUuid().toString()), contextCap.capture());
+            assertThat(contextCap.getValue()).containsExactly(product.getUuid() + ":3");
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("cancelOrder — delegation to OrderCancellationTransactionalDelegate")
+    class CancelOrder {
+        // The cancellation read-modify-write (ownership/status guards, refund, stock release,
+        // idempotency) now lives in OrderCancellationTransactionalDelegateImp — see
+        // OrderCancellationTransactionalDelegateTest for that coverage. @Retryable is inert under
+        // plain Mockito (no Spring AOP proxy), so these tests only verify the delegation wiring;
+        // the actual retry-on-OptimisticLockingFailureException behavior is exercised by
+        // OrderFlowIT.cancelOrderRestoresStockAndMovesStatusToCanceled against a real Spring context.
+
+        @Test
+        @DisplayName("delegates to cancelWithinTransaction and returns its result")
+        void delegates_returnsResult() {
+            final UUID uuid = UUID.randomUUID();
+            final OrderResponseDto expected = OrderDtoFixtures.aSampleOrderResponse();
+            when(orderCancellationTransactionalDelegate.cancelWithinTransaction(uuid, jwt)).thenReturn(expected);
+
+            final OrderResponseDto result = service.cancelOrder(uuid, jwt);
+
+            assertThat(result).isSameAs(expected);
+            verify(orderCancellationTransactionalDelegate).cancelWithinTransaction(uuid, jwt);
+        }
+
+        @Test
+        @DisplayName("propagates exceptions thrown by the delegate")
+        void delegates_propagatesException() {
+            final UUID uuid = UUID.randomUUID();
+            when(orderCancellationTransactionalDelegate.cancelWithinTransaction(uuid, jwt))
+                    .thenThrow(new CannotCancelOrderException("Order is already shipped and can't be cancelled, please consider initiating Return process"));
+
+            assertThatThrownBy(() -> service.cancelOrder(uuid, jwt))
+                    .isInstanceOf(CannotCancelOrderException.class);
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("updateOrder")
+    class UpdateOrder {
+
+        private OrderEntity prepareOrder(final OrderStatus status, final BigDecimal totalAmount,
+                                          final List<PaymentEntity> attempts) {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                    .keycloakId(keycloakId)
+                    .bankCardEntity(BankCardEntityBuilder.aValidBankCard())
+                    .build();
+            return OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(user)
+                    .status(status)
+                    .totalAmount(new Money(totalAmount, CurrencyCode.EUR))
+                    .orderItemEntities(new ArrayList<>())
+                    .paymentAttempts(attempts == null ? new ArrayList<>() : new ArrayList<>(attempts))
+                    .build();
+        }
+
+        private OrderUpdateRequestDto requestFor(final UUID orderUuid, final ProductEntity product, final int qty) {
+            final OrderItemCreateRequestDto item = OrderItemCreateRequestDto.builder()
+                    .productUuid(product.getUuid())
+                    .quantity(qty)
+                    .build();
+            return OrderDtoFixtures.aValidUpdateRequestBuilder()
+                    .uuid(orderUuid)
+                    .itemUpdateRequestDtoList(List.of(item))
+                    .build();
+        }
+
+        @Test
+        @DisplayName("no requested product UUID matches -> ProductNotFoundException, order untouched")
+        void noMatchingProducts_throwsProductNotFoundException() {
+            // Regression test: findAllByUuidIn silently drops unmatched UUIDs instead of
+            // erroring, so a request whose product UUIDs don't exist anymore used to fall
+            // through to a zero-amount price calc and flip the order to PAID for free.
+            final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, new BigDecimal("100.00"), null);
+            final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                    .uuid(order.getUuid())
+                    .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder()
+                            .productUuid(UUID.randomUUID())
+                            .quantity(1)
+                            .build()))
+                    .build();
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of());
+
+            assertThatThrownBy(() -> service.updateOrder(req, jwt))
+                    .isInstanceOf(ProductNotFoundException.class);
+
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+            verifyNoInteractions(paymentService);
+            verify(stockService, never()).commitStock(any());
+            verify(stockService, never()).resizeReservation(any(), any());
+            verify(stockService, never()).releaseStock(any());
+            verify(orderRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("zero-delta: total unchanged -> commitStock called and status forced to PAID")
+        void zeroDelta_commitsStockAndForcesPaid() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("100.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("100.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("100.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+
+            final OrderUpdateRequestDto req = requestFor(order.getUuid(), product, 1);
+            service.updateOrder(req, jwt);
+
+            verify(stockService).commitStock(order.getUuid());
+            verify(stockService).resizeReservation(eq(order.getUuid()), any());
+            verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
+            verify(paymentService, never()).refund(any(), any(), any(), anyString());
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+        }
+
+        @Test
+        @DisplayName("zero-delta on a never-funded order (0 paid, 0 total) -> OrderNotFundedException, no PAID for free")
+        void zeroDeltaNeverFunded_throwsOrderNotFunded() {
+            // Belt-and-suspenders on top of the ProductNotFoundException/@NotEmpty guards above:
+            // even if a zero total legitimately reaches this branch (e.g. a free product), the
+            // order must never flip to PAID unless a prior successful payment actually funds it.
+            final ProductEntity freeProduct = ProductEntityBuilder.aValidProductBuilder().price(BigDecimal.ZERO).build();
+            final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, BigDecimal.ZERO, null);
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(freeProduct));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(BigDecimal.ZERO).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+
+            assertThatThrownBy(() -> service.updateOrder(requestFor(order.getUuid(), freeProduct, 1), jwt))
+                    .isInstanceOf(OrderNotFundedException.class);
+
+            // Shipping/items were already persisted (step 4/5 of updateOrder) before this guard
+            // runs, but the order must never be flipped to PAID without a funding payment.
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+            verify(stockService, never()).commitStock(any());
+        }
+
+        @Test
+        @DisplayName("positive-delta: amount higher -> processPayment for the difference, status AWAITING_PAYMENT")
+        void positiveDelta_processesPayment() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("150.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            final ArgumentCaptor<Money> moneyCap = ArgumentCaptor.forClass(Money.class);
+            verify(paymentService).processPayment(eq(order), eq(PaymentType.VISA), moneyCap.capture(), anyString());
+            assertThat(moneyCap.getValue().getAmount()).isEqualByComparingTo("50.00");
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+            verify(stockService, never()).commitStock(any());
+        }
+
+        @Test
+        @DisplayName("negative-delta: amount lower -> refund for the absolute difference")
+        void negativeDelta_refunds() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("40.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+            when(paymentService.refund(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
+                            new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            final ArgumentCaptor<Money> moneyCap = ArgumentCaptor.forClass(Money.class);
+            verify(paymentService).refund(eq(order), eq(PaymentType.VISA), moneyCap.capture(), anyString());
+            assertThat(moneyCap.getValue().getAmount()).isEqualByComparingTo("60.00"); // abs diff
+            verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
+        }
+
+        @Test
+        @DisplayName("negative-delta: refund uses the ORIGINAL payment's stored idempotency key, not one recomputed from the updated item list")
+        void negativeDelta_refundUsesOriginalPaymentIdempotencyKey() {
+            // Regression test for the bug documented in progress.md: refund() looks up the
+            // Stripe PaymentIntent to refund against via findByIdempotencyKey(key) — passing a
+            // freshly recomputed key (from the post-update item list) almost never matches the
+            // stored PaymentEntity row, throwing PaymentNotFoundException instead of refunding.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("40.00")).build();
+            final PaymentEntity originalPayment = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS)
+                    .transactionType(TransactionType.PAYMENT)
+                    .paymentType(PaymentType.VISA)
+                    .amount(new Money(new BigDecimal("100.00"), CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now())
+                    .idempotencyKey("idem-original-payment-key")
+                    .build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"), List.of(originalPayment));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+            when(paymentService.refund(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
+                            new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            verify(paymentService).refund(eq(order), eq(PaymentType.VISA), any(Money.class), eq("idem-original-payment-key"));
+        }
+
+        @Test
+        @DisplayName("negative-delta refund rejected by Stripe -> OrderRefundFailedException aborts the update, no event")
+        void negativeDelta_refundRejected_throwsOrderRefundFailed() {
+            // Regression: the refund result used to be ignored — items/total shrank while the
+            // customer was never refunded. Mirrors cancelOrder's guard.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("40.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+            when(paymentService.refund(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.FAILED, TransactionType.REFUND, PaymentType.VISA,
+                            new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            assertThatThrownBy(() -> service.updateOrder(requestFor(order.getUuid(), product, 1), jwt))
+                    .isInstanceOf(OrderRefundFailedException.class);
+
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("negative-delta larger than the newest payment -> refund split across payments, newest first, each against its own key")
+        void negativeDelta_splitAcrossPayments() {
+            // Order paid 100, then +50 by an earlier update, now reduced to 40: 110 to refund.
+            // Refunding it all against the 50 charge (the old behaviour) is rejected by Stripe.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("40.00")).build();
+            final PaymentEntity original = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS).transactionType(TransactionType.PAYMENT).paymentType(PaymentType.VISA)
+                    .amount(new Money(new BigDecimal("100.00"), CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now().minusDays(2)).idempotencyKey("idem-original").build();
+            final PaymentEntity complement = PaymentEntityBuilder.aValidPaymentBuilder()
+                    .status(PaymentAttemptStatus.SUCCESS).transactionType(TransactionType.PAYMENT).paymentType(PaymentType.VISA)
+                    .amount(new Money(new BigDecimal("50.00"), CurrencyCode.EUR))
+                    .createdAt(LocalDateTime.now().minusDays(1)).idempotencyKey("idem-complement").build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("150.00"), List.of(original, complement));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("40.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("40.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+            when(paymentService.refund(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
+                            new Money(new BigDecimal("1.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            final ArgumentCaptor<Money> moneyCap = ArgumentCaptor.forClass(Money.class);
+            final ArgumentCaptor<String> keyCap = ArgumentCaptor.forClass(String.class);
+            verify(paymentService, org.mockito.Mockito.times(2)).refund(eq(order), eq(PaymentType.VISA), moneyCap.capture(), keyCap.capture());
+            assertThat(keyCap.getAllValues()).containsExactly("idem-complement", "idem-original");
+            assertThat(moneyCap.getAllValues().get(0).getAmount()).isEqualByComparingTo("50.00");
+            assertThat(moneyCap.getAllValues().get(1).getAmount()).isEqualByComparingTo("60.00");
+        }
+
+        @Test
+        @DisplayName("positive-delta declined (card refused) -> PaymentFailedException aborts the whole update, no event")
+        void positiveDelta_declined_throwsPaymentFailed() {
+            // Throwing is what makes the @Transactional updateOrder roll back the new items/total,
+            // the AWAITING_PAYMENT flip and the stock resize: a PAID order must stay PAID with its
+            // original items instead of being turned into PAYMENT_FAILED by the webhook.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("150.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            assertThatThrownBy(() -> service.updateOrder(requestFor(order.getUuid(), product, 1), jwt))
+                    .isInstanceOf(PaymentFailedException.class)
+                    .hasMessageContaining("declined");
+
+            verifyNoInteractions(eventPublisher);
+            verify(stockService, never()).commitStock(any());
+        }
+
+        @Test
+        @DisplayName("positive-delta still PROCESSING at Stripe -> not treated as a decline, update goes through")
+        void positiveDelta_processing_isNotADecline() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("150.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.PROCESSING, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            verify(eventPublisher).publishEvent(any(OrderUpdatedEvent.class));
+        }
+
+        @Test
+        @DisplayName("complement idempotency key is per-attempt: context = productUuid:qty + update marker + timestamp")
+        void positiveDelta_idempotencyKeyIsPerAttempt() {
+            // A stable composition-only key made Stripe replay a cached decline for 24h on any new
+            // attempt for the same items, and collided with the placeOrder key for unchanged items.
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("150.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("100.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("150.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("150.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+            when(paymentService.processPayment(any(), any(), any(), anyString()))
+                    .thenReturn(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("50.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.updateOrder(requestFor(order.getUuid(), product, 2), jwt);
+
+            @SuppressWarnings("unchecked")
+            final ArgumentCaptor<List<String>> contextCap = ArgumentCaptor.forClass(List.class);
+            verify(idempotencyKeyService).generateKey(eq(order.getUuid().toString()), contextCap.capture());
+            assertThat(contextCap.getValue())
+                    .hasSize(3)
+                    .contains(product.getUuid() + ":2", "update");
+        }
+
+        @Test
+        @DisplayName("not found throws OrderNotFoundException")
+        void notFound_throws() {
+            final UUID missing = UUID.randomUUID();
+            when(orderRepository.lockByUuid(missing)).thenReturn(Optional.empty());
+            final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder().uuid(missing).build();
+
+            assertThatThrownBy(() -> service.updateOrder(req, jwt))
+                    .isInstanceOf(OrderNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("wrong user throws OrderDoesntBelongsToUserException")
+        void wrongUser_throws() {
+            final UserEntity foreigner = UserEntityBuilder.aValidUserBuilder().keycloakId("foreign").build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder().userEntity(foreigner).build();
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() ->
+                    service.updateOrder(OrderDtoFixtures.aValidUpdateRequestBuilder().uuid(order.getUuid()).build(), jwt))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+
+            verifyNoInteractions(stockService, paymentService);
+        }
+
+        @Test
+        @DisplayName("already-shipped throws OrderAlreadyShippedException without releasing stock")
+        void alreadyShipped_throws() {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(user).status(OrderStatus.SHIPPED).build();
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() ->
+                    service.updateOrder(OrderDtoFixtures.aValidUpdateRequestBuilder().uuid(order.getUuid()).build(), jwt))
+                    .isInstanceOf(OrderAlreadyShippedException.class);
+
+            verifyNoInteractions(stockService, paymentService);
+        }
+
+        @Test
+        @DisplayName("paidAmount nets out refunds: prior PAYMENT 100 + REFUND 30 -> paid=70")
+        void paidAmountNetsOutRefunds() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("70.00")).build();
+            // 70 (new total) - 70 (paid: 100 - 30) = 0 difference -> commit branch
+            final List<PaymentEntity> attempts = List.of(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now()),
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.REFUND, PaymentType.VISA,
+                            new Money(new BigDecimal("30.00"), CurrencyCode.EUR), LocalDateTime.now()));
+            final OrderEntity order = prepareOrder(OrderStatus.PAID, new BigDecimal("70.00"), attempts);
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("70.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("70.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+
+            service.updateOrder(requestFor(order.getUuid(), product, 1), jwt);
+
+            verify(stockService).commitStock(order.getUuid());
+            verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
+            verify(paymentService, never()).refund(any(), any(), any(), anyString());
+        }
+
+        @Test
+        @DisplayName("product missing from fetched products: silently treated as 0 in total computation")
+        void productMissingFromFetch_throwsProductNotFoundException() {
+            // Superseded 2026-09: this used to pin the buggy "silently treat as zero
+            // and force PAID" behaviour covered by noMatchingProducts_throwsProductNotFoundException
+            // above. Kept here as its own scenario (requested UUID that simply isn't found, as
+            // opposed to an all-UUIDs-missing list) to lock in the fix from both angles.
+            final UUID requestedProductUuid = UUID.randomUUID();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                    .keycloakId(keycloakId)
+                    .bankCardEntity(BankCardEntityBuilder.aValidBankCard())
+                    .build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(user)
+                    .status(OrderStatus.AWAITING_PAYMENT)
+                    .totalAmount(new Money(BigDecimal.ZERO, CurrencyCode.EUR))
+                    .paymentAttempts(new ArrayList<>())
+                    .build();
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of()); // empty!
+
+            final OrderItemCreateRequestDto item = OrderItemCreateRequestDto.builder()
+                    .productUuid(requestedProductUuid).quantity(2).build();
+            final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                    .uuid(order.getUuid()).itemUpdateRequestDtoList(List.of(item)).build();
+
+            assertThatThrownBy(() -> service.updateOrder(req, jwt))
+                    .isInstanceOf(ProductNotFoundException.class);
+
+            verify(stockService, never()).commitStock(any());
+            verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
+            verify(paymentService, never()).refund(any(), any(), any(), anyString());
+            verify(orderRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("address, total and shipping fields are updated on the order before save")
+        void updatesAddressTotalAndStatus() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().price(new BigDecimal("99.00")).build();
+            final OrderEntity order = prepareOrder(OrderStatus.AWAITING_PAYMENT, new BigDecimal("99.00"),
+                    List.of(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("99.00"), CurrencyCode.EUR), LocalDateTime.now())));
+            when(orderRepository.lockByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(productRepository.findAllByUuidIn(any())).thenReturn(List.of(product));
+            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(orderPriceCalculationService.calculate(any(PriceCalculationRequestDto.class), any()))
+                    .thenReturn(PriceCalculationResultDto.builder()
+                            .baseAmount(new BigDecimal("99.00")).discountAmount(BigDecimal.ZERO)
+                            .finalAmount(new BigDecimal("99.00")).currencyCode(CurrencyCode.EUR)
+                            .discountKey(NO_DISCOUNT_KEY).build());
+
+            final OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                    .uuid(order.getUuid())
+                    .shippingStreet("9 avenue Test")
+                    .shippingCity("Lyon")
+                    .shippingZipCode("69000")
+                    .shippingCountry("FR")
+                    .shippingType(ShippingType.EXPRESS)
+                    .shippingProvider(ShippingProvider.FEDEX)
+                    .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder()
+                            .productUuid(product.getUuid()).quantity(1).build()))
+                    .build();
+
+            service.updateOrder(req, jwt);
+
+            assertThat(order.getShippingAddress().getStreet()).isEqualTo("9 avenue Test");
+            assertThat(order.getShippingAddress().getCity()).isEqualTo("Lyon");
+            assertThat(order.getShippingType()).isEqualTo(ShippingType.EXPRESS);
+            assertThat(order.getShippingProvider()).isEqualTo(ShippingProvider.FEDEX);
+            assertThat(order.getTotalAmount().getAmount()).isEqualByComparingTo("99.00");
+
+            // SHIPPING-INT contract: updateOrder must forward shippingProvider/shippingType from the
+            // request into the PriceCalculationRequestDto for the price-calculation service.
+            final ArgumentCaptor<PriceCalculationRequestDto> priceCap =
+                    ArgumentCaptor.forClass(PriceCalculationRequestDto.class);
+            verify(orderPriceCalculationService).calculate(priceCap.capture(), any());
+            assertThat(priceCap.getValue().getShippingProvider()).isEqualTo(ShippingProvider.FEDEX);
+            assertThat(priceCap.getValue().getShippingType()).isEqualTo(ShippingType.EXPRESS);
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("retryPayment")
+    class RetryPayment {
+
+        private OrderEntity orderWithLastAttempt(final OrderStatus status,
+                                                  final PaymentType lastType,
+                                                  final BigDecimal totalAmount) {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            user.setBankCardEntity(BankCardEntityBuilder.aValidBankCardBuilder().userEntity(user).build());
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final OrderItemEntity orderItem = OrderItemEntityBuilder.aValidOrderItemBuilder()
+                    .productEntity(product).quantity(1).build();
+
+            final List<PaymentEntity> attempts = new ArrayList<>(List.of(
+                    paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT, PaymentType.MASTERCARD,
+                            new Money(totalAmount, CurrencyCode.EUR), LocalDateTime.now().minusMinutes(5)),
+                    paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT, lastType,
+                            new Money(totalAmount, CurrencyCode.EUR), LocalDateTime.now())));
+
+            return OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(user)
+                    .status(status)
+                    .totalAmount(new Money(totalAmount, CurrencyCode.EUR))
+                    .orderItemEntities(new ArrayList<>(List.of(orderItem)))
+                    .paymentAttempts(attempts)
+                    .build();
+        }
+
+        @Test
+        @DisplayName("happy path: re-uses last attempt's PaymentType and forwards order.totalAmount verbatim")
+        void happy_reusesLastAttemptType() {
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.retryPayment(order.getUuid(), jwt);
+
+            verify(stockService).reserveStock(eq(order.getUuid()), any());
+            verify(paymentService).processPayment(eq(order), eq(PaymentType.VISA), eq(order.getTotalAmount()), anyString());
+            verify(eventPublisher).publishEvent(any(OrderUpdatedEvent.class));
+        }
+
+        @Test
+        @DisplayName("no card: BANK_CARD_NOT_FOUND before any stock reservation or payment")
+        void noCard_failsBeforeReservingStock() {
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
+            order.getUserEntity().setBankCardEntity(null);
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(BankCardNotFoundException.class);
+
+            verifyNoInteractions(paymentService, stockService);
+        }
+
+        @Test
+        @DisplayName("PAID order is NOT retryable -> FailedRetryingPayment")
+        void paidStatus_throwsFailedRetrying() {
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAID, PaymentType.VISA, new BigDecimal("100.00"));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(FailedRetryingPayment.class);
+
+            verifyNoInteractions(paymentService, stockService);
+        }
+
+        @Test
+        @DisplayName("CREATED order IS retryable (per service's permissive set)")
+        void createdStatus_retries() {
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.CREATED, PaymentType.VISA, new BigDecimal("100.00"));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.retryPayment(order.getUuid(), jwt);
+
+            verify(paymentService).processPayment(any(), eq(PaymentType.VISA), any(), anyString());
+        }
+
+        @Test
+        @DisplayName("not found throws OrderNotFoundException")
+        void notFound_throws() {
+            final UUID missing = UUID.randomUUID();
+            when(orderRepository.findByUuid(missing)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.retryPayment(missing, jwt))
+                    .isInstanceOf(OrderNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("wrong user throws OrderDoesntBelongsToUserException")
+        void wrongUser_throws() {
+            final UserEntity foreigner = UserEntityBuilder.aValidUserBuilder().keycloakId("foreign").build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(foreigner).status(OrderStatus.PAYMENT_FAILED).build();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+        }
+
+        @Test
+        @DisplayName("no previous payment attempt throws NoPreviousPaymentAttemptException")
+        void noPreviousAttempt_throws() {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            user.setBankCardEntity(BankCardEntityBuilder.aValidBankCardBuilder().userEntity(user).build());
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final OrderItemEntity item = OrderItemEntityBuilder.aValidOrderItemBuilder()
+                    .productEntity(product).quantity(1).build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(user)
+                    .status(OrderStatus.PAYMENT_FAILED)
+                    .orderItemEntities(new ArrayList<>(List.of(item)))
+                    .paymentAttempts(new ArrayList<>())
+                    .build();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(NoPreviousPaymentAttemptException.class);
+
+            verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
+        }
+
+        @Test
+        @DisplayName("stock reservation failure surfaces NotEnoughStockException, no payment attempted")
+        void stockReservationFails_propagates() {
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            org.mockito.Mockito.doThrow(new NotEnoughStockException("nope"))
+                    .when(stockService).reserveStock(any(UUID.class), any());
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(NotEnoughStockException.class);
+
+            verifyNoInteractions(paymentService);
+        }
+
+        @Test
+        @DisplayName("retryPayment forwards stored discount-adjusted total verbatim — no double-discount")
+        void retryPayment_shouldNotDoubleApplyDiscount() {
+            // order.totalAmount is the POST-discount final amount written
+            // once at placeOrder time. retryPayment forwards it verbatim to processPayment — never
+            // re-applying the discount strategy on top of an already-discounted total. A customer
+            // retrying after a transient payment failure pays exactly the same amount as the original
+            // attempt, regardless of discountType.
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("60.00"));
+            order.setDiscountKey("BLACK_FRIDAY");
+            final Money originalTotal = order.getTotalAmount();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("60.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.retryPayment(order.getUuid(), jwt);
+
+            // Assert the retry hits processPayment with exactly the stored (already-discounted) total.
+            // A buggy re-apply would have re-discounted 60 → 36 (BLACK_FRIDAY e.g. -40%).
+            final ArgumentCaptor<Money> moneyCap = ArgumentCaptor.forClass(Money.class);
+            verify(paymentService).processPayment(eq(order), eq(PaymentType.VISA), moneyCap.capture(), anyString());
+            assertThat(moneyCap.getValue()).isEqualTo(originalTotal);
+            assertThat(moneyCap.getValue().getAmount()).isEqualByComparingTo("60.00");
+        }
+
+        @Test
+        @DisplayName("a payment already SUCCESS/PROCESSING for this order blocks retry — no double-billing")
+        void paymentAlreadySettled_throwsAndNeverCallsPaymentService() {
+            // Stripe confirms synchronously but order.status only advances via the async webhook,
+            // so order.status can still read a "retryable" state (e.g. AWAITING_PAYMENT) even though
+            // a payment attempt already succeeded. The guard must key off the payment history, not
+            // order.status, to prevent firing a second real Stripe charge.
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.AWAITING_PAYMENT, PaymentType.VISA, new BigDecimal("100.00"));
+            order.getPaymentAttempts().add(paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                    new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now()));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))
+                    .isInstanceOf(PaymentAlreadyCompletedForThisOrderException.class);
+
+            verifyNoInteractions(paymentService, stockService);
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("getAll / getByUUID / getByUUIDs (ownership-checked reads, admin bypass)")
+    class Reads {
+
+        /** Matches the principal name installed by {@link #setAuthenticatedRole(String)}. */
+        private static final String CALLER = "test-user";
+        private static final String FOREIGNER = "someone-else";
+
+        private OrderEntity ownedBy(final String kc) {
+            return OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(UserEntityBuilder.aValidUserBuilder().keycloakId(kc).build())
+                    .build();
+        }
+
+        @Test
+        @DisplayName("getAll returns all orders mapped to response DTOs (admin-only, unchanged)")
+        void getAll_happy() {
+            final OrderEntity o1 = OrderEntityBuilder.aValidOrder();
+            final OrderEntity o2 = OrderEntityBuilder.aValidOrder();
+            when(orderRepository.findAll()).thenReturn(List.of(o1, o2));
+
+            final Collection<OrderResponseDto> all = service.getAll();
+            assertThat(all).hasSize(2);
+            verify(orderMapper, times(2)).mapFromEntityToResponseDto(any(OrderEntity.class));
+        }
+
+        // ---- getByUUID(UUID) — now ownership-checked with admin bypass ----
+
+        @Test
+        @DisplayName("getByUUID: owning USER gets the order")
+        void getByUUID_ownerOk() {
+            setAuthenticatedRole("ROLE_USER");
+            final OrderEntity o = ownedBy(CALLER);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            assertThat(service.getByUUID(o.getUuid())).isNotNull();
+            verify(orderMapper).mapFromEntityToResponseDto(o);
+        }
+
+        @Test
+        @DisplayName("getByUUID: non-owner USER -> OrderDoesntBelongsToUserException (IDOR guard)")
+        void getByUUID_nonOwnerThrows() {
+            setAuthenticatedRole("ROLE_USER");
+            final OrderEntity o = ownedBy(FOREIGNER);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            assertThatThrownBy(() -> service.getByUUID(o.getUuid()))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+            verify(orderMapper, never()).mapFromEntityToResponseDto(any());
+        }
+
+        @Test
+        @DisplayName("getByUUID: ADMIN bypasses the ownership check")
+        void getByUUID_adminBypass() {
+            setAuthenticatedRole("ROLE_ADMIN");
+            final OrderEntity o = ownedBy(FOREIGNER);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            assertThat(service.getByUUID(o.getUuid())).isNotNull();
+            verify(orderMapper).mapFromEntityToResponseDto(o);
+        }
+
+        @Test
+        @DisplayName("getByUUID throws when not found (before ownership check)")
+        void getByUUID_notFound() {
+            setAuthenticatedRole("ROLE_USER");
+            final UUID missing = UUID.randomUUID();
+            when(orderRepository.findByUuid(missing)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getByUUID(missing))
+                    .isInstanceOf(OrderNotFoundException.class);
+        }
+
+        // ---- getByUUIDs(Collection) — throws 403 on the whole batch if any UUID is foreign ----
+
+        @Test
+        @DisplayName("getByUUIDs: USER owning every order -> all returned")
+        void getByUUIDs_allOwned() {
+            setAuthenticatedRole("ROLE_USER");
+            final OrderEntity o1 = ownedBy(CALLER);
+            final OrderEntity o2 = ownedBy(CALLER);
+            when(orderRepository.findAllByUuidIn(any())).thenReturn(List.of(o1, o2));
+
+            assertThat(service.getByUUIDs(List.of(o1.getUuid(), o2.getUuid()))).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("getByUUIDs: any foreign UUID -> 403 on the whole batch (USER)")
+        void getByUUIDs_foreignThrows() {
+            setAuthenticatedRole("ROLE_USER");
+            final OrderEntity mine = ownedBy(CALLER);
+            final OrderEntity foreign = ownedBy(FOREIGNER);
+            when(orderRepository.findAllByUuidIn(any())).thenReturn(List.of(mine, foreign));
+
+            assertThatThrownBy(() -> service.getByUUIDs(List.of(mine.getUuid(), foreign.getUuid())))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+            verify(orderMapper, never()).mapFromEntityToResponseDto(any());
+        }
+
+        @Test
+        @DisplayName("getByUUIDs: ADMIN bypasses ownership")
+        void getByUUIDs_adminBypass() {
+            setAuthenticatedRole("ROLE_ADMIN");
+            final OrderEntity foreign = ownedBy(FOREIGNER);
+            when(orderRepository.findAllByUuidIn(any())).thenReturn(List.of(foreign));
+
+            assertThat(service.getByUUIDs(List.of(foreign.getUuid()))).hasSize(1);
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("deleteByUUID")
+    class DeleteByUuid {
+
+        private OrderEntity ownedOrderInStatus(final OrderStatus s) {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            return OrderEntityBuilder.aValidOrderBuilder().userEntity(user).status(s).build();
+        }
+
+        @Test
+        @DisplayName("happy: deletes by uuid then releases stock (delete first — see StockService Redis-ordering note)")
+        void happy() {
+            final OrderEntity o = ownedOrderInStatus(OrderStatus.CREATED);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            service.deleteByUUID(o.getUuid(), jwt);
+
+            final InOrder ord = inOrder(stockService, orderRepository);
+            ord.verify(orderRepository).deleteByUuid(o.getUuid());
+            ord.verify(stockService).releaseStock(o.getUuid());
+        }
+
+        @Test
+        @DisplayName("not found throws OrderNotFoundException")
+        void notFound() {
+            final UUID missing = UUID.randomUUID();
+            when(orderRepository.findByUuid(missing)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.deleteByUUID(missing, jwt))
+                    .isInstanceOf(OrderNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("wrong user throws OrderDoesntBelongsToUserException")
+        void wrongUser() {
+            final UserEntity foreigner = UserEntityBuilder.aValidUserBuilder().keycloakId("other").build();
+            final OrderEntity o = OrderEntityBuilder.aValidOrderBuilder().userEntity(foreigner)
+                    .status(OrderStatus.CREATED).build();
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            assertThatThrownBy(() -> service.deleteByUUID(o.getUuid(), jwt))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+
+            verifyNoInteractions(stockService);
+        }
+
+        @Test
+        @DisplayName("SHIPPED is NOT in deletable state -> CannotCancelOrderException")
+        void shipped_notDeletable() {
+            final OrderEntity o = ownedOrderInStatus(OrderStatus.SHIPPED);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            assertThatThrownBy(() -> service.deleteByUUID(o.getUuid(), jwt))
+                    .isInstanceOf(CannotCancelOrderException.class);
+        }
+
+        @Test
+        @DisplayName("PAID is NOT in deletable state")
+        void paid_notDeletable() {
+            final OrderEntity o = ownedOrderInStatus(OrderStatus.PAID);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            assertThatThrownBy(() -> service.deleteByUUID(o.getUuid(), jwt))
+                    .isInstanceOf(CannotCancelOrderException.class);
+        }
+
+        @Test
+        @DisplayName("DELIVERED IS in the deletable set (documents the design oddity)")
+        void delivered_isDeletable() {
+            final OrderEntity o = ownedOrderInStatus(OrderStatus.DELIVERED);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            service.deleteByUUID(o.getUuid(), jwt);
+
+            verify(orderRepository).deleteByUuid(o.getUuid());
+        }
+
+        @Test
+        @DisplayName("PAYMENT_FAILED IS in the deletable set")
+        void paymentFailed_isDeletable() {
+            final OrderEntity o = ownedOrderInStatus(OrderStatus.PAYMENT_FAILED);
+            when(orderRepository.findByUuid(o.getUuid())).thenReturn(Optional.of(o));
+
+            service.deleteByUUID(o.getUuid(), jwt);
+
+            verify(orderRepository).deleteByUuid(o.getUuid());
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("Cross-cutting (idempotency keys, response mapping)")
+    class CrossCutting {
+
+        @Test
+        @DisplayName("placeOrder uses the (String, List<String>) idempotency overload with productUuids")
+        void placeOrder_usesListOverload() {
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final Money total = new Money(new BigDecimal("10.00"), CurrencyCode.EUR);
+            final OrderEntity order = placedOrder(product, 1, total);
+            when(orderCreationTransactionalDelegate.createAndReserveStock(any(), eq(keycloakId))).thenReturn(order);
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA, total, LocalDateTime.now()));
+
+            service.placeOrder(OrderDtoFixtures.aValidPlaceOrderRequest(), jwt);
+
+            // The (String, List<String>) overload must be hit for placeOrder.
+            verify(idempotencyKeyService).generateKey(anyString(), anyList());
+        }
+
+        @Test
+        @DisplayName("retryPayment builds a unique key via the (String, List) overload — context contains 'retry' + monotonic attempt counter")
+        void retryPayment_usesListOverloadWithRetryActionAndCounter() {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            user.setBankCardEntity(BankCardEntityBuilder.aValidBankCardBuilder().userEntity(user).build());
+            final ProductEntity product = ProductEntityBuilder.aValidProduct();
+            final OrderItemEntity item = OrderItemEntityBuilder.aValidOrderItemBuilder()
+                    .productEntity(product).quantity(1).build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .userEntity(user)
+                    .status(OrderStatus.PAYMENT_FAILED)
+                    .totalAmount(new Money(new BigDecimal("10.00"), CurrencyCode.EUR))
+                    .orderItemEntities(new ArrayList<>(List.of(item)))
+                    .paymentAttempts(new ArrayList<>(List.of(paymentWith(PaymentAttemptStatus.FAILED, TransactionType.PAYMENT,
+                            PaymentType.VISA, new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now()))))
+                    .build();
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(
+                    paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                            new Money(new BigDecimal("10.00"), CurrencyCode.EUR), LocalDateTime.now()));
+
+            service.retryPayment(order.getUuid(), jwt);
+
+            // H-3 fix: the constant (String, String) "retry" key is gone. Each retry now mixes
+            // the 'retry' marker + a monotonic attempt counter (1 prior FAILED attempt → "2")
+            // + a capture timestamp into the (String, List) overload context, so every retry of
+            // the same order produces a DISTINCT idempotency key.
+            verify(idempotencyKeyService).generateKey(
+                    eq(order.getUuid().toString()),
+                    argThat((List<String> ctx) -> ctx.contains("retry") && ctx.contains("2")));
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("getStatusByUUID — lightweight ownership-checked status read")
+    class GetStatusByUUID {
+
+        @Test
+        @DisplayName("happy: caller owns the order -> returns OrderStatusDto with current status")
+        void ownerCanReadStatus() {
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.PAID).userEntity(owner).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            final com.novatech.cybertech.dto.response.order.OrderStatusDto dto =
+                    service.getStatusByUUID(uuid, keycloakId);
+
+            assertThat(dto.uuid()).isEqualTo(uuid);
+            assertThat(dto.status()).isEqualTo(OrderStatus.PAID);
+        }
+
+        @Test
+        @DisplayName("missing order -> OrderNotFoundException")
+        void missingOrderThrows() {
+            final UUID uuid = UUID.randomUUID();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getStatusByUUID(uuid, keycloakId))
+                    .isInstanceOf(OrderNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("non-owner caller -> OrderDoesntBelongsToUserException (IDOR guard)")
+        void nonOwnerRejected() {
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity stranger = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-stranger").build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.PAID).userEntity(stranger).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.getStatusByUUID(uuid, keycloakId))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+        }
+
+        /**
+         * getStatusByUUID was missing the {@code !isCurrentCallerAdmin()} guard that
+         * {@link OrderManagementServiceImp#getByUUID(UUID, String)} already had — admin support
+         * tooling polling status on a customer's order would receive HTTP 403. The fix mirrors
+         * {@code getByUUID}'s admin escape-hatch.
+         */
+        @Test
+        @DisplayName("ADMIN caller bypasses ownership check, status returned for foreign user's order")
+        void getStatusByUuidAsAdminShouldReturnAnyOrderStatus() {
+            setAuthenticatedRole("ROLE_ADMIN");
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity stranger = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-stranger").build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.SHIPPED).userEntity(stranger).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            // Caller passes its own (non-owner) keycloakId — admin role should override the IDOR check.
+            final com.novatech.cybertech.dto.response.order.OrderStatusDto dto =
+                    service.getStatusByUUID(uuid, keycloakId);
+
+            assertThat(dto.uuid()).isEqualTo(uuid);
+            assertThat(dto.status()).isEqualTo(OrderStatus.SHIPPED);
+        }
+
+        @Test
+        @DisplayName("regression: USER caller without ROLE_ADMIN reading another user's order is still rejected")
+        void getStatusByUuidAsUserShouldThrowWhenOrderBelongsToOtherUser() {
+            setAuthenticatedRole("ROLE_USER");
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity stranger = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-stranger").build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.PAID).userEntity(stranger).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.getStatusByUUID(uuid, keycloakId))
+                    .isInstanceOf(OrderDoesntBelongsToUserException.class);
+        }
+
+        @Test
+        @DisplayName("regression: USER caller reading their OWN order succeeds")
+        void getStatusByUuidAsUserShouldSucceedWhenOrderBelongsToCaller() {
+            setAuthenticatedRole("ROLE_USER");
+            final UUID uuid = UUID.randomUUID();
+            final UserEntity owner = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                    .uuid(uuid).status(OrderStatus.PAID).userEntity(owner).build();
+            when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+            final com.novatech.cybertech.dto.response.order.OrderStatusDto dto =
+                    service.getStatusByUUID(uuid, keycloakId);
+
+            assertThat(dto.uuid()).isEqualTo(uuid);
+            assertThat(dto.status()).isEqualTo(OrderStatus.PAID);
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("findMyOrders — Frontend-gap #1 paginated read of caller's own orders")
+    class FindMyOrders {
+
+        @Test
+        @DisplayName("happy path: forwards keycloakId + pageable to repo and maps each entity through the mapper")
+        void findMyOrders_happyPath_mapsThroughRepository() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            final OrderEntity entity = OrderEntityBuilder.aValidOrder();
+            final org.springframework.data.domain.Page<OrderEntity> page =
+                    new org.springframework.data.domain.PageImpl<>(List.of(entity));
+            when(orderRepository.findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), eq(null), eq(pageable)))
+                    .thenReturn(page);
+
+            final org.springframework.data.domain.Page<OrderResponseDto> result =
+                    service.findMyOrders(keycloakId, pageable, null);
+
+            assertThat(result.getTotalElements()).isEqualTo(1);
+            assertThat(result.getContent()).hasSize(1);
+            verify(orderMapper).mapFromEntityToResponseDto(entity);
+        }
+
+        @Test
+        @DisplayName("empty status set is normalised to null so the JPQL :statuses IS NULL OR ... short-circuits")
+        void findMyOrders_emptyStatusSet_normalisedToNull() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findMyOrders(keycloakId, pageable, java.util.Set.of());
+
+            // The skeptical assertion: the impl MUST forward null to the repository when the caller passes an empty set.
+            ArgumentCaptor<Collection<OrderStatus>> statusesCaptor = ArgumentCaptor.forClass(Collection.class);
+            verify(orderRepository).findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), statusesCaptor.capture(), eq(pageable));
+            assertThat(statusesCaptor.getValue()).isNull();
+        }
+
+        @Test
+        @DisplayName("non-empty status set is forwarded verbatim — service does not transform user-supplied filters")
+        void findMyOrders_filterByStatus_forwardedVerbatim() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            final java.util.Set<OrderStatus> statuses = java.util.Set.of(OrderStatus.PAID, OrderStatus.SHIPPED);
+            when(orderRepository.findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), eq(statuses), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findMyOrders(keycloakId, pageable, statuses);
+
+            ArgumentCaptor<Collection<OrderStatus>> statusesCaptor = ArgumentCaptor.forClass(Collection.class);
+            verify(orderRepository).findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), statusesCaptor.capture(), eq(pageable));
+            assertThat(statusesCaptor.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.SHIPPED);
+        }
+
+        @Test
+        @DisplayName("empty result page surfaces as empty, mapper never invoked")
+        void findMyOrders_emptyPage_returnsEmpty() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findByUserKeycloakIdAndOptionalStatuses(eq(keycloakId), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            final org.springframework.data.domain.Page<OrderResponseDto> result =
+                    service.findMyOrders(keycloakId, pageable, null);
+
+            assertThat(result.getTotalElements()).isZero();
+            assertThat(result.getContent()).isEmpty();
+            verify(orderMapper, never()).mapFromEntityToResponseDto(any(OrderEntity.class));
+        }
+    }
+
+    // =================================================================
+    @Nested
+    @DisplayName("findAllPaged — Frontend-gap #2 admin paginated read with optional filters")
+    class FindAllPaged {
+
+        @Test
+        @DisplayName("happy path: forwards both nullable filters to repo and maps entity → DTO")
+        void findAllPaged_noFilters_returnsAllOrders() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            final OrderEntity entity = OrderEntityBuilder.aValidOrder();
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(entity)));
+
+            final org.springframework.data.domain.Page<OrderResponseDto> result =
+                    service.findAllPaged(null, null, pageable);
+
+            assertThat(result.getTotalElements()).isEqualTo(1);
+            verify(orderMapper).mapFromEntityToResponseDto(entity);
+        }
+
+        @Test
+        @DisplayName("empty status set is normalised to null (mirrors findMyOrders) so :statuses IS NULL short-circuits")
+        void findAllPaged_emptyStatusSet_normalisedToNull() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq("kc-target"), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findAllPaged(java.util.Set.of(), "kc-target", pageable);
+
+            ArgumentCaptor<Collection<OrderStatus>> statusesCaptor = ArgumentCaptor.forClass(Collection.class);
+            verify(orderRepository).findAllByOptionalStatusesAndUserKeycloakId(statusesCaptor.capture(), eq("kc-target"), eq(pageable));
+            assertThat(statusesCaptor.getValue()).isNull();
+        }
+
+        @Test
+        @DisplayName("status filter only — userKeycloakId stays null and is forwarded as-is")
+        void findAllPaged_statusFilterOnly_userIdNull() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            final java.util.Set<OrderStatus> statuses = java.util.Set.of(OrderStatus.CANCELED);
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(statuses), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findAllPaged(statuses, null, pageable);
+
+            verify(orderRepository).findAllByOptionalStatusesAndUserKeycloakId(eq(statuses), eq(null), eq(pageable));
+        }
+
+        @Test
+        @DisplayName("user filter only — statuses stay null, the userKeycloakId reaches the repo verbatim")
+        void findAllPaged_userFilterOnly_statusesNull() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq("kc-only-user"), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            service.findAllPaged(null, "kc-only-user", pageable);
+
+            verify(orderRepository).findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq("kc-only-user"), eq(pageable));
+        }
+
+        @Test
+        @DisplayName("empty result: mapper never called, surface stays an empty page")
+        void findAllPaged_emptyPage_returnsEmpty() {
+            final org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(orderRepository.findAllByOptionalStatusesAndUserKeycloakId(eq(null), eq(null), eq(pageable)))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+            final org.springframework.data.domain.Page<OrderResponseDto> result =
+                    service.findAllPaged(null, null, pageable);
+
+            assertThat(result.getTotalElements()).isZero();
+            verify(orderMapper, never()).mapFromEntityToResponseDto(any(OrderEntity.class));
+        }
+    }
+}

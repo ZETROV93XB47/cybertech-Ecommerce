@@ -1,0 +1,212 @@
+package com.novatech.cybertech.services.implementation;
+
+import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
+import com.novatech.cybertech.entities.KeycloakOutboxEntity;
+import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.entities.enums.OutboxOperationType;
+import com.novatech.cybertech.entities.enums.OutboxStatus;
+import com.novatech.cybertech.repositories.KeycloakOutboxRepository;
+import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.KeycloakOutboxService;
+import com.novatech.cybertech.services.core.KeycloakUserManagementService;
+import com.novatech.cybertech.services.core.UserPersistenceService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.UUID;
+
+/**
+ * Outbox bookkeeping + idempotent reconciliation for the Keycloak/DB user saga.
+ *
+ * <p>The reconciliation NEVER creates a Keycloak user (the raw password is never at rest):
+ * <ul>
+ *   <li>CREATE — email lookup; orphan (Keycloak user without DB row) is compensated (deleted),
+ *       a fully-registered pair is simply closed DONE.</li>
+ *   <li>UPDATE — the persisted payload is re-applied idempotently to BOTH systems (forward
+ *       recovery), unless a newer write already landed on the DB row (supersede guard).</li>
+ *   <li>DELETE — the idempotent (404-tolerant) Keycloak delete is re-issued.</li>
+ * </ul>
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class KeycloakOutboxServiceImp implements KeycloakOutboxService {
+
+    private static final int MAX_ERROR_LEN = 1000;
+
+    private final KeycloakOutboxRepository outboxRepository;
+    private final UserRepository userRepository;
+    private final KeycloakUserManagementService keycloakUserManagementService;
+    private final UserPersistenceService userPersistenceService;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public UUID recordCreatePending(final String email) {
+        final KeycloakOutboxEntity row = KeycloakOutboxEntity.builder()
+                .operationType(OutboxOperationType.CREATE)
+                .status(OutboxStatus.PENDING)
+                .email(email)
+                .attempts(0)
+                .build();
+        return outboxRepository.save(row).getUuid();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public UUID recordUpdatePending(final String keycloakId, final UserUpdateRequestDto payload) {
+        final KeycloakOutboxEntity row = KeycloakOutboxEntity.builder()
+                .operationType(OutboxOperationType.UPDATE).status(OutboxStatus.PENDING)
+                .keycloakId(keycloakId).payload(objectMapper.writeValueAsString(payload))
+                .attempts(0).build();
+        return outboxRepository.save(row).getUuid();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED) // JOIN the caller's delete TX (co-commit)
+    public UUID recordDeletePending(final String keycloakId) {
+        final KeycloakOutboxEntity row = KeycloakOutboxEntity.builder()
+                .operationType(OutboxOperationType.DELETE).status(OutboxStatus.PENDING)
+                .keycloakId(keycloakId).attempts(0).build();
+        return outboxRepository.save(row).getUuid();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markDone(final UUID outboxUuid, final String keycloakId) {
+        outboxRepository.findByUuid(outboxUuid).ifPresent(row -> {
+            row.setStatus(OutboxStatus.DONE);
+            if (keycloakId != null) {
+                row.setKeycloakId(keycloakId);
+            }
+            outboxRepository.save(row);
+        });
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markFailed(final UUID outboxUuid, final String reason) {
+        outboxRepository.findByUuid(outboxUuid).ifPresent(row -> {
+            row.setStatus(OutboxStatus.FAILED);
+            row.setLastError(truncate(reason));
+            outboxRepository.save(row);
+        });
+    }
+
+    /**
+     * Idempotent reconciliation. The job calls this for a stale PENDING row. On a transient
+     * failure it bumps {@code attempts}; at the cap it flips the row terminal FAILED (the
+     * implicit dead-letter — no separate DLB table by design).
+     */
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void reconcile(final KeycloakOutboxEntity row, final int maxAttempts) {
+        try {
+            switch (row.getOperationType()) {
+                case CREATE -> reconcileCreate(row);
+                case UPDATE -> reconcileUpdate(row);
+                case DELETE -> reconcileDelete(row);
+            }
+        } catch (RuntimeException e) {
+            row.setAttempts(row.getAttempts() + 1);
+            row.setLastError(truncate(e.getMessage()));
+            if (row.getAttempts() >= maxAttempts) {
+                row.setStatus(OutboxStatus.FAILED);
+                log.error("Outbox row {} ({}) gave up after {} attempts — manual reconciliation required", row.getUuid(), row.getOperationType(), row.getAttempts(), e);
+            } else {
+                log.warn("Outbox row {} ({}) transient failure, attempt {} — will retry", row.getUuid(), row.getOperationType(), row.getAttempts(), e);
+            }
+            outboxRepository.save(row);
+        }
+    }
+
+    // SAFETY MARGIN — DO NOT ADD @Retry HERE WITHOUT READING THIS: the orphan-delete below assumes
+    // a Keycloak user with no DB row is a crash leftover. That's only true because the outbox
+    // staleness window (cybertech.keycloak.outbox.staleness-minutes, 5 min by default) is far
+    // larger than the worst-case latency of the Keycloak call in UserManagementServiceImp.create()
+    // — currently capped at connectTimeout(5s) + readTimeout(10s) = 15s, see ApiClientConfig. If a
+    // @Retry/backoff is ever added around that call, a still-in-flight create() can cross the
+    // staleness window before its DB write commits, and this method will delete the Keycloak user
+    // it just created. Bump staleness-minutes to comfortably exceed the new worst-case latency
+    // before adding any retry there.
+    private void reconcileCreate(final KeycloakOutboxEntity row) {
+        final var kcId = keycloakUserManagementService.searchByEmail(row.getEmail());
+        if (kcId.isEmpty()) {
+            // Nothing was ever created in Keycloak -> the registration never got off the ground. Abandon.
+            row.setStatus(OutboxStatus.FAILED);
+            row.setLastError(truncate("create never reached Keycloak — abandoned"));
+            outboxRepository.save(row);
+            return;
+        }
+        final boolean dbUserExists = userRepository.findByKeycloakId(kcId.get()).isPresent();
+        if (dbUserExists) {
+            // Fully registered; the row just didn't get marked DONE. Close it — DO NOT compensate.
+            row.setStatus(OutboxStatus.DONE);
+            row.setKeycloakId(kcId.get());
+        } else {
+            // Keycloak user with no DB row = crash orphan. Compensate (backward recovery).
+            keycloakUserManagementService.deleteUser(kcId.get());
+            row.setStatus(OutboxStatus.FAILED);
+            row.setLastError(truncate("orphan Keycloak user compensated"));
+        }
+        outboxRepository.save(row);
+    }
+
+    /**
+     * Forward recovery for UPDATE: re-apply the persisted patch to Keycloak AND the DB so both
+     * converge on the intended state. Two guards keep stale payloads from doing harm:
+     * <ul>
+     *   <li>the user no longer exists → nothing to converge (the DELETE saga owns Keycloak
+     *       cleanup) — close DONE;</li>
+     *   <li>a LATER outbox UPDATE row for the same user has already been fully applied
+     *       ({@code DONE}) → that row's payload is the freshest known intent; re-applying this
+     *       older one would resurrect stale data — close DONE without touching either system.</li>
+     * </ul>
+     *
+     * <p>The second guard deliberately checks for a newer outbox row, not
+     * {@code user.getUpdatedAt()}: {@code updatedAt} is a plain {@code @LastModifiedDate} bumped
+     * by ANY flush of the user row — placing an order, adding a bank card, any Hibernate
+     * dirty-check touch — none of which has anything to do with a profile update. Keying off that
+     * field used to make an unrelated save elsewhere in the app silently discard a still-pending
+     * reconciliation. A newer {@code DONE} outbox row is a much narrower, correct signal: it means
+     * a later UPDATE intent for this exact user was actually, successfully applied.</p>
+     */
+    private void reconcileUpdate(final KeycloakOutboxEntity row) {
+        final UserEntity user = userRepository.findByKeycloakId(row.getKeycloakId()).orElse(null);
+        if (user == null) {
+            row.setStatus(OutboxStatus.DONE);
+            row.setLastError(truncate("user gone — update superseded by deletion"));
+            outboxRepository.save(row);
+            return;
+        }
+        if (outboxRepository.existsByKeycloakIdAndOperationTypeAndStatusAndCreatedAtAfter(
+                row.getKeycloakId(), OutboxOperationType.UPDATE, OutboxStatus.DONE, row.getCreatedAt())) {
+            row.setStatus(OutboxStatus.DONE);
+            row.setLastError(truncate("superseded by a newer applied update — not re-applied"));
+            outboxRepository.save(row);
+            return;
+        }
+        final UserUpdateRequestDto dto = objectMapper.readValue(row.getPayload(), UserUpdateRequestDto.class);
+        keycloakUserManagementService.updateUser(row.getKeycloakId(), dto); // idempotent re-application
+        userPersistenceService.updateUser(dto, user);                       // idempotent DB patch (REQUIRES_NEW)
+        row.setStatus(OutboxStatus.DONE);
+        outboxRepository.save(row);
+    }
+
+    private void reconcileDelete(final KeycloakOutboxEntity row) {
+        keycloakUserManagementService.deleteUser(row.getKeycloakId()); // idempotent (404-tolerant)
+        row.setStatus(OutboxStatus.DONE);
+        outboxRepository.save(row);
+    }
+
+    private static String truncate(final String s) {
+        if (s == null) {
+            return null;
+        }
+        return s.length() <= MAX_ERROR_LEN ? s : s.substring(0, MAX_ERROR_LEN);
+    }
+}

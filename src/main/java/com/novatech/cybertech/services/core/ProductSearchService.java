@@ -1,10 +1,9 @@
 package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
-import com.novatech.cybertech.entities.ProductDocument;
-
-import java.util.List;
+import com.novatech.cybertech.entities.document.ProductDocument;
+import org.springframework.data.domain.Page;
 
 public interface ProductSearchService {
-    List<ProductDocument> search(final ProductSearchRequestDto productSearchRequestDto);
+    Page<ProductDocument> search(final ProductSearchRequestDto productSearchRequestDto);
 }

@@ -1,52 +1,83 @@
 package com.novatech.cybertech.services.implementation;
 
 
-import com.novatech.cybertech.dispatcher.ShippingDispatcher;
+import com.novatech.cybertech.dto.data.BankCardValidationDto;
+import com.novatech.cybertech.dto.data.DiscountContext;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.dto.data.OrderValidationDto;
-import com.novatech.cybertech.dto.data.ShippingContext;
-import com.novatech.cybertech.dto.data.UserContactDto;
+import com.novatech.cybertech.dto.request.order.OrderItemPriceDto;
 import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderQuoteRequestDto;
 import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.request.order.PriceCalculationRequestDto;
+import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
 import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.dto.response.order.OrderStatusDto;
 import com.novatech.cybertech.entities.*;
-import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.entities.enums.ShippingProvider;
-import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.enums.*;
+import com.novatech.cybertech.entities.valueObjects.Address;
+import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
+import com.novatech.cybertech.entities.valueObjects.DiscountTermsSnapshot;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.events.OrderCreatedEvent;
+import com.novatech.cybertech.events.OrderUpdatedEvent;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.OrderMapper;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
-import com.novatech.cybertech.services.core.OrderManagementService;
-import com.novatech.cybertech.services.core.PaymentService;
-import com.novatech.cybertech.services.core.StockService;
+import com.novatech.cybertech.services.core.*;
+import com.novatech.cybertech.utils.ControllerSecurityUtils;
+import com.novatech.cybertech.utils.OrderPaymentUtils;
+import com.novatech.cybertech.utils.OrderPricingUtils;
 import com.novatech.cybertech.validator.core.OrderValidator;
+import com.novatech.cybertech.utils.UserContactUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.novatech.cybertech.entities.enums.DiscountType.NO_DISCOUNT;
 import static com.novatech.cybertech.entities.enums.OrderStatus.*;
-import static com.novatech.cybertech.entities.enums.PaymentStatus.SUCCESS;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderManagementServiceImp implements OrderManagementService {
 
+    /**
+     * Idempotency-key context token marking a payment retry. Combined with a monotonic
+     * attempt counter (and a capture timestamp) so each retry of the same order produces
+     * a DISTINCT key — see {@link #retryPayment(UUID, Jwt)}.
+     */
+    private static final String RETRY_PAYMENT_ACTION = "retry";
+
+    /**
+     * Idempotency-key context token marking the complement payment of an {@code updateOrder}
+     * (Cas 1). Combined with a capture timestamp so a new attempt after a card decline gets a
+     * DISTINCT key — see {@link #updateOrder(OrderUpdateRequestDto, Jwt)}.
+     */
+    private static final String UPDATE_PAYMENT_ACTION = "update";
+
+    private static final String EMPTY_CART_QUOTE_MESSAGE = "Cannot quote an order: Cart is empty";
+    private static final String USER_NOT_FOUND_MESSAGE = "User not found";
+
     private final OrderMapper orderMapper;
 
+    private final CartService cartService;
     private final StockService stockService;
     private final PaymentService paymentService;
 
@@ -55,240 +86,704 @@ public class OrderManagementServiceImp implements OrderManagementService {
     private final ProductRepository productRepository;
 
     private final OrderValidator orderValidatorChain;
-    private final ShippingDispatcher shippingDispatcher;
     private final ApplicationEventPublisher eventPublisher;
+    private final IdempotencyKeyServiceGenerator idempotencyKeyService;
+    private final OrderPriceCalculationService orderPriceCalculationService;
+    private final OrderCancellationTransactionalDelegate orderCancellationTransactionalDelegate;
+    private final OrderCreationTransactionalDelegate orderCreationTransactionalDelegate;
 
 
-    //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
     @Transactional(readOnly = true)
     public Collection<OrderResponseDto> getAll() {
-        return orderRepository.findAll().stream().map(orderMapper::mapFromEntityToResponseDto).toList();
+        final List<OrderEntity> orders = orderRepository.findAll();
+        hydrateOrderItemsAndProducts(orders);
+        return orders.stream().map(orderMapper::mapFromEntityToResponseDto).toList();
     }
 
-    //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
+    /**
+     * No-identity-arg overload kept for the {@link CrudBaseService}-style surface. It carries no IDOR
+     * risk because it resolves the caller from the {@link org.springframework.security.core.context.SecurityContextHolder}
+     * (via {@link ControllerSecurityUtils#currentCallerName()}) and delegates to the ownership-checked
+     * {@link #getByUUID(UUID, String)} — so a regular USER only ever reads their own order, while a
+     * {@code ROLE_ADMIN} caller bypasses the check. Not exposed on the {@link OrderManagementService}
+     * interface; this guard is defence-in-depth should a future caller wire it up.
+     */
     @Transactional(readOnly = true)
-    public OrderResponseDto getByUUID(UUID uuid) {
-        return orderMapper.mapFromEntityToResponseDto(orderRepository.findByUuid(uuid).orElseThrow(() -> new OrderNotFoundException("No product with the UUID : " + uuid + " found")));
+    public OrderResponseDto getByUUID(final UUID uuid) {
+        return getByUUID(uuid, ControllerSecurityUtils.currentCallerName());
     }
 
-    //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
+    /**
+     * Ownership-checked variant of {@link #getByUUID(UUID)}.
+     *
+     * <p>Resolves the order and verifies its initiator's {@code keycloakId} matches the
+     * caller's JWT subject. Mirrors the CartServiceImp / {@link #getStatusByUUID(UUID, String)}
+     * pattern: differing identities throw {@link OrderDoesntBelongsToUserException} (mapped
+     * to HTTP 403 by {@code ErrorManagementController}). Used by the user-facing
+     * {@code GET /order/get/{uuid}} endpoint to prevent IDOR.
+     *
+     * <p>Callers carrying {@code ROLE_ADMIN} bypass the ownership
+     * check (resolved via {@link ControllerSecurityUtils#isCurrentCallerAdmin()}). USERs
+     * still get the IDOR protection.</p>
+     *
+     * @param uuid       order UUID to fetch.
+     * @param keycloakId caller's Keycloak subject; must equal the order's owner (USER role only).
+     * @return the order DTO when ownership matches (USER) or unconditionally (ADMIN).
+     * @throws OrderNotFoundException            when no order matches {@code uuid}.
+     * @throws OrderDoesntBelongsToUserException when a non-admin caller is not the order's initiator.
+     */
+    @Override
     @Transactional(readOnly = true)
-    public Collection<OrderResponseDto> getByUUIDs(Collection<UUID> uuids) {
-        return orderRepository.findAllByUuidIn(uuids).stream().map(orderMapper::mapFromEntityToResponseDto).toList();
+    public OrderResponseDto getByUUID(final UUID uuid, final String keycloakId) {
+        final OrderEntity order = orderRepository.findByUuid(uuid)
+                .orElseThrow(() -> new OrderNotFoundException("No product with the UUID : " + uuid + " found"));
+
+        assertCallerOwnsOrIsAdmin(order, keycloakId, uuid);
+
+        return orderMapper.mapFromEntityToResponseDto(order);
     }
 
-    //TODO: refactor this method to make it callable only by an admin or separate this crud method in another service, a crud service for instance
+    /**
+     * IDOR guard shared by the single-read, bulk-read and status-read paths: a non-admin caller must own
+     * {@code order} (its initiator's {@code keycloakId} equals {@code keycloakId}); a {@code ROLE_ADMIN}
+     * caller bypasses the check entirely. Centralised here so the ownership predicate lives in exactly one
+     * place (was previously copy-pasted across {@link #getByUUID(UUID, String)} and
+     * {@link #getStatusByUUID(UUID, String)}).
+     *
+     * @throws OrderDoesntBelongsToUserException when a non-admin caller is not the order's initiator.
+     */
+    private void assertCallerOwnsOrIsAdmin(final OrderEntity order, final String keycloakId, final UUID uuid) {
+        if (!ControllerSecurityUtils.isCurrentCallerAdmin()
+                && (order.getUserEntity() == null
+                || order.getUserEntity().getKeycloakId() == null
+                || !order.getUserEntity().getKeycloakId().equals(keycloakId))) {
+            throw new OrderDoesntBelongsToUserException("Order " + uuid + " does not belong to the current user");
+        }
+    }
+
+    /**
+     * Lightweight status read with ownership check — used by the frontend's order-confirmation
+     * polling loop after a Stripe payment so we don't refetch the full {@code OrderResponseDto}.
+     *
+     * <p>Callers carrying {@code ROLE_ADMIN} bypass the ownership check — mirrors the
+     * admin escape-hatch already implemented in {@link #getByUUID(UUID, String)}. Without this,
+     * admin support tooling would receive HTTP 403 when polling status on a customer's order.</p>
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public OrderStatusDto getStatusByUUID(final UUID orderUuid, final String keycloakId) {
+        final OrderEntity order = orderRepository.findByUuid(orderUuid)
+                .orElseThrow(() -> new OrderNotFoundException("No order with the UUID : " + orderUuid + " found"));
+
+        assertCallerOwnsOrIsAdmin(order, keycloakId, orderUuid);
+
+        return OrderStatusDto.builder()
+                .uuid(order.getUuid())
+                .status(order.getStatus())
+                .build();
+    }
+
+    /**
+     * Bulk counterpart of {@link #getByUUID(UUID)} with the same defence-in-depth IDOR guard: a regular
+     * USER may only read orders they own — if <em>any</em> requested UUID resolves to another user's order
+     * the whole batch is rejected with {@link OrderDoesntBelongsToUserException} (fail-closed, consistent
+     * with the single-read contract). A {@code ROLE_ADMIN} caller bypasses the check. Not exposed on the
+     * {@link OrderManagementService} interface.
+     */
+    @Transactional(readOnly = true)
+    public Collection<OrderResponseDto> getByUUIDs(final Collection<UUID> uuids) {
+        final String keycloakId = ControllerSecurityUtils.currentCallerName();
+        final List<OrderEntity> orders = orderRepository.findAllByUuidIn(uuids);
+        orders.forEach(order -> assertCallerOwnsOrIsAdmin(order, keycloakId, order.getUuid()));
+        return orders.stream().map(orderMapper::mapFromEntityToResponseDto).toList();
+    }
+
+    /**
+     * Hard-delete an order after verifying ownership and state eligibility.
+     *
+     * <p>Resolves the caller via {@link #resolveKeycloakIdFromJwt(Jwt)}, surfacing a
+     * {@link UserNotFoundException} instead of an NPE when the JWT {@code sub} claim is missing.
+     * Stock is released before the row is deleted — no refund is issued here;
+     * use {@link #cancelOrder(UUID, Jwt)} for that.
+     *
+     * @param uuid order UUID to delete.
+     * @param jwt  caller identity; {@code sub} claim must be non-null.
+     * @throws OrderNotFoundException            when no order matches {@code uuid}.
+     * @throws OrderDoesntBelongsToUserException when the caller is not the order's initiator.
+     * @throws CannotCancelOrderException        when the order is not in a deletable state.
+     * @throws UserNotFoundException             when the JWT subject is missing.
+     */
     @Override
     @Transactional
     public void deleteByUUID(final UUID uuid, final Jwt jwt) {
 
-        final String keycloakId = jwt.getSubject();
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
         final OrderEntity orderEntity = orderRepository.findByUuid(uuid).orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
-        if (isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
-            if (isInDeletableState(orderEntity)) orderRepository.deleteByUuid(uuid);
-            else {
-                log.info("Order is not in Deletable state, order current state : {}", orderEntity.getStatus().name());
-                throw new CannotCancelOrderException("Order is not in Deletable state, order current state : " + orderEntity.getStatus().name());
+        if (!isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order not found for this user account");
+        }
+
+        if (!isInDeletableState(orderEntity)) {
+            log.info("Order is not in Deletable state, order current state : {}", orderEntity.getStatus().name());
+            throw new CannotCancelOrderException("Order is not in Deletable state, order current state : " + orderEntity.getStatus().name());
+        }
+
+        // Delete BEFORE releasing stock — releaseStock ends with a Redis write that is NOT part
+        // of this transaction. If the delete were to throw after releaseStock ran, the DB portion
+        // of the release would roll back but the Redis TTL sentinel would stay deleted for a
+        // reservation the rollback just restored to ACTIVE/COMMITTED.
+        orderRepository.deleteByUuid(uuid);
+        stockService.releaseStock(uuid);
+    }
+
+    /**
+     * Overwrite an existing order's items + shipping fields, then reconcile payment: charge the
+     * positive delta, refund the negative delta, or commit the existing reservation when the
+     * total is unchanged.
+     *
+     * <p><b>Discount:</b> the order keeps the campaign it was placed under, with the terms
+     * snapshotted at that time ({@code OrderEntity#discountTerms}) — not the campaign's current
+     * state, which may have been disabled, edited or may have expired since. The terms are
+     * re-applied to the new lines exactly as at creation; in particular, if the new subtotal falls
+     * below the campaign's {@code minOrderAmount} the discount drops to 0 (and comes back if a later
+     * modification raises the subtotal again). Shipping follows the new provider / type. An order
+     * placed before the snapshot existed falls back to the campaign's current terms if it is still
+     * active, else to no discount, and those terms are then frozen on it.
+     *
+     * <p>Callers with a missing JWT {@code sub} now get a clean
+     * {@link UserNotFoundException} rather than an NPE on {@code keycloakId.equals(null)}.
+     *
+     * @param dto update payload (new items, new shipping, new total).
+     * @param jwt caller identity; {@code sub} claim must be non-null.
+     * @throws OrderNotFoundException            when no order matches {@code dto.uuid}.
+     * @throws OrderDoesntBelongsToUserException when the caller is not the order's initiator.
+     * @throws OrderAlreadyShippedException      when the order has already shipped.
+     * @throws UserNotFoundException             when the JWT subject is missing.
+     */
+    @Override
+    @Transactional
+    public OrderResponseDto updateOrder(final OrderUpdateRequestDto dto, final Jwt jwt) {
+
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
+
+        // Row lock (SELECT ... FOR UPDATE) held until this transaction ends: a concurrent update of
+        // the same order (double submit) waits here, then re-reads the payments recorded by the
+        // first one — its difference comes out as 0 instead of charging the complement twice.
+        // This is what makes the per-attempt complement key below safe.
+        final OrderEntity order = orderRepository.lockByUuid(dto.getUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
+
+        log.info("Update order {}: current status {}, total {}, {} new line(s) requested", order.getUuid(), order.getStatus(),
+                order.getTotalAmount() == null ? null : order.getTotalAmount().getAmount(),
+                dto.getItemUpdateRequestDtoList() == null ? 0 : dto.getItemUpdateRequestDtoList().size());
+
+        if (!isCurrentUserOrderInitiator(order, keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order not found for this user account");
+        }
+
+        if (isOrderAlreadyShipped(order)) {
+            log.info("Update order {} rejected: already {}", order.getUuid(), order.getStatus());
+            throw new OrderAlreadyShippedException("Order already shipped, cannot update");
+        }
+
+        // 1) Charger les produits + quantités demandées. A duplicate product UUID in the request
+        // merges (sums) rather than throwing IllegalStateException from a plain toMap collector —
+        // a client sending the same product twice (double-tap, malformed payload) is treated the
+        // same way the cart already treats a duplicate add, instead of a raw 500.
+        final List<ProductEntity> products = getAllProductsFromRequest(dto.getItemUpdateRequestDtoList());
+        final Map<UUID, Integer> quantities = dto.getItemUpdateRequestDtoList().stream()
+                .collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity, Integer::sum));
+
+        // 2) Validation
+        validateUserBeforeProcessingPayment(order.getUserEntity());//TODO: is it really necessary to make this check here ? maybe make it before launching the order placing process
+
+        // 3) Calculer le total — delegated to OrderPriceCalculationService, with the discount terms
+        // the order was PLACED under (snapshot), never the campaign's current state: re-pricing with
+        // NO_DISCOUNT used to make a customer who only changed their address lose their discount
+        // and get charged a complement. See OrderPriceCalculationService#calculate(request, terms).
+        // products.isEmpty() used to default the total to ZERO and fall through to the
+        // "no price difference" branch below, which flips the order to PAID — an all-nonexistent
+        // product UUID list (findAllByUuidIn silently drops unmatched UUIDs, see
+        // getAllProductsFromRequest) let a caller mark their own order PAID for €0 with no
+        // payment. Reject instead of silently pricing at zero.
+        if (products.isEmpty()) {
+            throw new ProductNotFoundException("None of the requested products were found");
+        }
+        final List<OrderItemPriceDto> priceDtos = products.stream()
+                .map(p -> OrderItemPriceDto.builder()
+                        .productUuid(p.getUuid())
+                        .unitPrice(p.getPrice())
+                        .quantity(quantities.get(p.getUuid()))
+                        .build())
+                .toList();
+
+        final PriceCalculationRequestDto priceReq = PriceCalculationRequestDto.builder()
+                .items(priceDtos)
+                .discountKey(order.getDiscountKey())
+                .currencyCode(CurrencyCode.fromCode("EUR"))
+                .shippingProvider(dto.getShippingProvider())
+                .shippingType(dto.getShippingType())
+                .build();
+
+        final DiscountTermsSnapshot frozenTerms = order.getDiscountTerms();
+        final PriceCalculationResultDto priceResult = orderPriceCalculationService.calculate(priceReq,
+                frozenTerms == null ? null : frozenTerms.toDiscountContext(order.getDiscountKey()));
+        // An order placed before the snapshot existed gets the terms it was just re-priced with
+        // frozen now, so its next modifications stay consistent with this one.
+        if (frozenTerms == null) {
+            order.setDiscountTerms(DiscountTermsSnapshot.from(priceResult.getAppliedDiscount()));
+        }
+        final Money total = priceResult.asFinalMoney();
+
+        // Calcul du montant déjà payé (Paiements - Remboursements)
+        final BigDecimal paidAmount = OrderPaymentUtils.netPaidAmount(order);
+
+        BigDecimal difference = total.getAmount().subtract(paidAmount);
+        log.info("Update Order: New Total: {} (subtotal {} - discount {} [{}] + shipping {}), Paid: {}, Difference: {}", total.getAmount(),
+                priceResult.getBaseAmount(), priceResult.getDiscountAmount(), order.getDiscountKey(), priceResult.getShippingCost(), paidAmount, difference);
+
+        // 4) Update shipping + address + total + statut
+        order.setShippingType(dto.getShippingType());
+        order.setShippingProvider(dto.getShippingProvider());
+        order.setShippingAddress(Address.builder()
+                .street(dto.getShippingStreet())
+                .city(dto.getShippingCity())
+                .zipCode(dto.getShippingZipCode())
+                .country(dto.getShippingCountry())
+                .build());
+        OrderPricingUtils.applyPriceBreakdown(order, priceResult);
+        // Same clock as at placement (orderDate): only a new shipping option moves the dates.
+        OrderPricingUtils.applyDeliveryEstimate(order, priceResult);
+
+        // 5) Overwrite des items (selon ton choix)
+        //    Ici, je suppose que tu sais reconstruire la liste OrderItemEntity depuis dto + products
+        final List<OrderItemEntity> newItems = mapToOrderItems(quantities, products, order);
+        order.getOrderItemEntities().clear();
+        order.getOrderItemEntities().addAll(newItems);
+
+        orderRepository.save(order);
+
+        // 6) Resize the stock reservation for the new items. A single atomic release+reserve
+        // (see StockService#resizeReservation) instead of a separate releaseStock() at the top of
+        // this method + reserveStock() here — the old two-call sequence deleted the Redis TTL
+        // sentinel immediately (non-transactional), so ANY failure between the two calls (product
+        // not found, missing bank card, insufficient stock on the new items) rolled the DB
+        // reservation back to ACTIVE while leaving its Redis auto-expiry sentinel permanently gone.
+        stockService.resizeReservation(order.getUuid(), quantities);
+
+        // 7) Paiement attempt — quantities are part of the context (see placeOrder), derived from
+        // the merged `quantities` map so a duplicate product UUID in the request is reflected once.
+        // The key must be unique PER ATTEMPT (mirrors retryPayment): a declined complement rolls
+        // this whole update back, and Stripe caches the decline under the key it was sent with for
+        // 24h — a stable composition-derived key made every new attempt for the same items (even
+        // with another card) replay that decline. Double submit is covered by the row lock above.
+        // It also can no longer collide with placeOrder's own key for an unchanged item list.
+        // Only used for Cas 1 (new payment): Cas 2 (refund) needs each ORIGINAL payment's own
+        // stored key instead — see refundDifference.
+        final List<String> updatePaymentContext = new ArrayList<>(quantities.entrySet().stream()
+                .map(e -> e.getKey() + ":" + e.getValue())
+                .toList());
+        updatePaymentContext.add(UPDATE_PAYMENT_ACTION);
+        updatePaymentContext.add(LocalDateTime.now().toString());
+        final String updateIdempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), updatePaymentContext);
+
+        if (difference.compareTo(BigDecimal.ZERO) == 0) {
+            // Cas 3 : Pas de différence de prix
+            // On valide juste le stock et on s'assure que le statut est PAID
+            if (paidAmount.compareTo(BigDecimal.ZERO) == 0) {
+                throw new OrderNotFundedException(
+                        "Cannot mark order " + order.getUuid() + " as PAID without any prior successful payment");
             }
+            stockService.commitStock(order.getUuid());
+            if (order.getStatus() != OrderStatus.PAID) {
+                order.setStatus(OrderStatus.PAID);
+            }
+            restartModificationWindow(order);
+            final OrderEntity saved = orderRepository.save(order);
+            return orderMapper.mapFromEntityToResponseDto(saved);
         }
-        throw new OrderDoesntBelongsToUserException("Order not found for this user account");
+
+
+        // Both helpers throw when Stripe refuses (card declined / refund rejected), which rolls
+        // back this whole transaction — new items, new total, status flip and stock resize — so
+        // the order is left exactly as it was.
+        final PaymentAttemptStatus paymentStatus = difference.signum() > 0
+                ? chargeDifference(order, difference, dto.getPaymentType(), updateIdempotencyKey)
+                : refundDifference(order, difference.abs());
+        // Cas 2 (refund) leaves the order PAID: restart its window here. Cas 1 (top-up) moved it
+        // back to AWAITING_PAYMENT — the payment webhook re-stamps paidAt when it flips back to PAID.
+        restartModificationWindow(order);
+
+        // Explicit save instead of relying on JPA dirty-check
+        orderRepository.save(order);
+
+        sendOrderUpdatedEvent(order, order.getUserEntity(), total.getAmount(), paymentStatus);
+
+        return orderMapper.mapFromEntityToResponseDto(order);
     }
 
+    /**
+     * Retry a failed (or still-pending) payment for an existing order.
+     *
+     * <p><b>No double-discount on retry:</b> {@code order.getTotalAmount()} is the
+     * post-discount final amount set once at {@link #placeOrder} time (placeOrder sums
+     * {@code unitPrice * quantity} for every cart item — the unit price already reflects any
+     * promotional discount applied upstream in the cart service). Retry forwards that stored total
+     * verbatim to {@link PaymentService#processPayment}; NO discount strategy is re-applied here.
+     * Consequently a customer who retries after a transient payment failure pays exactly the same
+     * amount as the original attempt — never 2× the discount.
+     *
+     * <p>{@link #resolveKeycloakIdFromJwt(Jwt)} surfaces a
+     * {@link UserNotFoundException} when the JWT {@code sub} claim is missing, instead of an NPE.
+     *
+     * <p>Side effects, in order:
+     * <ol>
+     *   <li>Re-reserves stock (the prior reservation was released on failure);
+     *       bubbles {@link com.novatech.cybertech.exceptions.NotEnoughStockException} if the stock
+     *       is no longer available.</li>
+     *   <li>Re-uses the {@link PaymentType} from the most recent attempt.</li>
+     *   <li>Calls {@link PaymentService#processPayment} with the stored, already-discounted
+     *       {@code order.getTotalAmount()}.</li>
+     *   <li>Publishes an {@code OrderUpdatedEvent} with the final attempt status.</li>
+     * </ol>
+     *
+     * @param orderUuid target order UUID.
+     * @param jwt       caller identity; {@code sub} claim must be non-null.
+     * @return the order mapped to {@link OrderResponseDto}.
+     * @throws OrderNotFoundException            when no order matches {@code orderUuid}.
+     * @throws OrderDoesntBelongsToUserException when the caller is not the order's initiator.
+     * @throws FailedRetryingPayment             when the order is not in a retryable state.
+     * @throws NoPreviousPaymentAttemptException when there is no prior attempt to copy the
+     *                                           payment type from.
+     * @throws UserNotFoundException             when the JWT subject is missing.
+     */
     @Override
     @Transactional
-    public OrderResponseDto updateOrder(final OrderUpdateRequestDto orderUpdateRequestDto, final Jwt jwt) {
+    public OrderResponseDto retryPayment(final UUID orderUuid, final Jwt jwt) {
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
+        final OrderEntity order = orderRepository.findByUuid(orderUuid).orElseThrow(() -> new OrderNotFoundException("Order not found"));
 
-        final String keycloakId = jwt.getSubject();
-
-        final OrderEntity orderEntity = orderRepository.findByUuid(orderUpdateRequestDto.getOrderUuid()).orElseThrow(() -> new OrderNotFoundException("Order not found"));
-        final UserEntity userEntity = orderEntity.getUserEntity();
-
-        if (isCurrentUserOrderInitiator(orderEntity, keycloakId) && isOrderAlreadyShipped(orderEntity)) {
-
-            // 2. Charger les produits
-            List<ProductEntity> products = getAllProductsFromRequest(orderUpdateRequestDto.getItemUpdateRequestDtoList());
-            Map<UUID, Integer> quantities = orderUpdateRequestDto.getItemUpdateRequestDtoList().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
-
-            // 4. Vérifier la commande
-            validateOrderBeforeProcessingPayment(quantities, orderEntity.getUserEntity());
-
-            // 3. Réserver le stock AVANT tout paiement
-            stockService.reserveStock(orderUpdateRequestDto.getOrderUuid(), quantities);
-
-            // 5. Calculer le prix total
-            final BigDecimal amount = processOrderPaymentAmount(orderUpdateRequestDto.getItemUpdateRequestDtoList(), products);
-            orderEntity.setTotalAmount(Money.of(amount));
-
-            // 6. Paiement
-            final PaymentEntity payment = paymentService.processPayment(orderUpdateRequestDto.getPaymentType(), amount);
-
-            return switch (payment.getPaymentStatus()) {
-                case SUCCESS -> onPaymentSuccess(orderUpdateRequestDto.getShippingType(), orderUpdateRequestDto.getShippingProvider(), orderEntity.getUuid(), orderEntity, userEntity, amount, quantities);
-                case FAILED -> throw new FailedUpdatingOrder("Could not process payment");
-            };
+        if (!isCurrentUserOrderInitiator(order, keycloakId)) {
+            throw new OrderDoesntBelongsToUserException("Order not found for this user account");
         }
-        throw new OrderDoesntBelongsToUserException("Order not found for this user account");
+
+        if (!isOrderInRetryablePaymentStatus(order)) {
+            throw new FailedRetryingPayment("Cannot retry payment for order in status: " + order.getStatus() + ". Order must be in PAYMENT_FAILED state.");
+        }
+
+        // Guard against double-debit: Stripe confirms payment SYNCHRONOUSLY (setConfirm(true)) but
+        // order.status only advances to PAID/PAYMENT_FAILED ASYNCHRONOUSLY via the Stripe webhook.
+        // During that window order.status can still read AWAITING_PAYMENT even though a payment
+        // already succeeded (or is currently in flight) — retrying here would fire a second real
+        // Stripe PaymentIntent.
+        final boolean paymentAlreadySettled = order.getPaymentAttempts().stream()
+                .anyMatch(p -> p.getTransactionType() == TransactionType.PAYMENT
+                        && (p.getStatus() == PaymentAttemptStatus.SUCCESS
+                        || p.getStatus() == PaymentAttemptStatus.PROCESSING));
+        if (paymentAlreadySettled) {
+            throw new PaymentAlreadyCompletedForThisOrderException(
+                    "A payment already succeeded or is in flight for order " + orderUuid);
+        }
+
+        // 0. A card is required: checked before reserving stock, so a user without a card gets
+        // BANK_CARD_NOT_FOUND (the frontend offers "add a card") and no reservation is taken.
+        validateUserBeforeProcessingPayment(order.getUserEntity());
+
+        // 1. Vérifier et Réserver le stock (car il a été libéré lors de l'échec précédent)
+        final Map<UUID, Integer> quantities = order.getOrderItemEntities().stream()
+                .collect(Collectors.toMap(
+                        item -> item.getProductEntity().getUuid(),
+                        OrderItemEntity::getQuantity
+                ));
+
+        // Lève NotEnoughStockException si le stock n'est plus disponible
+        stockService.reserveStock(order.getUuid(), quantities);
+
+        // 2. Récupérer le type de paiement de la dernière tentative
+        PaymentType paymentType = order.getPaymentAttempts().stream()
+                .max(Comparator.comparing(BaseEntity::getCreatedAt))
+                .map(PaymentEntity::getPaymentType)
+                .orElseThrow(() -> new NoPreviousPaymentAttemptException("No previous payment attempt found for failed order"));
+
+        // 3. Tenter le paiement.
+        // H-3 fix: the idempotency key MUST be unique per retry attempt. The old constant
+        // key (orderUuid + "retry") made Stripe keep returning the cached FAILED result of
+        // the first retry forever, and collided with the DB unique constraint on the second.
+        // We now mix in the monotonic attempt counter (guarantees uniqueness) plus a capture
+        // timestamp (human-readable trace of WHEN the retry fired). Both are evaluated once
+        // here, so a transient @Retry of this very call still dedupes correctly at Stripe.
+        final int retryAttemptNumber = order.getPaymentAttempts().size() + 1;
+        final String retryTimestamp = LocalDateTime.now().toString();
+        final String idempotencyKey = idempotencyKeyService.generateKey(order.getUuid().toString(), List.of(RETRY_PAYMENT_ACTION, String.valueOf(retryAttemptNumber), retryTimestamp));
+        final PaymentEntity attempt = paymentService.processPayment(
+                order,
+                paymentType,
+                order.getTotalAmount(),
+                idempotencyKey
+        );
+
+        log.info("Retry payment for order {}: attempt {} -> {}", orderUuid, attempt.getUuid(), attempt.getStatus());
+
+        sendOrderUpdatedEvent(order, order.getUserEntity(), order.getTotalAmount().getAmount(), attempt.getStatus());
+
+        return orderMapper.mapFromEntityToResponseDto(order);
     }
 
 
+    /**
+     * Price the caller's cart as {@link #placeOrder} would — same cart lines at current product
+     * prices, same {@link OrderPriceCalculationService#calculate} — so the quote equals the total
+     * of the order placed right after with the same options (unless a price or the cart changes
+     * in between). Read-only: no order, no stock reservation, no payment.
+     *
+     * <p>{@code discountApplied} is false when there is no campaign or when the subtotal is below
+     * the campaign's {@code minOrderAmount}; an unknown or inactive campaign is a
+     * {@link DiscountTypeNotActiveException} (400), exactly like at placement.
+     */
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
+    public OrderQuoteResponseDto quote(final OrderQuoteRequestDto req, final Jwt jwt) {
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
+        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException(USER_NOT_FOUND_MESSAGE));
+        final List<CartItemEntity> cartItems = OrderPricingUtils.requireCartItems(user.getCartEntity(), EMPTY_CART_QUOTE_MESSAGE);
+
+        final PriceCalculationResultDto price = orderPriceCalculationService.calculate(
+                OrderPricingUtils.cartPriceRequest(cartItems, req.getDiscountKey(), req.getShippingProvider(), req.getShippingType()));
+
+        final DiscountContext terms = price.getAppliedDiscount();
+        final boolean discountApplied = terms.calculationType() != DiscountCalculationType.NONE
+                && (terms.minOrderAmount() == null || price.getBaseAmount().compareTo(terms.minOrderAmount()) >= 0);
+        log.info("Quote for {} cart line(s): subtotal {} - discount {} [{}, applied={}] + shipping {} = {} ({} {})", cartItems.size(),
+                price.getBaseAmount(), price.getDiscountAmount(), req.getDiscountKey(), discountApplied, price.getShippingCost(),
+                price.getFinalAmount(), req.getShippingProvider(), req.getShippingType());
+
+        return OrderQuoteResponseDto.builder()
+                .subtotalAmount(price.getBaseAmount())
+                .discountKey(price.getDiscountKey())
+                .discountCalculationType(terms.calculationType())
+                .discountAmount(price.getDiscountAmount())
+                .discountApplied(discountApplied)
+                .minOrderAmount(terms.minOrderAmount())
+                .shippingCost(price.getShippingCost())
+                .totalAmount(price.getFinalAmount())
+                .currency(price.getCurrencyCode().getCode())
+                .build();
+    }
+
+    /**
+     * Convert the caller's cart into a persisted order, reserve stock, attempt payment, and
+     * publish an {@code OrderCreatedEvent}.
+     *
+     * <p>{@link #resolveKeycloakIdFromJwt(Jwt)} rejects a null JWT subject with
+     * {@link UserNotFoundException} — no more NPE when the token is malformed.
+     *
+     * <p>The {@code totalAmount} persisted here is the FINAL,
+     * discount-adjusted amount (sum of cart-item unit prices × quantities — the cart service is
+     * responsible for applying any promotional discount into the unit price before this call).
+     * Any subsequent retry via {@link #retryPayment(UUID, Jwt)} forwards this amount verbatim.
+     *
+     * <p><b>No {@code @Transactional} here — deliberately.</b> Order creation + stock reservation
+     * commit in their own transaction on {@link OrderCreationTransactionalDelegate} BEFORE the
+     * payment attempt runs, so a Stripe infrastructure failure ({@link PaymentProcessingException})
+     * can only roll back the payment attempt, never the order itself — see that interface's javadoc
+     * for why wrapping this method in its own transaction would silently re-introduce the bug
+     * (the nested {@code @Transactional} on {@code PaymentServiceImp.processPayment} would poison
+     * a shared transaction before this method's own catch block ever runs).
+     */
+    @Override
     public OrderResponseDto placeOrder(final OrderPlacingRequestDto req, final Jwt jwt) {
 
-        // 1. Charger l'utilisateur
-        String keycloakId = jwt.getSubject();
-        final UserEntity userEntity = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        final String keycloakId = resolveKeycloakIdFromJwt(jwt);
 
-        // 2. Charger les produits
-        List<ProductEntity> products = getAllProductsFromRequest(req.getOrderItems());
-        Map<UUID, Integer> quantities = req.getOrderItems().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
-        final UUID orderUUID = UUID.randomUUID();
+        final OrderEntity savedOrder = orderCreationTransactionalDelegate.createAndReserveStock(req, keycloakId);
 
-        // 3. Réserver le stock AVANT tout paiement
-        stockService.reserveStock(orderUUID, quantities);
+        // The delegate emptied the cart inside its (now committed) transaction; clearCart re-reads
+        // that empty cart and writes it to the Redis cache — after the commit, like every other
+        // cart write path — so the customer doesn't keep seeing the ordered items in their cart.
+        cartService.clearCart(keycloakId);
 
-        // 4. Vérifier la commande
-        validateOrderBeforeProcessingPayment(quantities, userEntity);
+        final UserEntity user = savedOrder.getUserEntity();
+        final UUID orderUuid = savedOrder.getUuid();
+        final Money totalMoney = savedOrder.getTotalAmount();
+        final BigDecimal totalAmount = totalMoney.getAmount();
 
-        // 5. Calculer le prix total
-        final BigDecimal amount = processOrderPaymentAmount(req.getOrderItems(), products);
+        // Idempotency key derived from the persisted order's own items — quantities are part of
+        // the context so two orders for the same products in different quantities never collide.
+        final List<String> productUuidsWithQuantities = savedOrder.getOrderItemEntities().stream()
+                .map(i -> i.getProductEntity().getUuid() + ":" + i.getQuantity())
+                .toList();
+        final String idempotencyKey = idempotencyKeyService.generateKey(orderUuid.toString(), productUuidsWithQuantities);
 
-        // 6. Paiement
-        final PaymentEntity payment = paymentService.processPayment(req.getPaymentType(), amount);
+        PaymentAttemptStatus resultingStatus;
+        try {
+            final PaymentEntity attempt = paymentService.processPayment(
+                    savedOrder,
+                    req.getPaymentType(),
+                    totalMoney,
+                    idempotencyKey
+            );
 
-        // 7. Construire l’OrderEntity
-        final OrderEntity order = orderMapper.mapFromOrderPlacingRequestDtoToOrderEntity(req);
-        final List<OrderItemEntity> items = getOrderItemEntities(req, order, products);
+            resultingStatus = attempt.getStatus();
+            log.info("Order {}: payment attempt {} -> {} ({} {})", orderUuid, attempt.getUuid(), resultingStatus, totalAmount, req.getPaymentType());
 
-        initOrderEntity(orderUUID, order, payment, amount, items, userEntity);
-
-        return switch (payment.getPaymentStatus()) {
-            case SUCCESS ->
-                    onPaymentSuccess(req.getShippingType(), req.getShippingProvider(), orderUUID, order, userEntity, amount, quantities);
-            case FAILED -> onPaymentFailure(orderUUID, order);
-        };
-    }
-
-    @Override
-    @Transactional
-    public OrderResponseDto cancelOrder(final UUID orderUUID, final Jwt jwt) {
-
-        log.info("Order UUD : {}", orderUUID);
-
-        final OrderEntity orderEntity = orderRepository.findByUuid(orderUUID).orElseThrow(() -> new OrderNotFoundException("Order with UUID " + orderUUID + " not found"));
-
-        if (isOrderAlreadyShipped(orderEntity)) {//Il faudra un autre endpoint pour annuler la commande une fois renvoyée
-            final String keycloakId = jwt.getSubject();
-            if (isCurrentUserOrderInitiator(orderEntity, keycloakId)) {
-                orderEntity.setStatus(OrderStatus.CANCELED);
-                return orderMapper.mapFromEntityToResponseDto(orderRepository.save(orderEntity));
-            } else {
-                log.info("User tried to cancel and order not linked to his account");
-                throw new OrderDoesntBelongsToUserException("Order with UUID " + orderUUID + " not found for this user account");
+            if (resultingStatus == PaymentAttemptStatus.FAILED) {
+                log.warn("Payment FAILED for order {} — releasing stock reservation.", orderUuid);
+                stockService.releaseStock(orderUuid);
             }
-        } else {
-            log.info("User tried to cancel an order in a status over delivered status");
-            throw new CannotCancelOrderException("Order is already shipped and can't be cancelled, please consider initiating Return process");
         }
+        catch (final PaymentProcessingException e) {
+            // Stripe infrastructure failure (network outage past the @Retry budget, circuit
+            // breaker OPEN) rather than a business decline — the order is already committed
+            // (see above). Degrade to the same outcome a business decline already gets: release
+            // the stock hold and leave the order AWAITING_PAYMENT so retryPayment() works once
+            // Stripe recovers, instead of losing the order.
+            log.warn("Payment processing failed for order {} due to a Stripe/infra error — order kept in AWAITING_PAYMENT for retry.", orderUuid, e);
+            stockService.releaseStock(orderUuid);
+            resultingStatus = PaymentAttemptStatus.FAILED;
+        }
+
+        sendOrderCreationEvent(savedOrder, user, totalAmount, resultingStatus);
+
+        return orderMapper.mapFromEntityToResponseDto(savedOrder);
     }
 
 
-    private OrderResponseDto onPaymentFailure(final UUID orderUUID, final OrderEntity order) {
-        // Paiement échec → libérer le stock
-        stockService.releaseStock(orderUUID);
-        order.setStatus(PENDING_PAYMENT);
-        OrderEntity saved = orderRepository.save(order);
-
-        return orderMapper.mapFromEntityToResponseDto(saved);
-        //throw new PaymentFailedException("Could not process payment");
+    /**
+     * Soft-cancel an order: flip status to {@code CANCELED} and refund every prior successful
+     * payment attempt (excluding refunds themselves). Differs from {@link #deleteByUUID}, which
+     * hard-deletes the row and issues no refund.
+     *
+     * <p>The JWT subject is resolved via {@link #resolveKeycloakIdFromJwt(Jwt)}
+     * — a missing {@code sub} claim now throws {@link UserNotFoundException}.
+     *
+     * <p><b>Race-fix (full-suite IT regression):</b> the async {@code PaymentSucceededEvent}
+     * listener ({@link com.novatech.cybertech.listener.OrderPaymentConfirmationEventListener#handlePaymentSuccess})
+     * runs on a separate thread after the placeOrder TX commits, flipping the order to
+     * {@link OrderStatus#PAID} and bumping the JPA {@code @Version}. If a user fires
+     * {@code POST /cancel} fast enough, the cancel TX can collide with the listener's update and
+     * the optimistic-lock failure would surface as HTTP 500. {@code @Retryable} bounds the work
+     * to 3 attempts on {@link OptimisticLockingFailureException}; each attempt re-invokes
+     * {@link OrderCancellationTransactionalDelegate#cancelWithinTransaction}, a SEPARATE bean —
+     * crossing that bean boundary is what makes both the {@code @Transactional} and
+     * {@code @Retryable} proxies fire on every attempt, so a retry re-fetches the order and sees
+     * the listener's write instead of replaying a stale in-memory entity. The delegate's own
+     * idempotency short-circuit (already-{@code CANCELED} → return as-is) covers the case where
+     * the listener's write and the cancel actually land in the opposite order.
+     *
+     * @param orderUUID order to cancel
+     * @param jwt       caller identity (subject must match the order's owner)
+     * @return the cancelled order DTO
+     */
+    @Override
+    @Retryable(retryFor = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    public OrderResponseDto cancelOrder(final UUID orderUUID, final Jwt jwt) {
+        log.info("Cancel order {} requested", orderUUID);
+        return orderCancellationTransactionalDelegate.cancelWithinTransaction(orderUUID, jwt);
     }
 
 
-    private OrderResponseDto onPaymentSuccess(final ShippingType shippingType, final ShippingProvider shippingProvider, final UUID orderUUID, final OrderEntity order, final UserEntity userEntity, final BigDecimal amount, final Map<UUID, Integer> quantities) {
-        // 8. Commit du stock
-        stockService.commitStock(orderUUID);
-
-        OrderEntity saved = orderRepository.save(order);
-
-        // 9. Événements
-        sendOrderCreationEvent(order, userEntity, amount, quantities);
-        sendOrderShippingEvent(shippingType, shippingProvider, userEntity, saved);
-
-        return orderMapper.mapFromEntityToResponseDto(saved);
+    /**
+     * Frontend-gap #1 — paginated read of the authenticated user's orders.
+     *
+     * <p>Resolves through the JPQL paginated finder
+     * {@link OrderRepository#findByUserKeycloakIdAndOptionalStatuses}; an empty / null
+     * status set is normalised to {@code null} so the WHERE clause's
+     * {@code :statuses IS NULL OR ...} short-circuit returns every order. Read-only TX
+     * mirrors the rest of the read-path methods in this service.</p>
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OrderResponseDto> findMyOrders(final String keycloakId, final Pageable pageable, final Set<OrderStatus> statuses) {
+        final Set<OrderStatus> effectiveStatuses = (statuses == null || statuses.isEmpty()) ? null : statuses;
+        final Page<OrderEntity> page = orderRepository.findByUserKeycloakIdAndOptionalStatuses(keycloakId, effectiveStatuses, pageable);
+        hydrateOrderItemsAndProducts(page.getContent());
+        return page.map(orderMapper::mapFromEntityToResponseDto);
     }
 
+    /**
+     * Frontend-gap #2 — admin-side paginated read with optional status / user filters.
+     *
+     * <p>Both filters short-circuit when null: passing {@code null} for both returns every
+     * order in the system (paginated). Role enforcement is the controller's job; this
+     * method assumes a trusted caller.</p>
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OrderResponseDto> findAllPaged(final Set<OrderStatus> statuses, final String userKeycloakId, final Pageable pageable) {
+        final Set<OrderStatus> effectiveStatuses = (statuses == null || statuses.isEmpty()) ? null : statuses;
+        final Page<OrderEntity> page = orderRepository.findAllByOptionalStatusesAndUserKeycloakId(effectiveStatuses, userKeycloakId, pageable);
+        hydrateOrderItemsAndProducts(page.getContent());
+        return page.map(orderMapper::mapFromEntityToResponseDto);
+    }
 
-    private void validateOrderBeforeProcessingPayment(final Map<UUID, Integer> productsByQuantityMap, final UserEntity userEntity) {
+    /**
+     * Batch-loads {@code orderItemEntities} + {@code productEntity} for the given orders in one
+     * extra query (see {@link OrderRepository#hydrateItemsAndProductsByIdIn}), instead of letting
+     * {@link OrderMapper} trigger a lazy select per order and per item while mapping. A no-op for
+     * an empty page/list.
+     */
+    private void hydrateOrderItemsAndProducts(final List<OrderEntity> orders) {
+        if (orders.isEmpty()) {
+            return;
+        }
+        orderRepository.hydrateItemsAndProductsByIdIn(orders.stream().map(OrderEntity::getId).toList());
+    }
+
+    private void validateUserBeforeProcessingPayment(final UserEntity userEntity) {
+        validateUserBeforeProcessingPayment(orderValidatorChain, userEntity);
+    }
+
+    /**
+     * Package-private (not {@code private}): also called by
+     * {@link OrderCreationTransactionalDelegateImp}, which needs the same guard but injects its
+     * own {@link OrderValidator} instance (separate bean).
+     */
+    static void validateUserBeforeProcessingPayment(final OrderValidator orderValidatorChain, final UserEntity userEntity) {
+        final BankCardEntity bankCardEntity = Optional.ofNullable(userEntity.getBankCardEntity())
+                .orElseThrow(() -> new BankCardNotFoundException("No bank card set, please, add a bank card and retry ..."));
         final OrderValidationDto orderValidationDto = OrderValidationDto.builder()
                 .isUserActive(userEntity.getIsActive())
-                .userDefaultBankCard(userEntity.getBankCardEntities().stream().filter(BankCardEntity::getIsDefault).findFirst().orElseThrow(() -> new NoDefaultBankCartSetException("No default bank card set, please, set a default bank card and retry ...")))
+                .bankCardValidationDto(BankCardValidationDto.builder()
+                        .expiryDate(bankCardEntity.getExpiryDate())
+                        .build())
                 .build();
 
         orderValidatorChain.validate(orderValidationDto);
     }
 
 
-    private static void initOrderEntity(final UUID orderUUID, final OrderEntity orderEntity, final PaymentEntity paymentEntity, final BigDecimal totalPrice, final List<OrderItemEntity> orderItemEntities, final UserEntity user) {
-        orderEntity.setUuid(orderUUID);
-        orderEntity.setPaymentEntity(paymentEntity);
-        orderEntity.setTotalAmount(Money.of(totalPrice));
-        orderEntity.setStatus(PROCESSING);
-        orderEntity.setOrderItemEntities(orderItemEntities);
-        orderEntity.setUserEntity(user);
-        orderEntity.setDiscountType(NO_DISCOUNT);
+    private void sendOrderCreationEvent(
+            final OrderEntity orderEntity,
+            final UserEntity user,
+            final BigDecimal totalPrice,
+            final PaymentAttemptStatus paymentAttemptStatus
+    ) {
+        eventPublisher.publishEvent(new OrderCreatedEvent(this, buildOrderEventDto(orderEntity, user, totalPrice, paymentAttemptStatus)));
     }
 
-
-    private void sendOrderShippingEvent(final ShippingType shippingType, final ShippingProvider shippingProvider, final UserEntity user, final OrderEntity savedOrder) {
-        final ShippingContext shippingContext = ShippingContext.builder()
-                .user(user)
-                .packageId(savedOrder.getUuid().toString())
-                .payload(savedOrder)
-                .shippingType(shippingType)
-                .shippingProvider(shippingProvider)
-                .build();
-
-        shippingDispatcher.dispatch(shippingContext);
+    private void sendOrderUpdatedEvent(final OrderEntity orderEntity, final UserEntity user, final BigDecimal totalPrice, final PaymentAttemptStatus paymentAttemptStatus) {
+        eventPublisher.publishEvent(new OrderUpdatedEvent(this, buildOrderEventDto(orderEntity, user, totalPrice, paymentAttemptStatus)));
     }
 
-
-    private void sendOrderCreationEvent(final OrderEntity orderEntity, final UserEntity user, final BigDecimal totalPrice, final Map<UUID, Integer> productsByQuantityMap) {
-
-        OrderEventDto orderEventDto = OrderEventDto.builder()
+    private static OrderEventDto buildOrderEventDto(
+            final OrderEntity orderEntity,
+            final UserEntity user,
+            final BigDecimal totalPrice,
+            final PaymentAttemptStatus paymentAttemptStatus
+    ) {
+        return OrderEventDto.builder()
                 .orderUuid(orderEntity.getUuid())
                 .orderStatus(orderEntity.getStatus())
-                .paymentStatus(SUCCESS)
+                .paymentAttemptStatus(paymentAttemptStatus)
                 .totalAmount(totalPrice)
-                .productsByQuantityMap(productsByQuantityMap)
-                .userContactDto(UserContactDto.builder()
-                        .defaultCommunicationChanel(user.getFavoriteCommunicationChanel())
-                        .email(user.getEmail())
-                        .name(user.getFirstName())
-                        .phoneNumber(user.getPhoneNumber())
-                        .build())
+                .shippingProvider(orderEntity.getShippingProvider())
+                .shippingType(orderEntity.getShippingType())
+                .userContactDto(UserContactUtils.toUserContact(user))
                 .build();
-
-        eventPublisher.publishEvent(new OrderCreatedEvent(this, orderEventDto));
     }
 
 
-    private static List<OrderItemEntity> getOrderItemEntities(final OrderPlacingRequestDto orderPlacingRequestDto, final OrderEntity orderEntity, final List<ProductEntity> productEntities) {
-        final Map<UUID, Integer> productsByQuantityMap = orderPlacingRequestDto.getOrderItems().stream().collect(Collectors.toMap(OrderItemCreateRequestDto::getProductUuid, OrderItemCreateRequestDto::getQuantity));
-
-        return productEntities.stream().map(productEntity -> OrderItemEntity.builder()
-                        .uuid(UUID.randomUUID())
-                        .unitPrice(productEntity.getPrice())
-                        .quantity(productsByQuantityMap.get(productEntity.getUuid()))
-                        .subtotal(productEntity.getPrice().multiply(BigDecimal.valueOf(productsByQuantityMap.get(productEntity.getUuid()))))
-                        .orderEntity(orderEntity)//!Warning: Ici, l'objet orderEntity n'est pas encore complet
-                        .productEntity(productEntity)
-                        .build())
-                .collect(Collectors.toList());
-    }
-
-
-    private BigDecimal processOrderPaymentAmount(final List<OrderItemCreateRequestDto> orderItemCreateRequestDto, final List<ProductEntity> productEntities) {
+    private BigDecimal processOrderTotalPrice(final List<OrderItemCreateRequestDto> orderItemCreateRequestDto, final List<ProductEntity> productEntities) {
 
         final Map<UUID, ProductEntity> productsByUuid = productEntities.stream().collect(Collectors.toMap(ProductEntity::getUuid, product -> product));
 
@@ -310,16 +805,146 @@ public class OrderManagementServiceImp implements OrderManagementService {
         return productRepository.findAllByUuidIn(orderItemCreateRequestDto.stream().map(OrderItemCreateRequestDto::getProductUuid).toList());
     }
 
-    private static boolean isOrderAlreadyShipped(OrderEntity orderEntity) {
-        return orderEntity.getStatus().getCode() < SHIPPED.getCode();
+    /**
+     * {@code true} when the order's status is at or beyond {@link OrderStatus#SHIPPED}.
+     * Used by {@link #updateOrder(OrderUpdateRequestDto, Jwt)} to short-circuit edits to a
+     * physically dispatched order — the {@link OrderAlreadyShippedException} message it raises
+     * ("already shipped") is only accurate from {@code SHIPPED} onwards, so this gate
+     * intentionally still allows updates while the order sits in {@link OrderStatus#AWAITING_SHIPPING}.
+     */
+    /**
+     * A successful update of a paid order restarts its modification window: the customer just
+     * changed it, so it gets the full {@code cybertech.shipping.grace-period} again before
+     * {@code ShipAllPaidOrdersTasklet} ships it. No-op for an order that is not (yet) PAID.
+     */
+    private static void restartModificationWindow(final OrderEntity order) {
+        if (order.getStatus() == OrderStatus.PAID) {
+            order.setPaidAt(LocalDateTime.now());
+        }
     }
 
-    private static boolean isCurrentUserOrderInitiator(OrderEntity orderEntity, String keycloakId) {
+    private static boolean isOrderAlreadyShipped(OrderEntity orderEntity) {
+        return orderEntity.getStatus().getCode() >= SHIPPED.getCode();
+    }
+
+    /**
+     * Package-private (not {@code private}): also called by
+     * {@link OrderCancellationTransactionalDelegateImp}, the separate bean
+     * {@link #cancelOrder(UUID, Jwt)} delegates to.
+     */
+    static boolean isCurrentUserOrderInitiator(OrderEntity orderEntity, String keycloakId) {
         return orderEntity.getUserEntity().getKeycloakId().equals(keycloakId);
     }
 
+    private static boolean isOrderInRetryablePaymentStatus(OrderEntity orderEntity) {
+        return orderEntity.getStatus() == OrderStatus.PAYMENT_FAILED || orderEntity.getStatus() == OrderStatus.AWAITING_PAYMENT || orderEntity.getStatus() == CREATED;
+    }
+
     private static boolean isInDeletableState(final OrderEntity order) {
-        final Set<OrderStatus> deletableStates = Set.of(PENDING_PAYMENT, DELIVERED, RETURNED, CANCELED, REFUNDED);
+        final Set<OrderStatus> deletableStates = Set.of(CREATED, AWAITING_PAYMENT, PAYMENT_FAILED, DELIVERED, RETURNED, CANCELED, REFUNDED);
         return deletableStates.contains(order.getStatus());
     }
+
+    private List<OrderItemEntity> mapToOrderItems(Map<UUID, Integer> quantities, List<ProductEntity> products, OrderEntity order) {
+        return products.stream()
+                .map(product -> OrderItemEntity.builder()
+                        .unitPrice(product.getPrice())
+                        .quantity(quantities.get(product.getUuid()))
+                        .subtotal(product.getPrice().multiply(BigDecimal.valueOf(quantities.get(product.getUuid()))))
+                        .orderEntity(order)
+                        .productEntity(product)
+                        .build())
+                .collect(Collectors.toUnmodifiableList());
+    }
+
+    /**
+     * Defensive null-guard around {@link Jwt#getSubject()}.
+     *
+     * <p>Every user-facing method in this service identifies the caller by the JWT {@code sub}
+     * claim. A malformed / stripped token (missing sub) used to fall through to
+     * {@code userRepository.findByKeycloakId(null)} — an NPE waiting to happen, or worse a silent
+     * query-by-null returning the first-inserted user on some JPA providers. This helper surfaces
+     * the condition up-front as {@link UserNotFoundException} (HTTP 404 via the advice) instead.
+     *
+     * @param jwt caller token; may itself be null — both cases are treated as "no identity".
+     * @return the non-null Keycloak subject.
+     * @throws UserNotFoundException when the JWT is null or has a null {@code sub} claim.
+     */
+    static String resolveKeycloakIdFromJwt(final Jwt jwt) {
+        return Optional.ofNullable(jwt)
+                .map(Jwt::getSubject)
+                .orElseThrow(() -> new UserNotFoundException("JWT subject missing — cannot resolve user"));
+    }
+
+    /**
+     * Cas 1 : le nouveau montant est plus élevé -> paiement du complément.
+     *
+     * <p>A declined complement throws {@link PaymentFailedException}: carrying on used to leave a
+     * PAID order in AWAITING_PAYMENT, which the payment_failed webhook then turned into
+     * PAYMENT_FAILED with ALL its stock released, while retryPayment refused to run (a SUCCESS
+     * payment already exists). After the rollback the late payment_failed webhook is ignored for a
+     * PAID order (not payment-pending). {@code PROCESSING} is not a decline — the webhook settles it.
+     *
+     * @param idempotencyKey per-attempt key for THIS update (see updateOrder step 7).
+     */
+    private PaymentAttemptStatus chargeDifference(final OrderEntity order, final BigDecimal difference,
+                                                  final PaymentType paymentType, final String idempotencyKey) {
+        order.setStatus(OrderStatus.AWAITING_PAYMENT);
+        orderRepository.save(order);
+
+        final PaymentEntity attempt = paymentService.processPayment(order, paymentType, Money.of(difference), idempotencyKey);
+        if (OrderPaymentUtils.isRejected(attempt)) throw new PaymentFailedException("The additional payment for order " + order.getUuid() + " was declined — the order was left unchanged");
+
+        return attempt.getStatus();
+    }
+
+    /**
+     * Cas 2 : le nouveau montant est moins élevé -> remboursement de la différence.
+     *
+     * <p>The amount is spread over the captured payments, newest first, each refunding at most
+     * what is still refundable on it ({@link OrderPaymentUtils#remainingRefundable}) and against
+     * its OWN stored idempotency key (which {@link PaymentService#refund} uses to find the Stripe
+     * PaymentIntent). Refunding everything against the most recent payment only — the previous
+     * behaviour — made Stripe reject any refund larger than that payment, e.g. an order paid 100
+     * then +50 by an earlier update, reduced to 40: refunding 110 against the 50 charge.
+     *
+     * <p>Mirrors {@code OrderCancellationTransactionalDelegateImp}: every refund is attempted, then
+     * a rejected one throws {@link OrderRefundFailedException} so the update is rolled back instead
+     * of shrinking the order while the customer is never refunded.
+     */
+    private PaymentAttemptStatus refundDifference(final OrderEntity order, final BigDecimal amountToRefund) {
+        final List<PaymentEntity> capturedNewestFirst = order.getPaymentAttempts().stream()
+                .filter(OrderPaymentUtils::isCapturedPayment)
+                .sorted(Comparator.comparing(PaymentEntity::getCreatedAt).reversed())
+                .toList();
+        if (capturedNewestFirst.isEmpty()) {
+            throw new NoPreviousPaymentAttemptException("No successful payment attempt found to refund for order " + order.getUuid());
+        }
+
+        // Stateful allocation (what is left to refund shrinks per payment) — a plain loop reads
+        // far clearer here than a stream with a mutable accumulator.
+        final List<PaymentEntity> refunds = new ArrayList<>();
+        BigDecimal left = amountToRefund;
+        for (final PaymentEntity payment : capturedNewestFirst) {
+            if (left.signum() <= 0) {
+                break;
+            }
+            final BigDecimal share = OrderPaymentUtils.remainingRefundable(order, payment).min(left);
+            if (share.signum() <= 0) {
+                continue;
+            }
+            refunds.add(paymentService.refund(order, payment.getPaymentType(),
+                    new Money(share, payment.getAmount().getCurrencyCode()), payment.getIdempotencyKey()));
+            left = left.subtract(share);
+        }
+
+        if (refunds.stream().anyMatch(OrderPaymentUtils::isRejected)) {
+            throw new OrderRefundFailedException(
+                    "Refund was rejected while updating order " + order.getUuid() + " — update aborted, order left unchanged");
+        }
+        return refunds.stream().allMatch(r -> r.getStatus() == PaymentAttemptStatus.SUCCESS)
+                ? PaymentAttemptStatus.SUCCESS
+                : PaymentAttemptStatus.PROCESSING;
+    }
+
 }

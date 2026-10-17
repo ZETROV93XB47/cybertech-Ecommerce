@@ -1,33 +1,35 @@
 package com.novatech.cybertech.entities;
 
-import com.novatech.cybertech.entities.enums.DiscountType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.Address;
+import com.novatech.cybertech.entities.valueObjects.DiscountTermsSnapshot;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
-//Est ce qu'il y a un intéret à garder la partie cart dans ce cas ? tous les éléments commandés par le user sont dans son order
 
 @Entity
-@Setter
 @Getter
+@Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "orderTable")
-@ToString(callSuper = true)
-@EqualsAndHashCode(callSuper = true)
-@EntityListeners(AuditingEntityListener.class)
-public class OrderEntity extends BaseEntity {
+@Table(
+        name = "orderTable",
+        indexes = @Index(name = "idx_order_status_date", columnList = "status, orderDate")
+)
+@ToString(callSuper = true, exclude = {"userEntity", "orderItemEntities", "paymentAttempts"})
+@EqualsAndHashCode(callSuper = true, exclude = {"userEntity", "orderItemEntities", "paymentAttempts"})
+public class OrderEntity extends BaseEntity<Long> {
 
     @Column(name = "orderDate", nullable = false)
     private LocalDateTime orderDate;
@@ -52,6 +54,28 @@ public class OrderEntity extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private OrderStatus status;
 
+    /**
+     * Set once, the first time this order is actually handed to a shipping provider by
+     * {@code ShipOrderTransactionalDelegate}. Unlike {@code status},
+     * which {@code updateOrder}'s charge-difference path can legitimately regress from
+     * {@code AWAITING_SHIPPING} back down to {@code AWAITING_PAYMENT} (to let the payment webhook
+     * re-promote it to {@code PAID} and commit the resized stock reservation), this field is never
+     * cleared — it is the idempotency marker that stops that regression from triggering a second,
+     * real dispatch call to the carrier once the webhook re-promotes the order to {@code PAID}.
+     */
+    @Column(name = "shippedAt")
+    private LocalDateTime shippedAt;
+
+    /**
+     * When the order last became fully paid — stamped on the transition to {@code PAID} (payment
+     * webhook) and re-stamped by every successful {@code updateOrder}. Starts the modification
+     * window: {@code ShipAllPaidOrdersTasklet} only ships orders paid for longer than
+     * {@code cybertech.shipping.grace-period}, so a customer can still change a paid order.
+     * Null on rows paid before this column existed — those are shipped without waiting.
+     */
+    @Column(name = "paidAt")
+    private LocalDateTime paidAt;
+
     @Column(name = "shippingType", nullable = false)
     @Enumerated(EnumType.STRING)
     private ShippingType shippingType;
@@ -60,29 +84,57 @@ public class OrderEntity extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private ShippingProvider shippingProvider;
 
+    /**
+     * The {@code discountKey} of the campaign applied at purchase time (or {@link
+     * com.novatech.cybertech.constants.CyberTechAppConstants#NO_DISCOUNT_KEY}). Free-form String,
+     * not an enum — see {@link com.novatech.cybertech.entities.DiscountCampaignEntity#getDiscountKey()}
+     * for why. Column name kept as {@code discountType} (ddl-auto=update caveat, see there).
+     */
     @Column(name = "discountType", nullable = false)
-    @Enumerated(EnumType.STRING)
-    private DiscountType discountType;
+    private String discountKey;
 
-    @ManyToOne
+    // --- Price breakdown, in the currency of totalAmount. Invariant once set:
+    // totalAmount = max(0, subtotalAmount - discountAmount) + shippingCost.
+    // Null on orders placed before the breakdown was persisted.
+
+    /** Sum of the order lines ({@code unitPrice * quantity}) before discount and shipping. */
+    @Column(name = "subtotalAmount", precision = 19, scale = 2)
+    private BigDecimal subtotalAmount;
+
+    /** Discount granted on {@link #subtotalAmount}; {@code 0} when none applies (or below the campaign minimum). */
+    @Column(name = "discountAmount", precision = 19, scale = 2)
+    private BigDecimal discountAmount;
+
+    /** Shipping fee for {@link #shippingProvider} / {@link #shippingType}. */
+    @Column(name = "shippingCost", precision = 19, scale = 2)
+    private BigDecimal shippingCost;
+
+    /**
+     * Terms of the campaign {@link #discountKey} as they were when the order was placed. Kept
+     * for the order's whole life so a modification re-prices with the same terms. Null on orders
+     * placed before the snapshot existed.
+     */
+    @Embedded
+    private DiscountTermsSnapshot discountTerms;
+
+    /**
+     * Indicative delivery dates (both inclusive) for {@link #shippingProvider} / {@link #shippingType},
+     * set when the order is placed or modified from its {@link #orderDate}. Null on orders placed
+     * before the estimate existed.
+     */
+    @Column(name = "estimatedDeliveryFrom")
+    private LocalDate estimatedDeliveryFrom;
+
+    @Column(name = "estimatedDeliveryTo")
+    private LocalDate estimatedDeliveryTo;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "userId")
     private UserEntity userEntity;
 
-    @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-    @ToString.Exclude
+    @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<OrderItemEntity> orderItemEntities;
 
-    @OneToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
-    @JoinColumn(name = "paymentId")
-    private PaymentEntity paymentEntity;
-
-    @LastModifiedDate
-    @Column(name = "updatedAt")
-    private LocalDateTime updatedAt;
+    @OneToMany(mappedBy = "orderEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<PaymentEntity> paymentAttempts = new ArrayList<>();
 }
-
-    /*
-    @OneToOne(cascade = CascadeType.ALL)
-    @JoinColumn(name = "cartId")
-    private CartEntity cartEntity;
-     */

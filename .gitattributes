@@ -1,2 +1,5 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+# Shell scripts mounted into Linux containers (LocalStack init hooks etc.)
+# must keep LF line endings or bash chokes with `bad interpreter: No such file`.
+*.sh text eol=lf

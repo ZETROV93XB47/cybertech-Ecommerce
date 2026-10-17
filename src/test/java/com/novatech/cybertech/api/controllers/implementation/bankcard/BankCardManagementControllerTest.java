@@ -1,0 +1,298 @@
+package com.novatech.cybertech.api.controllers.implementation.bankcard;
+
+import com.novatech.cybertech.api.controllers.TestSecurityConfig;
+import com.novatech.cybertech.api.controllers.implementation.BankCardManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
+import com.novatech.cybertech.api.error.model.ErrorResponseDto;
+import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
+import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
+import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
+import com.novatech.cybertech.exceptions.BankCardExpiredException;
+import com.novatech.cybertech.exceptions.BankCardNotFoundException;
+import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
+import com.novatech.cybertech.services.core.BankCardManagementService;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.UUID;
+
+import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
+import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
+import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.json.JsonCompareMode.STRICT;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.hamcrest.Matchers.startsWith;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * @WebMvcTest slice for {@link BankCardManagementController}. Verifies endpoints, JSON envelopes,
+ * DTO validation, JWT-subject forwarding to the service (skeptical: catches the
+ * "passes the whole Jwt instead of subject String" regression), and that the F2-added
+ * exception handlers map domain exceptions to the proper 4xx codes.
+ */
+@Slf4j
+@Import({TestSecurityConfig.class})
+@WebMvcTest(value = BankCardManagementController.class)
+class BankCardManagementControllerTest {
+
+    private static final String BASE = "/api/v1/services/bank-card";
+    private static final String ADD = BASE + "/add";
+    private static final String DELETE_USER = BASE + "/delete";
+    private static final String UPDATE_USER = BASE + "/update";
+    private static final String KEYCLOAK_ID = "keycloak-subject-id";
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @MockitoBean
+    BankCardManagementService bankCardService;
+
+    // ---------- POST /add (user) ----------
+
+    @Test
+    void shouldAddBankCardSuccessfully() throws Exception {
+        BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
+        BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponse();
+
+        when(bankCardService.addBankCard(eq(KEYCLOAK_ID), any(BankCardCreationRequestDto.class))).thenReturn(response);
+
+        mockMvc.perform(post(ADD)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+
+        // Skeptical: the service must receive the JWT subject (a String), not the whole Jwt object.
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        verify(bankCardService).addBankCard(subjectCaptor.capture(), any(BankCardCreationRequestDto.class));
+        assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailAddingBankCardWhenDtoBadRequest() throws Exception {
+        BankCardCreationRequestDto bad = new BankCardCreationRequestDto();
+
+        mockMvc.perform(post(ADD)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(bad)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailAddingBankCardWhenExpired() throws Exception {
+        // BankCardExpiredException now mapped to 400 BANK_CARD_EXPIRED.
+        BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Card already expired")
+                .httpStatusCode(400)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_EXPIRED)
+                .build();
+
+        when(bankCardService.addBankCard(eq(KEYCLOAK_ID), any(BankCardCreationRequestDto.class)))
+                .thenThrow(new BankCardExpiredException("Card already expired"));
+
+        mockMvc.perform(post(ADD)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldFailAddingBankCardWhenAnonymousCauseUnauthorized() throws Exception {
+        BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
+
+        mockMvc.perform(post(ADD)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- DELETE /delete (user) ----------
+
+    @Test
+    void shouldDeleteBankCardSuccessfully() throws Exception {
+        doNothing().when(bankCardService).deleteBankCard(KEYCLOAK_ID);
+
+        mockMvc.perform(delete(DELETE_USER)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNoContent());
+
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        verify(bankCardService).deleteBankCard(subjectCaptor.capture());
+        assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailDeletingBankCardWhenNoCardSet() throws Exception {
+        // BankCardNotFoundException now mapped to 404 BANK_CARD_NOT_FOUND.
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("No bank card found for this user.")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_NOT_FOUND)
+                .build();
+
+        doThrow(new BankCardNotFoundException("No bank card found for this user."))
+                .when(bankCardService).deleteBankCard(KEYCLOAK_ID);
+
+        mockMvc.perform(delete(DELETE_USER)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldFailDeletingBankCardWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(delete(DELETE_USER)
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- PUT /update (user) ----------
+
+    @Test
+    void shouldUpdateBankCardSuccessfully() throws Exception {
+        BankCardUpdateRequestDto request = UserDtoFixtures.aValidBankCardUpdateRequest();
+        BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponse();
+
+        when(bankCardService.updateBankCard(eq(KEYCLOAK_ID), any(BankCardUpdateRequestDto.class))).thenReturn(response);
+
+        mockMvc.perform(put(UPDATE_USER)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        verify(bankCardService).updateBankCard(subjectCaptor.capture(), any(BankCardUpdateRequestDto.class));
+        assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailUpdatingBankCardWhenDtoBadRequest() throws Exception {
+        BankCardUpdateRequestDto bad = new BankCardUpdateRequestDto();
+
+        mockMvc.perform(put(UPDATE_USER)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(bad)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailUpdatingBankCardWhenNotFound() throws Exception {
+        // BankCardNotFoundException now mapped to 404 BANK_CARD_NOT_FOUND.
+        BankCardUpdateRequestDto request = UserDtoFixtures.aValidBankCardUpdateRequest();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Bank card not found")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_NOT_FOUND)
+                .build();
+
+        when(bankCardService.updateBankCard(eq(KEYCLOAK_ID), any(BankCardUpdateRequestDto.class)))
+                .thenThrow(new BankCardNotFoundException("Bank card not found"));
+
+        mockMvc.perform(put(UPDATE_USER)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    // ---------- GET /get ----------
+
+    @Test
+    void shouldGetBankCardSuccessfully() throws Exception {
+        BankCardResponseDto card = UserDtoFixtures.aSampleBankCardResponse();
+        when(bankCardService.getCard(KEYCLOAK_ID)).thenReturn(card);
+
+        mockMvc.perform(get(BASE + "/get")
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(card), STRICT));
+
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        verify(bankCardService).getCard(subjectCaptor.capture());
+        assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailGetBankCardWhenCallerHasNoCardCauseNotFound() throws Exception {
+        when(bankCardService.getCard(KEYCLOAK_ID)).thenThrow(new BankCardNotFoundException("No bank card set for the user"));
+
+        mockMvc.perform(get(BASE + "/get")
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.httpStatusCode").value(404));
+    }
+
+    @Test
+    void shouldFailGetBankCardWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(get(BASE + "/get")
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+}

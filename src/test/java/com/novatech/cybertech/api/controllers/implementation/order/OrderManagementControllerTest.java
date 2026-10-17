@@ -1,0 +1,729 @@
+package com.novatech.cybertech.api.controllers.implementation.order;
+
+import com.novatech.cybertech.api.controllers.TestSecurityConfig;
+import com.novatech.cybertech.api.controllers.implementation.OrderManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
+import com.novatech.cybertech.api.error.model.ErrorResponseDto;
+import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.entities.enums.DiscountCalculationType;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.dto.request.order.OrderQuoteRequestDto;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
+import com.novatech.cybertech.exceptions.CartIsEmptyException;
+import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
+import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.OrderNotFoundException;
+import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
+import com.novatech.cybertech.services.core.OrderManagementService;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
+import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
+import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNICAL;
+import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
+import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
+import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.json.JsonCompareMode.STRICT;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.hamcrest.Matchers.startsWith;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * @WebMvcTest slice for {@link OrderManagementController}. Verifies endpoints, JSON envelopes,
+ * DTO validation, role-based access, and that the JWT subject reaches the service layer
+ * (skeptical assertion: catches a class of regressions where someone might pass the wrong
+ * argument from the JWT to the service).
+ */
+@Slf4j
+@Import({TestSecurityConfig.class})
+@WebMvcTest(value = OrderManagementController.class)
+class OrderManagementControllerTest {
+
+    private static final String BASE = "/api/v1/services/management/order";
+    private static final String PLACE = BASE + "/place";
+    private static final String QUOTE = BASE + "/quote";
+    private static final String CANCEL = BASE + "/cancel";
+    private static final String UPDATE = BASE + "/update";
+    private static final String RETRY_PAYMENT = BASE + "/retry-payment/{uuid}";
+    private static final String GET_BY_UUID = BASE + "/get/{uuid}";
+    private static final String STATUS_BY_UUID = BASE + "/status/{uuid}";
+    private static final String GET_MINE = BASE + "/mine";
+
+    private static final String KEYCLOAK_ID = "keycloak-subject-id";
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @MockitoBean
+    OrderManagementService orderService;
+
+    // ---------- POST /place ----------
+
+    @Test
+    void shouldPlaceOrderSuccessfully() throws Exception {
+        OrderPlacingRequestDto request = OrderDtoFixtures.aValidPlaceOrderRequest();
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponse();
+
+        when(orderService.placeOrder(any(OrderPlacingRequestDto.class), any(Jwt.class))).thenReturn(response);
+
+        mockMvc.perform(post(PLACE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+
+        // Skeptical: the controller must forward the JWT (not e.g. a String) so the service can read its subject.
+        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
+        verify(orderService).placeOrder(any(OrderPlacingRequestDto.class), jwtCaptor.capture());
+        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldPlaceOrderWithNoDiscountWhenDiscountKeyOmitted() throws Exception {
+        // Regression: Jackson 3 bound through the all-args constructor and passed null for the
+        // omitted discountKey, bypassing its NO_DISCOUNT default -> 400 "must not be blank".
+        when(orderService.placeOrder(any(OrderPlacingRequestDto.class), any(Jwt.class))).thenReturn(OrderDtoFixtures.aSampleOrderResponse());
+
+        mockMvc.perform(post(PLACE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"paymentType\":\"VISA\",\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\","
+                                + "\"shippingStreet\":\"1 rue de Test\",\"shippingCity\":\"Paris\",\"shippingZipCode\":\"75001\",\"shippingCountry\":\"FR\"}"))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<OrderPlacingRequestDto> reqCaptor = ArgumentCaptor.forClass(OrderPlacingRequestDto.class);
+        verify(orderService).placeOrder(reqCaptor.capture(), any(Jwt.class));
+        assertThat(reqCaptor.getValue().getDiscountKey()).isEqualTo("NO_DISCOUNT");
+    }
+
+    @Test
+    void shouldFailPlacingOrderWhenDtoBadRequest() throws Exception {
+        OrderPlacingRequestDto bad = new OrderPlacingRequestDto();
+
+        mockMvc.perform(post(PLACE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(bad)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailPlacingOrderWhenNotEnoughStock() throws Exception {
+        OrderPlacingRequestDto request = OrderDtoFixtures.aValidPlaceOrderRequest();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Not enough stock for product X")
+                .httpStatusCode(409)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.NOT_ENOUGH_STOCK)
+                .build();
+
+        when(orderService.placeOrder(any(OrderPlacingRequestDto.class), any(Jwt.class)))
+                .thenThrow(new NotEnoughStockException("Not enough stock for product X"));
+
+        mockMvc.perform(post(PLACE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldFailPlacingOrderWhenAnonymousCauseUnauthorized() throws Exception {
+        OrderPlacingRequestDto request = OrderDtoFixtures.aValidPlaceOrderRequest();
+
+        mockMvc.perform(post(PLACE)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- POST /quote ----------
+
+    @Test
+    void shouldQuoteOrderSuccessfullyWithNoDiscountByDefault() throws Exception {
+        OrderQuoteResponseDto quote = OrderQuoteResponseDto.builder()
+                .subtotalAmount(new BigDecimal("200.00"))
+                .discountKey("NO_DISCOUNT")
+                .discountCalculationType(DiscountCalculationType.NONE)
+                .discountAmount(new BigDecimal("0.00"))
+                .discountApplied(false)
+                .shippingCost(new BigDecimal("15.00"))
+                .totalAmount(new BigDecimal("215.00"))
+                .currency("EUR")
+                .build();
+        when(orderService.quote(any(OrderQuoteRequestDto.class), any(Jwt.class))).thenReturn(quote);
+
+        mockMvc.perform(post(QUOTE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().json(asJsonString(quote), STRICT))
+                .andExpect(jsonPath("$.discountApplied").value(false))
+                .andExpect(jsonPath("$.minOrderAmount").doesNotExist());
+
+        // discountKey omitted from the body -> NO_DISCOUNT; identity from the JWT.
+        ArgumentCaptor<OrderQuoteRequestDto> reqCaptor = ArgumentCaptor.forClass(OrderQuoteRequestDto.class);
+        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
+        verify(orderService).quote(reqCaptor.capture(), jwtCaptor.capture());
+        assertThat(reqCaptor.getValue().getDiscountKey()).isEqualTo("NO_DISCOUNT");
+        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailQuotingWhenShippingOptionsMissing() throws Exception {
+        mockMvc.perform(post(QUOTE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void shouldFailQuotingWhenCartIsEmptyReturning409() throws Exception {
+        when(orderService.quote(any(OrderQuoteRequestDto.class), any(Jwt.class)))
+                .thenThrow(new CartIsEmptyException("Cannot quote an order: Cart is empty"));
+
+        mockMvc.perform(post(QUOTE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("CART_IS_EMPTY"));
+    }
+
+    @Test
+    void shouldFailQuotingWhenCampaignInactiveReturning400() throws Exception {
+        when(orderService.quote(any(OrderQuoteRequestDto.class), any(Jwt.class)))
+                .thenThrow(new DiscountTypeNotActiveException("EXPIRED_PROMO is not active"));
+
+        mockMvc.perform(post(QUOTE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\",\"discountKey\":\"EXPIRED_PROMO\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("DISCOUNT_TYPE_NOT_ACTIVE"));
+    }
+
+    @Test
+    void shouldFailQuotingWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(post(QUOTE)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content("{\"shippingType\":\"STANDARD\",\"shippingProvider\":\"DHL\"}"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(orderService);
+    }
+
+    // ---------- POST /cancel ----------
+
+    @Test
+    void shouldCancelOrderSuccessfully() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        OrderCancellationRequestDto req = new OrderCancellationRequestDto();
+        req.setOrderUuid(orderUuid);
+
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
+
+        when(orderService.cancelOrder(eq(orderUuid), any(Jwt.class))).thenReturn(response);
+
+        mockMvc.perform(post(CANCEL)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(req)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+
+        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
+        verify(orderService).cancelOrder(eq(orderUuid), jwtCaptor.capture());
+        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailCancellingOrderWhenOrderNotFound() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        OrderCancellationRequestDto req = new OrderCancellationRequestDto();
+        req.setOrderUuid(orderUuid);
+
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Order not found")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ORDER_NOT_FOUND)
+                .build();
+
+        when(orderService.cancelOrder(eq(orderUuid), any(Jwt.class)))
+                .thenThrow(new OrderNotFoundException("Order not found"));
+
+        mockMvc.perform(post(CANCEL)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(req)))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldFailCancellingOrderWhenAnonymousCauseUnauthorized() throws Exception {
+        OrderCancellationRequestDto req = new OrderCancellationRequestDto();
+        req.setOrderUuid(UUID.randomUUID());
+
+        mockMvc.perform(post(CANCEL)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(req)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- POST /update ----------
+
+    @Test
+    void shouldUpdateOrderSuccessfully() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequestBuilder().uuid(orderUuid).build();
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
+
+        when(orderService.updateOrder(any(OrderUpdateRequestDto.class), any(Jwt.class))).thenReturn(response);
+
+        mockMvc.perform(post(UPDATE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(req)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+
+        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
+        verify(orderService).updateOrder(any(OrderUpdateRequestDto.class), jwtCaptor.capture());
+        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailUpdatingOrderWhenDtoBadRequest() throws Exception {
+        OrderUpdateRequestDto bad = new OrderUpdateRequestDto();
+
+        mockMvc.perform(post(UPDATE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(bad)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailUpdatingOrderWhenItemQuantityIsZero() throws Exception {
+        // Regression: itemUpdateRequestDtoList was missing @Valid, so OrderItemCreateRequestDto's
+        // own @Min(1) on quantity never ran — a zero/negative quantity used to sail past this
+        // controller's Bean Validation entirely and only got caught deep in StockServiceImp as a
+        // raw IllegalArgumentException instead of a clean field-level validation error here.
+        OrderUpdateRequestDto bad = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder()
+                        .productUuid(UUID.randomUUID())
+                        .quantity(0)
+                        .build()))
+                .build();
+
+        mockMvc.perform(post(UPDATE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(bad)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void shouldFailUpdatingOrderWhenOrderNotFound() throws Exception {
+        OrderUpdateRequestDto req = OrderDtoFixtures.aValidUpdateRequest();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Order not found for update")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ORDER_NOT_FOUND)
+                .build();
+
+        when(orderService.updateOrder(any(OrderUpdateRequestDto.class), any(Jwt.class)))
+                .thenThrow(new OrderNotFoundException("Order not found for update"));
+
+        mockMvc.perform(post(UPDATE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(req)))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    // ---------- POST /retry-payment/{uuid} ----------
+
+    @Test
+    void shouldRetryPaymentSuccessfully() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
+
+        when(orderService.retryPayment(eq(orderUuid), any(Jwt.class))).thenReturn(response);
+
+        mockMvc.perform(post(RETRY_PAYMENT, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+
+        ArgumentCaptor<Jwt> jwtCaptor = ArgumentCaptor.forClass(Jwt.class);
+        verify(orderService).retryPayment(eq(orderUuid), jwtCaptor.capture());
+        assertThat(jwtCaptor.getValue().getSubject()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailRetryPaymentWhenOrderNotFound() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Order not found for retry")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ORDER_NOT_FOUND)
+                .build();
+
+        when(orderService.retryPayment(eq(orderUuid), any(Jwt.class)))
+                .thenThrow(new OrderNotFoundException("Order not found for retry"));
+
+        mockMvc.perform(post(RETRY_PAYMENT, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldFailRetryPaymentWhenPathUuidMalformed() throws Exception {
+        // Path-UUID type mismatch should yield 400 via MethodArgumentTypeMismatchException handler.
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("Invalid value for parameter 'uuid'")
+                .httpStatusCode(400)
+                .errorCodeType(TECHNICAL)
+                .errorCode(ErrorCode.METHOD_ARGUMENT_TYPE_MISMATCH)
+                .build();
+
+        mockMvc.perform(post(BASE + "/retry-payment/not-a-uuid")
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    // ---------- GET /get/{uuid} ----------
+
+    @Test
+    void shouldGetOrderByUuidSuccessfully() throws Exception {
+        // GET /get/{uuid} now delegates to the ownership-checked overload
+        // getByUUID(UUID, keycloakId). Verify the JWT subject is forwarded.
+        UUID orderUuid = UUID.randomUUID();
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
+        when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID))).thenReturn(response);
+
+        mockMvc.perform(get(GET_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldExposeOrderPriceBreakdownInJson() throws Exception {
+        // Contract read by the front (validated with Zod): field names and types of the breakdown.
+        UUID orderUuid = UUID.randomUUID();
+        LocalDateTime placedAt = LocalDateTime.of(2026, 10, 13, 14, 30, 5);
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder()
+                .uuid(orderUuid)
+                .createdAt(placedAt)
+                .currency("EUR")
+                .subtotalAmount(new BigDecimal("200.00"))
+                .discountKey("BLACK_FRIDAY")
+                .discountCalculationType(DiscountCalculationType.PERCENTAGE)
+                .discountAmount(new BigDecimal("30.00"))
+                .shippingType(ShippingType.EXPRESS)
+                .shippingProvider(ShippingProvider.DHL)
+                .shippingCost(new BigDecimal("25.00"))
+                .totalAmount(new BigDecimal("195.00"))
+                .build();
+        when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID))).thenReturn(response);
+
+        mockMvc.perform(get(GET_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdAt").value("2026-10-13T14:30:05"))
+                .andExpect(jsonPath("$.currency").value("EUR"))
+                .andExpect(jsonPath("$.subtotalAmount").value(200.00))
+                .andExpect(jsonPath("$.discountKey").value("BLACK_FRIDAY"))
+                .andExpect(jsonPath("$.discountCalculationType").value("PERCENTAGE"))
+                .andExpect(jsonPath("$.discountAmount").value(30.00))
+                .andExpect(jsonPath("$.shippingType").value("EXPRESS"))
+                .andExpect(jsonPath("$.shippingProvider").value("DHL"))
+                .andExpect(jsonPath("$.shippingCost").value(25.00))
+                .andExpect(jsonPath("$.totalAmount").value(195.00));
+    }
+
+    @Test
+    void shouldFailGettingOrderByUuidWhenNotFound() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("No product with the UUID : " + orderUuid + " found")
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ORDER_NOT_FOUND)
+                .build();
+
+        when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID)))
+                .thenThrow(new OrderNotFoundException("No product with the UUID : " + orderUuid + " found"));
+
+        mockMvc.perform(get(GET_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    @Test
+    void shouldFailGettingOrderByUuidWhenOrderDoesntBelongToCallerReturning403() throws Exception {
+        // Ensure the IDOR check at the service layer surfaces as 403.
+        UUID orderUuid = UUID.randomUUID();
+        when(orderService.getByUUID(eq(orderUuid), eq(KEYCLOAK_ID)))
+                .thenThrow(new com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException(
+                        "Order " + orderUuid + " does not belong to the current user"));
+
+        mockMvc.perform(get(GET_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldGetOrderByUuidAsAdminBypassingOwnershipCheck() throws Exception {
+        // GET /get/{uuid} now permits hasRole('USER') OR hasRole('ADMIN').
+        // The service layer bypasses the ownership check for ADMIN callers (read from
+        // SecurityContextHolder), so the admin can fetch any order regardless of initiator.
+        UUID orderUuid = UUID.randomUUID();
+        OrderResponseDto response = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
+        when(orderService.getByUUID(eq(orderUuid), eq("admin-id"))).thenReturn(response);
+
+        mockMvc.perform(get(GET_BY_UUID, orderUuid)
+                        .with(jwtAdmin("admin-id"))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailGettingOrderByUuidWhenAnonymousCauseUnauthorized() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+
+        mockMvc.perform(get(GET_BY_UUID, orderUuid)
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- GET /status/{uuid} (#5 Option B) ----------
+
+    @Test
+    void shouldGetOrderStatusSuccessfully() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        com.novatech.cybertech.dto.response.order.OrderStatusDto dto =
+                com.novatech.cybertech.dto.response.order.OrderStatusDto.builder()
+                        .uuid(orderUuid)
+                        .status(com.novatech.cybertech.entities.enums.OrderStatus.PAID)
+                        .build();
+
+        when(orderService.getStatusByUUID(eq(orderUuid), eq(KEYCLOAK_ID))).thenReturn(dto);
+
+        mockMvc.perform(get(STATUS_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.uuid").value(orderUuid.toString()))
+                .andExpect(jsonPath("$.status").value("PAID"));
+    }
+
+    @Test
+    void shouldFailGetOrderStatusWhenAnonymous() throws Exception {
+        mockMvc.perform(get(STATUS_BY_UUID, UUID.randomUUID()).accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldReturn404WhenOrderStatusNotFound() throws Exception {
+        UUID orderUuid = UUID.randomUUID();
+        when(orderService.getStatusByUUID(eq(orderUuid), eq(KEYCLOAK_ID)))
+                .thenThrow(new OrderNotFoundException("No order with the UUID : " + orderUuid + " found"));
+
+        mockMvc.perform(get(STATUS_BY_UUID, orderUuid)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+    }
+
+    // ---------- GET /mine (Frontend-gap #1) ----------
+
+    @Test
+    void getMyOrdersShouldReturnPaginatedUserOrders() throws Exception {
+        // Happy path: the JWT subject reaches the service unchanged and the page is serialised back.
+        UUID orderUuid = UUID.randomUUID();
+        OrderResponseDto resp = OrderDtoFixtures.aSampleOrderResponseBuilder().uuid(orderUuid).build();
+        Page<OrderResponseDto> page = new PageImpl<>(List.of(resp));
+
+        when(orderService.findMyOrders(eq(KEYCLOAK_ID), any(Pageable.class), any())).thenReturn(page);
+
+        mockMvc.perform(get(GET_MINE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].uuid").value(orderUuid.toString()))
+                .andExpect(jsonPath("$.page.totalElements").value(1));
+
+        // Skeptical: subject (String) — NOT the whole Jwt — reaches the service.
+        ArgumentCaptor<String> subjectCaptor = ArgumentCaptor.forClass(String.class);
+        verify(orderService).findMyOrders(subjectCaptor.capture(), any(Pageable.class), any());
+        assertThat(subjectCaptor.getValue()).isEqualTo(KEYCLOAK_ID);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getMyOrdersShouldFilterByStatus() throws Exception {
+        // ?status=PAID,SHIPPED is bound to a Set<OrderStatus> by the converter and forwarded to the service.
+        OrderResponseDto resp = OrderDtoFixtures.aSampleOrderResponseBuilder().status(OrderStatus.PAID).build();
+        Page<OrderResponseDto> page = new PageImpl<>(List.of(resp));
+
+        when(orderService.findMyOrders(eq(KEYCLOAK_ID), any(Pageable.class), any())).thenReturn(page);
+
+        mockMvc.perform(get(GET_MINE)
+                        .param("status", "PAID", "SHIPPED")
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.content.length()").value(1));
+
+        ArgumentCaptor<Set<OrderStatus>> statusCaptor = ArgumentCaptor.forClass(Set.class);
+        verify(orderService).findMyOrders(eq(KEYCLOAK_ID), any(Pageable.class), statusCaptor.capture());
+        assertThat(statusCaptor.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.SHIPPED);
+    }
+
+    @Test
+    void getMyOrdersShouldHandleEmptyResult() throws Exception {
+        // Empty page is still a valid page — body shape stays consistent.
+        when(orderService.findMyOrders(eq(KEYCLOAK_ID), any(Pageable.class), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get(GET_MINE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.page.totalElements").value(0));
+    }
+
+    @Test
+    void getMyOrdersShouldRequireAuth() throws Exception {
+        // Anonymous = 401 via CustomAuthenticationEntryPoint (the path is not in PUBLIC_URLS).
+        mockMvc.perform(get(GET_MINE)
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+}

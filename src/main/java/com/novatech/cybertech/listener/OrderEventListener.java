@@ -1,9 +1,12 @@
 package com.novatech.cybertech.listener;
 
-import com.novatech.cybertech.dispatcher.NotificationDispatcher;
 import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
+import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.events.OrderCreatedEvent;
+import com.novatech.cybertech.events.OrderUpdatedEvent;
+import com.novatech.cybertech.services.core.NotificationRetryableDelivery;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -11,25 +14,99 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
+
+/**
+ * Listens for order lifecycle events ({@link OrderCreatedEvent}, {@link OrderUpdatedEvent}) and
+ * dispatches the matching notification through the {@link NotificationRetryableDelivery},
+ * which in turn calls the dispatcher under a Resilience4j retry policy.
+ *
+ * <p>Both handlers run {@link Async} on the application task executor so the notification I/O
+ * does not block the transaction commit thread.
+ *
+ * <p><b>Phase 2 hardening:</b> the try/catch + single-attempt branches that
+ * Phase 1 introduced have been replaced with a single
+ * {@link NotificationRetryableDelivery#deliver(NotificationContext)} call.
+ * Both order-event paths now inherit the same in-process retry budget,
+ * exponential backoff, and {@code ignore-exceptions} allowlist as the
+ * shipping-confirmation path — see the {@code notificationDispatch} retry
+ * instance in {@code application.properties}. The audit row is written by the
+ * retryable-delivery bean (success or {@code PENDING_RETRY} after exhaustion);
+ * this listener no longer touches the recorder directly.
+ *
+ * <p>Async-listener exception contract: dispatch failures are recorded as a
+ * {@code PENDING_RETRY} audit row by the retryable-delivery bean and are
+ * <em>never</em> propagated. We're already on a worker thread after the
+ * domain commit; throwing here would only kill the worker without any caller
+ * able to react.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class OrderEventListener {
 
-    private final NotificationDispatcher notificationDispatcher;
+    private final NotificationRetryableDelivery retryableDelivery;
 
-    @Async
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    /**
+     * Sends an {@link NotificationType#ORDER_CONFIRMATION} notification when an order is
+     * created.
+     *
+     * <p>WHY {@link TransactionalEventListener} with {@link TransactionPhase#AFTER_COMMIT}: the
+     * confirmation MUST only be sent once the order's row is durably persisted. A pre-commit
+     * fire-and-forget would risk telling the user about an order that ultimately rolled back.
+     *
+     * <p>WHY {@code fallbackExecution = true}: {@code placeOrder} is deliberately NOT
+     * {@code @Transactional} — the order is committed by {@code OrderCreationTransactionalDelegate}
+     * before the payment attempt, and the event is published afterwards with no transaction
+     * active. Without the fallback, Spring discards a {@link TransactionalEventListener} event
+     * published outside a transaction, and no confirmation was ever sent. Running immediately
+     * in that case is safe: the order row is already durably committed.
+     */
+    @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onOrderCreated(final OrderCreatedEvent event) {
+        log.info("In order created event listener");
 
-        final NotificationContext context = NotificationContext.builder()
+        final NotificationContext<OrderConfirmationPayload> context = NotificationContext
+                .<OrderConfirmationPayload>builder()
                 .notificationType(NotificationType.ORDER_CONFIRMATION)
                 .user(event.getOrderEventDto().getUserContactDto())
-                //.data((Map<String, Object>) new HashMap<>().put("OrderEventDto", event.getOrderEventDto()))
-                .payload(event.getOrderEventDto())//TODO: Clean this redundant part later
-                .message("Votre commande #" + event.getOrderEventDto().getOrderUuid() + " a bien été confirmée.")//!WARNING Potentielle redondance de orderDto
+                .payload(toConfirmationPayload(event.getOrderEventDto()))
                 .build();
 
-        notificationDispatcher.dispatch(context);
+        retryableDelivery.deliver(context);
+    }
+
+    /**
+     * Sends an {@link NotificationType#ORDER_UPDATE} notification on order mutation
+     * (e.g. quantity changes, status transitions surfaced as updates).
+     *
+     * <p>WHY {@link TransactionalEventListener} with {@link TransactionPhase#AFTER_COMMIT}:
+     * see {@link #onOrderCreated(OrderCreatedEvent)} — same reasoning, the user must not be
+     * notified of an update that has not yet committed.
+     */
+    @Async(APPLICATION_ASYNC_TASK_EXECUTOR)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onOrderUpdated(final OrderUpdatedEvent event) {
+        log.info("In order updated event listener");
+
+        final NotificationContext<OrderConfirmationPayload> context = NotificationContext
+                .<OrderConfirmationPayload>builder()
+                .notificationType(NotificationType.ORDER_UPDATE)
+                .user(event.getOrderEventDto().getUserContactDto())
+                .payload(toConfirmationPayload(event.getOrderEventDto()))
+                .build();
+
+        retryableDelivery.deliver(context);
+    }
+
+    private static OrderConfirmationPayload toConfirmationPayload(final OrderEventDto dto) {
+        return OrderConfirmationPayload.builder()
+                .orderUuid(dto.getOrderUuid())
+                .totalAmount(dto.getTotalAmount())
+                .orderStatus(dto.getOrderStatus())
+                .userContactDto(dto.getUserContactDto())
+                .paymentAttemptStatus(dto.getPaymentAttemptStatus())
+                .build();
     }
 }

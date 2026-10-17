@@ -1,0 +1,3 @@
+# This PVC is managed via volumeClaimTemplates in the StatefulSet.
+# No separate PVC needed.
+

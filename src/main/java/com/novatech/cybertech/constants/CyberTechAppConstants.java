@@ -2,19 +2,46 @@ package com.novatech.cybertech.constants;
 
 public class CyberTechAppConstants {
 
-    public static final String REGISTRATION_CONTROLLER_BASE_PATH = "/register";
-
-    public static final String AUTHORIZATION_HEADER = "Authorization";
-
     public static final String API_BASE_PATH = "/api/v1";
 
-    public static final String USER_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/user";
-    public static final String PRODUCT_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/product";
-    public static final String CART_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/cart";
-    public static final String ORDER_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/order";
-    public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = "/api/v1/services/review";
+    public static final String USER_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/user";
+    public static final String PRODUCT_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/product";
+    public static final String CART_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/cart";
+    public static final String USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/user";
+    public static final String PRODUCT_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/management/product";
+    public static final String REVIEW_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/review";
+    public static final String BANK_CARD_CRUD_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/bank-card";
+    /** Admin-only bank-card back-office. Mirrors the USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH convention. */
+    public static final String BANK_CARD_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/bank-card";
+    public static final String USER_WISHLIST_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/wishlist";
+    public static final String USER_EVENT_INGESTION_BASE_PATH = API_BASE_PATH + "/events";
+    public static final String RECOMMENDATION_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/recommendations";
+    public static final String STRIPE_WEBHOOKS_BASE_PATH = API_BASE_PATH + "/webhooks/stripe";
 
-    public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = "/api/v1/services/management/order";
+    public static final String ORDER_MANAGEMENT_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/management/order";
+
+    /**
+     * Frontend-gap #2 — admin-side paginated order listing controller base path.
+     * Mirrors the {@code USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH} convention.
+     */
+    public static final String ORDER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/management/order";
+
+    public static final String DISCOUNT_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/discounts";
+    public static final String DISCOUNT_PUBLIC_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/discounts";
+    public static final String SHIPPING_PUBLIC_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/shipping";
+    public static final String PUSH_NOTIFICATION_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/notifications/push";
+
+    /**
+     * Reserved {@code discountKey} meaning "no discount applied" — the only campaign
+     * {@link com.novatech.cybertech.config.DiscountCampaignInitializer} guarantees exists, and the
+     * value {@code OrderPlacingRequestDto}/{@code PriceCalculationRequestDto} default to. Every
+     * other {@code discountKey} is a free-form identifier the admin chooses when creating a
+     * campaign via {@code DiscountCampaignAdminService#create} — no code change/redeploy needed.
+     */
+    public static final String NO_DISCOUNT_KEY = "NO_DISCOUNT";
+
+    public static final String PRODUCT_CATEGORY_SCHEMA_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/product-category-schemas";
+    public static final String PRODUCT_CATEGORY_SCHEMA_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/product-category-schemas";
 
     public static final String ORDER_SUMMARY_REPORT_JOB = "ORDER_SUMMARY_REPORT_JOB";
 
@@ -24,5 +51,52 @@ public class CyberTechAppConstants {
     public static final String NO_FAILED_PAYMENT_ORDER_FOUND = "NO_FAILED_PAYMENT_ORDER_FOUND";
 
     public static final String REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB =  "REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB";
+    public static final String CLEAN_UP_EXPIRED_STOCK_JOB = "CLEAN_UP_EXPIRED_STOCK_JOB";
+    public static final String REDELIVER_FAILED_NOTIFICATIONS_JOB = "REDELIVER_FAILED_NOTIFICATIONS_JOB";
+    public static final String KEYCLOAK_OUTBOX_RECONCILIATION_JOB = "KEYCLOAK_OUTBOX_RECONCILIATION_JOB";
+    public static final String GORSE_SYNC_JOB = "GORSE_SYNC_JOB";
+    public static final String DISCOUNT_CAMPAIGNS_CACHE = "discountCampaigns";
 
+
+    public static final String APP_API_VERSION = "1.0";
+
+    public static final String APPLICATION_ASYNC_TASK_EXECUTOR = "applicationAsyncTaskExecutor";
+
+    public static final String RESERVATION_KEY_PREFIX = "reservation:order:";
+
+    /** Redis Pub/Sub channel used to fan out cache invalidation across instances when an admin
+     *  writes a {@code ProductCategorySchemaEntity} row — both the publisher (admin service) and
+     *  every subscriber instance ({@code ProductCategorySchemaCacheInvalidationListener}) must
+     *  use this exact string. */
+    public static final String PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL = "schema:category:changed";
+
+    // Shared JSON response-body keys for the user register / register-auto endpoints (extracted
+    // here so the same semantic literals are not duplicated across UserManagementController and
+    // UserManagementAdminController — see CLAUDE.md "constantes obligatoires").
+    public static final String RESPONSE_KEY_ID = "id";
+    public static final String RESPONSE_KEY_KEYCLOAK_ID = "keycloakId";
+    public static final String RESPONSE_KEY_EMAIL = "email";
+    public static final String RESPONSE_KEY_USERNAME = "username";
+
+    // Pagination defaults. Used by @PageableDefault — the global hard cap lives in application.properties
+    // (spring.data.web.pageable.max-page-size). Per-endpoint size defaults are per-resource for UX.
+    public static final int DEFAULT_PAGE_SIZE_ADMIN = 20;
+    public static final int DEFAULT_PAGE_SIZE_BANK_CARD = 10;
+    public static final int DEFAULT_PAGE_SIZE_WISHLIST = 20;
+    public static final int DEFAULT_PAGE_SIZE_BEST_SELLERS = 15;
+    // Default page size of GET /review/product/{productUuid} (public reviews of a product page).
+    public static final int DEFAULT_PAGE_SIZE_PRODUCT_REVIEWS = 10;
+    // ProductSearchRequestDto carries page/size in its JSON body instead of a Spring Pageable
+    // (search also carries filter criteria), so it can't use @PageableDefault — applied as a plain
+    // field initializer on the DTO instead, same default value convention as the other resources.
+    public static final int DEFAULT_PAGE_SIZE_PRODUCT_SEARCH = 20;
+    // Most values one catalog facet (brands, or one attribute) lists on POST /product/search/facets.
+    public static final int FACET_MAX_VALUES = 50;
+    // Time zone of the shipping cut-off times and of the indicative delivery dates.
+    public static final String SHIPPING_TIME_ZONE = "Europe/Paris";
+    public static final int DEFAULT_RECOMMENDATION_COUNT = 10;
+    // Upper bound on the uuids of one GET /product/availability call — a catalog page (max 100 items,
+    // see max-page-size) is split by the front; 50 keeps the IN (...) query and the URL short.
+    public static final int MAX_AVAILABILITY_BATCH_SIZE = 50;
+    public static final String DEFAULT_SORT_FIELD = "createdAt";
 }

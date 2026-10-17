@@ -11,13 +11,14 @@ import java.time.LocalDateTime;
 
 @Entity
 @Getter
+@Setter
 @SuperBuilder
-@EqualsAndHashCode(callSuper = true)
+@NoArgsConstructor
 @AllArgsConstructor
-@RequiredArgsConstructor
 @Table(name = "reviewTable")
-@ToString(callSuper = true)
-public class ReviewEntity extends BaseEntity {
+@ToString(callSuper = true, exclude = {"productEntity", "userEntity"})
+@EqualsAndHashCode(callSuper = true, exclude = {"productEntity", "userEntity"})
+public class ReviewEntity extends BaseEntity<Long> {
 
     @Range(min = 1, max = 5, message = "Rating must be between 1 and 5")
     @Column(name = "rating", nullable = false)
@@ -29,19 +30,11 @@ public class ReviewEntity extends BaseEntity {
     @Column(name = "isHateful", nullable = false)
     private Boolean isHateful;
 
-    @CreationTimestamp
-    @Column(name = "createdAt", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updatedAt")
-    private LocalDateTime updatedAt;
-
-    @ManyToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
-    @JoinColumn(name = "reviewId", nullable = true)
+    @ManyToOne(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @JoinColumn(name = "reviewId", nullable = false)
     private ProductEntity productEntity;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "userId", nullable = false)
     private UserEntity userEntity;
 }

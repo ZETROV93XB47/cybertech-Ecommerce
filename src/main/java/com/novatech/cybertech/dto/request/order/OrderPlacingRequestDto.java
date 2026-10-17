@@ -1,43 +1,50 @@
 package com.novatech.cybertech.dto.request.order;
 
-import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.List;
-import java.util.UUID;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.NO_DISCOUNT_KEY;
 
-@Getter
-@Setter
+@Data
 @Builder
-@ToString
-@EqualsAndHashCode
-@NoArgsConstructor
 @AllArgsConstructor
+// Jackson 3 would otherwise bind through the all-args constructor and pass null for an omitted
+// discountKey, bypassing its @Builder.Default (-> 400 "must not be blank" instead of NO_DISCOUNT).
+@NoArgsConstructor(onConstructor_ = @JsonCreator)
 public class OrderPlacingRequestDto {
 
-    @NotNull(message = "User UUID cannot be null")
-    private UUID userUuid;
+    // Identity (userUuid) removed: identity is authoritatively derived from the JWT subject in the
+    // controller/service layer. Allowing the client to declare a userUuid in the body created an
+    // order-spoofing footgun if any future refactor accidentally read the DTO field instead of the JWT.
 
-    @NotNull(message = "Shipping Address cannot be null")
-    private String shippingAddress;
-
-    @NotNull(message = "Shipping Type cannot be null")
-    private ShippingType shippingType;
-
-    @NotNull(message = "Shipping Provider cannot be null")
-    private ShippingProvider shippingProvider;
-
-    @NotNull(message = "The payment Method Type cannot be null")
+    @NotNull
     private PaymentType paymentType;
 
-    @NotNull(message = "Cannot create an order without orderItems in the order")
-    private List<OrderItemCreateRequestDto> orderItems;
-}
+    @NotNull
+    private ShippingType shippingType;
 
-//Order date will be updated in the service layer
-//    @NotNull(message = "Cart UUID cannot be null for order creation")
-//    private UUID cartUuid; // Assumes an order is created from an existing cart
+    @NotNull
+    private ShippingProvider shippingProvider;
+
+    @NotBlank
+    private String shippingStreet;
+    @NotBlank
+    private String shippingCity;
+    @NotBlank
+    private String shippingZipCode;
+    @NotBlank
+    private String shippingCountry;
+
+    @Builder.Default
+    @NotBlank
+    private String discountKey = NO_DISCOUNT_KEY;
+
+}

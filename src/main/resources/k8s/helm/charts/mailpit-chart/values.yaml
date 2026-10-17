@@ -3,6 +3,31 @@ mailpit:
   smtpPort: 1025
   webPort: 8025
 
+  # Liveness/readiness probes.
+  # Mailpit's web UI exposes GET /api/v1/info on the web port, which returns
+  # 200 once the app is ready. We probe that endpoint.
+  probes:
+    enabled: true
+    httpPath: /api/v1/info
+    liveness:
+      initialDelaySeconds: 10
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
 persistence:
   enabled: true
   size: 1Gi

@@ -7,7 +7,8 @@ import com.novatech.cybertech.dto.response.order.OrderResponseDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.OrderItemEntity;
 import com.novatech.cybertech.entities.valueObjects.Address;
-import com.novatech.cybertech.entities.valueObjects.Money;
+import com.novatech.cybertech.utils.OrderPaymentUtils;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -19,16 +20,43 @@ import java.math.BigDecimal;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface OrderMapper {
-    @Mapping(target = "uuid", expression = "java(java.util.UUID.randomUUID())")
+
+    /**
+     * Map an {@link OrderPlacingRequestDto} into a fresh {@link OrderEntity}.
+     * <p>
+     * Address construction is delegated to an {@code @AfterMapping} hook
+     * because {@link Address} is now an immutable value object and no longer
+     * exposes setters that MapStruct could call via the
+     * {@code target = "shippingAddress.xxx"} dotted-path syntax.
+     * </p>
+     */
     @Mapping(target = "orderDate", expression = "java(java.time.LocalDateTime.now())")
-    @Mapping(target = "shippingAddress", expression = "java(mapStringToAddress(orderPlacingRequestDto.getShippingAddress()))")
-    @Mapping(target = "totalAmount", ignore = true) // Sera calculé par le service
+    @Mapping(target = "shippingAddress", ignore = true)
     OrderEntity mapFromOrderPlacingRequestDtoToOrderEntity(final OrderPlacingRequestDto orderPlacingRequestDto);
 
+    /**
+     * Populate the immutable {@link Address} on the freshly-mapped order from the
+     * incoming placing request. Invoked by MapStruct after the main mapping.
+     */
+    @AfterMapping
+    default void populateShippingAddressFromPlacing(final OrderPlacingRequestDto src, @MappingTarget final OrderEntity target) {
+        if (src == null) {
+            return;
+        }
+        target.setShippingAddress(new Address(
+                src.getShippingStreet(),
+                src.getShippingCity(),
+                src.getShippingZipCode(),
+                src.getShippingCountry()));
+    }
 
-    @Mapping(target = "userUuid", expression = "java(orderEntity.getUserEntity().getUuid())")
+    @Mapping(target = "userUuid", expression = "java(orderEntity.getUserEntity() != null ? orderEntity.getUserEntity().getUuid() : null)")
     @Mapping(target = "orderItems", source = "orderItemEntities")
     @Mapping(target = "totalAmount", source = "totalAmount.amount")
+    @Mapping(target = "currency", source = "totalAmount.currencyCode.code")
+    @Mapping(target = "createdAt", source = "orderDate")
+    @Mapping(target = "discountCalculationType", source = "discountTerms.calculationType")
+    @Mapping(target = "refundedAmount", expression = "java(computeRefundedAmount(orderEntity))")
     @Mapping(target = "shippingAddress", expression = "java(mapAddressToString(orderEntity.getShippingAddress()))")
     OrderResponseDto mapFromEntityToResponseDto(final OrderEntity orderEntity);
 
@@ -38,27 +66,77 @@ public interface OrderMapper {
     @Mapping(target = "lineItemTotalPrice", source = "subtotal")
     OrderItemResponseDto mapFromOrderItemEntityToOrderItemResponseDto(final OrderItemEntity orderItemEntity);
 
+    /**
+     * Patch a managed {@link OrderEntity} from an {@link OrderUpdateRequestDto}.
+     * <p>
+     * Shipping-address fields are now applied via an {@code @AfterMapping} hook.
+     * When the existing entity address is {@code null}, a fresh
+     * {@link Address} is constructed from the incoming DTO. When it is non-null,
+     * each provided field is propagated through the immutable {@code withXxx(...)}
+     * withers, preserving the {@code NullValuePropertyMappingStrategy.IGNORE}
+     * semantics the previous setter-based mapping enforced.
+     * </p>
+     */
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "uuid", ignore = true)
     @Mapping(target = "orderDate", ignore = true)
     @Mapping(target = "userEntity", ignore = true)
     @Mapping(target = "orderItemEntities", ignore = true) // La gestion des listes (ajout/suppression) est préférable dans le service
-    @Mapping(target = "paymentEntity", ignore = true) // Le paiement est géré via le service de paiement et non par mapping direct
+    @Mapping(target = "paymentAttempts", ignore = true) // Le paiement est géré via le service de paiement et non par mapping direct
     @Mapping(target = "status", ignore = true) // Le statut suit une machine à états stricte
     @Mapping(target = "totalAmount", ignore = true) // Le montant est recalculé par le service
-    @Mapping(target = "shippingAddress", expression = "java(mapStringToAddress(orderUpdateRequestDto.getShippingAddress()))")
+    @Mapping(target = "shippingAddress", ignore = true)
     void updateOrderFromOrderUpdateRequestDto(final OrderUpdateRequestDto orderUpdateRequestDto, @MappingTarget final OrderEntity orderEntity);
 
-    // --- Méthodes de conversion par défaut pour les Value Objects ---
-
-    default Address mapStringToAddress(String address) {
-        if (address == null) return null;
-        // TODO: Faire évoluer les DTOs pour avoir des champs séparés (rue, ville, etc.)
-        return new Address(address, "Unknown City", "00000", "Unknown Country");
+    /**
+     * Apply the (possibly partial) shipping fields of an update request onto the
+     * managed order's immutable {@link Address}. Invoked by MapStruct after the
+     * scalar fields have been merged.
+     */
+    @AfterMapping
+    default void mergeShippingAddressFromUpdate(final OrderUpdateRequestDto src, @MappingTarget final OrderEntity target) {
+        if (src == null) {
+            return;
+        }
+        Address current = target.getShippingAddress();
+        if (current == null) {
+            target.setShippingAddress(new Address(
+                    src.getShippingStreet(),
+                    src.getShippingCity(),
+                    src.getShippingZipCode(),
+                    src.getShippingCountry()));
+            return;
+        }
+        if (src.getShippingStreet() != null) {
+            current = current.withStreet(src.getShippingStreet());
+        }
+        if (src.getShippingCity() != null) {
+            current = current.withCity(src.getShippingCity());
+        }
+        if (src.getShippingZipCode() != null) {
+            current = current.withZipCode(src.getShippingZipCode());
+        }
+        if (src.getShippingCountry() != null) {
+            current = current.withCountry(src.getShippingCountry());
+        }
+        target.setShippingAddress(current);
     }
+
+    // --- Méthodes de conversion par défaut pour les Value Objects ---
 
     default String mapAddressToString(Address address) {
         if (address == null) return null;
         return String.format("%s, %s %s, %s", address.getStreet(), address.getZipCode(), address.getCity(), address.getCountry());
+    }
+
+    /**
+     * Total amount actually refunded on this order so far (sum of accepted REFUND payment
+     * attempts — see {@link OrderPaymentUtils#refundedAmount}). Exposed as a plain derived read — no separate "partially refunded" status is
+     * stored: {@code 0 < refundedAmount < totalAmount} means partial, {@code refundedAmount ==
+     * totalAmount} means fully refunded (see {@code OrderPaymentConfirmationEventListener}, which
+     * flips {@code status} to REFUNDED only once the net paid amount reaches zero).
+     */
+    default BigDecimal computeRefundedAmount(OrderEntity orderEntity) {
+        return OrderPaymentUtils.refundedAmount(orderEntity);
     }
 }

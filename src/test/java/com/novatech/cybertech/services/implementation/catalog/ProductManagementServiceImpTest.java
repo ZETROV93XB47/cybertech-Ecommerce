@@ -1,0 +1,524 @@
+package com.novatech.cybertech.services.implementation.catalog;
+
+import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
+import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
+import com.novatech.cybertech.dto.response.product.ProductResponseDto;
+import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.document.ProductDocument;
+import com.novatech.cybertech.entities.enums.Brand;
+import com.novatech.cybertech.entities.validator.ProductValidationService;
+import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
+import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
+import com.novatech.cybertech.mappers.entity.ProductMapper;
+import com.novatech.cybertech.repositories.ProductRepository;
+import com.novatech.cybertech.repositories.ProductSearchRepository;
+import com.novatech.cybertech.services.core.ProductSearchService;
+import com.novatech.cybertech.services.core.S3Service;
+import com.novatech.cybertech.services.implementation.ProductManagementServiceImp;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import static com.novatech.cybertech.services.implementation.ProductManagementServiceImp.PRODUCTS_S3_BUCKET_NAME;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * Mockito unit tests for {@link ProductManagementServiceImp}.
+ *
+ * <p>Source-verified fix status (as of 2026-04-23T10:30Z): {@code update()} now uses {@code lockByUuid} +
+ * IGNORE-style merge + ES re-index. A prior claim that "update does NOT re-index into ES"
+ * is REFUTED by direct read of the file (lines 110-111).
+ */
+@ExtendWith(MockitoExtension.class)
+class ProductManagementServiceImpTest {
+
+    @Mock S3Service s3Service;
+    @Mock ProductMapper productMapper;
+    @Mock ProductRepository productRepository;
+    @Mock ProductSearchService productSearchService;
+    @Mock ProductSearchRepository productSearchRepository;
+    @Mock ProductValidationService productValidationService;
+
+    @InjectMocks ProductManagementServiceImp service;
+
+    @Nested
+    @DisplayName("create")
+    class Create {
+
+        @Test
+        @DisplayName("happy path saves SQL entity then ES document, returns mapped response")
+        void create_happyPath_savesSqlAndEs() {
+            ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
+            ProductEntity mapped = ProductEntityBuilder.aValidProduct();
+            ProductEntity saved = ProductEntityBuilder.aValidProduct();
+            ProductDocument doc = ProductDocument.builder().uuid(UUID.randomUUID()).build();
+            ProductResponseDto expected = ProductDtoFixtures.aSampleProductResponse();
+
+            when(productMapper.mapFromCreationRequestToEntity(req)).thenReturn(mapped);
+            when(productRepository.save(mapped)).thenReturn(saved);
+            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
+            when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(expected);
+
+            ProductResponseDto result = service.create(req, "kc-admin");
+
+            assertThat(result).isSameAs(expected);
+            InOrder inOrder = inOrder(productValidationService, productRepository, productSearchRepository);
+            inOrder.verify(productValidationService).validateAttributes(req.getCategory(), req.getAttributes());
+            inOrder.verify(productRepository).save(mapped);
+            inOrder.verify(productSearchRepository).save(doc);
+        }
+
+        @Test
+        @DisplayName("validation failure short-circuits before save")
+        void create_validationFails_noSave() {
+            ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
+            org.mockito.Mockito.doThrow(new IllegalArgumentException("bad"))
+                    .when(productValidationService).validateAttributes(any(), any());
+
+            assertThatThrownBy(() -> service.create(req, "kc-admin")).isInstanceOf(IllegalArgumentException.class);
+
+            verifyNoInteractions(productRepository);
+            verifyNoInteractions(productSearchRepository);
+        }
+
+        @Test
+        @DisplayName("ES failure propagates after SQL save")
+        void create_esFailure_propagates() {
+            ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
+            ProductEntity mapped = ProductEntityBuilder.aValidProduct();
+            ProductEntity saved = ProductEntityBuilder.aValidProduct();
+            ProductDocument doc = ProductDocument.builder().build();
+
+            when(productMapper.mapFromCreationRequestToEntity(req)).thenReturn(mapped);
+            when(productRepository.save(mapped)).thenReturn(saved);
+            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
+            when(productSearchRepository.save(doc)).thenThrow(new RuntimeException("ES down"));
+
+            assertThatThrownBy(() -> service.create(req, "kc-admin"))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("ES down");
+            verify(productRepository).save(mapped);
+        }
+    }
+
+    @Nested
+    @DisplayName("createWithImage")
+    class CreateWithImage {
+
+        @Test
+        @DisplayName("happy path uploads every image, in order, then sets the photo urls directly on the mapped entity")
+        void createWithImage_happyPath_uploadsThenCreates() {
+            // ProductCreateRequestDto carries no photo field at all — the uploaded URLs can only
+            // ever land on the entity mapFromCreationRequestToEntity produces, never on the DTO.
+            ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
+            MockMultipartFile file1 = new MockMultipartFile("images", "p1.jpg", "image/jpeg", new byte[]{1, 2, 3});
+            MockMultipartFile file2 = new MockMultipartFile("images", "p2.jpg", "image/jpeg", new byte[]{4, 5, 6});
+
+            when(s3Service.uploadFile(file1, PRODUCTS_S3_BUCKET_NAME)).thenReturn("https://s3/p1.jpg");
+            when(s3Service.uploadFile(file2, PRODUCTS_S3_BUCKET_NAME)).thenReturn("https://s3/p2.jpg");
+            ProductEntity mapped = ProductEntityBuilder.aValidProduct();
+            ProductEntity saved = ProductEntityBuilder.aValidProduct();
+            when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
+            when(productRepository.save(mapped)).thenReturn(saved);
+            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.createWithImage(req, List.of(file1, file2), "kc-admin");
+
+            assertThat(mapped.getPhotos()).containsExactly("https://s3/p1.jpg", "https://s3/p2.jpg");
+            verify(s3Service).uploadFile(file1, PRODUCTS_S3_BUCKET_NAME);
+            verify(s3Service).uploadFile(file2, PRODUCTS_S3_BUCKET_NAME);
+        }
+
+        @Test
+        @DisplayName("null images list skips upload, entity keeps whatever the mapper produced")
+        void createWithImage_nullImages_skipsUpload() {
+            ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
+            ProductEntity mapped = ProductEntityBuilder.aValidProduct();
+            List<String> original = mapped.getPhotos();
+            ProductEntity saved = ProductEntityBuilder.aValidProduct();
+            when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
+            when(productRepository.save(mapped)).thenReturn(saved);
+            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.createWithImage(req, null, "kc-admin");
+
+            assertThat(mapped.getPhotos()).isEqualTo(original);
+            verifyNoInteractions(s3Service);
+        }
+
+        @Test
+        @DisplayName("empty images list skips upload")
+        void createWithImage_emptyImages_skipsUpload() {
+            ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
+            ProductEntity mapped = ProductEntityBuilder.aValidProduct();
+            ProductEntity saved = ProductEntityBuilder.aValidProduct();
+            when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
+            when(productRepository.save(mapped)).thenReturn(saved);
+            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.createWithImage(req, List.of(), "kc-admin");
+
+            verifyNoInteractions(s3Service);
+        }
+
+        @Test
+        @DisplayName("a zero-byte file in the list is filtered out before upload")
+        void createWithImage_filtersOutEmptyFilesInList() {
+            ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
+            MockMultipartFile real = new MockMultipartFile("images", "p1.jpg", "image/jpeg", new byte[]{1, 2, 3});
+            MockMultipartFile empty = new MockMultipartFile("images", "empty.jpg", "image/jpeg", new byte[0]);
+
+            when(s3Service.uploadFile(real, PRODUCTS_S3_BUCKET_NAME)).thenReturn("https://s3/p1.jpg");
+            ProductEntity mapped = ProductEntityBuilder.aValidProduct();
+            ProductEntity saved = ProductEntityBuilder.aValidProduct();
+            when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
+            when(productRepository.save(mapped)).thenReturn(saved);
+            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.createWithImage(req, List.of(real, empty), "kc-admin");
+
+            assertThat(mapped.getPhotos()).containsExactly("https://s3/p1.jpg");
+            verify(s3Service, never()).uploadFile(empty, PRODUCTS_S3_BUCKET_NAME);
+        }
+    }
+
+    @Nested
+    @DisplayName("update product fix verification")
+    class Update {
+
+        @Test
+        @DisplayName("uses lockByUuid and re-indexes into ES")
+        void update_happyPath_locksAndReindexes() {
+            ProductUpdateRequestDto req = ProductDtoFixtures.aValidUpdateRequest();
+            ProductEntity existing = ProductEntityBuilder.aValidProductBuilder().uuid(req.getProductUuid()).build();
+            ProductEntity saved = ProductEntityBuilder.aValidProductBuilder().uuid(req.getProductUuid()).build();
+            ProductDocument doc = ProductDocument.builder().uuid(req.getProductUuid()).build();
+            ProductResponseDto expected = ProductDtoFixtures.aSampleProductResponse();
+
+            when(productRepository.lockByUuid(req.getProductUuid())).thenReturn(Optional.of(existing));
+            when(productRepository.save(existing)).thenReturn(saved);
+            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
+            when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(expected);
+
+            ProductResponseDto result = service.update(req, "kc-admin");
+
+            assertThat(result).isSameAs(expected);
+            InOrder inOrder = inOrder(productRepository, productSearchRepository);
+            inOrder.verify(productRepository).lockByUuid(req.getProductUuid());
+            inOrder.verify(productRepository).save(existing);
+            inOrder.verify(productSearchRepository).save(doc);
+            verify(productRepository, never()).findByUuid(any());
+        }
+
+        @Test
+        @DisplayName("missing product throws ProductNotFoundException — never saves")
+        void update_notFound_throws() {
+            ProductUpdateRequestDto req = ProductDtoFixtures.aValidUpdateRequest();
+            when(productRepository.lockByUuid(req.getProductUuid())).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.update(req, "kc-admin"))
+                    .isInstanceOf(ProductNotFoundException.class)
+                    .hasMessageContaining(req.getProductUuid().toString());
+
+            verify(productRepository, never()).save(any());
+            verifyNoInteractions(productSearchRepository);
+        }
+
+        @Test
+        @DisplayName("IGNORE merge — only non-null DTO fields overwrite existing entity")
+        void update_ignoreMerge_onlyNonNullFieldsApplied() {
+            UUID id = UUID.randomUUID();
+            ProductUpdateRequestDto req = new ProductUpdateRequestDto();
+            req.setProductUuid(id);
+            req.setName("New Name");
+            ProductEntity existing = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(id)
+                    .name("Old Name")
+                    .price(new BigDecimal("11.11"))
+                    .brand(Brand.HP)
+                    .category("MONITOR")
+                    .photos(List.of("old-photo"))
+                    .stock(7)
+                    .description("old desc")
+                    .build();
+
+            when(productRepository.lockByUuid(id)).thenReturn(Optional.of(existing));
+            when(productRepository.save(existing)).thenReturn(existing);
+            when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.update(req, "kc-admin");
+
+            assertThat(existing.getName()).isEqualTo("New Name");
+            assertThat(existing.getPrice()).isEqualByComparingTo(new BigDecimal("11.11"));
+            assertThat(existing.getBrand()).isEqualTo(Brand.HP);
+            assertThat(existing.getCategory()).isEqualTo("MONITOR");
+            assertThat(existing.getPhotos()).containsExactly("old-photo");
+            assertThat(existing.getStock()).isEqualTo(7);
+            assertThat(existing.getDescription()).isEqualTo("old desc");
+        }
+
+        @Test
+        @DisplayName("category-only update validates existing attributes against the requested category")
+        void update_categoryOnly_validatesExistingAttributesAgainstNewCategory() {
+            UUID id = UUID.randomUUID();
+            Map<String, Object> existingAttributes = Map.of("ramGB", 16);
+            ProductUpdateRequestDto req = new ProductUpdateRequestDto();
+            req.setProductUuid(id);
+            req.setCategory("SMARTPHONE");
+            ProductEntity existing = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(id)
+                    .category("COMPUTER")
+                    .attributes(existingAttributes)
+                    .build();
+
+            when(productRepository.lockByUuid(id)).thenReturn(Optional.of(existing));
+            when(productRepository.save(existing)).thenReturn(existing);
+            when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.update(req, "kc-admin");
+
+            verify(productValidationService).validateAttributes("SMARTPHONE", existingAttributes);
+            assertThat(existing.getCategory()).isEqualTo("SMARTPHONE");
+            assertThat(existing.getAttributes()).isSameAs(existingAttributes);
+        }
+
+        @Test
+        @DisplayName("category-only update with incompatible existing attributes fails before saving")
+        void update_categoryOnly_invalidExistingAttributes_doesNotSave() {
+            UUID id = UUID.randomUUID();
+            Map<String, Object> existingAttributes = Map.of("ramGB", 16);
+            ProductUpdateRequestDto req = new ProductUpdateRequestDto();
+            req.setProductUuid(id);
+            req.setCategory("SMARTPHONE");
+            ProductEntity existing = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(id)
+                    .category("COMPUTER")
+                    .attributes(existingAttributes)
+                    .build();
+            org.mockito.Mockito.doThrow(new IllegalArgumentException("attributes do not match category"))
+                    .when(productValidationService).validateAttributes("SMARTPHONE", existingAttributes);
+            when(productRepository.lockByUuid(id)).thenReturn(Optional.of(existing));
+
+            assertThatThrownBy(() -> service.update(req, "kc-admin"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("attributes do not match category");
+
+            assertThat(existing.getCategory()).isEqualTo("COMPUTER");
+            verify(productRepository, never()).save(any());
+            verifyNoInteractions(productSearchRepository);
+        }
+
+        @Test
+        @DisplayName("all DTO fields non-null overwrites every field on existing entity")
+        void update_allFieldsApplied() {
+            ProductUpdateRequestDto req = ProductDtoFixtures.aValidUpdateRequest();
+            ProductEntity existing = ProductEntityBuilder.aValidProductBuilder().uuid(req.getProductUuid()).build();
+
+            when(productRepository.lockByUuid(req.getProductUuid())).thenReturn(Optional.of(existing));
+            when(productRepository.save(existing)).thenReturn(existing);
+            when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
+            when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
+
+            service.update(req, "kc-admin");
+
+            assertThat(existing.getName()).isEqualTo(req.getName());
+            assertThat(existing.getPrice()).isEqualTo(req.getPrice());
+            assertThat(existing.getBrand()).isEqualTo(req.getBrand());
+            assertThat(existing.getCategory()).isEqualTo(req.getCategory());
+            assertThat(existing.getPhotos()).isEqualTo(req.getPhotos());
+            assertThat(existing.getStock()).isEqualTo(req.getStock());
+            assertThat(existing.getDescription()).isEqualTo(req.getDescription());
+        }
+    }
+
+    @Nested
+    @DisplayName("deleteByUUID")
+    class DeleteByUUID {
+
+        @Test
+        @DisplayName("happy path deletes from SQL and ES")
+        void deleteByUUID_happyPath_bothSinks() {
+            UUID id = UUID.randomUUID();
+            service.deleteByUUID(id, "kc-admin");
+
+            InOrder inOrder = inOrder(productRepository, productSearchRepository);
+            inOrder.verify(productRepository).deleteByUuid(id);
+            inOrder.verify(productSearchRepository).deleteByUuid(id);
+        }
+
+        @Test
+        @DisplayName("ES failure after SQL delete propagates")
+        void deleteByUUID_esFailure_propagates() {
+            UUID id = UUID.randomUUID();
+            org.mockito.Mockito.doThrow(new RuntimeException("ES boom"))
+                    .when(productSearchRepository).deleteByUuid(id);
+
+            assertThatThrownBy(() -> service.deleteByUUID(id, "kc-admin")).isInstanceOf(RuntimeException.class);
+            verify(productRepository).deleteByUuid(id);
+        }
+    }
+
+    @Nested
+    @DisplayName("getByUUID")
+    class GetByUUID {
+
+        @Test
+        @DisplayName("happy path returns mapped DTO")
+        void getByUUID_happyPath() {
+            UUID id = UUID.randomUUID();
+            ProductEntity entity = ProductEntityBuilder.aValidProductBuilder().uuid(id).build();
+            ProductResponseDto expected = ProductDtoFixtures.aSampleProductResponse();
+
+            when(productRepository.findByUuid(id)).thenReturn(Optional.of(entity));
+            when(productMapper.mapFromEntityToResponseDto(entity)).thenReturn(expected);
+
+            assertThat(service.getByUUID(id, "kc-admin")).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("missing throws ProductNotFoundException with the requested uuid")
+        void getByUUID_notFound_throws() {
+            UUID id = UUID.randomUUID();
+            when(productRepository.findByUuid(id)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getByUUID(id, "kc-admin"))
+                    .isInstanceOf(ProductNotFoundException.class)
+                    .hasMessageContaining(id.toString());
+        }
+    }
+
+    @Nested
+    @DisplayName("getAll(Pageable)")
+    class GetAll {
+
+        @Test
+        @DisplayName("returns mapped page from repository.findAll(Pageable)")
+        void getAll_happyPath() {
+            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 10);
+            ProductEntity entity = ProductEntityBuilder.aValidProduct();
+            ProductResponseDto resp = ProductDtoFixtures.aSampleProductResponse();
+            org.springframework.data.domain.Page<ProductEntity> page =
+                    new org.springframework.data.domain.PageImpl<>(List.of(entity), pageable, 1);
+
+            when(productRepository.findAll(pageable)).thenReturn(page);
+            when(productMapper.mapFromEntityToResponseDto(entity)).thenReturn(resp);
+
+            org.springframework.data.domain.Page<ProductResponseDto> result = service.getAll(pageable);
+
+            assertThat(result.getContent()).containsExactly(resp);
+        }
+    }
+
+    @Nested
+    @DisplayName("searchProducts — delegation to ProductSearchService")
+    class SearchProducts {
+
+        @Test
+        @DisplayName("delegates to ProductSearchService and maps documents to responses")
+        void searchProducts_delegates() {
+            com.novatech.cybertech.dto.request.search.ProductSearchRequestDto req =
+                    com.novatech.cybertech.dto.request.search.ProductSearchRequestDto.builder()
+                            .category("COMPUTER").page(0).size(10).build();
+            ProductDocument doc = ProductDocument.builder().uuid(UUID.randomUUID()).name("X").build();
+            ProductResponseDto resp = ProductDtoFixtures.aSampleProductResponse();
+            org.springframework.data.domain.Page<ProductDocument> page =
+                    new org.springframework.data.domain.PageImpl<>(List.of(doc));
+
+            when(productSearchService.search(req)).thenReturn(page);
+            when(productMapper.mapFromProductDocumentToProductResponseDto(doc)).thenReturn(resp);
+
+            org.springframework.data.domain.Page<ProductResponseDto> result = service.searchProducts(req);
+
+            assertThat(result.getContent()).containsExactly(resp);
+        }
+    }
+
+    @Nested
+    @DisplayName("getBestSellers")
+    class GetBestSellers {
+
+        @Test
+        @DisplayName("returns mapped page from findBestSellers")
+        void getBestSellers_happy() {
+            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 5);
+            ProductEntity entity = ProductEntityBuilder.aValidProduct();
+            ProductResponseDto resp = ProductDtoFixtures.aSampleProductResponse();
+            org.springframework.data.domain.Page<ProductEntity> page =
+                    new org.springframework.data.domain.PageImpl<>(List.of(entity), pageable, 1);
+
+            when(productRepository.findBestSellers(pageable)).thenReturn(page);
+            when(productMapper.mapFromEntityToResponseDto(entity)).thenReturn(resp);
+
+            org.springframework.data.domain.Page<ProductResponseDto> result = service.getBestSellers(pageable);
+
+            assertThat(result.getContent()).containsExactly(resp);
+        }
+    }
+
+    @Nested
+    @DisplayName("getAvailability")
+    class GetAvailability {
+
+        @Test
+        @DisplayName("available = stock - reservedStock, clamped at 0; unknown uuids are absent")
+        void getAvailability_mapsStockMinusReserved() {
+            final ProductEntity inStock = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(UUID.randomUUID()).stock(10).reservedStock(3).build();
+            final ProductEntity soldOut = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(UUID.randomUUID()).stock(2).reservedStock(2).build();
+            final ProductEntity overReserved = ProductEntityBuilder.aValidProductBuilder()
+                    .uuid(UUID.randomUUID()).stock(1).reservedStock(4).build();
+            final java.util.Set<UUID> requested = java.util.Set.of(inStock.getUuid(), soldOut.getUuid(), overReserved.getUuid(), UUID.randomUUID());
+            when(productRepository.findAllByUuidIn(requested)).thenReturn(List.of(inStock, soldOut, overReserved));
+
+            final List<ProductAvailabilityDto> result = service.getAvailability(requested);
+
+            assertThat(result).containsExactlyInAnyOrder(
+                    new ProductAvailabilityDto(inStock.getUuid(), 7, true),
+                    new ProductAvailabilityDto(soldOut.getUuid(), 0, false),
+                    new ProductAvailabilityDto(overReserved.getUuid(), 0, false));
+        }
+
+        @Test
+        @DisplayName("empty or oversized batch -> IllegalArgumentException, repository untouched")
+        void getAvailability_rejectsInvalidBatchSize() {
+            final java.util.Set<UUID> tooMany = java.util.stream.Stream.generate(UUID::randomUUID).limit(51)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            assertThatThrownBy(() -> service.getAvailability(java.util.Set.of()))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> service.getAvailability(tooMany))
+                    .isInstanceOf(IllegalArgumentException.class);
+            verifyNoInteractions(productRepository);
+        }
+    }
+}

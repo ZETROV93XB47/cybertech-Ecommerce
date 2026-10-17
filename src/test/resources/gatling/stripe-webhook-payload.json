@@ -1,0 +1,39 @@
+{
+  "id": "evt_test_loadtest_firehose",
+  "object": "event",
+  "api_version": "2024-06-20",
+  "created": 1719500000,
+  "type": "payment_intent.succeeded",
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": "req_loadtest",
+    "idempotency_key": null
+  },
+  "data": {
+    "object": {
+      "id": "pi_loadtest_123",
+      "object": "payment_intent",
+      "amount": 249999,
+      "amount_capturable": 0,
+      "amount_received": 249999,
+      "currency": "eur",
+      "status": "succeeded",
+      "capture_method": "automatic",
+      "confirmation_method": "automatic",
+      "client_secret": "pi_loadtest_123_secret_xyz",
+      "payment_method": "pm_card_visa",
+      "payment_method_types": ["card"],
+      "metadata": {
+        "orderUuid": "99999999-aaaa-bbbb-cccc-dddddddddddd"
+      },
+      "charges": {
+        "object": "list",
+        "data": [],
+        "has_more": false,
+        "total_count": 0,
+        "url": "/v1/charges?payment_intent=pi_loadtest_123"
+      }
+    }
+  }
+}

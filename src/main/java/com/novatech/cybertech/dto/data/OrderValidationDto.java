@@ -1,6 +1,5 @@
 package com.novatech.cybertech.dto.data;
 
-import com.novatech.cybertech.entities.BankCardEntity;
 import lombok.Builder;
 import lombok.Data;
 
@@ -14,5 +13,5 @@ public class OrderValidationDto {
     private final boolean isUserActive;
     private final List<Long> productIds;
     final Map<UUID, Integer> productsByQuantityMap;
-    private final BankCardEntity userDefaultBankCard;
+    private final BankCardValidationDto bankCardValidationDto;
 }

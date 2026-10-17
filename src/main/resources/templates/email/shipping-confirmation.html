@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Expédition de commande</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 0;
+            color: #333333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #27ae60; /* Vert pour le succès */
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 16px;
+            line-height: 1.5;
+            margin: 16px 0;
+        }
+        .shipping-info {
+            background-color: #eafaf1;
+            border: 1px solid #27ae60;
+            border-radius: 6px;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        .info-item {
+            font-weight: 600;
+            color: #1e8449;
+            padding: 5px 0;
+            border-bottom: 1px solid #d5f5e3;
+        }
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        .footer {
+            font-size: 12px;
+            color: #999999;
+            text-align: center;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Votre commande est en route !</h1>
+    <p>Bonjour <strong th:text="${userName}">Nom</strong>,</p>
+    <p>Bonne nouvelle ! Votre commande <strong>#<span th:text="${orderId}">0000</span></strong> a été expédiée.</p>
+
+    <div class="shipping-info">
+        <div class="info-item">
+            Transporteur : <span th:text="${shippingProvider}">FedEx</span>
+        </div>
+        <div class="info-item">
+            Mode de livraison : <span th:text="${shippingType}">Express</span>
+        </div>
+    </div>
+
+    <p>Vous devriez la recevoir très prochainement.</p>
+
+    <div class="footer">
+        Cybertech - Merci de votre confiance
+    </div>
+</div>
+</body>
+</html>
