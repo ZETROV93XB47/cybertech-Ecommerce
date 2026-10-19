@@ -3,8 +3,8 @@
 # ------------------------------------------------------------
 # Keycloak runs in `start-dev` mode for portfolio simplicity:
 # no HTTPS, no pre-build optimisation, hostname-strict disabled.
-# REPLACE every plaintext credential below via Vault before any
-# real deploy.
+# Override development credentials with deployment secrets before any
+# real deployment.
 # ============================================================
 
 replicaCount: 1
@@ -19,7 +19,7 @@ keycloak:
   # Admin bootstrap user (created on first start). Override in prod.
   admin:
     username: admin
-    password: admin  # REPLACE in prod via Vault
+    password: admin  # REPLACE in prod via Kubernetes Secret/env
 
   # MySQL backend (provisioned by mysql-chart).
   # The mysql-chart's init SQL pre-creates keycloakDB and grants
@@ -29,7 +29,7 @@ keycloak:
     port: 3306
     name: keycloakDB
     username: rookie
-    password: pwd  # REPLACE in prod via Vault
+    password: pwd  # REPLACE in prod via Kubernetes Secret/env
 
   # Hostname Keycloak will advertise / honour from X-Forwarded-Host.
   # Frontend reaches it through nginx-ingress on this host.

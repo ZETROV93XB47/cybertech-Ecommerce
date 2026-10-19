@@ -27,8 +27,8 @@ import java.util.regex.Pattern;
  * <p>Replaces the previous {@code CybertechPropertiesLogger}, which had the same intent but was
  * never actually wired up (no {@code @Component}, no listener registration anywhere) and whose
  * sensitive-property filter only matched {@code password}/{@code secret}/{@code pwd}/
- * {@code credential} in the property name — missing {@code stripe.api.key},
- * {@code spring.cloud.vault.token} and {@code app.security.card-encryption-key}, all of which
+ * {@code credential} in the property name — missing {@code stripe.api.key} and
+ * {@code app.security.card-encryption-key}, both of which
  * would have been printed in clear.
  */
 @Slf4j

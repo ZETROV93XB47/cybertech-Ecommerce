@@ -82,21 +82,6 @@ mailpit:
   senderEmail: "abc@email.com"
 
 # ============================================================
-# SECRETS MANAGEMENT
-# ============================================================
-vault:
-  enabled: false
-  host: vault
-  port: 8200
-  token: ""  # MUST be set via secret (root for dev)
-  authentication: token
-  kv:
-    enabled: true
-    backend: secret
-    defaultContext: cybertech
-    profileSeparator: "/"
-
-# ============================================================
 # CLOUD SERVICES (RustFS)
 # ============================================================
 aws:

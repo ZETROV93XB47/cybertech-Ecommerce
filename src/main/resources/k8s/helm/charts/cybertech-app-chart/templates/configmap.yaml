@@ -90,22 +90,6 @@ data:
     keycloak.client.user.management.client.id={{ .Values.keycloak.clientId }}
 
     # ============================================================
-    # VAULT CONFIGURATION
-    # ============================================================
-    
-    spring.cloud.vault.enabled=false
-    
-    {{- if .Values.vault.enabled }}
-    #    spring.config.import=vault://
-    #    spring.cloud.vault.uri=http://{{ .Values.vault.host }}:{{ .Values.vault.port }}
-    #    spring.cloud.vault.authentication={{ .Values.vault.authentication }}
-    #    spring.cloud.vault.kv.enabled={{ .Values.vault.kv.enabled }}
-    #    spring.cloud.vault.kv.backend={{ .Values.vault.kv.backend }}
-    #    spring.cloud.vault.kv.default-context={{ .Values.vault.kv.defaultContext }}
-    #    spring.cloud.vault.kv.profile-separator={{ .Values.vault.kv.profileSeparator }}
-    #    {{- end }}
-
-    # ============================================================
     # RUSTFS / AWS S3 CONFIGURATION
     # ============================================================
     spring.cloud.aws.s3.endpoint={{ .Values.aws.s3.endpoint }}

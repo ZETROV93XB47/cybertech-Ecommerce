@@ -67,7 +67,7 @@ project context :
     - `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)`
 
     **Resilience / Config**
-    - Resilience4j, Spring Cloud Vault (secrets), springdoc-openapi 3.0.1
+    - Resilience4j, deployment-provided environment/Kubernetes secrets, springdoc-openapi 3.0.1
 
     **Test stack**
     - JUnit 5 + Mockito + AssertJ

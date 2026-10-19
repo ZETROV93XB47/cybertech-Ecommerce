@@ -21,7 +21,6 @@ The backend `application.properties` (default profile, no `prod`) hardcodes loca
 | Elasticsearch  | `http://localhost:9200`              | `spring.elasticsearch.uris`                           | YES (BLOCKER)     |
 | RustFS S3      | `http://localhost:9000`               | `spring.cloud.aws.s3.endpoint`                        | YES (BLOCKER — bucket `cybertech-products`, initialized by Compose) |
 | Mailpit        | `localhost:1025` (SMTP) / `:8025` (UI) | `spring.mail.host` / `.port`                        | RECOMMENDED (mail health probe is disabled, but order/notification listeners hit SMTP) |
-| Vault          | `http://localhost:8200`              | `spring.cloud.vault.uri`                              | NOT required — `spring.cloud.vault.enabled=false` in default profile |
 | Stripe CLI     | forwards events to `localhost:8081/api/v1/webhooks/stripe` | n/a                                | RECOMMENDED only for Stripe webhook test |
 | moderation-api | `http://moderation-api:5000/analyze` | `moderation.api.url`                                  | RECOMMENDED — only hit when a review is posted; in-cluster DNS name will fail unless overridden, see Pitfall G3 |
 | Gorse          | `localhost:8088/8089`                | n/a                                                   | NOT required — no live wiring in code today |
@@ -139,7 +138,6 @@ The default `application.properties` is already wired for localhost, so launchin
 | `cybertech.cors.allowed-origins`                 | `http://localhost:3000`                     | OK — matches Next dev |
 | `spring.security.oauth2.resourceserver.jwt.issuer-uri` | `http://localhost:8080/realms/cybertech` | OK    |
 | `cybertech.security.hsts.enabled`                | `false`                                     | OK    |
-| `spring.cloud.vault.enabled`                     | `false`                                     | OK    |
 
 ### C.3 Properties you SHOULD override locally
 

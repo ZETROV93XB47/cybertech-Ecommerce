@@ -37,7 +37,8 @@ import java.util.Base64;
  * <p><b>Key provisioning.</b> The key is injected from
  * {@code app.security.card-encryption-key} (base64, 32 bytes = AES-256). The
  * {@code application.properties} default is a DEV placeholder — production MUST override it
- * via Vault/KMS. A startup validation rejects keys that are not exactly 32 bytes after
+ * via an environment variable or deployment secret. A startup validation rejects keys that
+ * are not exactly 32 bytes after
  * base64 decoding, so a typo fails loud rather than silently downgrading to AES-128.</p>
  */
 @Slf4j

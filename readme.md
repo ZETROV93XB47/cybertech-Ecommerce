@@ -92,8 +92,8 @@ Le projet est **observable** (Loki + Grafana en cluster), **testé** (1 681 test
 
 - **Keycloak 26.0.4** — OAuth2 / OIDC (realm `cybertech`, theme custom Material 3)
 - **Spring Security** — `KeycloakRoleConverter` + Resource Server JWT
-- **HashiCorp Vault** 1.21.4 — secrets (config opt-in)
-- **AES-256/GCM** — chiffrement at-rest des PAN bancaires (IV/record, clé via Vault en prod)
+- **Kubernetes Secrets / environment variables** — injection des secrets de déploiement
+- **AES-256/GCM** — chiffrement at-rest des PAN bancaires (IV/record, clé injectée par `APP_CARD_ENCRYPTION_KEY`)
 - **Bucket4j** — rate-limit `/register`, `/order`, `/cart` (token bucket en mémoire + Caffeine)
 - **Stripe webhook** — HMAC-SHA256 + IP allowlist filter
 - **CORS / HSTS / CSP** report-only / X-Frame-Options DENY / Permissions-Policy
@@ -166,7 +166,6 @@ flowchart LR
         S3[(RustFS S3<br/>cybertech-products)]
         MD[Moderation API<br/>Python + toxic-bert]
         MP[Mailpit SMTP]
-        VL[(Vault)]
     end
 
     subgraph Observability["Observabilite"]
@@ -464,7 +463,7 @@ sequenceDiagram
 ### Lancement local — back-end
 
 ```bash
-# 1) Démarrer toute l'infra (MySQL, MongoDB, ES, Redis, Keycloak, Vault, RustFS, Mailpit, Gorse, Stripe CLI, moderation-api)
+# 1) Démarrer toute l'infra (MySQL, MongoDB, ES, Redis, Keycloak, RustFS, Mailpit, Gorse, Stripe CLI, moderation-api)
 cd src/main/resources/docker
 docker compose up -d
 
@@ -506,7 +505,9 @@ python app.py    # Flask sur :5000, charge unitary/toxic-bert (~600 MB RAM)
 | `STRIPE_API_KEY` | Clé secrète Stripe (test ou live) | `sk_test_...` |
 | `STRIPE_WEBHOOK_SECRET` | HMAC secret pour vérifier les webhooks | `whsec_...` |
 | `APP_CARD_ENCRYPTION_KEY` | Clé AES-256 base64 (32 bytes) pour chiffrer les PAN | `AAEC...` (placeholder dev) |
-| `KEYCLOAK_CLIENT_SECRET` | Secret du client `cybertech-user-management-client` | géré par Vault en prod |
+| `KEYCLOAK_CLIENT_USER_MANAGEMENT_CLIENT_SECRET` | Secret du client `cybertech-user-management-client` | injecté depuis un secret de déploiement |
+| `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` | Identifiants MySQL du profil `prod` | injectés depuis un secret de déploiement |
+| `WEB_PUSH_PUBLIC_KEY` / `WEB_PUSH_PRIVATE_KEY` / `WEB_PUSH_SUBJECT` | Configuration VAPID du profil `prod` | injectés depuis un secret de déploiement |
 | `MYSQL_PORT` | Port MySQL exposé | `3306` |
 | `NEXT_PUBLIC_API_BASE` | URL backend lue côté front | `http://localhost:8081` |
 | `AUTH_SECRET` | Secret Auth.js | `openssl rand -base64 32` |
@@ -530,7 +531,6 @@ python app.py    # Flask sur :5000, charge unitary/toxic-bert (~600 MB RAM)
 | Redis | redis://localhost:6379 |
 | RustFS S3 API | http://localhost:9000 |
 | RustFS console | http://localhost:9001/rustfs/console/ |
-| Vault | http://localhost:8200 (token `root` en dev) |
 | Moderation API | http://localhost:5000/analyze |
 | Stripe CLI | forward → http://host.docker.internal:8081/api/v1/webhooks/stripe |
 | Gorse | http://localhost:8088 |
@@ -539,10 +539,10 @@ python app.py    # Flask sur :5000, charge unitary/toxic-bert (~600 MB RAM)
 
 | Profil | Activation | Effet |
 |---|---|---|
-| `dev` | défaut (`spring.profiles.active=dev`) | H2 console activée, Vault désactivé, HSTS off, Stripe IP allowlist off |
+| `dev` | défaut (`spring.profiles.active=dev`) | H2 console activée, HSTS off, Stripe IP allowlist off |
 | `test` | `@ActiveProfiles("test")` | Stubs + H2 fallback pour les tests slice |
 | `integration-test` | `mvn -Pintegration-test` | Active Failsafe + JaCoCo gate (`*IT.java`) |
-| `prod` | `application-prod.properties` | DNS in-cluster, Vault on, HSTS on, Stripe IP allowlist on |
+| `prod` | `application-prod.properties` | DNS in-cluster, secrets requis via variables d'environnement, HSTS on, Stripe IP allowlist on |
 | `loadtest` | `mvn -Ploadtest gatling:test` | Active gatling-maven-plugin |
 
 ---
@@ -579,24 +579,21 @@ python app.py    # Flask sur :5000, charge unitary/toxic-bert (~600 MB RAM)
 
 ## Déploiement
 
-### Stack Helm (16 charts)
+### Stack Helm (11 charts)
 
 | Chart | Rôle |
 |---|---|
 | `cybertech-app-chart` | Backend Spring Boot + ingress `api.cybertech.local` |
-| `front-app-chart` | Frontend Next.js standalone + ingress `cybertech.local` |
 | `mysql-chart` | MySQL 8.4 + init SQL (cybertechDB + keycloakDB + GRANTs) + probes |
 | `mongodb-chart` | MongoDB user events |
 | `elasticsearch-chart` | ES 8.15.3 single-node + probes startup/liveness/readiness |
 | `redis-chart` | Redis cache + locks |
 | `keycloak-chart` | Keycloak 26 (start-dev) + ingress `keycloak.cybertech.local` |
-| `vault-chart` | HashiCorp Vault dev mode |
-| `localstack-chart` | LocalStack S3 avec persistence (Kubernetes uniquement) |
 | `mailpit-chart` | SMTP dev + UI |
 | `moderation-api-chart` | Flask + toxic-bert (200m / 1Gi → 1000m / 2Gi) |
 | `stripe-chart` | Stripe CLI listener |
-| `loki-chart` | Logs JSON via logback-spring.xml |
-| `grafana-chart` | UI de consultation des logs + ingress `grafana.cybertech.local` |
+| `rustfs-chart` | Stockage S3 compatible + persistance des images |
+| `gorse-chart` | Moteur de recommandations |
 
 ```bash
 # Démarrer minikube + addons + déployer toute la stack

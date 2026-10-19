@@ -2,8 +2,8 @@
 
 A practical walkthrough for booting the Cybertech backend stack on your local
 machine: Spring Boot 4 / Java 26, its data and support services, and
-RustFS for product images. Frontend, Vault, LocalStack, Loki, and Grafana are
-not part of the active Minikube deployment.
+RustFS for product images. The frontend, Vault, LocalStack, Loki, and Grafana
+have been removed from this deployment.
 
 > **Audience:** you, on your laptop. Portfolio scope. ~6 GB RAM, ~4 vCPU.
 > Companion docs: [`src/main/resources/k8s/helm/README.md`](src/main/resources/k8s/helm/README.md)
@@ -109,6 +109,8 @@ inside the cluster directly (no registry round-trip needed):
 
 ```bash
 eval $(minikube docker-env)
+
+eval "$(minikube docker-env --shell bash)"
 ```
 
 > If you close this shell, you'll need to re-run that line. Run `minikube docker-env -u` to switch back to your host Docker.
@@ -136,7 +138,7 @@ minikube image ls | grep cybertech-app
 
 ```bash
 export MYSQL_ROOT_PASSWORD="cybertech-root"
-export KEYCLOAK_CLIENT_SECRET="<match cybertech-user-management-client in the Helm realm export>"
+export KEYCLOAK_CLIENT_SECRET="rPKnibr1m14c2Oit4XybU1AhhIbuZVtt"
 export RUSTFS_ACCESS_KEY="cybertech-local"
 export RUSTFS_SECRET_KEY="$(openssl rand -hex 24)"
 export APP_CARD_ENCRYPTION_KEY="$(openssl rand -base64 32)"
@@ -178,9 +180,8 @@ What `helmfile apply` actually does, in order:
 RustFS persists objects on a PVC and initializes the `cybertech-products`
 bucket, public image-read policy, and browser CORS. Its S3 endpoint is
 `http://s3.cybertech.local`. Minikube secrets are Kubernetes Secrets populated
-through Helmfile environment variables. The old LocalStack, Loki, and Grafana
-charts have been removed; Vault remains disabled with its chart retained for
-future use.
+through Helmfile environment variables. The old LocalStack, Loki, Grafana, and
+Vault charts have been removed.
 Products with image URLs from an old LocalStack endpoint must have their
 images uploaded again. If you previously installed the old `localstack`,
 `front-app`, `loki`, or `grafana` releases, Helmfile does not automatically
@@ -194,12 +195,13 @@ helm uninstall front-app -n default
 helm uninstall loki -n default
 helm uninstall grafana -n default
 helm uninstall localstack -n default
+helm uninstall vault -n default
 ```
 
 Helm uninstall may leave PVCs behind. Preserve any data you need, then delete
-only the specific obsolete Loki/Grafana/LocalStack PVCs you have identified.
-Leave Vault installed only if you still need its data; it is no longer managed
-by this Helmfile.
+only the specific obsolete LocalStack PVC you have identified; no Loki,
+Grafana, or Vault PVC is present in the inspected cluster. Removing a claim
+can delete its backing volume and data.
 
 Watch the rollout:
 
@@ -364,7 +366,7 @@ kubectl port-forward svc/mailpit 8025:8025
 | Area | Status | Where to look when ready |
 |---|---|---|
 | TLS on ingress | HTTP only | `cert-manager` + Let's Encrypt; bump `ingress.tls.enabled` per chart |
-| Vault integration | Disabled; local values use Kubernetes Secrets | enable and configure deliberately when needed |
+| Secrets management | Deployment-provided environment variables / Kubernetes Secrets | use a managed secret store if the deployment requires one |
 | Real SMTP | Mailpit | swap `application-prod.properties` `spring.mail.*` |
 | Pen test | Skipped | run OWASP ZAP first, then a vendor |
 | GDPR right-to-erasure | Documented, not implemented | `docs/runbooks/gdpr-data-handling.md` has the spec |

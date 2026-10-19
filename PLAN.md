@@ -1,5 +1,12 @@
 # Plan
 
+- [x] **Supprimer Vault du projet et remplacer son usage par des secrets Kubernetes/env** :
+  - [x] Migrer les placeholders secrets de `application-prod.properties` vers des variables d'environnement et retirer la dépendance/configuration Spring Vault.
+  - [x] Retirer Vault de Docker Compose et Helm (chart, options du chart applicatif et chart Stripe).
+  - [x] Actualiser les consignes locales/Minikube et les commentaires de configuration liés aux secrets.
+  - [x] Vérifier le module `com.novatech.cybertech` (`mvn test`: 2 287 tests, 0 échec, 15 ignorés), les 11 charts Helm restants et le rendu Helmfile (45 sources sans Vault).
+  - [x] Ne supprimer aucun PVC ; l'ancienne release Vault Minikube a été désinstallée après confirmation du contexte et aucune claim Vault n'existait.
+  - [x] Committer uniquement les fichiers de cette tâche, sans embarquer les changements préexistants.
 - [x] **Retirer Loki, Grafana et LocalStack de Helm Minikube** (estimation : 15–25 min) :
   - [x] Supprimer les releases Helmfile et leurs charts ; garder Vault désactivé tel quel.
   - [x] Nettoyer les deux runbooks et `progress.md`, inclure les commandes de retrait des anciennes releases et le sort des PVC.

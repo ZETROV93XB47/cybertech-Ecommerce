@@ -20,7 +20,8 @@ failure. HTTP 404/410 from a push service removes the expired subscription.
 ## VAPID configuration
 
 Generate one VAPID key pair for the deployment (for example with `npx web-push
-generate-vapid-keys`). Keep the private key in Vault or a deployment secret; never commit it.
+generate-vapid-keys`). Keep the private key in an environment variable or deployment secret;
+never commit it.
 Configure:
 
 - `WEB_PUSH_PUBLIC_KEY`: Base64URL public key, returned by the public-key endpoint.

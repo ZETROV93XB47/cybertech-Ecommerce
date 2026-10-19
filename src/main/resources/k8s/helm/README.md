@@ -2,9 +2,9 @@
 
 End-to-end guide for running the Cybertech backend and its support services
 on a local Minikube cluster. The frontend, Vault, LocalStack, Loki, and Grafana
-are not deployed by the current Helmfile.
+charts have been removed.
 
-> Target: laptop / portfolio demo. Production hardening (TLS, real Vault,
+> Target: laptop / portfolio demo. Production hardening (TLS, managed secret storage,
 > external DBs, autoscaling) is intentionally out of scope and called out
 > as future work where relevant.
 
@@ -100,9 +100,9 @@ Helmfile dependencies order the releases as follows:
 1. **mysql, mongodb, redis, elasticsearch** — data stores.
 2. **keycloak, rustfs, gorse, mailpit, moderation-api, stripe** — auth and supporting services.
 3. **cybertech-app** — backend.
-The local deployment does not install Vault: its charts use Kubernetes Secrets
-populated from environment variables. Vault is disabled but its chart is
-retained; the frontend, LocalStack, Loki, and Grafana charts have been removed.
+The local deployment uses Kubernetes Secrets populated from Helmfile
+environment variables. Vault, frontend, LocalStack, Loki, and Grafana charts
+have been removed.
 RustFS replaces LocalStack and persists the image bucket on a PVC.
 Products with image URLs from an old LocalStack endpoint must have their
 images uploaded again. Previously installed releases are not automatically
@@ -116,12 +116,13 @@ helm uninstall front-app -n default
 helm uninstall loki -n default
 helm uninstall grafana -n default
 helm uninstall localstack -n default
+helm uninstall vault -n default
 ```
 
 Helm uninstall may leave PVCs behind. Preserve data you need, then delete only
-the specific obsolete Loki/Grafana/LocalStack PVCs you have identified. Leave
-Vault installed only if you still need its data; it is no longer managed by
-this Helmfile.
+the specific obsolete PVCs you have identified. In the inspected cluster, only
+LocalStack has a PVC; no Loki, Grafana, or Vault PVC is present. Deleting the
+claim can delete its backing volume and data.
 
 Watch progress:
 
@@ -213,16 +214,10 @@ helmfile destroy
 kubectl delete pvc --all              # wipes data volumes
 ```
 
-### Vault
-
-Vault is not installed or used by this local Helmfile. The chart remains in
-the repository but is intentionally disabled; local secrets are passed through
-Helmfile into Kubernetes Secrets.
-
 ## 9. Audit notes
 
-- Helmfile deploys RustFS and Gorse; the frontend, LocalStack, Loki, and Grafana
-  charts have been removed. Vault's chart remains, but has no active release.
+- Helmfile deploys RustFS and Gorse; the frontend, Vault, LocalStack, Loki, and
+  Grafana charts have been removed.
 - This Helmfile deploys backend services only.
 - Helm lint/render checks can validate manifests, but Minikube was stopped
   during this audit, so a live rollout and browser-based OIDC/S3 checks remain
