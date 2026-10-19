@@ -82,20 +82,23 @@ The backend API, Keycloak, and S3 ingress use
 **Windows:** edit `C:\Windows\System32\drivers\etc\hosts` as Administrator with
 the same line.
 
-Verify DNS resolution (NOT reachability — minikube isn't up yet, and even when
-it is, the Docker driver typically doesn't forward ICMP to the cluster):
+Verify that the hostnames resolve to your minikube IP. `nslookup` queries a DNS
+server and does not check the Windows `hosts` file.
 
 ```bash
-# Linux / macOS / Git Bash — DNS lookup only:
-getent hosts api.cybertech.local || nslookup api.cybertech.local
+# Linux / macOS / WSL:
+getent hosts api.cybertech.local
 
-# Windows PowerShell:
-Resolve-DnsName api.cybertech.local -CacheOnly
+# Git Bash on Windows:
+powershell.exe -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('api.cybertech.local')"
+
+# PowerShell:
+[System.Net.Dns]::GetHostAddresses('api.cybertech.local')
 ```
 
-The output should show your minikube IP. **Ping will time out even when this
-is correct** — that's normal. The real reachability check is `curl` against
-the backend after Step 5 brings the cluster up.
+The output should include your minikube IP. This checks name resolution, not
+cluster reachability; the real reachability check is `curl` against the
+backend after Step 5 brings the cluster up.
 
 ---
 
