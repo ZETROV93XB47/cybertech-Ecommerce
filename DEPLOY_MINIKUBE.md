@@ -1,8 +1,8 @@
 # Deploy Cybertech on Minikube — Step by Step
 
-A practical walkthrough for booting the Cybertech stack on your local machine.
-Backend (Spring Boot 4 / Java 26), frontend (Next.js 16), 10 supporting services,
-and Loki/Grafana — all running in one minikube cluster.
+A practical walkthrough for booting the Cybertech backend stack on your local
+machine: Spring Boot 4 / Java 26, its data and support services, and
+Loki/Grafana. The frontend is not currently deployed by these charts.
 
 > **Audience:** you, on your laptop. Portfolio scope. ~6 GB RAM, ~4 vCPU.
 > Companion docs: [`src/main/resources/k8s/helm/README.md`](src/main/resources/k8s/helm/README.md)
@@ -21,7 +21,6 @@ and Loki/Grafana — all running in one minikube cluster.
 | `docker` | 24 | Docker Desktop |
 | **JDK 26** | 26.0.1+ | https://adoptium.net/temurin/releases/?version=26 |
 | `Maven` | bundled | use the `./mvnw` wrapper |
-| `Node.js` | 22 LTS | optional — only if rebuilding the frontend by hand |
 
 **Windows note:** run all the bash commands below from **Git Bash** or **WSL**.
 PowerShell does not handle `eval $(minikube docker-env)` correctly.
@@ -70,13 +69,13 @@ export MINIKUBE_IP="$(minikube ip)"
 
 ## Step 2 — Wire local DNS
 
-The frontend, backend, Keycloak, Grafana, and S3 ingress use
+The backend API, Keycloak, Grafana, and S3 ingress use
 `*.cybertech.local`. Map them to the minikube IP.
 
 **Linux / macOS:** edit `/etc/hosts` (sudo required):
 
 ```
-192.168.49.2  cybertech.local api.cybertech.local keycloak.cybertech.local grafana.cybertech.local s3.cybertech.local
+192.168.49.2  api.cybertech.local keycloak.cybertech.local grafana.cybertech.local s3.cybertech.local
 ```
 
 **Windows:** edit `C:\Windows\System32\drivers\etc\hosts` as Administrator with
@@ -87,10 +86,10 @@ it is, the Docker driver typically doesn't forward ICMP to the cluster):
 
 ```bash
 # Linux / macOS / Git Bash — DNS lookup only:
-getent hosts cybertech.local || nslookup cybertech.local
+getent hosts api.cybertech.local || nslookup api.cybertech.local
 
 # Windows PowerShell:
-Resolve-DnsName cybertech.local -CacheOnly
+Resolve-DnsName api.cybertech.local -CacheOnly
 ```
 
 The output should show your minikube IP. **Ping will time out even when this
@@ -118,22 +117,11 @@ export JAVA_HOME="C:\Program Files\Java\jdk-26.0.1"   # adjust path
 docker build -t cybertech-app:dev -f src/main/resources/docker/dockerfile .
 ```
 
-The frontend is maintained in the companion `../cybertech-front` checkout,
-which is not included in this backend repository. If that checkout is present,
-build its image with:
+Only the backend application image is built by this guide:
 
 ```bash
-docker build -t cybertech-front:dev \
-  -f ../cybertech-front/app/Dockerfile ../cybertech-front/app
-```
-
-If you do not have the frontend checkout, build or load its image separately
-and set `FRONT_IMAGE_REPOSITORY` / `FRONT_IMAGE_TAG` below. Confirm the images
-you built are visible to minikube:
-
-```bash
-minikube image ls | grep cybertech
-# expect cybertech-app:dev and (if built locally) cybertech-front:dev
+minikube image ls | grep cybertech-app
+# expect docker.io/library/cybertech-app:dev
 ```
 
 ---
@@ -153,10 +141,8 @@ export STRIPE_WEBHOOK_SECRET="whsec_PLACEHOLDER"
 ```
 
 `MINIKUBE_IP` must also be set as shown in Step 1. The backend encryption key
-must remain stable to decrypt existing stored cards. The Helm-exported
-frontend client secret already matches its default chart value; if you change
-it, update that client in the realm export too. Use alphanumeric MySQL and
-RustFS credentials for this local setup.
+must remain stable to decrypt existing stored cards. Use alphanumeric MySQL
+and RustFS credentials for this local setup.
 
 > **Real Stripe keys:** if you want webhooks to actually work, drop your real
 > `sk_test_…` and the matching webhook signing secret here. The Wave 3 fix in
@@ -185,18 +171,20 @@ What `helmfile apply` actually does, in order:
 | 1 | `mysql`, `mongodb`, `redis`, `elasticsearch` | Data stores |
 | 2 | `keycloak`, `rustfs`, `gorse`, `mailpit`, `moderation-api`, `stripe` | Auth + side services |
 | 3 | `cybertech-app` | Spring Boot backend |
-| 4 | `front-app` | Next.js frontend |
-| 5 | `loki`, `grafana` | Observability UI (log collector not installed) |
+| 4 | `loki`, `grafana` | Observability UI (log collector not installed) |
 
 RustFS persists objects on a PVC and initializes the `cybertech-products`
 bucket, public image-read policy, and browser CORS. Its S3 endpoint is
 `http://s3.cybertech.local`. The LocalStack chart remains in the repository
-but is no longer installed. Vault is not installed either: Minikube secrets
-are Kubernetes Secrets populated through Helmfile environment variables.
+but is no longer installed. Vault is intentionally disabled and its chart is
+retained for future use; Minikube secrets are Kubernetes Secrets populated
+through Helmfile environment variables.
 Products with image URLs from an old LocalStack endpoint must have their
 images uploaded again. If you previously installed the old `localstack` or
-`vault` releases, Helmfile does not automatically remove them; inspect and
-remove those separately after preserving any data you need.
+`vault` or `front-app` releases, Helmfile does not automatically remove them.
+Check `helm list -n default`; remove the obsolete `front-app` release with
+`helm uninstall front-app -n default`. Only remove an old `vault` release if
+you are sure it contains no data you need.
 
 Watch the rollout:
 
@@ -223,10 +211,6 @@ curl http://localhost:8081/actuator/health
 The Ingress intentionally routes only `/api/`; Actuator and Swagger are not
 published through the API hostname. With the port-forward running, Swagger UI
 is at `http://localhost:8081/swagger-ui.html`.
-
-### Frontend
-
-Open `http://cybertech.local` in a browser. The catalog page should render.
 
 ### Keycloak admin console
 
@@ -365,7 +349,6 @@ minikube delete --all
 
 | Service | URL | Credentials |
 |---|---|---|
-| Frontend | `http://cybertech.local` | n/a (or your registered user) |
 | Backend API | `http://api.cybertech.local` | Bearer JWT from Keycloak |
 | Backend health | Port-forward `svc/cybertech-app`; then `http://localhost:8081/actuator/health` | none |
 | Keycloak | `http://keycloak.cybertech.local` | admin / admin |
@@ -387,7 +370,7 @@ kubectl port-forward svc/mailpit 8025:8025
 | Area | Status | Where to look when ready |
 |---|---|---|
 | TLS on ingress | HTTP only | `cert-manager` + Let's Encrypt; bump `ingress.tls.enabled` per chart |
-| Real Vault secrets | Static values via env | switch to ExternalSecret / SecretProviderClass |
+| Vault integration | Disabled; local values use Kubernetes Secrets | enable and configure deliberately when needed |
 | Real SMTP | Mailpit | swap `application-prod.properties` `spring.mail.*` |
 | Pen test | Skipped | run OWASP ZAP first, then a vendor |
 | GDPR right-to-erasure | Documented, not implemented | `docs/runbooks/gdpr-data-handling.md` has the spec |

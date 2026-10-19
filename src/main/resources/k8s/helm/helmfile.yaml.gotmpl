@@ -135,42 +135,15 @@ releases:
         value: {{ requiredEnv "MINIKUBE_IP" | quote }}
       - name: hostAliases[0].hostnames[0]
         value: "s3.cybertech.local"
+      - name: hostAliases[0].hostnames[1]
+        value: "keycloak.cybertech.local"
       - name: stripe.apiKey
         value: {{ requiredEnv "STRIPE_API_KEY" | quote }}
       - name: stripe.webhookSecret
         value: {{ requiredEnv "STRIPE_WEBHOOK_SECRET" | quote }}
 
   # ============================================================
-  # LAYER 4 — Frontend (depends on the backend ingress being up)
-  # ============================================================
-
-  - name: front-app
-    chart: ./charts/front-app-chart
-    namespace: default
-    needs:
-      - cybertech-app
-    values:
-      - ./charts/front-app-chart/values.yaml
-    set:
-      # Image tag: defaults to `dev` for local minikube `docker build`.
-      - name: image.repository
-        value: {{ env "FRONT_IMAGE_REPOSITORY" | default "cybertech-front" }}
-      - name: image.tag
-        value: {{ env "FRONT_IMAGE_TAG" | default "dev" }}
-      # Auth secrets: in real deploys these come from Vault.
-      # Defaults exist so `helmfile apply` does not require every
-      # env var to be set on a fresh minikube.
-      - name: secrets.AUTH_SECRET
-        value: {{ env "FRONT_AUTH_SECRET" | default "dev-auth-secret-change-me" }}
-      - name: secrets.AUTH_KEYCLOAK_SECRET
-        value: {{ env "FRONT_KEYCLOAK_CLIENT_SECRET" | default "dev-keycloak-front-secret-change-me" }}
-      - name: hostAliases[0].ip
-        value: {{ requiredEnv "MINIKUBE_IP" | quote }}
-      - name: hostAliases[0].hostnames[0]
-        value: "keycloak.cybertech.local"
-
-  # ============================================================
-  # LAYER 5 — Observability stack (logs + UI)
+  # LAYER 4 — Observability stack (logs + UI)
   # Independent of the app pods at deploy time. Grafana waits on
   # Loki for datasource provisioning; no log collector is installed.
   # (Prometheus metrics + Tempo tracing were removed — unused.)

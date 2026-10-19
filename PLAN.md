@@ -1,11 +1,16 @@
 # Plan
 
+- [ ] **Retirer le frontend du déploiement Minikube** (estimation : 20–30 min, dans la session de 2 h) :
+  - [x] Supprimer `front-app-chart` et sa release/configuration du Helmfile ; garder le backend et son alias OIDC utilisable.
+  - [x] Mettre à jour `DEPLOY_MINIKUBE.md`, le runbook Helm et `progress.md` pour le déploiement backend-only.
+  - [x] Vérifier `helm lint` sur les 15 charts restants et le rendu des 56 manifests Helmfile : aucun chart/release frontend ni Vault ; host aliases backend S3/OIDC conservés.
+  - [x] Committer uniquement les fichiers de cette tâche, sans inclure le fichier frontend déjà staged.
 - [ ] **Audit du déploiement Helm Minikube** :
   - [x] Comparer les charts/Helmfile aux configurations applicatives actuelles (RustFS, Gorse, Web Push, HTTP local, images et ports).
   - [x] Valider `helm lint` sur les charts `cybertech-app`, `elasticsearch`, `front-app`, `grafana`, `gorse`, `keycloak`, `loki`, `localstack` (legacy), `mailpit`, `mongodb`, `mysql`, `moderation-api`, `redis`, `rustfs`, `stripe` et `vault` (inactive), puis rendre le Helmfile avec des valeurs d'exemple.
   - [x] Ajouter les charts RustFS/Gorse ; corriger les versions Elasticsearch/MongoDB, les secrets Spring, l'issuer/callback OIDC, CORS, les hôtes HTTP et les URLs de santé/Swagger.
   - [x] Mettre à jour `DEPLOY_MINIKUBE.md` et `src/main/resources/k8s/helm/README.md`.
-  - [ ] Appliquer les releases et tester authentification/OIDC, upload et lecture d'image dans Minikube (cluster arrêté ; source frontend séparée absente du dépôt).
+  - [ ] Appliquer les releases backend-only et tester authentification/OIDC, upload et lecture d'image dans Minikube (cluster arrêté).
   - [x] Vérifier le diff de cette tâche puis committer uniquement ses fichiers, en préservant les changements préexistants.
 - [x] **Étendre les attributs des cinq catégories** :
   - [x] Mettre à jour les schémas par défaut de `ProductCategorySchemaInitializer` en gardant tous les nouveaux champs facultatifs.

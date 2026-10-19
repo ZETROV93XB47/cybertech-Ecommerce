@@ -1,7 +1,8 @@
 # Cybertech — minikube deployment runbook
 
-End-to-end guide for running the Cybertech stack (backend + Next.js frontend,
-10 supporting services, and Loki/Grafana) on a local minikube cluster.
+End-to-end guide for running the Cybertech backend and its support services
+with Loki/Grafana on a local Minikube cluster. The frontend chart/release has
+been removed for now.
 
 > Target: laptop / portfolio demo. Production hardening (TLS, real Vault,
 > external DBs, autoscaling) is intentionally out of scope and called out
@@ -16,7 +17,7 @@ Install the following on your host:
 | `minikube` | >= 1.33        | `minikube start --addons=ingress` provisions nginx       |
 | `kubectl`  | >= 1.30        | Must match minikube's k8s server version (within +/- 1)  |
 | `helm`     | >= 3.14        | helmfile shells out to it                                |
-| `helmfile` | >= 0.165       | Orchestrates the 5 deploy layers in `helmfile.yaml`      |
+| `helmfile` | >= 0.165       | Orchestrates the 4 deploy layers in `helmfile.yaml.gotmpl` |
 | `docker`   | >= 24          | Used to build images directly into the minikube daemon   |
 
 On Windows, run the commands below from **bash** (Git Bash / WSL) — PowerShell
@@ -53,24 +54,15 @@ eval $(minikube docker-env)
 # Backend (Spring Boot, multi-stage in src/main/resources/docker/dockerfile).
 docker build -t cybertech-app:dev -f src/main/resources/docker/dockerfile .
 
-# Frontend source is in the companion ../cybertech-front checkout, not this repo.
-docker build -t cybertech-front:dev \
-  -f ../cybertech-front/app/Dockerfile ../cybertech-front/app
-
-# Sanity check — built images should appear:
-docker images | grep -E '^(cybertech-app|cybertech-front)\b'
+# Sanity check — the backend image should appear:
+docker images | grep '^cybertech-app'
 ```
-
-> If `docker build` for the frontend fails because `npm ci` cannot reach the
-> registry from inside the minikube VM, re-run the build outside
-> `minikube docker-env` and `minikube image load cybertech-front:dev` to push
-> the resulting tarball into the cluster.
 
 ## 4. Set required env vars
 
 Export these values before applying the Helmfile. Get the current Minikube IP
-after starting the cluster; it is also used by the backend and frontend pods
-to reach the host-based S3 and OIDC ingress names.
+after starting the cluster; it is used by the backend pod to reach the S3 and
+OIDC ingress names.
 
 | Variable                 | Purpose                                | Dev value (example)             |
 |--------------------------|----------------------------------------|---------------------------------|
@@ -82,15 +74,6 @@ to reach the host-based S3 and OIDC ingress names.
 | `APP_CARD_ENCRYPTION_KEY`| AES-256 key for stored card data        | `openssl rand -base64 32`       |
 | `STRIPE_API_KEY`         | Stripe CLI test key                     | `sk_test_...`                   |
 | `STRIPE_WEBHOOK_SECRET`  | Stripe webhook HMAC secret              | `whsec_...`                     |
-
-Optional overrides (defaults apply if unset):
-
-| Variable                       | Default                           |
-|--------------------------------|-----------------------------------|
-| `FRONT_IMAGE_REPOSITORY`       | `cybertech-front`                 |
-| `FRONT_IMAGE_TAG`              | `dev`                             |
-| `FRONT_AUTH_SECRET`            | `dev-auth-secret-change-me`       |
-| `FRONT_KEYCLOAK_CLIENT_SECRET` | `dev-keycloak-front-secret-...`   |
 
 Quick export block for bash:
 
@@ -117,15 +100,18 @@ Helmfile dependencies order the releases as follows:
 1. **mysql, mongodb, redis, elasticsearch** — data stores.
 2. **keycloak, rustfs, gorse, mailpit, moderation-api, stripe** — auth and supporting services.
 3. **cybertech-app** — backend.
-4. **front-app** — Next.js frontend.
-5. **loki, grafana** — observability (Grafana waits on Loki).
+4. **loki, grafana** — observability (Grafana waits on Loki).
 
 The local deployment does not install Vault: its charts use Kubernetes Secrets
-populated from environment variables. RustFS replaces LocalStack and persists
-the image bucket on a PVC; the LocalStack chart is retained but not installed.
+populated from environment variables. Both the Vault release and frontend
+release are disabled; the Vault chart is retained, but the frontend chart has
+been removed. RustFS replaces LocalStack and persists the image bucket on a
+PVC; the LocalStack chart is retained but not installed.
 Products with image URLs from an old LocalStack endpoint must have their
 images uploaded again. Previously installed `localstack` and `vault` releases
-are not automatically removed by `helmfile apply`.
+are not automatically removed by `helmfile apply`. If a prior deployment
+installed the frontend, remove that obsolete release with
+`helm uninstall front-app -n default`.
 
 Watch progress:
 
@@ -143,16 +129,14 @@ minikube ip
 Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 
 ```
-192.168.49.2  cybertech.local api.cybertech.local keycloak.cybertech.local grafana.cybertech.local s3.cybertech.local
+192.168.49.2  api.cybertech.local keycloak.cybertech.local grafana.cybertech.local s3.cybertech.local
 ```
 
-`cybertech.local` -> Next.js frontend Service.
 `api.cybertech.local` -> Spring Boot backend Service (path `/api/`).
 `keycloak.cybertech.local` -> Keycloak admin console + OIDC issuer (path `/`).
 
-## 7. Open the app
+## 7. Access the backend
 
-- Frontend: <http://cybertech.local/>
 - Backend API: <http://api.cybertech.local/api/v1/>
 - Backend health and Swagger are not exposed by the `/api/` Ingress. Run
   `kubectl port-forward svc/cybertech-app 8081:8081`, then open
@@ -162,10 +146,8 @@ Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 - Mailpit: `kubectl port-forward svc/mailpit 8025:8025` then <http://localhost:8025/>
 
 > **TLS is intentionally off.** For a public deployment, install
-> `cert-manager`, issue a Let's Encrypt cert (or self-signed for purely
-> local play), set `ingress.tls.enabled=true` on both `cybertech-app-chart`
-> and `front-app-chart`, point `ingress.tls.secretName` at the cert, and
-> add a `redirect-http-to-https` annotation. Out of scope for this runbook.
+> `cert-manager`, issue a Let's Encrypt cert, and configure TLS on the
+> backend, Keycloak, Grafana, and RustFS ingress charts. Out of scope here.
 
 ## 7b. Observability (Loki + Grafana)
 
@@ -275,17 +257,6 @@ If the pod is `CrashLoopBackOff`, the usual culprits are a missing
 you wiped its PVC), or a `KEYCLOAK_ADMIN_PASSWORD` mismatch between the
 Secret and any environment override.
 
-### Frontend pod stuck `ImagePullBackOff`
-
-You forgot `eval $(minikube docker-env)` before building. Fix:
-
-```bash
-eval $(minikube docker-env)
-docker build -t cybertech-front:dev \
-  -f ../cybertech-front/app/Dockerfile ../cybertech-front/app
-kubectl rollout restart deploy/front-app
-```
-
 ### Inspect a specific pod
 
 ```bash
@@ -302,28 +273,18 @@ helmfile destroy
 kubectl delete pvc --all              # wipes data volumes
 ```
 
-### Vault wiring (real deploy)
+### Vault
 
-In production, the `front-app-chart` and `cybertech-app-chart` should
-**not** ship plaintext secrets in `values.yaml`. The intended pattern:
-
-1. Vault is seeded with the Keycloak client secret, AUTH_SECRET, etc.
-2. Each chart adds a `serviceAccountName` and a Vault Agent injector
-   annotation that mounts the secret as a file under `/vault/secrets/`.
-3. The container reads the file via Spring Cloud Vault (backend) or via
-   `dotenv`-style loading at startup (frontend).
-4. The `secrets.*` and `STRIPE_*` env vars in `values.yaml` are removed
-   in favour of the file-mounted versions.
-
-Vault is not installed or used by the local Helmfile. The Kubernetes Secrets
-exist only for this local Minikube deployment.
+Vault is not installed or used by this local Helmfile. The chart remains in
+the repository but is intentionally disabled; local secrets are passed through
+Helmfile into Kubernetes Secrets.
 
 ## 9. Audit notes
 
 - Helmfile now deploys RustFS and Gorse; the unused LocalStack and Vault
   charts remain available but are not part of the local release set.
-- The frontend source/build context is in the separate `../cybertech-front`
-  repository and is not present in this backend checkout.
+- The frontend chart/release was removed at the project owner's request; this
+  Helmfile currently deploys backend services only.
 - Helm lint/render checks can validate manifests, but Minikube was stopped
   during this audit, so a live rollout and browser-based OIDC/S3 checks remain
   to be run after the cluster is started.
