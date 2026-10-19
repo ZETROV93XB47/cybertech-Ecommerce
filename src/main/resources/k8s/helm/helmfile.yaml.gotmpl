@@ -141,24 +141,3 @@ releases:
         value: {{ requiredEnv "STRIPE_API_KEY" | quote }}
       - name: stripe.webhookSecret
         value: {{ requiredEnv "STRIPE_WEBHOOK_SECRET" | quote }}
-
-  # ============================================================
-  # LAYER 4 — Observability stack (logs + UI)
-  # Independent of the app pods at deploy time. Grafana waits on
-  # Loki for datasource provisioning; no log collector is installed.
-  # (Prometheus metrics + Tempo tracing were removed — unused.)
-  # ============================================================
-
-  - name: loki
-    chart: ./charts/loki-chart
-    namespace: default
-    values:
-      - ./charts/loki-chart/values.yaml
-
-  - name: grafana
-    chart: ./charts/grafana-chart
-    namespace: default
-    needs:
-      - loki
-    values:
-      - ./charts/grafana-chart/values.yaml

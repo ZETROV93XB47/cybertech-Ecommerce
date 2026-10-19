@@ -1,6 +1,0 @@
-apiVersion: v2
-name: grafana
-description: Grafana with a pre-provisioned Loki datasource
-type: application
-version: 0.1.0
-appVersion: "11.2.2"

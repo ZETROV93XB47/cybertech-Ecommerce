@@ -2,7 +2,8 @@
 
 A practical walkthrough for booting the Cybertech backend stack on your local
 machine: Spring Boot 4 / Java 26, its data and support services, and
-Loki/Grafana. The frontend is not currently deployed by these charts.
+RustFS for product images. Frontend, Vault, LocalStack, Loki, and Grafana are
+not part of the active Minikube deployment.
 
 > **Audience:** you, on your laptop. Portfolio scope. ~6 GB RAM, ~4 vCPU.
 > Companion docs: [`src/main/resources/k8s/helm/README.md`](src/main/resources/k8s/helm/README.md)
@@ -69,13 +70,13 @@ export MINIKUBE_IP="$(minikube ip)"
 
 ## Step 2 — Wire local DNS
 
-The backend API, Keycloak, Grafana, and S3 ingress use
+The backend API, Keycloak, and S3 ingress use
 `*.cybertech.local`. Map them to the minikube IP.
 
 **Linux / macOS:** edit `/etc/hosts` (sudo required):
 
 ```
-192.168.49.2  api.cybertech.local keycloak.cybertech.local grafana.cybertech.local s3.cybertech.local
+192.168.49.2  api.cybertech.local keycloak.cybertech.local s3.cybertech.local
 ```
 
 **Windows:** edit `C:\Windows\System32\drivers\etc\hosts` as Administrator with
@@ -171,20 +172,31 @@ What `helmfile apply` actually does, in order:
 | 1 | `mysql`, `mongodb`, `redis`, `elasticsearch` | Data stores |
 | 2 | `keycloak`, `rustfs`, `gorse`, `mailpit`, `moderation-api`, `stripe` | Auth + side services |
 | 3 | `cybertech-app` | Spring Boot backend |
-| 4 | `loki`, `grafana` | Observability UI (log collector not installed) |
-
 RustFS persists objects on a PVC and initializes the `cybertech-products`
 bucket, public image-read policy, and browser CORS. Its S3 endpoint is
-`http://s3.cybertech.local`. The LocalStack chart remains in the repository
-but is no longer installed. Vault is intentionally disabled and its chart is
-retained for future use; Minikube secrets are Kubernetes Secrets populated
-through Helmfile environment variables.
+`http://s3.cybertech.local`. Minikube secrets are Kubernetes Secrets populated
+through Helmfile environment variables. The old LocalStack, Loki, and Grafana
+charts have been removed; Vault remains disabled with its chart retained for
+future use.
 Products with image URLs from an old LocalStack endpoint must have their
-images uploaded again. If you previously installed the old `localstack` or
-`vault` or `front-app` releases, Helmfile does not automatically remove them.
-Check `helm list -n default`; remove the obsolete `front-app` release with
-`helm uninstall front-app -n default`. Only remove an old `vault` release if
-you are sure it contains no data you need.
+images uploaded again. If you previously installed the old `localstack`,
+`front-app`, `loki`, or `grafana` releases, Helmfile does not automatically
+remove them. Inspect releases and PVCs first, then run only the uninstall
+commands for releases that are actually present:
+
+```bash
+helm list -n default
+kubectl get pvc -n default
+helm uninstall front-app -n default
+helm uninstall loki -n default
+helm uninstall grafana -n default
+helm uninstall localstack -n default
+```
+
+Helm uninstall may leave PVCs behind. Preserve any data you need, then delete
+only the specific obsolete Loki/Grafana/LocalStack PVCs you have identified.
+Leave Vault installed only if you still need its data; it is no longer managed
+by this Helmfile.
 
 Watch the rollout:
 
@@ -239,27 +251,7 @@ curl -H "Authorization: Bearer $TOKEN" http://api.cybertech.local/api/v1/service
 
 ---
 
-## Step 7 — Access observability
-
-Grafana and Loki are deployed, but no Promtail/Alloy log collector is part of
-the current Helmfile. Backend logs remain available through `kubectl logs`;
-Grafana/Loki will not show them until a collector is added.
-
-```
-URL:      http://grafana.cybertech.local
-Login:    admin / admin
-```
-
-Pre-provisioned datasource:
-- Loki → `http://loki:3100`
-
-The Loki datasource is preconfigured, but currently has no log ingestion
-pipeline. Metrics dashboards and distributed tracing (Prometheus, Tempo) were
-removed because they were unused.
-
----
-
-## Step 8 — Optional: Run Gatling load tests
+## Step 7 — Optional: Run Gatling load tests
 
 The simulations live in `src/test/java/com/novatech/cybertech/gatling/` under
 the `loadtest` Maven profile.
@@ -279,7 +271,7 @@ Reports land in `target/gatling/`. Three simulations available — see
 
 ---
 
-## Step 9 — Troubleshooting
+## Step 8 — Troubleshooting
 
 ### Pod stuck `Pending`
 ```bash
@@ -328,7 +320,7 @@ minikube delete
 
 ---
 
-## Step 10 — Teardown
+## Step 9 — Teardown
 
 When you're done:
 
@@ -352,7 +344,6 @@ minikube delete --all
 | Backend API | `http://api.cybertech.local` | Bearer JWT from Keycloak |
 | Backend health | Port-forward `svc/cybertech-app`; then `http://localhost:8081/actuator/health` | none |
 | Keycloak | `http://keycloak.cybertech.local` | admin / admin |
-| Grafana | `http://grafana.cybertech.local` | admin / admin |
 | Mailpit (in cluster) | `http://mailpit:8025` (port-forward) | none |
 | Product images (S3) | `http://s3.cybertech.local` | public read |
 
@@ -384,5 +375,5 @@ kubectl port-forward svc/mailpit 8025:8025
 - **Something broke?** → [`docs/runbooks/`](docs/runbooks/) for incident playbooks
 - **Deep helm reference** → [`src/main/resources/k8s/helm/README.md`](src/main/resources/k8s/helm/README.md)
 - **API contract** → [`docs/openapi/openapi.yaml`](docs/openapi/openapi.yaml) + [`docs/postman/`](docs/postman/)
-- **Project history** → [`progress.md`](progress.md) (waves 1–6 bug fixes), [`LAUNCH_PROGRESS.md`](LAUNCH_PROGRESS.md) (waves 7–9 launch prep)
+- **Project history** → [`progress.md`](progress.md)
 - **Next session menu** → bottom of [`LAUNCH_PROGRESS.md`](LAUNCH_PROGRESS.md)

@@ -1,8 +1,8 @@
 # Cybertech — minikube deployment runbook
 
 End-to-end guide for running the Cybertech backend and its support services
-with Loki/Grafana on a local Minikube cluster. The frontend chart/release has
-been removed for now.
+on a local Minikube cluster. The frontend, Vault, LocalStack, Loki, and Grafana
+are not deployed by the current Helmfile.
 
 > Target: laptop / portfolio demo. Production hardening (TLS, real Vault,
 > external DBs, autoscaling) is intentionally out of scope and called out
@@ -17,7 +17,7 @@ Install the following on your host:
 | `minikube` | >= 1.33        | `minikube start --addons=ingress` provisions nginx       |
 | `kubectl`  | >= 1.30        | Must match minikube's k8s server version (within +/- 1)  |
 | `helm`     | >= 3.14        | helmfile shells out to it                                |
-| `helmfile` | >= 0.165       | Orchestrates the 4 deploy layers in `helmfile.yaml.gotmpl` |
+| `helmfile` | >= 0.165       | Orchestrates the 3 deploy layers in `helmfile.yaml.gotmpl` |
 | `docker`   | >= 24          | Used to build images directly into the minikube daemon   |
 
 On Windows, run the commands below from **bash** (Git Bash / WSL) — PowerShell
@@ -100,18 +100,28 @@ Helmfile dependencies order the releases as follows:
 1. **mysql, mongodb, redis, elasticsearch** — data stores.
 2. **keycloak, rustfs, gorse, mailpit, moderation-api, stripe** — auth and supporting services.
 3. **cybertech-app** — backend.
-4. **loki, grafana** — observability (Grafana waits on Loki).
-
 The local deployment does not install Vault: its charts use Kubernetes Secrets
-populated from environment variables. Both the Vault release and frontend
-release are disabled; the Vault chart is retained, but the frontend chart has
-been removed. RustFS replaces LocalStack and persists the image bucket on a
-PVC; the LocalStack chart is retained but not installed.
+populated from environment variables. Vault is disabled but its chart is
+retained; the frontend, LocalStack, Loki, and Grafana charts have been removed.
+RustFS replaces LocalStack and persists the image bucket on a PVC.
 Products with image URLs from an old LocalStack endpoint must have their
-images uploaded again. Previously installed `localstack` and `vault` releases
-are not automatically removed by `helmfile apply`. If a prior deployment
-installed the frontend, remove that obsolete release with
-`helm uninstall front-app -n default`.
+images uploaded again. Previously installed releases are not automatically
+removed by `helmfile apply`. Inspect releases and PVCs first, then run only
+the uninstall commands for releases that are actually present:
+
+```bash
+helm list -n default
+kubectl get pvc -n default
+helm uninstall front-app -n default
+helm uninstall loki -n default
+helm uninstall grafana -n default
+helm uninstall localstack -n default
+```
+
+Helm uninstall may leave PVCs behind. Preserve data you need, then delete only
+the specific obsolete Loki/Grafana/LocalStack PVCs you have identified. Leave
+Vault installed only if you still need its data; it is no longer managed by
+this Helmfile.
 
 Watch progress:
 
@@ -129,7 +139,7 @@ minikube ip
 Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 
 ```
-192.168.49.2  api.cybertech.local keycloak.cybertech.local grafana.cybertech.local s3.cybertech.local
+192.168.49.2  api.cybertech.local keycloak.cybertech.local s3.cybertech.local
 ```
 
 `api.cybertech.local` -> Spring Boot backend Service (path `/api/`).
@@ -147,80 +157,10 @@ Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 
 > **TLS is intentionally off.** For a public deployment, install
 > `cert-manager`, issue a Let's Encrypt cert, and configure TLS on the
-> backend, Keycloak, Grafana, and RustFS ingress charts. Out of scope here.
+> backend, Keycloak, and RustFS ingress charts. Out of scope here.
 
-## 7b. Observability (Loki + Grafana)
-
-The final layer deploys Loki and a Grafana UI. No Promtail/Alloy collector is
-currently installed, so backend logs remain available through `kubectl logs`
-and do not appear in Loki yet. Single-replica each, no HA, small PVC —
-strictly portfolio-grade.
-(Prometheus metrics and Tempo distributed tracing were removed: unused.)
-
-### Reach Grafana
-
-Either via the ingress (preferred):
-
-```bash
-minikube ip
-# append to /etc/hosts (Windows: C:\Windows\System32\drivers\etc\hosts):
-# <minikube-ip>  grafana.cybertech.local
-```
-
-Then open <http://grafana.cybertech.local/>.
-
-Or via a port-forward (no /etc/hosts change required):
-
-```bash
-kubectl port-forward svc/grafana 3000:3000
-# open http://localhost:3000/
-```
-
-### Login
-
-Default: `admin` / `admin`. Stored in the `grafana-admin` Secret.
-**REPLACE in real deploys via Vault** — the comment in
-`charts/grafana-chart/templates/secret.yaml` flags the swap-out path
-(Vault Agent injection of `/vault/secrets/grafana-admin`).
-
-### Pre-provisioned datasource
-
-Auto-loads on first boot via Grafana's file-based provisioning (see
-`charts/grafana-chart/templates/datasources-configmap.yaml`):
-
-| Datasource   | UID    | URL (in-cluster)    |
-|--------------|--------|----------------------|
-| Loki         | `loki` | `http://loki:3100`   |
-
-### Dashboards
-
-None ship by default (the previous metrics/tracing dashboards were removed
-along with Prometheus/Tempo). The dashboards provider (`folder: Cybertech`,
-`charts/grafana-chart/templates/dashboards-configmap.yaml`) is still wired
-up — drop a JSON file into `charts/grafana-chart/dashboards/`, re-run
-`helmfile apply`, and it picks it up automatically.
-
-### Querying Loki for backend logs
-
-In Grafana → Explore → Loki:
-
-```logql
-{app="cybertech-app"}
-```
-
-Common filters once the backend ships JSON logs:
-
-```logql
-{app="cybertech-app"} |= "ERROR"
-{app="cybertech-app"} | json | level="ERROR"
-```
-
-The Loki datasource is ready, but the query stays empty until a log collector
-is configured and deployed.
-
-### Persistence
-
-Loki 5Gi PVC. Wipe with the usual `kubectl delete pvc --all`.
+Backend and service logs can be inspected with `kubectl logs`; no Loki/Grafana
+stack or log collector is installed by this Helmfile.
 
 ## 8. Troubleshooting
 
@@ -281,10 +221,9 @@ Helmfile into Kubernetes Secrets.
 
 ## 9. Audit notes
 
-- Helmfile now deploys RustFS and Gorse; the unused LocalStack and Vault
-  charts remain available but are not part of the local release set.
-- The frontend chart/release was removed at the project owner's request; this
-  Helmfile currently deploys backend services only.
+- Helmfile deploys RustFS and Gorse; the frontend, LocalStack, Loki, and Grafana
+  charts have been removed. Vault's chart remains, but has no active release.
+- This Helmfile deploys backend services only.
 - Helm lint/render checks can validate manifests, but Minikube was stopped
   during this audit, so a live rollout and browser-based OIDC/S3 checks remain
   to be run after the cluster is started.

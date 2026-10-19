@@ -1,5 +1,10 @@
 # Plan
 
+- [x] **Retirer Loki, Grafana et LocalStack de Helm Minikube** (estimation : 15–25 min) :
+  - [x] Supprimer les releases Helmfile et leurs charts ; garder Vault désactivé tel quel.
+  - [x] Nettoyer les deux runbooks et `progress.md`, inclure les commandes de retrait des anciennes releases et le sort des PVC.
+  - [x] Vérifier lint/rendu backend-only et vérifier qu'aucune référence de déploiement active ne reste : 12 charts lintés, 45 sources rendues, sans release/chart retiré.
+  - [x] Committer uniquement les fichiers de cette tâche, sans embarquer les changements préexistants.
 - [ ] **Retirer le frontend du déploiement Minikube** (estimation : 20–30 min, dans la session de 2 h) :
   - [x] Supprimer `front-app-chart` et sa release/configuration du Helmfile ; garder le backend et son alias OIDC utilisable.
   - [x] Mettre à jour `DEPLOY_MINIKUBE.md`, le runbook Helm et `progress.md` pour le déploiement backend-only.
