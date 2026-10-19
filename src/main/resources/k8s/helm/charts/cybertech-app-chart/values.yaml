@@ -21,7 +21,7 @@ mysql:
   host: mysql
   port: 3306
   database: cybertechDB
-  username: root
+  username: rookie
   password: ""  # MUST be set via --set or secrets
   sslEnabled: false
   allowPublicKeyRetrieval: true

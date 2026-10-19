@@ -42,8 +42,8 @@ spec:
             - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: cybertech-app-secret
-                  key: SPRING_DATASOURCE_PASSWORD
+                  name: mysql-secret
+                  key: user-password
 
             - name: SPRING_CONFIG_ADDITIONAL_LOCATION
               value: "file:/etc/config/"

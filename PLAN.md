@@ -1,5 +1,15 @@
 # Plan
 
+- [x] **Corriger les identifiants MySQL du backend Minikube** :
+  - [x] Configurer l'application avec le compte `rookie` et le même `mysql-secret/user-password` que le conteneur MySQL.
+  - [x] Retirer le passage du mot de passe root vers le secret de l'application.
+  - [x] Vérifier le rendu Helm et appliquer le correctif ; les nouveaux logs ne montrent plus le refus MySQL.
+  - [x] Récupérer le statut Helm après l'interruption de l'attente de readiness, sans supprimer ni modifier les données persistantes.
+  - [x] Committer uniquement les changements de cette correction.
+- [ ] **Débloquer le backend Minikube — Elasticsearch** :
+  - [x] Diagnostiquer le démarrage : la claim Elasticsearch de 5 Gi contient un index créé par Elasticsearch 10, illisible par le pod 8.15.3.
+  - [ ] Choisir avec le propriétaire entre préserver les données en alignant la version Elasticsearch et repartir sur un volume vide (suppression destructive).
+  - [ ] Rétablir Elasticsearch puis vérifier le rollout du backend.
 - [x] **Supprimer Vault du projet et remplacer son usage par des secrets Kubernetes/env** :
   - [x] Migrer les placeholders secrets de `application-prod.properties` vers des variables d'environnement et retirer la dépendance/configuration Spring Vault.
   - [x] Retirer Vault de Docker Compose et Helm (chart, options du chart applicatif et chart Stripe).

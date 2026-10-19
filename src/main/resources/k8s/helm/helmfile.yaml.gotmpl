@@ -121,8 +121,6 @@ releases:
     values:
       - ./charts/cybertech-app-chart/values.yaml
     set:
-      - name: mysql.password
-        value: {{ requiredEnv "MYSQL_ROOT_PASSWORD" | quote }}
       - name: keycloak.clientSecret
         value: {{ requiredEnv "KEYCLOAK_CLIENT_SECRET" | quote }}
       - name: aws.s3.secretAccessKey
