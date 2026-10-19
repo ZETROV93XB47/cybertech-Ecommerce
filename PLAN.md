@@ -96,3 +96,17 @@ Estimation : périmètre estimé à moins de 2 h, probablement 20–30 min. Aucu
 - [x] Exécuter `ProductManagementServiceImpTest` : 22 tests verts.
 - [x] Exécuter la suite complète Maven : 2 323 tests, 0 échec, 15 ignorés.
 - [x] Actualiser `progress.md`, vérifier le diff et committer uniquement les fichiers de cette correction.
+
+## Remplacement de LocalStack par RustFS — environnement Docker local (2026-10-19)
+
+Périmètre proposé : le lancement local Docker uniquement. Le déploiement Kubernetes/Helm et
+`application-prod.properties` restent sur leur configuration actuelle tant qu'un changement de
+ce périmètre n'est pas demandé. Estimation initiale : 45 à 90 minutes, dans une session de 2 h.
+
+- [ ] `src/main/resources/docker/docker-compose.yml` — retirer le service `localstack` et son volume ; conserver `rustfs` et son volume persistant ; ajouter/configurer une initialisation idempotente du bucket `cybertech-products` (policy de lecture et CORS nécessaires au front), avec attente de disponibilité de RustFS.
+- [ ] `src/main/resources/application.properties` — faire pointer le profil local sur `http://localhost:9000`, garder le mode path-style, et aligner région/identifiants sur les variables d'environnement déjà utilisées par RustFS sans ajouter de secret au dépôt.
+- [ ] `LOCAL_LAUNCH_CHECKLIST.md` et `readme.md` — remplacer les instructions/URLs de démarrage local LocalStack par RustFS (API `localhost:9000`, console `localhost:9001`) ; ne pas réécrire les références Kubernetes qui restent LocalStack.
+- [ ] Vérifier la transition des images existantes — un changement d'endpoint ne migre ni les objets, ni les URLs déjà enregistrées (`localhost:4566`) ; déterminer si les objets sont récupérables à copier vers le bucket RustFS, sinon prévoir leur rechargement et la mise à jour côté front (`IMAGES_REMOTE_HOST=localhost:9000`).
+- [ ] Tester `com.novatech.cybertech.services.implementation.catalog.S3ServiceImpTest` et `com.novatech.cybertech.services.implementation.catalog.ProductManagementServiceImpTest`, puis exécuter un smoke test sur RustFS réel : bucket initialisé, upload, lecture publique/CORS, suppression et persistance après redémarrage.
+- [ ] Vérifier les références restantes à LocalStack : elles doivent rester uniquement sur les surfaces Kubernetes/Helm/prod hors périmètre, ou être corrigées si elles décrivent le lancement local.
+- [ ] Mettre à jour `progress.md` après réalisation et lancer la suite Maven si les tests ciblés révèlent un impact plus large.

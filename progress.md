@@ -1,10 +1,12 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : 2026-10-17 — branche `develop_back`._
+_Dernière mise à jour : 2026-10-19 — branche `develop_back`._
 
 ---
 
 ## 1. SITTREP
+
+Le 2026-10-19, préparation du plan de remplacement de LocalStack par RustFS pour le lancement Docker local uniquement. Aucune modification applicative n'a été faite : le Compose contient encore les deux services, `application.properties` vise `localhost:4566` et les documents locaux citent encore LocalStack. Le plan et les tests prévus sont dans `PLAN.md`.
 
 Session du 2026-10-17 : correction de `ProductManagementServiceImp.update`. Quand la requête change la catégorie sans transmettre `attributes`, le service valide maintenant les attributs déjà enregistrés contre la catégorie demandée avant toute mutation/sauvegarde. Même validation préalable quand `attributes` sont fournis seuls ou avec la catégorie. Tests ciblés : 22 verts ; suite complète : 2 323 tests, 0 échec, 15 ignorés.
 
@@ -54,6 +56,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### Faites (cette phase de travail)
 
+- **2026-10-19 — Plan RustFS local** : périmètre limité au Compose/profil local et à la documentation de lancement ; prévoir initialisation du bucket, alignement endpoint/identifiants, tests S3 et vérification des images existantes. Aucun changement fonctionnel exécuté.
 - **2026-10-17 — Cohérence catégorie/attributs à la modification** : calcul de la catégorie et des attributs finaux avant mutation ; revalidation au changement de catégorie même si `attributes` est omis ; test nominal confirmant que les attributs persistés sont gardés et test d'échec confirmant que ni l'entité ni la base/index ne sont modifiés. `ProductManagementServiceImpTest` (22 tests) et suite complète (2 323 tests, 0 échec, 15 ignorés) verts.
 - **2026-10-16 — DTO de validation de commande sans entité** : `OrderValidationDto` reçoit désormais un `BankCardValidationDto` contenant seulement la date d'expiration ; `OrderManagementServiceImp` projette cette valeur depuis l'entité avant transmission. Les tests couvrent la projection et la validation de carte. 31 tests ciblés verts, suite Maven complète : 2 321 tests, 0 échec, 15 ignorés.
 - **2026-10-15 — Schémas d'attributs des cinq catégories** : ajout des attributs validés dans `ProductCategorySchemaInitializer` et migration SQL réexécutable appliquée à la base Docker `mysqlEcommerce`. Champs optionnels, anciens `required` conservés. Les cinq mappers de `dataLoader.py` remplissent ces champs à partir des fiches LDLC et normalisent les unités ; les tests Java/Python passent.
@@ -248,6 +251,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ## 3. Remarques
 
+- **Remplacement S3 planifié (2026-10-19)** : les changements proposés ne concernent que le Docker Compose et le profil local. Les chart Helm, Skaffold et `application-prod.properties` garderaient LocalStack. Les URLs d'images enregistrées avec `localhost:4566` ne basculeront pas automatiquement vers RustFS ; il faudra migrer les objets disponibles ou recharger les images, puis tenir compte de `localhost:9000` côté front.
 - **Mise à jour de catégorie produit** : envoyer une nouvelle `category` sans `attributes` conserve les attributs actuels, mais les valide désormais contre le nouveau schéma ; une incompatibilité rejette la mise à jour avant toute sauvegarde. Pour changer de catégorie avec succès, le client doit fournir des attributs compatibles ou choisir une catégorie dont le schéma accepte les attributs déjà présents.
 - **Validation de commande** : `OrderValidationDto` ne doit contenir que des données de validation ; si une nouvelle règle bancaire apparaît, ajouter uniquement les champs nécessaires à `BankCardValidationDto`, sans y réintroduire `BankCardEntity` ni ses données sensibles.
 - **Schémas produit (2026-10-15)** : après l'application SQL, démarrer/redémarrer le backend pour que `ProductCategorySchemaCache` recharge les schémas depuis MySQL. Le `dataLoader.py` actuel rencontre encore 15 moniteurs dont la fiche n'a pas `fréquence verticale maxi` ; il les ignorait déjà avant cette extension, car `refreshRate` reste obligatoire (minimum 60 Hz).
