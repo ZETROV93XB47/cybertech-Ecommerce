@@ -9,7 +9,7 @@ global:
 
 # Cybertech Application Configuration
 cybertechApp:
-  image: cybertech-app:1.2
+  image: cybertech-app:dev
   imagePullPolicy: IfNotPresent
   replicas: 1
   port: 8081
@@ -57,8 +57,12 @@ keycloak:
   realm: cybertech
   clientId: cybertech-user-management-client
   clientSecret: ""  # MUST be set via secret
-  issuerUri: null  # Will be set to http://keycloak:8080/realms/cybertech
+  issuerUri: "http://keycloak.cybertech.local/realms/cybertech"
   jwkSetUri: null  # Will be set to http://keycloak:8080/realms/cybertech/protocol/openid-connect/certs
+
+gorse:
+  host: gorse
+  port: 8088
 
 # ============================================================
 # COMMUNICATION SERVICES
@@ -93,20 +97,21 @@ vault:
     profileSeparator: "/"
 
 # ============================================================
-# CLOUD SERVICES (LocalStack)
+# CLOUD SERVICES (RustFS)
 # ============================================================
-localstack:
-  host: localstack
-  port: 4566
-  
 aws:
   s3:
-    endpoint: "http://localstack:4566"
+    endpoint: "http://s3.cybertech.local"
     region: us-east-1
     pathStyleAccessEnabled: true
     accessKeyId: "test"  # MUST be set via secret
     secretAccessKey: ""  # MUST be set via secret
     bucket: cybertech-products
+
+appSecrets:
+  cardEncryptionKey: ""  # Base64-encoded 32-byte AES-256 key; set via Helmfile secret
+
+hostAliases: []
 
 # ============================================================
 # PAYMENT GATEWAY
@@ -130,7 +135,11 @@ moderationApi:
   url: "http://moderation-api:5000/analyze"
 
 frontend:
-  url: "http://localhost:4200"
+  url: "http://cybertech.local"
+
+security:
+  cors:
+    allowedOrigins: "http://cybertech.local,http://localhost:3000"
 
 # ============================================================
 # INGRESS — exposes the backend via nginx-ingress.

@@ -1,8 +1,8 @@
 # Deploy Cybertech on Minikube — Step by Step
 
-A practical walkthrough for booting the full Cybertech stack on your local
-machine. Backend (Spring Boot 4 / Java 26), frontend (Next.js 16), 11 supporting
-services, 4 observability services — all running in one minikube cluster.
+A practical walkthrough for booting the Cybertech stack on your local machine.
+Backend (Spring Boot 4 / Java 26), frontend (Next.js 16), 10 supporting services,
+and Loki/Grafana — all running in one minikube cluster.
 
 > **Audience:** you, on your laptop. Portfolio scope. ~6 GB RAM, ~4 vCPU.
 > Companion docs: [`src/main/resources/k8s/helm/README.md`](src/main/resources/k8s/helm/README.md)
@@ -48,8 +48,7 @@ minikube start \
   --cpus=4 \
   --memory=8192 \
   --disk-size=40g \
-  --addons=ingress \
-  --insecure-registry="host.docker.internal:5000,10.0.0.0/24"
+  --addons=ingress
 ```
 
 Wait until the ingress-controller pod is ready:
@@ -64,19 +63,20 @@ Get the cluster IP — you'll need it for `/etc/hosts`:
 ```bash
 minikube ip
 # example output: 192.168.49.2
+export MINIKUBE_IP="$(minikube ip)"
 ```
 
 ---
 
 ## Step 2 — Wire local DNS
 
-The frontend, backend, Keycloak, and Grafana all live on `*.cybertech.local`.
-Map them to the minikube IP.
+The frontend, backend, Keycloak, Grafana, and S3 ingress use
+`*.cybertech.local`. Map them to the minikube IP.
 
 **Linux / macOS:** edit `/etc/hosts` (sudo required):
 
 ```
-192.168.49.2  cybertech.local api.cybertech.local keycloak.cybertech.local grafana.cybertech.local
+192.168.49.2  cybertech.local api.cybertech.local keycloak.cybertech.local grafana.cybertech.local s3.cybertech.local
 ```
 
 **Windows:** edit `C:\Windows\System32\drivers\etc\hosts` as Administrator with
@@ -118,37 +118,45 @@ export JAVA_HOME="C:\Program Files\Java\jdk-26.0.1"   # adjust path
 docker build -t cybertech-app:dev -f src/main/resources/docker/dockerfile .
 ```
 
-Build the frontend image (Wave 7B added the Dockerfile + standalone Next.js
-output; ~3 min on first build):
+The frontend is maintained in the companion `../cybertech-front` checkout,
+which is not included in this backend repository. If that checkout is present,
+build its image with:
 
 ```bash
-docker build -t cybertech-front:dev -f front/app/Dockerfile front/app
+docker build -t cybertech-front:dev \
+  -f ../cybertech-front/app/Dockerfile ../cybertech-front/app
 ```
 
-Confirm both images are visible to minikube:
+If you do not have the frontend checkout, build or load its image separately
+and set `FRONT_IMAGE_REPOSITORY` / `FRONT_IMAGE_TAG` below. Confirm the images
+you built are visible to minikube:
 
 ```bash
 minikube image ls | grep cybertech
-# expect:
-# docker.io/library/cybertech-app:dev
-# docker.io/library/cybertech-front:dev
+# expect cybertech-app:dev and (if built locally) cybertech-front:dev
 ```
 
 ---
 
 ## Step 4 — Set required env vars
 
-`helmfile.yaml.gotmpl` references several secrets via `requiredEnv`. Export them
-before running `helmfile apply`. For portfolio scope, dummy values are fine:
+`helmfile.yaml.gotmpl` requires these values before `helmfile apply`:
 
 ```bash
 export MYSQL_ROOT_PASSWORD="cybertech-root"
-export KEYCLOAK_CLIENT_SECRET="cybertech-portfolio-secret"
-export VAULT_TOKEN="cybertech-dev-token"
-export AWS_SECRET_ACCESS_KEY="test"      # localstack accepts any value
+export KEYCLOAK_CLIENT_SECRET="<match cybertech-user-management-client in the Helm realm export>"
+export RUSTFS_ACCESS_KEY="cybertech-local"
+export RUSTFS_SECRET_KEY="$(openssl rand -hex 24)"
+export APP_CARD_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 export STRIPE_API_KEY="sk_test_PLACEHOLDER"
 export STRIPE_WEBHOOK_SECRET="whsec_PLACEHOLDER"
 ```
+
+`MINIKUBE_IP` must also be set as shown in Step 1. The backend encryption key
+must remain stable to decrypt existing stored cards. The Helm-exported
+frontend client secret already matches its default chart value; if you change
+it, update that client in the realm export too. Use alphanumeric MySQL and
+RustFS credentials for this local setup.
 
 > **Real Stripe keys:** if you want webhooks to actually work, drop your real
 > `sk_test_…` and the matching webhook signing secret here. The Wave 3 fix in
@@ -159,26 +167,36 @@ export STRIPE_WEBHOOK_SECRET="whsec_PLACEHOLDER"
 
 ## Step 5 — Deploy the stack
 
-The `helmfile.yaml.gotmpl` orchestrates 6 layers. One command brings them all up:
+The `helmfile.yaml.gotmpl` orders the stack through dependencies. One command
+brings it up:
 
 ```bash
 cd src/main/resources/k8s/helm
 helmfile apply
 ```
 
-Expected wall time: **5–8 min** on first run (Keycloak alone takes ~60 s to
-start). Subsequent applies are fast.
+Expected wall time: **8–12 min** on first run (Keycloak alone can take
+~60–90 s to start). Subsequent applies are faster.
 
 What `helmfile apply` actually does, in order:
 
 | Layer | Charts | Purpose |
 |---|---|---|
-| 1 | `vault` | Secrets store |
-| 2 | `mysql`, `mongodb`, `redis`, `elasticsearch` | Data stores |
-| 3 | `keycloak`, `localstack`, `mailpit`, `moderation-api`, `stripe` | Auth + side services |
-| 4 | `cybertech-app` | Spring Boot backend |
-| 5 | `front-app` | Next.js frontend |
-| 6 | `loki`, `grafana` | Observability (logs) |
+| 1 | `mysql`, `mongodb`, `redis`, `elasticsearch` | Data stores |
+| 2 | `keycloak`, `rustfs`, `gorse`, `mailpit`, `moderation-api`, `stripe` | Auth + side services |
+| 3 | `cybertech-app` | Spring Boot backend |
+| 4 | `front-app` | Next.js frontend |
+| 5 | `loki`, `grafana` | Observability UI (log collector not installed) |
+
+RustFS persists objects on a PVC and initializes the `cybertech-products`
+bucket, public image-read policy, and browser CORS. Its S3 endpoint is
+`http://s3.cybertech.local`. The LocalStack chart remains in the repository
+but is no longer installed. Vault is not installed either: Minikube secrets
+are Kubernetes Secrets populated through Helmfile environment variables.
+Products with image URLs from an old LocalStack endpoint must have their
+images uploaded again. If you previously installed the old `localstack` or
+`vault` releases, Helmfile does not automatically remove them; inspect and
+remove those separately after preserving any data you need.
 
 Watch the rollout:
 
@@ -196,17 +214,23 @@ If a pod crashloops, jump to **Step 9 — Troubleshooting**.
 ### Backend health
 
 ```bash
-curl -k https://api.cybertech.local/actuator/health
-# expect: {"status":"UP","components":{...}}
+kubectl port-forward svc/cybertech-app 8081:8081
+# In another terminal:
+curl http://localhost:8081/actuator/health
+# expect: {"status":"UP", ...}
 ```
+
+The Ingress intentionally routes only `/api/`; Actuator and Swagger are not
+published through the API hostname. With the port-forward running, Swagger UI
+is at `http://localhost:8081/swagger-ui.html`.
 
 ### Frontend
 
-Open `https://cybertech.local` in a browser. The catalog page should render.
+Open `http://cybertech.local` in a browser. The catalog page should render.
 
 ### Keycloak admin console
 
-Open `https://keycloak.cybertech.local` → **Administration Console** → log in
+Open `http://keycloak.cybertech.local` → **Administration Console** → log in
 with `admin / admin`.
 
 ### OpenAPI / Postman
@@ -219,35 +243,35 @@ Postman; the pre-request script auto-fetches a Keycloak token.
 
 ```bash
 # Get a JWT (replace user/pass with one you registered first)
-TOKEN=$(curl -s -X POST https://keycloak.cybertech.local/realms/cybertech/protocol/openid-connect/token \
+TOKEN=$(curl -s -X POST http://keycloak.cybertech.local/realms/cybertech/protocol/openid-connect/token \
   -d "client_id=cybertech-user-management-client" \
   -d "client_secret=$KEYCLOAK_CLIENT_SECRET" \
   -d "grant_type=password" \
   -d "username=test@example.com" -d "password=test" | jq -r .access_token)
 
 # Hit a protected endpoint
-curl -H "Authorization: Bearer $TOKEN" https://api.cybertech.local/api/v1/services/cart/list
+curl -H "Authorization: Bearer $TOKEN" http://api.cybertech.local/api/v1/services/cart/list
 ```
 
 ---
 
 ## Step 7 — Access observability
 
-Grafana is the log-browsing UI, backed by Loki.
+Grafana and Loki are deployed, but no Promtail/Alloy log collector is part of
+the current Helmfile. Backend logs remain available through `kubectl logs`;
+Grafana/Loki will not show them until a collector is added.
 
 ```
-URL:      https://grafana.cybertech.local
+URL:      http://grafana.cybertech.local
 Login:    admin / admin
 ```
 
 Pre-provisioned datasource:
 - Loki → `http://loki:3100`
 
-Quick log query in Loki (Grafana → Explore): `{app="cybertech-app"}` shows
-backend logs in JSON format with `userKeycloakId`, `orderUuid` MDC keys.
-
-(Metrics dashboards and distributed tracing — Prometheus, Tempo — were
-removed: unused.)
+The Loki datasource is preconfigured, but currently has no log ingestion
+pipeline. Metrics dashboards and distributed tracing (Prometheus, Tempo) were
+removed because they were unused.
 
 ---
 
@@ -262,7 +286,7 @@ export GATLING_TOKEN=$TOKEN
 
 ./mvnw gatling:test -Ploadtest \
   -Dgatling.simulationClass=com.novatech.cybertech.gatling.BrowseToOrderSimulation \
-  -Dgatling.baseUrl=https://api.cybertech.local \
+  -Dgatling.baseUrl=http://api.cybertech.local \
   -Dauth.token=$GATLING_TOKEN
 ```
 
@@ -287,7 +311,7 @@ kubectl logs <name> --previous
 ```
 - Backend can't connect to Keycloak → wait longer, Keycloak takes ~60 s.
 - Backend OOM → increase its memory in `cybertech-app-chart/values.yaml`.
-- Elasticsearch JVM crash → bump `--memory` on minikube; ES 8 needs ~1 GiB heap minimum.
+- Elasticsearch JVM crash → bump `--memory` on minikube; the ES 9 chart reserves a 1 GiB heap.
 
 ### Ingress 404 / 502
 ```bash
@@ -341,12 +365,13 @@ minikube delete --all
 
 | Service | URL | Credentials |
 |---|---|---|
-| Frontend | `https://cybertech.local` | n/a (or your registered user) |
-| Backend API | `https://api.cybertech.local` | Bearer JWT from Keycloak |
-| Backend health | `https://api.cybertech.local/actuator/health` | none |
-| Keycloak | `https://keycloak.cybertech.local` | admin / admin |
-| Grafana | `https://grafana.cybertech.local` | admin / admin |
+| Frontend | `http://cybertech.local` | n/a (or your registered user) |
+| Backend API | `http://api.cybertech.local` | Bearer JWT from Keycloak |
+| Backend health | Port-forward `svc/cybertech-app`; then `http://localhost:8081/actuator/health` | none |
+| Keycloak | `http://keycloak.cybertech.local` | admin / admin |
+| Grafana | `http://grafana.cybertech.local` | admin / admin |
 | Mailpit (in cluster) | `http://mailpit:8025` (port-forward) | none |
+| Product images (S3) | `http://s3.cybertech.local` | public read |
 
 For port-forwarding Mailpit so you can read captured emails in a browser:
 

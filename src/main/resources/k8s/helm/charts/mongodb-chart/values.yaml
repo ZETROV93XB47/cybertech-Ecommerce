@@ -1,6 +1,6 @@
 image:
   repository: mongo
-  tag: "6.0.14"
+  tag: "8.2.5"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -39,4 +39,3 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
-

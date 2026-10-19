@@ -33,8 +33,8 @@ resources:
 #   AUTH_URL: NextAuth callback host (used by next-auth in prod).
 # ============================================================
 env:
-  NEXT_PUBLIC_API_BASE: "https://api.cybertech.local"
-  AUTH_URL: "https://cybertech.local"
+  NEXT_PUBLIC_API_BASE: "http://api.cybertech.local"
+  AUTH_URL: "http://cybertech.local"
   NODE_ENV: "production"
   PORT: "3000"
   HOSTNAME: "0.0.0.0"
@@ -48,7 +48,7 @@ secrets:
   AUTH_SECRET: "dev-auth-secret-change-me"
   AUTH_KEYCLOAK_ID: "cybertech-front-client"
   AUTH_KEYCLOAK_SECRET: "dev-keycloak-front-secret-change-me"
-  AUTH_KEYCLOAK_ISSUER: "http://keycloak:8080/realms/cybertech"
+  AUTH_KEYCLOAK_ISSUER: "http://keycloak.cybertech.local/realms/cybertech"
 
 # ============================================================
 # PROBES
@@ -91,3 +91,4 @@ ingress:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+hostAliases: []

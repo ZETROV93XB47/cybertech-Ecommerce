@@ -17,17 +17,7 @@ helmDefaults:
 releases:
 
   # ============================================================
-  # LAYER 1 — Secrets management (no dependencies)
-  # ============================================================
-
-  - name: vault
-    chart: ./charts/vault-chart
-    namespace: default
-    values:
-      - ./charts/vault-chart/values.yaml
-
-  # ============================================================
-  # LAYER 2 — Databases & infrastructure (no dependencies)
+  # LAYER 1 — Databases & infrastructure (no dependencies)
   # ============================================================
 
   - name: mysql
@@ -37,7 +27,7 @@ releases:
       - ./charts/mysql-chart/values.yaml
     set:
       - name: mysql.rootPassword
-        value: {{ requiredEnv "MYSQL_ROOT_PASSWORD" }}
+        value: {{ requiredEnv "MYSQL_ROOT_PASSWORD" | quote }}
 
   - name: mongodb
     chart: ./charts/mongodb-chart
@@ -58,7 +48,7 @@ releases:
       - ./charts/elasticsearch-chart/values.yaml
 
   # ============================================================
-  # LAYER 3 — Services that depend on Layer 2
+  # LAYER 2 — Services that depend on Layer 1
   # ============================================================
 
   - name: keycloak
@@ -69,11 +59,25 @@ releases:
     values:
       - ./charts/keycloak-chart/values.yaml
 
-  - name: localstack
-    chart: ./charts/localstack-chart
+  - name: rustfs
+    chart: ./charts/rustfs-chart
     namespace: default
     values:
-      - ./charts/localstack-chart/values.yaml
+      - ./charts/rustfs-chart/values.yaml
+    set:
+      - name: credentials.accessKey
+        value: {{ requiredEnv "RUSTFS_ACCESS_KEY" | quote }}
+      - name: credentials.secretKey
+        value: {{ requiredEnv "RUSTFS_SECRET_KEY" | quote }}
+
+  - name: gorse
+    chart: ./charts/gorse-chart
+    namespace: default
+    needs:
+      - mysql
+      - redis
+    values:
+      - ./charts/gorse-chart/values.yaml
 
   - name: mailpit
     chart: ./charts/mailpit-chart
@@ -94,10 +98,10 @@ releases:
       - ./charts/stripe-chart/values.yaml
     set:
       - name: stripe.apiKey
-        value: {{ requiredEnv "STRIPE_API_KEY" }}
+        value: {{ requiredEnv "STRIPE_API_KEY" | quote }}
 
   # ============================================================
-  # LAYER 4 — Main application (depends on everything)
+  # LAYER 3 — Main application (depends on everything)
   # ============================================================
 
   - name: cybertech-app
@@ -109,29 +113,35 @@ releases:
       - redis
       - elasticsearch
       - keycloak
-      - localstack
+      - rustfs
+      - gorse
       - mailpit
       - moderation-api
       - stripe
-      - vault
     values:
       - ./charts/cybertech-app-chart/values.yaml
     set:
       - name: mysql.password
-        value: {{ requiredEnv "MYSQL_ROOT_PASSWORD" }}
+        value: {{ requiredEnv "MYSQL_ROOT_PASSWORD" | quote }}
       - name: keycloak.clientSecret
-        value: {{ requiredEnv "KEYCLOAK_CLIENT_SECRET" }}
-      - name: vault.token
-        value: {{ requiredEnv "VAULT_TOKEN" }}
+        value: {{ requiredEnv "KEYCLOAK_CLIENT_SECRET" | quote }}
       - name: aws.s3.secretAccessKey
-        value: {{ requiredEnv "AWS_SECRET_ACCESS_KEY" }}
+        value: {{ requiredEnv "RUSTFS_SECRET_KEY" | quote }}
+      - name: aws.s3.accessKeyId
+        value: {{ requiredEnv "RUSTFS_ACCESS_KEY" | quote }}
+      - name: appSecrets.cardEncryptionKey
+        value: {{ requiredEnv "APP_CARD_ENCRYPTION_KEY" | quote }}
+      - name: hostAliases[0].ip
+        value: {{ requiredEnv "MINIKUBE_IP" | quote }}
+      - name: hostAliases[0].hostnames[0]
+        value: "s3.cybertech.local"
       - name: stripe.apiKey
-        value: {{ requiredEnv "STRIPE_API_KEY" }}
+        value: {{ requiredEnv "STRIPE_API_KEY" | quote }}
       - name: stripe.webhookSecret
-        value: {{ requiredEnv "STRIPE_WEBHOOK_SECRET" }}
+        value: {{ requiredEnv "STRIPE_WEBHOOK_SECRET" | quote }}
 
   # ============================================================
-  # LAYER 5 — Frontend (depends on the backend ingress being up)
+  # LAYER 4 — Frontend (depends on the backend ingress being up)
   # ============================================================
 
   - name: front-app
@@ -154,12 +164,15 @@ releases:
         value: {{ env "FRONT_AUTH_SECRET" | default "dev-auth-secret-change-me" }}
       - name: secrets.AUTH_KEYCLOAK_SECRET
         value: {{ env "FRONT_KEYCLOAK_CLIENT_SECRET" | default "dev-keycloak-front-secret-change-me" }}
+      - name: hostAliases[0].ip
+        value: {{ requiredEnv "MINIKUBE_IP" | quote }}
+      - name: hostAliases[0].hostnames[0]
+        value: "keycloak.cybertech.local"
 
   # ============================================================
-  # LAYER 6 — Observability stack (logs + UI)
-  # Independent of the app pods at deploy time; the app simply
-  # ships logs to Loki once it's up. Grafana waits on Loki so its
-  # datasource provisioning succeeds on first boot.
+  # LAYER 5 — Observability stack (logs + UI)
+  # Independent of the app pods at deploy time. Grafana waits on
+  # Loki for datasource provisioning; no log collector is installed.
   # (Prometheus metrics + Tempo tracing were removed — unused.)
   # ============================================================
 

@@ -1,5 +1,12 @@
 # Plan
 
+- [ ] **Audit du déploiement Helm Minikube** :
+  - [x] Comparer les charts/Helmfile aux configurations applicatives actuelles (RustFS, Gorse, Web Push, HTTP local, images et ports).
+  - [x] Valider `helm lint` sur les charts `cybertech-app`, `elasticsearch`, `front-app`, `grafana`, `gorse`, `keycloak`, `loki`, `localstack` (legacy), `mailpit`, `mongodb`, `mysql`, `moderation-api`, `redis`, `rustfs`, `stripe` et `vault` (inactive), puis rendre le Helmfile avec des valeurs d'exemple.
+  - [x] Ajouter les charts RustFS/Gorse ; corriger les versions Elasticsearch/MongoDB, les secrets Spring, l'issuer/callback OIDC, CORS, les hôtes HTTP et les URLs de santé/Swagger.
+  - [x] Mettre à jour `DEPLOY_MINIKUBE.md` et `src/main/resources/k8s/helm/README.md`.
+  - [ ] Appliquer les releases et tester authentification/OIDC, upload et lecture d'image dans Minikube (cluster arrêté ; source frontend séparée absente du dépôt).
+  - [x] Vérifier le diff de cette tâche puis committer uniquement ses fichiers, en préservant les changements préexistants.
 - [x] **Étendre les attributs des cinq catégories** :
   - [x] Mettre à jour les schémas par défaut de `ProductCategorySchemaInitializer` en gardant tous les nouveaux champs facultatifs.
   - [x] Ajouter et exécuter une migration SQL ciblée des cinq schémas existants dans `mysqlEcommerce`.

@@ -1,7 +1,7 @@
 # Cybertech — minikube deployment runbook
 
-End-to-end guide for running the full Cybertech stack (backend + Next.js
-frontend + 9 supporting services) on a local minikube cluster.
+End-to-end guide for running the Cybertech stack (backend + Next.js frontend,
+10 supporting services, and Loki/Grafana) on a local minikube cluster.
 
 > Target: laptop / portfolio demo. Production hardening (TLS, real Vault,
 > external DBs, autoscaling) is intentionally out of scope and called out
@@ -51,12 +51,13 @@ images exist *inside* the minikube daemon, no registry round-trip is needed.
 eval $(minikube docker-env)
 
 # Backend (Spring Boot, multi-stage in src/main/resources/docker/dockerfile).
-docker build -t cybertech-app:1.2 -f src/main/resources/docker/dockerfile .
+docker build -t cybertech-app:dev -f src/main/resources/docker/dockerfile .
 
-# Frontend (Next.js standalone, see front/app/Dockerfile).
-docker build -t cybertech-front:dev front/app
+# Frontend source is in the companion ../cybertech-front checkout, not this repo.
+docker build -t cybertech-front:dev \
+  -f ../cybertech-front/app/Dockerfile ../cybertech-front/app
 
-# Sanity check — both should appear:
+# Sanity check — built images should appear:
 docker images | grep -E '^(cybertech-app|cybertech-front)\b'
 ```
 
@@ -67,18 +68,20 @@ docker images | grep -E '^(cybertech-app|cybertech-front)\b'
 
 ## 4. Set required env vars
 
-`helmfile.yaml` uses `requiredEnv` for genuinely sensitive values and
-`env ... | default ...` for things that have safe dev defaults. The
-required set:
+Export these values before applying the Helmfile. Get the current Minikube IP
+after starting the cluster; it is also used by the backend and frontend pods
+to reach the host-based S3 and OIDC ingress names.
 
 | Variable                 | Purpose                                | Dev value (example)             |
 |--------------------------|----------------------------------------|---------------------------------|
 | `MYSQL_ROOT_PASSWORD`    | MySQL root + cybertech-app datasource  | `rootpw`                        |
-| `KEYCLOAK_CLIENT_SECRET` | OAuth2 client secret used by backend   | `dev-kc-secret`                 |
-| `VAULT_TOKEN`            | Vault root token (dev mode)            | `root`                          |
-| `AWS_SECRET_ACCESS_KEY`  | localstack S3 secret key               | `test`                          |
-| `STRIPE_API_KEY`         | Stripe CLI test key                    | `sk_test_...`                   |
-| `STRIPE_WEBHOOK_SECRET`  | Stripe webhook HMAC secret             | `whsec_...`                     |
+| `MINIKUBE_IP`            | Host aliases for external ingress URLs  | `$(minikube ip)`                |
+| `KEYCLOAK_CLIENT_SECRET` | Backend OAuth client; must match realm export | existing realm client secret |
+| `RUSTFS_ACCESS_KEY`      | RustFS S3 access key                    | `cybertech-local`               |
+| `RUSTFS_SECRET_KEY`      | RustFS S3 secret key                    | generate with `openssl rand -hex 24` |
+| `APP_CARD_ENCRYPTION_KEY`| AES-256 key for stored card data        | `openssl rand -base64 32`       |
+| `STRIPE_API_KEY`         | Stripe CLI test key                     | `sk_test_...`                   |
+| `STRIPE_WEBHOOK_SECRET`  | Stripe webhook HMAC secret              | `whsec_...`                     |
 
 Optional overrides (defaults apply if unset):
 
@@ -93,9 +96,11 @@ Quick export block for bash:
 
 ```bash
 export MYSQL_ROOT_PASSWORD=rootpw
-export KEYCLOAK_CLIENT_SECRET=dev-kc-secret
-export VAULT_TOKEN=root
-export AWS_SECRET_ACCESS_KEY=test
+export MINIKUBE_IP="$(minikube ip)"
+export KEYCLOAK_CLIENT_SECRET="<copy the matching realm client secret>"
+export RUSTFS_ACCESS_KEY=cybertech-local
+export RUSTFS_SECRET_KEY="$(openssl rand -hex 24)"
+export APP_CARD_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 export STRIPE_API_KEY=sk_test_replace_me
 export STRIPE_WEBHOOK_SECRET=whsec_replace_me
 ```
@@ -107,14 +112,20 @@ cd src/main/resources/k8s/helm
 helmfile apply
 ```
 
-This rolls out 6 layers in dependency order:
+Helmfile dependencies order the releases as follows:
 
-1. **vault** — secrets store (dev mode, root token).
-2. **mysql, mongodb, redis, elasticsearch** — stateful infra (PVCs).
-3. **keycloak, localstack, mailpit, moderation-api, stripe** — services that consume layer 2.
-4. **cybertech-app** — backend (waits on every layer-2/3 release).
-5. **front-app** — Next.js frontend (waits on `cybertech-app`).
-6. **loki, grafana** — observability stack (Grafana waits on Loki).
+1. **mysql, mongodb, redis, elasticsearch** — data stores.
+2. **keycloak, rustfs, gorse, mailpit, moderation-api, stripe** — auth and supporting services.
+3. **cybertech-app** — backend.
+4. **front-app** — Next.js frontend.
+5. **loki, grafana** — observability (Grafana waits on Loki).
+
+The local deployment does not install Vault: its charts use Kubernetes Secrets
+populated from environment variables. RustFS replaces LocalStack and persists
+the image bucket on a PVC; the LocalStack chart is retained but not installed.
+Products with image URLs from an old LocalStack endpoint must have their
+images uploaded again. Previously installed `localstack` and `vault` releases
+are not automatically removed by `helmfile apply`.
 
 Watch progress:
 
@@ -132,7 +143,7 @@ minikube ip
 Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 
 ```
-192.168.49.2  cybertech.local api.cybertech.local keycloak.cybertech.local
+192.168.49.2  cybertech.local api.cybertech.local keycloak.cybertech.local grafana.cybertech.local s3.cybertech.local
 ```
 
 `cybertech.local` -> Next.js frontend Service.
@@ -142,8 +153,12 @@ Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 ## 7. Open the app
 
 - Frontend: <http://cybertech.local/>
-- Backend health: <http://api.cybertech.local/api/v1/actuator/health>
-- Swagger UI: <http://api.cybertech.local/api/v1/swagger-ui.html>
+- Backend API: <http://api.cybertech.local/api/v1/>
+- Backend health and Swagger are not exposed by the `/api/` Ingress. Run
+  `kubectl port-forward svc/cybertech-app 8081:8081`, then open
+  <http://localhost:8081/actuator/health> or
+  <http://localhost:8081/swagger-ui.html>.
+- Product images: <http://s3.cybertech.local/>
 - Mailpit: `kubectl port-forward svc/mailpit 8025:8025` then <http://localhost:8025/>
 
 > **TLS is intentionally off.** For a public deployment, install
@@ -154,9 +169,10 @@ Append to `/etc/hosts` (Windows: `C:\Windows\System32\drivers\etc\hosts`):
 
 ## 7b. Observability (Loki + Grafana)
 
-Layer 6 ships a self-hosted log stack — Loki plus a Grafana UI on top. None
-of it is required to run the app; the backend just ships logs to it when it
-is up. Single-replica each, no HA, small PVC — strictly portfolio-grade.
+The final layer deploys Loki and a Grafana UI. No Promtail/Alloy collector is
+currently installed, so backend logs remain available through `kubectl logs`
+and do not appear in Loki yet. Single-replica each, no HA, small PVC —
+strictly portfolio-grade.
 (Prometheus metrics and Tempo distributed tracing were removed: unused.)
 
 ### Reach Grafana
@@ -217,8 +233,8 @@ Common filters once the backend ships JSON logs:
 {app="cybertech-app"} | json | level="ERROR"
 ```
 
-(The parallel agent wires Spring Boot to logstash-logback-encoder + a log
-shipper. This chart only stands up the Loki backend.)
+The Loki datasource is ready, but the query stays empty until a log collector
+is configured and deployed.
 
 ### Persistence
 
@@ -237,7 +253,9 @@ Common causes:
 
 - MySQL initContainer still waiting (Spring Boot will not boot until MySQL is reachable).
 - `MYSQL_ROOT_PASSWORD` env var not set in the shell that ran `helmfile apply`.
-- `cybertech-app:1.2` not present in the minikube daemon (re-run step 3).
+- `cybertech-app:dev` not present in the minikube daemon (re-run step 3).
+- `APP_CARD_ENCRYPTION_KEY` missing or not Base64-encoded 32-byte data.
+- `MINIKUBE_IP` is stale after restarting/recreating Minikube; refresh it and re-apply.
 
 ### Keycloak slow to become Ready
 
@@ -263,7 +281,8 @@ You forgot `eval $(minikube docker-env)` before building. Fix:
 
 ```bash
 eval $(minikube docker-env)
-docker build -t cybertech-front:dev front/app
+docker build -t cybertech-front:dev \
+  -f ../cybertech-front/app/Dockerfile ../cybertech-front/app
 kubectl rollout restart deploy/front-app
 ```
 
@@ -296,25 +315,18 @@ In production, the `front-app-chart` and `cybertech-app-chart` should
 4. The `secrets.*` and `STRIPE_*` env vars in `values.yaml` are removed
    in favour of the file-mounted versions.
 
-The placeholder `Secret` objects in this repo exist only so the local
-minikube deploy works without standing up Vault first.
+Vault is not installed or used by the local Helmfile. The Kubernetes Secrets
+exist only for this local Minikube deployment.
 
-## 9. Audit notes (existing charts)
+## 9. Audit notes
 
-Captured during the Wave 7B audit; track in a follow-up if you care about
-production-readiness:
-
-- **keycloak-chart** rewritten in Wave 8 (chart `0.2.0`, app `26.0.4`):
-  full deployment with ports, startup/liveness/readiness probes against
-  `:9000/health/*`, resource requests + limits, runAsNonRoot security
-  context, dedicated Secret, Service (8080 + 9000) and Ingress on
-  `keycloak.cybertech.local`. Runs in `start-dev` mode for portfolio.
-- **moderation-api-chart** has no probes and no resources block.
-- **vault-chart** ships its PVC commented out — runs ephemeral. Fine for
-  dev (root token is hardcoded), unacceptable for prod.
-- **mysql-chart** has resource requests but no `livenessProbe` /
-  `readinessProbe` — pods may be considered Ready before MySQL is actually
-  accepting connections, which is why `keycloak-chart` and
-  `cybertech-app-chart` use TCP-wait initContainers.
-- **cybertech-app-chart** Service had no `name` on its port; harmless in
-  k8s 1.28+ but flagged by `helm lint`.
+- Helmfile now deploys RustFS and Gorse; the unused LocalStack and Vault
+  charts remain available but are not part of the local release set.
+- The frontend source/build context is in the separate `../cybertech-front`
+  repository and is not present in this backend checkout.
+- Helm lint/render checks can validate manifests, but Minikube was stopped
+  during this audit, so a live rollout and browser-based OIDC/S3 checks remain
+  to be run after the cluster is started.
+- The RustFS, Gorse, and AWS CLI images use `latest` to match the current
+  local Compose configuration; pin image versions before treating these
+  charts as production deployment artifacts.

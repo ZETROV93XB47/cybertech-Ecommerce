@@ -14,6 +14,10 @@ spec:
       labels:
         app: cybertech-app
     spec:
+      {{- with .Values.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: cybertech-app
           image: "{{ .Values.cybertechApp.image }}"
@@ -41,7 +45,7 @@ spec:
                   name: cybertech-app-secret
                   key: SPRING_DATASOURCE_PASSWORD
 
-            - name: SPRING_CONFIG_LOCATION
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
               value: "file:/etc/config/"
             
             # ============================================================
@@ -77,6 +81,12 @@ spec:
                 secretKeyRef:
                   name: cybertech-app-secret
                   key: SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY
+
+            - name: APP_CARD_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cybertech-app-secret
+                  key: APP_CARD_ENCRYPTION_KEY
             
             # ============================================================
             # VAULT TOKEN (IF ENABLED)

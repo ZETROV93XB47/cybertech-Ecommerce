@@ -82,7 +82,7 @@ data:
     # ============================================================
     # KEYCLOAK / OAUTH2 / JWT CONFIGURATION
     # ============================================================
-    spring.security.oauth2.resourceserver.jwt.issuer-uri=http://{{ .Values.keycloak.host }}:{{ .Values.keycloak.port }}/realms/{{ .Values.keycloak.realm }}
+    spring.security.oauth2.resourceserver.jwt.issuer-uri={{ .Values.keycloak.issuerUri }}
     spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://{{ .Values.keycloak.host }}:{{ .Values.keycloak.port }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/certs
 
     keycloak.client.user.management.realm={{ .Values.keycloak.realm }}
@@ -106,7 +106,7 @@ data:
     #    {{- end }}
 
     # ============================================================
-    # LOCALSTACK / AWS S3 CONFIGURATION
+    # RUSTFS / AWS S3 CONFIGURATION
     # ============================================================
     spring.cloud.aws.s3.endpoint={{ .Values.aws.s3.endpoint }}
     spring.cloud.aws.credentials.access-key={{ .Values.aws.s3.accessKeyId }}
@@ -118,11 +118,13 @@ data:
     # EXTERNAL API CONFIGURATION
     # ============================================================
     moderation.api.url={{ .Values.moderationApi.url }}
+    gorse.api.url=http://{{ .Values.gorse.host }}:{{ .Values.gorse.port }}
 
     # ============================================================
     # FRONTEND CONFIGURATION
     # ============================================================
     application.frontend.url={{ .Values.frontend.url }}
+    cybertech.cors.allowed-origins={{ .Values.security.cors.allowedOrigins }}
 
     # ============================================================
     # STRIPE CONFIGURATION
@@ -179,4 +181,3 @@ data:
     # APPLICATION SPECIFIC CONFIGURATION
     # ============================================================
     time-before-deleting-order={{ .Values.application.email.timeBeforeDeletingOrder }}
-

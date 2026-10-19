@@ -14,6 +14,10 @@ spec:
       labels:
         {{- include "front-app.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: front
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
