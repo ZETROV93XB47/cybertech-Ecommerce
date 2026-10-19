@@ -19,7 +19,7 @@ The backend `application.properties` (default profile, no `prod`) hardcodes loca
 | Redis          | `localhost:6379`                     | `spring.data.redis.host`                              | YES (BLOCKER — `spring.cache.type=redis`) |
 | MongoDB        | `mongodb://localhost:27017/userEventsDB` | `spring.data.mongodb.uri`                          | YES (BLOCKER)     |
 | Elasticsearch  | `http://localhost:9200`              | `spring.elasticsearch.uris`                           | YES (BLOCKER)     |
-| LocalStack S3  | `http://localhost:4566`              | `spring.cloud.aws.s3.endpoint`                        | YES (BLOCKER — bucket `cybertech-products`) |
+| RustFS S3      | `http://localhost:9000`               | `spring.cloud.aws.s3.endpoint`                        | YES (BLOCKER — bucket `cybertech-products`, initialized by Compose) |
 | Mailpit        | `localhost:1025` (SMTP) / `:8025` (UI) | `spring.mail.host` / `.port`                        | RECOMMENDED (mail health probe is disabled, but order/notification listeners hit SMTP) |
 | Vault          | `http://localhost:8200`              | `spring.cloud.vault.uri`                              | NOT required — `spring.cloud.vault.enabled=false` in default profile |
 | Stripe CLI     | forwards events to `localhost:8081/api/v1/webhooks/stripe` | n/a                                | RECOMMENDED only for Stripe webhook test |
@@ -30,14 +30,26 @@ The backend `application.properties` (default profile, no `prod`) hardcodes loca
 
 ```bash
 cd src/main/resources/docker
-# .env file is already present (MYSQL_PORT=3306 etc.)
-docker compose up -d mysql redis mongodb elasticsearch keycloak localstack mailpit
+# .env file supplies MYSQL_PORT and the RustFS credentials.
+docker compose up -d mysql redis mongodb elasticsearch keycloak rustfs s3-init mailpit
 # OPTIONAL extras:
 # docker compose up -d moderation-api stripe
 docker compose ps    # verify all are healthy / running
 ```
 
 > The `docker-compose.yml` lives at `src/main/resources/docker/docker-compose.yml` and the variable file `.env` next to it. Don't run from repo root — the relative volume mount `$PWD/../sql/databaseSchemaInitFile.sql` is computed from the compose file directory.
+
+RustFS exposes its S3 API at <http://localhost:9000> and its console at
+<http://localhost:9001/rustfs/console/>. The `s3-init` one-shot service waits for RustFS,
+then creates `cybertech-products` if needed and reapplies its public-read policy and CORS.
+The backend runs outside Docker in IntelliJ, so set `RUSTFS_ACCESS_KEY` and
+`RUSTFS_SECRET_KEY` in the run configuration to the same values as in
+`src/main/resources/docker/.env`. The defaults in `application.properties` are only for tests
+and do not match the Docker credentials.
+
+Existing product image URLs are not rewritten when changing S3 endpoints. The old LocalStack
+bucket has no objects to copy, so re-upload product images (for example with `dataLoader.py`);
+the frontend must load them from `localhost:9000` instead of `localhost:4566`.
 
 > The compose file references `mysql:9.3.0`, but the project ships a Hibernate `MySQLDialect` and `spring.jpa.hibernate.ddl-auto=update`, so the schema bootstraps automatically from the SQL init file plus Hibernate.
 
@@ -185,7 +197,7 @@ Follow strictly — Spring Boot won't start if Keycloak/MySQL/Redis/Mongo/ES are
 1. **Bring up third-party services**
    ```bash
    cd src/main/resources/docker
-   docker compose up -d mysql redis mongodb elasticsearch keycloak localstack mailpit
+   docker compose up -d mysql redis mongodb elasticsearch keycloak rustfs s3-init mailpit
    docker compose ps   # wait for all "healthy" / "running"
    ```
 
