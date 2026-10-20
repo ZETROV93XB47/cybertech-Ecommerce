@@ -18,6 +18,9 @@ import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
 import com.novatech.cybertech.exceptions.DiscountTypeNotActiveException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.api.error.model.StockShortageDto;
+import com.novatech.cybertech.api.error.model.ErrorDetailsDto;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
 import com.novatech.cybertech.services.core.OrderManagementService;
@@ -155,15 +158,20 @@ class OrderManagementControllerTest {
     @Test
     void shouldFailPlacingOrderWhenNotEnoughStock() throws Exception {
         OrderPlacingRequestDto request = OrderDtoFixtures.aValidPlaceOrderRequest();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        NotEnoughStockException exception = new NotEnoughStockException(List.of(
+                new StockShortage(first, 3, 1), new StockShortage(second, 2, 0)));
         ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                .message("Not enough stock for product X")
+                .message(exception.getMessage())
                 .httpStatusCode(409)
                 .errorCodeType(FUNCTIONAL)
                 .errorCode(ErrorCode.NOT_ENOUGH_STOCK)
+                .details(new ErrorDetailsDto(List.of(new StockShortageDto(first, 3, 1), new StockShortageDto(second, 2, 0))))
                 .build();
 
         when(orderService.placeOrder(any(OrderPlacingRequestDto.class), any(Jwt.class)))
-                .thenThrow(new NotEnoughStockException("Not enough stock for product X"));
+                .thenThrow(exception);
 
         mockMvc.perform(post(PLACE)
                         .with(jwtUser(KEYCLOAK_ID))

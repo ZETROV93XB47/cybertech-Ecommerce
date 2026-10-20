@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.StockShortage;
 
 /**
  * Shared, stateless stock-availability guard for the cart write paths.
@@ -32,8 +33,8 @@ final class CartStockValidator {
      * <p>Example — product with {@code stock=10}, {@code reservedStock=8}:
      * <ul>
      *   <li>{@code requestedQty=2} → {@code 8 + 2 = 10 <= 10} → passes (boundary).</li>
-     *   <li>{@code requestedQty=3} → {@code 8 + 3 = 11 > 10} → throws, message advertises
-     *       {@code Available: 2} so the caller can retry with a smaller quantity.</li>
+     *   <li>{@code requestedQty=3} → {@code 8 + 3 = 11 > 10} → throws with the shortage
+     *       {@code requested=3, available=2} so the caller can retry with a smaller quantity.</li>
      * </ul>
      *
      * @param product      product whose stock is being checked.
@@ -42,7 +43,7 @@ final class CartStockValidator {
      */
     static void validateStockAvailability(final ProductEntity product, final int requestedQty) {
         if (product.getReservedStock() + requestedQty > product.getStock()) {
-            throw new NotEnoughStockException("Not enough stock for product " + product.getName() + ". Available: " + (product.getStock() - product.getReservedStock()));
+            throw new NotEnoughStockException(StockShortage.of(product.getUuid(), requestedQty, product.getStock(), product.getReservedStock()));
         }
     }
 }

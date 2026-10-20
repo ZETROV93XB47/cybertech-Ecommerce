@@ -19,6 +19,7 @@ import com.novatech.cybertech.utils.DeliveryEstimateUtils;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.CartEntityBuilder;
@@ -207,7 +208,7 @@ class OrderCreationTransactionalDelegateImpTest {
         final UserEntity user = userWithCart(product, 1);
         when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
         when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-        doThrow(new NotEnoughStockException("nope")).when(stockService).reserveStock(any(UUID.class), any());
+        doThrow(new NotEnoughStockException(new StockShortage(UUID.randomUUID(), 1, 0))).when(stockService).reserveStock(any(UUID.class), any());
 
         assertThatThrownBy(() -> delegate.createAndReserveStock(OrderDtoFixtures.aValidPlaceOrderRequest(), keycloakId))
                 .isInstanceOf(NotEnoughStockException.class);

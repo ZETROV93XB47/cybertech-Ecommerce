@@ -9,6 +9,7 @@ import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.filter.LoggingFilter;
 import com.novatech.cybertech.logger.RequestTraceAspect;
 import org.aspectj.lang.JoinPoint;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.when;
 class RequestTraceAspectTest {
 
     private static final String KEYCLOAK_ID = "550e8400-e29b-41d4-a716-446655440000";
+    private static final UUID PROBE_PRODUCT = UUID.fromString("0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01");
 
     private final RequestTraceAspect aspect = new RequestTraceAspect();
     private Logger traceLogger;
@@ -75,7 +77,7 @@ class RequestTraceAspectTest {
         }
 
         public void fail() {
-            throw new NotEnoughStockException("Not enough stock for product X");
+            throw new NotEnoughStockException(new StockShortage(PROBE_PRODUCT, 2, 0));
         }
 
         public String currentRequestId() {
@@ -214,7 +216,7 @@ class RequestTraceAspectTest {
             final ILoggingEvent origin = appender.list.get(2);
             assertThat(origin.getLevel()).isEqualTo(Level.WARN);
             assertThat(origin.getFormattedMessage())
-                    .startsWith("  ✖ InnerProbe.fail threw NotEnoughStockException: Not enough stock for product X (");
+                    .startsWith("  ✖ InnerProbe.fail threw NotEnoughStockException: Not enough stock for product " + PROBE_PRODUCT + ": requested=2, available=0 (");
 
             final ILoggingEvent propagated = appender.list.get(3);
             assertThat(propagated.getLevel()).isEqualTo(Level.INFO);
@@ -271,7 +273,7 @@ class RequestTraceAspectTest {
         @DisplayName("4xx verdict is logged at WARN with status, error type, exception and message")
         void clientErrorIsWarn() {
             final JoinPoint joinPoint = mock(JoinPoint.class);
-            when(joinPoint.getArgs()).thenReturn(new Object[]{new NotEnoughStockException("Not enough stock")});
+            when(joinPoint.getArgs()).thenReturn(new Object[]{new NotEnoughStockException(new StockShortage(UUID.randomUUID(), 2, 0))});
             final ResponseEntity<ErrorResponseDto> response = ResponseEntity.status(409)
                     .body(ErrorResponseDto.of("Not enough stock", ErrorCode.NOT_ENOUGH_STOCK));
 

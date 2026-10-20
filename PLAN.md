@@ -1,5 +1,13 @@
 # Plan
 
+- [x] **Prompt front 11 — détail structuré de `NOT_ENOUGH_STOCK`** (2026-10-20, estimé < 2 h, sans sous-agent) :
+  - [x] `exceptions` — `StockShortage` (productUuid, requested, available ≥ 0) + `NotEnoughStockException` porteuse d'une liste.
+  - [x] `StockServiceImp` — `reserveStock` / `resizeReservation` vérifient toutes les lignes puis lèvent une seule exception listant tous les défauts ; `CartStockValidator` fournit UUID/demandé/disponible.
+  - [x] `api/error/model` — `StockShortageDto`, `ErrorDetailsDto`, champ `details` (NON_NULL) dans `ErrorResponseDto` ; `ErrorManagementController` le remplit (409 et errorCode inchangés).
+  - [x] OpenAPI — 409 `NOT_ENOUGH_STOCK` avec exemple sur `POST /cart/add`, `PATCH /cart/update/{uuid}`, `POST /order/place`, `/update`, `/retry-payment/{uuid}` ; `docs/openapi/openapi.yaml` régénéré.
+  - [x] Tests unitaires (lanceurs, available à 0, handler, MVC) + ITs (panier, place, update, 404 sans details) ; `mvnw test` vert (2 329 tests, 0 échec, 17 ignorés) ; `CartFlowIT` + `OrderFlowIT` : 24/24.
+  - [x] `progress.md`, commit.
+
 - [x] **Corriger les identifiants MySQL du backend Minikube** :
   - [x] Configurer l'application avec le compte `rookie` et le même `mysql-secret/user-password` que le conteneur MySQL.
   - [x] Retirer le passage du mot de passe root vers le secret de l'application.

@@ -8,6 +8,7 @@ import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -17,6 +18,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.UUID;
 
+import static com.novatech.cybertech.api.controllers.spec.ApiErrorExamples.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @Tag(name = "Cart", description = "Endpoints to manage the authenticated user's shopping cart")
@@ -37,6 +39,7 @@ public interface CartManagementControllerApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Cart not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = NOT_ENOUGH_STOCK_DESCRIPTION, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class), examples = @ExampleObject(name = NOT_ENOUGH_STOCK_EXAMPLE_NAME, value = NOT_ENOUGH_STOCK_EXAMPLE))),
                     @ApiResponse(responseCode = "500", description = "Internal server error during cart update",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
@@ -78,6 +81,7 @@ public interface CartManagementControllerApiSpec {
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Operation forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "User or Product not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = NOT_ENOUGH_STOCK_DESCRIPTION, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class), examples = @ExampleObject(name = NOT_ENOUGH_STOCK_EXAMPLE_NAME, value = NOT_ENOUGH_STOCK_EXAMPLE))),
                     @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<CartResponseDto> addToCart(final CartCreateRequestDto cartCreateRequestDto, final Jwt jwt);

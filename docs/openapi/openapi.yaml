@@ -491,6 +491,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: "Not enough stock (NOT_ENOUGH_STOCK): details.items lists the\
+            \ product lines in shortage"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+              examples:
+                NOT_ENOUGH_STOCK:
+                  description: NOT_ENOUGH_STOCK
+                  value:
+                    message: "Not enough stock for product 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01:\
+                      \ requested=3, available=1"
+                    httpStatusCode: 409
+                    errorCodeType: FUNCTIONAL
+                    errorCode: NOT_ENOUGH_STOCK
+                    details:
+                      items:
+                      - productUuid: 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01
+                        requested: 3
+                        available: 1
         "500":
           description: Internal server error during order update
           content:
@@ -554,6 +575,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: "Not enough stock (NOT_ENOUGH_STOCK): details.items lists the\
+            \ product lines in shortage"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+              examples:
+                NOT_ENOUGH_STOCK:
+                  description: NOT_ENOUGH_STOCK
+                  value:
+                    message: "Not enough stock for product 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01:\
+                      \ requested=3, available=1"
+                    httpStatusCode: 409
+                    errorCodeType: FUNCTIONAL
+                    errorCode: NOT_ENOUGH_STOCK
+                    details:
+                      items:
+                      - productUuid: 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01
+                        requested: 3
+                        available: 1
         "500":
           description: Internal server error
           content:
@@ -675,6 +717,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: "Not enough stock (NOT_ENOUGH_STOCK): details.items lists the\
+            \ product lines in shortage"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+              examples:
+                NOT_ENOUGH_STOCK:
+                  description: NOT_ENOUGH_STOCK
+                  value:
+                    message: "Not enough stock for product 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01:\
+                      \ requested=3, available=1"
+                    httpStatusCode: 409
+                    errorCodeType: FUNCTIONAL
+                    errorCode: NOT_ENOUGH_STOCK
+                    details:
+                      items:
+                      - productUuid: 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01
+                        requested: 3
+                        available: 1
         "500":
           description: Internal server error while placing the order
           content:
@@ -799,6 +862,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: "Not enough stock (NOT_ENOUGH_STOCK): details.items lists the\
+            \ product lines in shortage"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+              examples:
+                NOT_ENOUGH_STOCK:
+                  description: NOT_ENOUGH_STOCK
+                  value:
+                    message: "Not enough stock for product 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01:\
+                      \ requested=3, available=1"
+                    httpStatusCode: 409
+                    errorCodeType: FUNCTIONAL
+                    errorCode: NOT_ENOUGH_STOCK
+                    details:
+                      items:
+                      - productUuid: 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01
+                        requested: 3
+                        available: 1
         "500":
           description: Internal server error
           content:
@@ -1534,6 +1618,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: "Not enough stock (NOT_ENOUGH_STOCK): details.items lists the\
+            \ product lines in shortage"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+              examples:
+                NOT_ENOUGH_STOCK:
+                  description: NOT_ENOUGH_STOCK
+                  value:
+                    message: "Not enough stock for product 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01:\
+                      \ requested=3, available=1"
+                    httpStatusCode: 409
+                    errorCodeType: FUNCTIONAL
+                    errorCode: NOT_ENOUGH_STOCK
+                    details:
+                      items:
+                      - productUuid: 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01
+                        requested: 3
+                        available: 1
         "500":
           description: Internal server error during cart update
           content:
@@ -3848,6 +3953,40 @@ components:
         userUuid:
           type: string
           format: uuid
+    StockShortageDto:
+      type: object
+      description: A product line whose quantity exceeds the available stock
+      properties:
+        productUuid:
+          type: string
+          format: uuid
+          description: UUID of the product in shortage
+          example: 0199c6a1-3f2b-7c4e-9d10-5b8a2e4f6c01
+        requested:
+          type: integer
+          format: int32
+          description: Quantity asked for this product by the request
+          example: 3
+        available:
+          type: integer
+          format: int32
+          description: "Quantity that can still be ordered (stock - reserved stock,\
+            \ never negative)"
+          example: 1
+          minimum: 0
+    ErrorDetailsDto:
+      type: object
+      description: Structured error payload. Present only for errors that document
+        it (NOT_ENOUGH_STOCK).
+      properties:
+        items:
+          type: array
+          description: Every product line in shortage (a cart write reports the first
+            one only)
+          items:
+            $ref: "#/components/schemas/StockShortageDto"
+            description: Every product line in shortage (a cart write reports the
+              first one only)
     ErrorResponseDto:
       type: object
       properties:
@@ -3923,6 +4062,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FieldErrorDto"
+        details:
+          $ref: "#/components/schemas/ErrorDetailsDto"
     FieldErrorDto:
       type: object
       properties:

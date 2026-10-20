@@ -31,6 +31,7 @@ import com.novatech.cybertech.exceptions.CartIsEmptyException;
 import com.novatech.cybertech.exceptions.FailedRetryingPayment;
 import com.novatech.cybertech.exceptions.NoPreviousPaymentAttemptException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.PaymentAlreadyCompletedForThisOrderException;
@@ -1072,7 +1073,7 @@ class OrderManagementServiceImpTest {
         void stockReservationFails_propagates() {
             final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
             when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
-            org.mockito.Mockito.doThrow(new NotEnoughStockException("nope"))
+            org.mockito.Mockito.doThrow(new NotEnoughStockException(new StockShortage(UUID.randomUUID(), 1, 0)))
                     .when(stockService).reserveStock(any(UUID.class), any());
 
             assertThatThrownBy(() -> service.retryPayment(order.getUuid(), jwt))

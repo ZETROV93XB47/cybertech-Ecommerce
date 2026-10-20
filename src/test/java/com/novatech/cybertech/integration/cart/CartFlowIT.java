@@ -248,7 +248,7 @@ class CartFlowIT {
     // 4. Out-of-stock batch (3rd item OOS). The handler maps this to 409.
     // ----------------------------------------------------------------------------------
     @Test
-    @DisplayName("batch with OOS third item — handler returns 409")
+    @DisplayName("batch with OOS third item — 409 NOT_ENOUGH_STOCK with the short line in details")
     void outOfStockThirdItemReturns409() throws Exception {
         // 2 already-stocked products + 1 OOS product
         ProductEntity p2 = productRepository.save(
@@ -270,7 +270,31 @@ class CartFlowIT {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.httpStatusCode").value(409))
-                .andExpect(jsonPath("$.errorCodeType").value("FUNCTIONAL"));
+                .andExpect(jsonPath("$.errorCodeType").value("FUNCTIONAL"))
+                .andExpect(jsonPath("$.errorCode").value("NOT_ENOUGH_STOCK"))
+                // stock 1, reservedStock 1 -> nothing left.
+                .andExpect(jsonPath("$.details.items.length()").value(1))
+                .andExpect(jsonPath("$.details.items[0].productUuid").value(oos.getUuid().toString()))
+                .andExpect(jsonPath("$.details.items[0].requested").value(5))
+                .andExpect(jsonPath("$.details.items[0].available").value(0));
+    }
+
+    @Test
+    @DisplayName("unknown product — 404 PRODUCT_NOT_FOUND carries no details")
+    void unknownProductHasNoDetails() throws Exception {
+        CartCreateRequestDto request = CartCreateRequestDto.builder()
+                .cartItemAddRequestDtos(List.of(
+                        CartItemAddRequestDto.builder().productUuid(UUID.randomUUID()).quantity(1).build()))
+                .build();
+
+        mockMvc.perform(post(CART_ADD_ENDPOINT)
+                        .with(JwtTestUtils.jwtUser(keycloakId))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("PRODUCT_NOT_FOUND"))
+                .andExpect(jsonPath("$.details").doesNotExist());
     }
 
     // ----------------------------------------------------------------------------------

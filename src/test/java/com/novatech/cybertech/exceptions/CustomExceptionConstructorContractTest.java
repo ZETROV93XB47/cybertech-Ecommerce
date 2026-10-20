@@ -55,13 +55,16 @@ class CustomExceptionConstructorContractTest {
     /** Exceptions whose ONLY ctor demands a concrete sub-cause and lacks {@code (String)}. */
     private static final Set<String> KNOWN_STRING_CTOR_VIOLATORS = Set.of(
             "IdempotencyKeyGenerationException",
-            "PaymentProcessingException"
+            "PaymentProcessingException",
+            // By design: built from StockShortage(s) so the handler can expose details.items.
+            "NotEnoughStockException"
     );
 
     /** Exceptions that lack a {@code (String, Throwable)} ctor, breaking cause-wrapping. */
     private static final Set<String> KNOWN_STRING_THROWABLE_CTOR_VIOLATORS = Set.of(
             "IdempotencyKeyGenerationException",
             "PaymentProcessingException",
+            "NotEnoughStockException",
             "ProductConstraintsViolationException",
             "PaymentFailedException",
             "PaymentNotFoundException",

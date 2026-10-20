@@ -8,6 +8,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import java.util.UUID;
+import java.util.List;
 import org.springframework.core.type.filter.AssignableTypeFilter;
 
 import java.lang.reflect.Constructor;
@@ -72,7 +74,8 @@ class CustomExceptionsConstructorTest {
     /** Exceptions whose only ctor is a non-(String) shape and so cannot be exercised generically here. */
     private static final Set<String> SPECIAL_CTOR_ONLY = Set.of(
             "IdempotencyKeyGenerationException",
-            "PaymentProcessingException"
+            "PaymentProcessingException",
+            "NotEnoughStockException"   // built from StockShortage(s), see NotEnoughStockSemantics
     );
 
     @Nested
@@ -209,16 +212,25 @@ class CustomExceptionsConstructorTest {
     class NotEnoughStockSemantics {
 
         @Test
-        @DisplayName("message preserved verbatim — no productUuid/requested/available getters surface today")
-        void messageIsLiteral() {
-            final NotEnoughStockException ex = new NotEnoughStockException("Not enough stock");
+        @DisplayName("carries every shortage and summarises them in the message")
+        void carriesShortages() {
+            final UUID first = UUID.randomUUID();
+            final UUID second = UUID.randomUUID();
+            final NotEnoughStockException ex = new NotEnoughStockException(List.of(
+                    new StockShortage(first, 3, 1), new StockShortage(second, 2, 0)));
 
-            // No domain getters exist yet — the message is the only carrier of operator info today.
-            assertThat(ex.getMessage()).isEqualTo("Not enough stock");
-            assertThat(Arrays.stream(ex.getClass().getDeclaredMethods())
-                    .map(java.lang.reflect.Method::getName))
-                    .as("no extra getters yet (fix would add productUuid/requested/available)")
-                    .doesNotContain("getProductUuid", "getRequested", "getAvailable");
+            assertThat(ex.getShortages()).containsExactly(new StockShortage(first, 3, 1), new StockShortage(second, 2, 0));
+            assertThat(ex.getMessage()).isEqualTo("Not enough stock for product " + first + ": requested=3, available=1; product "
+                    + second + ": requested=2, available=0");
+        }
+
+        @Test
+        @DisplayName("StockShortage.of floors a negative availability at 0")
+        void shortageNeverNegative() {
+            final UUID product = UUID.randomUUID();
+
+            assertThat(StockShortage.of(product, 1, 2, 5)).isEqualTo(new StockShortage(product, 1, 0));
+            assertThat(StockShortage.of(product, 4, 5, 2)).isEqualTo(new StockShortage(product, 4, 3));
         }
     }
 

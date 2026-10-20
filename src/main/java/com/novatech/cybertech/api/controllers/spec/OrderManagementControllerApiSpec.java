@@ -12,6 +12,7 @@ import com.novatech.cybertech.entities.enums.OrderStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -25,6 +26,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import java.util.Set;
 import java.util.UUID;
 
+import static com.novatech.cybertech.api.controllers.spec.ApiErrorExamples.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @Tag(name = "Order", description = "Endpoints for placing, retrying, retrieving, updating, cancelling and deleting orders")
@@ -49,6 +51,7 @@ public interface OrderManagementControllerApiSpec {
                     @ApiResponse(responseCode = "400", description = "Invalid request or validation error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Forbidden - user not allowed to perform this operation", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = NOT_ENOUGH_STOCK_DESCRIPTION, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class), examples = @ExampleObject(name = NOT_ENOUGH_STOCK_EXAMPLE_NAME, value = NOT_ENOUGH_STOCK_EXAMPLE))),
                     @ApiResponse(responseCode = "500", description = "Internal server error while placing the order", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             }
     )
@@ -132,6 +135,7 @@ public interface OrderManagementControllerApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Order not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = NOT_ENOUGH_STOCK_DESCRIPTION, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class), examples = @ExampleObject(name = NOT_ENOUGH_STOCK_EXAMPLE_NAME, value = NOT_ENOUGH_STOCK_EXAMPLE))),
                     @ApiResponse(responseCode = "500", description = "Internal server error during order update",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
@@ -153,6 +157,7 @@ public interface OrderManagementControllerApiSpec {
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Order not found", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = NOT_ENOUGH_STOCK_DESCRIPTION, content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class), examples = @ExampleObject(name = NOT_ENOUGH_STOCK_EXAMPLE_NAME, value = NOT_ENOUGH_STOCK_EXAMPLE))),
                     @ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<OrderResponseDto> retryPayment(

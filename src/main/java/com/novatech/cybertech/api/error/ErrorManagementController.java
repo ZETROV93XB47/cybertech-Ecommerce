@@ -2,8 +2,10 @@ package com.novatech.cybertech.api.error;
 
 
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.novatech.cybertech.api.error.model.ErrorDetailsDto;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.api.error.model.FieldErrorDto;
+import com.novatech.cybertech.api.error.model.StockShortageDto;
 import com.novatech.cybertech.exceptions.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -227,9 +229,13 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, NO_STRATEGY_FOUND.getResponseStatus());
     }
 
+    /** 409 with {@code details.items}: one entry per short line, so the client can flag each of them. */
     @ExceptionHandler(NotEnoughStockException.class)
     public ResponseEntity<ErrorResponseDto> handleNotEnoughStockException(NotEnoughStockException exception) {
-        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), NOT_ENOUGH_STOCK);
+        final List<StockShortageDto> items = exception.getShortages().stream()
+                .map(shortage -> new StockShortageDto(shortage.productUuid(), shortage.requested(), shortage.available()))
+                .toList();
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.withDetails(exception.getMessage(), NOT_ENOUGH_STOCK, new ErrorDetailsDto(items));
         return new ResponseEntity<>(errorResponseDto, NOT_ENOUGH_STOCK.getResponseStatus());
     }
 

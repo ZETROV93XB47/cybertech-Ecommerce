@@ -76,6 +76,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * End-to-end order placement flow IT (cart → place → cancel → retry payment).
@@ -474,12 +476,9 @@ class OrderFlowIT {
         assertThat(reloaded.getStatus()).isEqualTo(OrderStatus.CANCELED);
     }
 
-    // 8) Insufficient stock — @ExceptionHandler(NotEnoughStockException) was added → 409.
-    //    Pre-fix this surfaced as 500. Tolerant range covers both.
+    // 8) Insufficient stock at cart time → 409 NOT_ENOUGH_STOCK, the line and its availability in details.
     @Test
-    void placeOrderWithInsufficientStockReturnsConflict() throws Exception {
-        // Add a quantity that exceeds the seeded stock (10) so reservation fails.
-        // Cart-add itself enforces stock (NotEnoughStockException → 409 once the handler is wired).
+    void addToCartBeyondStockReturnsConflictWithDetails() throws Exception {
         final CartCreateRequestDto cartBody = CartCreateRequestDto.builder()
                 .cartItemAddRequestDtos(List.of(
                         CartItemAddRequestDto.builder().productUuid(productUuid).quantity(999).build()))
@@ -489,12 +488,60 @@ class OrderFlowIT {
                         .with(jwtUser(keycloakId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(cartBody)))
-                .andExpect(result -> {
-                    final int status = result.getResponse().getStatus();
-                    // @ExceptionHandler(NotEnoughStockException) is wired → 409 CONFLICT.
-                    // Previously this was 500.
-                    assertThat(status).isIn(409, 500);
-                });
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("NOT_ENOUGH_STOCK"))
+                .andExpect(jsonPath("$.details.items[0].productUuid").value(productUuid.toString()))
+                .andExpect(jsonPath("$.details.items[0].requested").value(999))
+                .andExpect(jsonPath("$.details.items[0].available").value(10));
+    }
+
+    // 8b) Stock taken by others between the cart and the order → place answers 409 with details.
+    @Test
+    void placeOrderAfterStockRanOutReturnsConflictWithDetails() throws Exception {
+        addItemToCart(productUuid, 2);
+        final ProductEntity product = productRepository.findByUuid(productUuid).orElseThrow();
+        product.setReservedStock(9); // other orders hold 9 of the 10 units
+        productRepository.save(product);
+
+        mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("NOT_ENOUGH_STOCK"))
+                .andExpect(jsonPath("$.details.items.length()").value(1))
+                .andExpect(jsonPath("$.details.items[0].productUuid").value(productUuid.toString()))
+                .andExpect(jsonPath("$.details.items[0].requested").value(2))
+                .andExpect(jsonPath("$.details.items[0].available").value(1));
+    }
+
+    // 8c) Raising a line of an existing order beyond the stock → update answers 409 with details.
+    @Test
+    void updateOrderBeyondStockReturnsConflictWithDetails() throws Exception {
+        addItemToCart(productUuid, 1);
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+
+        final OrderUpdateRequestDto update = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                .uuid(placed.getUuid())
+                .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder().productUuid(productUuid).quantity(50).build()))
+                .build();
+
+        // The order's own unit is released before re-reserving: all 10 units are available.
+        mockMvc.perform(post("/api/v1/services/management/order/update")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(update)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("NOT_ENOUGH_STOCK"))
+                .andExpect(jsonPath("$.details.items[0].productUuid").value(productUuid.toString()))
+                .andExpect(jsonPath("$.details.items[0].requested").value(50))
+                .andExpect(jsonPath("$.details.items[0].available").value(10));
     }
 
     // 9) Retry payment after initial failure — fail-then-success scenario.

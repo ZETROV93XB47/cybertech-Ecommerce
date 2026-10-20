@@ -15,6 +15,7 @@ import com.novatech.cybertech.exceptions.CartItemNotFoundException;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.exceptions.UnauthorizedCartAccessException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
 import com.novatech.cybertech.fixtures.builders.CartEntityBuilder;
@@ -24,6 +25,7 @@ import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.mappers.entity.CartMapper;
 import com.novatech.cybertech.repositories.CartRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.implementation.CartWriteTransactionalDelegateImp;
 import org.junit.jupiter.api.BeforeEach;
@@ -258,9 +260,27 @@ class CartWriteTransactionalDelegateTest {
             when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
 
             assertThatThrownBy(() -> delegate.addItemsWithinTransaction(requestFor(product.getUuid(), 3), keycloakId))
-                    .isInstanceOf(NotEnoughStockException.class);
+                    .isInstanceOf(NotEnoughStockException.class)
+                    .extracting(e -> ((NotEnoughStockException) e).getShortages())
+                    .asInstanceOf(InstanceOfAssertFactories.list(StockShortage.class))
+                    .containsExactly(new StockShortage(product.getUuid(), 3, 2));
 
             verify(cartRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("not enough stock reports available = 0 when reservedStock exceeds stock")
+        void notEnoughStock_availableFlooredAtZero() {
+            final ProductEntity product = ProductEntityBuilder.aValidProductBuilder().stock(2).reservedStock(5).build();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).cartEntity(null).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(productRepository.findAllByUuidIn(anyCollection())).thenReturn(List.of(product));
+
+            assertThatThrownBy(() -> delegate.addItemsWithinTransaction(requestFor(product.getUuid(), 1), keycloakId))
+                    .isInstanceOf(NotEnoughStockException.class)
+                    .extracting(e -> ((NotEnoughStockException) e).getShortages())
+                    .asInstanceOf(InstanceOfAssertFactories.list(StockShortage.class))
+                    .containsExactly(new StockShortage(product.getUuid(), 1, 0));
         }
 
         @Test

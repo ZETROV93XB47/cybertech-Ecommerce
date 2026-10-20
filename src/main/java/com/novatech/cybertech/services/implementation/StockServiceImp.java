@@ -4,6 +4,7 @@ import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.StockEntity;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.StockService;
@@ -17,6 +18,7 @@ import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 
@@ -87,11 +89,7 @@ public class StockServiceImp implements StockService {
             return;
         }
 
-        // Canonical lock order across all callers prevents A-B / B-A deadlocks on
-        // concurrent orders that touch the same product set in different input order.
-        final Map<UUID, Integer> ordered = new TreeMap<>(Comparator.comparing(UUID::toString));
-        ordered.putAll(quantities);
-        ordered.entrySet().forEach(entry -> lockAndReserveProduct(orderUuid, entry));
+        lockAndReserveAll(orderUuid, quantities);
         redisTemplate.opsForValue().set(reservationKey(orderUuid), ACTIVE.name(), RESERVATION_TTL);
 
         log.info("Reserved successfully stock for order {}", orderUuid);
@@ -240,9 +238,7 @@ public class StockServiceImp implements StockService {
         // existed, violating the unique key — every real updateOrder keeping a product failed 500.
         stockRepository.flush();
 
-        final Map<UUID, Integer> ordered = new TreeMap<>(Comparator.comparing(UUID::toString));
-        ordered.putAll(newQuantities);
-        ordered.entrySet().forEach(entry -> lockAndReserveProduct(orderUuid, entry));
+        lockAndReserveAll(orderUuid, newQuantities);
 
         redisTemplate.opsForValue().set(reservationKey(orderUuid), ACTIVE.name(), RESERVATION_TTL);
 
@@ -324,9 +320,10 @@ public class StockServiceImp implements StockService {
      *
      * @throws IllegalArgumentException when {@code qty &lt;= 0}
      * @throws ProductNotFoundException when the product cannot be located
-     * @throws NotEnoughStockException  when {@code stock - reservedStock &lt; qty}
+     * @return the shortage when {@code stock - reservedStock &lt; qty} (nothing is reserved for that
+     *         product), empty once the reservation is written
      */
-    private void lockAndReserveProduct(UUID orderUuid, Map.Entry<UUID, Integer> entry) {
+    private Optional<StockShortage> lockAndReserveProduct(UUID orderUuid, Map.Entry<UUID, Integer> entry) {
         final UUID productUuid = entry.getKey();
         final int qty = entry.getValue();
 
@@ -338,7 +335,7 @@ public class StockServiceImp implements StockService {
 
         final int available = product.getStock() - product.getReservedStock();
         if (available < qty) {
-            throw new NotEnoughStockException("Not enough stock for product " + productUuid + ": requested=" + qty + ", available=" + available);
+            return Optional.of(StockShortage.of(productUuid, qty, product.getStock(), product.getReservedStock()));
         }
 
         final StockEntity reservation = StockEntity.builder()
@@ -352,6 +349,29 @@ public class StockServiceImp implements StockService {
 
         product.setReservedStock(product.getReservedStock() + qty);
         productRepository.save(product);
+        return Optional.empty();
+    }
+
+    /**
+     * Locks and reserves every line, then fails once with ALL the short lines so the client can
+     * flag each of them. Lines that did fit were already written; the exception rolls them back
+     * with the caller's transaction, and the Redis sentinel is only set by the caller after this
+     * returns.
+     *
+     * @throws NotEnoughStockException listing every line whose quantity exceeds the available stock
+     */
+    private void lockAndReserveAll(UUID orderUuid, Map<UUID, Integer> quantities) {
+        // Canonical lock order across all callers prevents A-B / B-A deadlocks on
+        // concurrent orders that touch the same product set in different input order.
+        final Map<UUID, Integer> ordered = new TreeMap<>(Comparator.comparing(UUID::toString));
+        ordered.putAll(quantities);
+        final List<StockShortage> shortages = ordered.entrySet().stream()
+                .map(entry -> lockAndReserveProduct(orderUuid, entry))
+                .flatMap(Optional::stream)
+                .toList();
+        if (!shortages.isEmpty()) {
+            throw new NotEnoughStockException(shortages);
+        }
     }
 
 }

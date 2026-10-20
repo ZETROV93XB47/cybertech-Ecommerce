@@ -25,6 +25,10 @@ import com.novatech.cybertech.exceptions.NegativeQuantityException;
 import com.novatech.cybertech.exceptions.NoPreviousPaymentAttemptException;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import java.util.UUID;
+import java.util.List;
+import com.novatech.cybertech.api.error.model.StockShortageDto;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.exceptions.OrderAlreadyShippedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
@@ -304,12 +308,28 @@ class ErrorManagementControllerBranchTest {
     }
 
     @Test
-    @DisplayName("NotEnoughStockException → 409 FUNCTIONAL with passthrough message")
+    @DisplayName("NotEnoughStockException → 409 FUNCTIONAL, details.items mirrors every shortage")
     void notEnoughStockReturns409() {
-        final ResponseEntity<ErrorResponseDto> response =
-                controller.handleNotEnoughStockException(new NotEnoughStockException("oos"));
+        final UUID first = UUID.randomUUID();
+        final UUID second = UUID.randomUUID();
+        final NotEnoughStockException exception = new NotEnoughStockException(List.of(
+                new StockShortage(first, 3, 1), new StockShortage(second, 2, 0)));
 
-        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "oos");
+        final ResponseEntity<ErrorResponseDto> response = controller.handleNotEnoughStockException(exception);
+
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, exception.getMessage());
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.NOT_ENOUGH_STOCK);
+        assertThat(response.getBody().getDetails().getItems()).containsExactly(
+                new StockShortageDto(first, 3, 1), new StockShortageDto(second, 2, 0));
+    }
+
+    @Test
+    @DisplayName("Errors other than NOT_ENOUGH_STOCK carry no details")
+    void otherErrorsHaveNoDetails() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleOrderNotFoundException(new OrderNotFoundException("no order"));
+
+        assertThat(response.getBody().getDetails()).isNull();
     }
 
     @Test

@@ -5,11 +5,13 @@ import com.novatech.cybertech.entities.StockEntity;
 import com.novatech.cybertech.entities.enums.ReservationStatus;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.StockEntityBuilder;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.implementation.StockServiceImp;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -246,6 +248,70 @@ class StockServiceImpTest {
 
         assertThatThrownBy(() -> service.reserveStock(orderUuid, qty))
                 .isInstanceOf(NotEnoughStockException.class);
+
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("reserveStock: every short line is reported in one exception, with requested and available")
+    void reserveStock_reportsEveryShortage() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productOk = UUID.randomUUID();
+        UUID productShortA = UUID.randomUUID();
+        UUID productShortB = UUID.randomUUID();
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productOk)).thenReturn(Optional.of(productWithStock(productOk, 100, 0)));
+        when(productRepository.lockByUuid(productShortA)).thenReturn(Optional.of(productWithStock(productShortA, 5, 4)));
+        when(productRepository.lockByUuid(productShortB)).thenReturn(Optional.of(productWithStock(productShortB, 2, 0)));
+
+        Map<UUID, Integer> qty = new HashMap<>();
+        qty.put(productOk, 1);
+        qty.put(productShortA, 3);
+        qty.put(productShortB, 4);
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, qty))
+                .isInstanceOf(NotEnoughStockException.class)
+                .extracting(e -> ((NotEnoughStockException) e).getShortages())
+                .asInstanceOf(InstanceOfAssertFactories.list(StockShortage.class))
+                .containsExactlyInAnyOrder(new StockShortage(productShortA, 3, 1), new StockShortage(productShortB, 4, 2));
+
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("reserveStock: available is 0, never negative, when reservedStock exceeds stock")
+    void reserveStock_availableFlooredAtZero() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(productWithStock(productUuid, 2, 5)));
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, 1)))
+                .isInstanceOf(NotEnoughStockException.class)
+                .extracting(e -> ((NotEnoughStockException) e).getShortages())
+                .asInstanceOf(InstanceOfAssertFactories.list(StockShortage.class))
+                .containsExactly(new StockShortage(productUuid, 1, 0));
+    }
+
+    @Test
+    @DisplayName("resizeReservation: a raised quantity beyond the stock is reported with requested and available")
+    void resizeReservation_reportsShortage() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        StockEntity oldReservation = reservation(orderUuid, productUuid, 2);
+        ProductEntity product = productWithStock(productUuid, 3, 2);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(oldReservation));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        // The order's own 2 units are released first: 3 in stock, 5 asked -> 3 available.
+        assertThatThrownBy(() -> service.resizeReservation(orderUuid, Map.of(productUuid, 5)))
+                .isInstanceOf(NotEnoughStockException.class)
+                .extracting(e -> ((NotEnoughStockException) e).getShortages())
+                .asInstanceOf(InstanceOfAssertFactories.list(StockShortage.class))
+                .containsExactly(new StockShortage(productUuid, 5, 3));
 
         verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
     }

@@ -11,6 +11,9 @@ import com.novatech.cybertech.dto.request.cart.CartUpdateRequestDto;
 import com.novatech.cybertech.dto.response.cart.CartResponseDto;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.api.error.model.StockShortageDto;
+import com.novatech.cybertech.api.error.model.ErrorDetailsDto;
+import com.novatech.cybertech.exceptions.StockShortage;
 import com.novatech.cybertech.exceptions.UnauthorizedCartAccessException;
 import com.novatech.cybertech.fixtures.dto.CartDtoFixtures;
 import com.novatech.cybertech.fixtures.support.JwtTestUtils;
@@ -276,17 +279,19 @@ class CartManagementControllerTest {
         void failAddToCart_whenNotEnoughStock_thenConflict() throws Exception {
             // Handler now maps NotEnoughStockException -> 409 CONFLICT FUNCTIONAL.
             CartCreateRequestDto request = CartDtoFixtures.aValidCartCreateRequest();
-            String message = "Not enough stock for product XYZ";
+            UUID productUuid = UUID.randomUUID();
+            NotEnoughStockException exception = new NotEnoughStockException(new StockShortage(productUuid, 3, 1));
 
             ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
-                    .message(message)
+                    .message(exception.getMessage())
                     .httpStatusCode(409)
                     .errorCodeType(FUNCTIONAL)
                     .errorCode(ErrorCode.NOT_ENOUGH_STOCK)
+                    .details(new ErrorDetailsDto(List.of(new StockShortageDto(productUuid, 3, 1))))
                     .build();
 
             when(cartService.addItemsToCart(any(CartCreateRequestDto.class), anyString()))
-                    .thenThrow(new NotEnoughStockException(message));
+                    .thenThrow(exception);
 
             mockMvc.perform(post(ADD_TO_CART_ENDPOINT)
                             .with(JwtTestUtils.jwtUser(KEYCLOAK_ID))
