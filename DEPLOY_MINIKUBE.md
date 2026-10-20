@@ -248,6 +248,28 @@ curl -H "Authorization: Bearer $TOKEN" http://api.cybertech.local/api/v1/service
 
 ---
 
+## Step 6a — Reach the cluster without ingress (port-forward)
+
+No admin rights, no `hosts` entry, no `minikube tunnel`. Each command runs in the foreground
+(one terminal each, or append `&` in Git Bash) and stops when the terminal closes or the pod is
+replaced, so re-run them after every `minikube start` or redeploy.
+
+```bash
+kubectl port-forward svc/cybertech-app 8081:8081   # backend API (stop the IntelliJ app: same port)
+kubectl port-forward svc/keycloak 8080:8080        # tokens + admin console (admin/admin)
+kubectl port-forward svc/mailpit 8025:8025         # captured e-mails
+kubectl port-forward svc/rustfs 9001:9001          # RustFS console
+```
+
+Get tokens from `http://localhost:8080/realms/cybertech/protocol/openid-connect/token`.
+Keycloak's hostname is pinned to `http://keycloak.cybertech.local`, so their `iss` matches the
+backend's issuer whatever address you used. Limit: Keycloak's browser login pages redirect to
+`http://keycloak.cybertech.local`, so a browser login flow (the Next.js front) still needs the
+ingress path (`hosts` → `127.0.0.1` + `minikube tunnel`; on Windows, port 80 must be free — IIS
+often holds it). Postman/curl grants work with port-forward alone.
+
+---
+
 ## Step 6b — Iterate on the backend with Skaffold
 
 Once Step 5 has deployed the stack, Skaffold replaces the manual

@@ -228,6 +228,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### À faire / pistes ouvertes (non traitées, non priorisées)
 
+- **2026-10-20 (suite) — Keycloak hostname épinglé** : `keycloak.hostname` = `http://keycloak.cybertech.local` (URL complète) ; l'`iss` ne dépend plus du port d'accès, un token obtenu via `kubectl port-forward svc/keycloak` est accepté par le backend du cluster (401 sans token → 403 avec un token de service account). Accès par port-forward documenté (Step 6a de `DEPLOY_MINIKUBE.md`). Le login navigateur du front exige toujours l'ingress (port 80 occupé par IIS sur le poste).
 - **Minikube — validation fonctionnelle** : le cluster tourne (2026-10-20) ; reste à tester l'authentification OIDC via `keycloak.cybertech.local`, l'upload/lecture d'une image via `s3.cybertech.local` et une commande payée de bout en bout (webhook Stripe). Les anciennes releases Loki/Grafana/LocalStack ne sont plus installées. Une ancienne claim `data-mongo-mongodb-0` (211 j) reste sans pod : à examiner avant suppression.
 - **Minikube — secret root MySQL** : la valeur Helm `MYSQL_ROOT_PASSWORD` n'est appliquée qu'à l'initialisation d'un volume vide ; le volume actuel (comme le dev) a un root sans mot de passe.
 - **Pom** : `jib-maven-plugin` est aussi déclaré comme `<dependency>`, ce qui embarque le plugin dans le jar applicatif ; à retirer.

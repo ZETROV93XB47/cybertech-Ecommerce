@@ -31,9 +31,11 @@ keycloak:
     username: rookie
     password: pwd  # REPLACE in prod via Kubernetes Secret/env
 
-  # Hostname Keycloak will advertise / honour from X-Forwarded-Host.
-  # Frontend reaches it through nginx-ingress on this host.
-  hostname: keycloak.cybertech.local
+  # Public URL Keycloak puts in every token (`iss`) and every link it generates.
+  # A full URL (scheme included) pins it whatever address the request came through —
+  # ingress, `kubectl port-forward` or in-cluster `keycloak:8080` — so it always matches the
+  # backend's issuer-uri. A bare host would let the request's port leak into `iss`.
+  hostname: http://keycloak.cybertech.local
   hostnameStrict: false
 
   # Trust the ingress's X-Forwarded-* headers (HTTP-only ingress).
