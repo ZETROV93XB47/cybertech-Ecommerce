@@ -1,5 +1,5 @@
 mailpit:
-  image: axllent/mailpit
+  image: axllent/mailpit:v1.31.6
   smtpPort: 1025
   webPort: 8025
 

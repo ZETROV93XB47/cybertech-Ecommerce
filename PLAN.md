@@ -6,10 +6,23 @@
   - [x] Vérifier le rendu Helm et appliquer le correctif ; les nouveaux logs ne montrent plus le refus MySQL.
   - [x] Récupérer le statut Helm après l'interruption de l'attente de readiness, sans supprimer ni modifier les données persistantes.
   - [x] Committer uniquement les changements de cette correction.
-- [ ] **Débloquer le backend Minikube — Elasticsearch** :
+- [x] **Débloquer le backend Minikube — Elasticsearch** :
   - [x] Diagnostiquer le démarrage : la claim Elasticsearch de 5 Gi contient un index créé par Elasticsearch 10, illisible par le pod 8.15.3.
-  - [ ] Choisir avec le propriétaire entre préserver les données en alignant la version Elasticsearch et repartir sur un volume vide (suppression destructive).
-  - [ ] Rétablir Elasticsearch puis vérifier le rollout du backend.
+  - [x] Confirmer avec le propriétaire la réinitialisation destructive du volume Elasticsearch pour repartir proprement.
+  - [x] Aligner la version déclarée du chart avec son image 9.2.5.
+  - [x] Claim Elasticsearch déjà recréée lors de la session précédente : le pod 9.2.5 démarre sur un volume vide.
+  - [x] MongoDB : données en FCV 6.0 illisibles par 8.2.5 → montée 7.0 → 8.0 → 8.2.5 sans perte (aucune base applicative présente).
+  - [x] Keycloak 26 : retirer la politique JS « Default Policy » (et sa permission) du realm, dans les deux copies.
+  - [x] Gorse 0.5.11 : Redis passé de 7.2 à 8.10.2 (commandes `FT.*` requises).
+  - [x] Appliquer le Helmfile avec les secrets du dev (`minikube-dev-secrets.sh`) : 11 releases `deployed`, backend `UP` (db, mongo, redis, elasticsearch).
+  - [x] Corrections révélées au déploiement : Redis lancé en `args` (modules), chart Stripe sans port/sondes, checksum des secrets, `spring.mongodb.uri` sans espaces finaux.
+- [ ] **Charts et Skaffold** (2026-10-20) :
+  - [x] Épingler les images (`latest` / sans tag) et aligner Compose sur Helm (Keycloak 26.0.4, Redis 8.10.2, Gorse 0.5.11, RustFS 1.0.3, Mailpit v1.31.6, aws-cli 2.38.2).
+  - [x] Retirer l'environnement Helmfile `production` sans fichier de valeurs.
+  - [x] Configurer Jib (`eclipse-temurin:26-jre`, `--enable-preview`, classe principale) et réécrire `skaffold.yml` pour la seule release `cybertech-app`.
+  - [x] `skaffold run` : build Jib OK (~11 s, image dans le Docker de Minikube) ; deploy bloqué sous Windows sans le mode développeur (plugin Helm 4 installé en symlink).
+  - [ ] Activer le mode développeur Windows (propriétaire) puis revalider `skaffold run`.
+  - [x] Tests Maven, `progress.md`, commit.
 - [x] **Supprimer Vault du projet et remplacer son usage par des secrets Kubernetes/env** :
   - [x] Migrer les placeholders secrets de `application-prod.properties` vers des variables d'environnement et retirer la dépendance/configuration Spring Vault.
   - [x] Retirer Vault de Docker Compose et Helm (chart, options du chart applicatif et chart Stripe).

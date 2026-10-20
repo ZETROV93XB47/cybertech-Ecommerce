@@ -618,9 +618,24 @@
                 <artifactId>jib-maven-plugin</artifactId>
                 <version>3.5.1</version>
                 <configuration>
+                    <!-- Skaffold overrides <to> with the tag it computes; this default matches the Helm chart. -->
+                    <from>
+                        <image>eclipse-temurin:26-jre</image>
+                    </from>
                     <to>
-                        <image>cybertech</image>
+                        <image>cybertech-app</image>
                     </to>
+                    <container>
+                        <!-- Explicit so Jib does not have to scan Java 26 bytecode to infer it. -->
+                        <mainClass>com.novatech.cybertech.CyberTechApplication</mainClass>
+                        <!-- The code is compiled with preview features, see maven-compiler-plugin. -->
+                        <jvmFlags>
+                            <jvmFlag>--enable-preview</jvmFlag>
+                        </jvmFlags>
+                        <ports>
+                            <port>8081</port>
+                        </ports>
+                    </container>
                 </configuration>
             </plugin>
             <plugin>

@@ -134,26 +134,18 @@ minikube image ls | grep cybertech-app
 
 ## Step 4 — Set required env vars
 
-`helmfile.yaml.gotmpl` requires these values before `helmfile apply`:
+`helmfile.yaml.gotmpl` and `skaffold.yml` read their secrets from the environment.
+`minikube-dev-secrets.sh` exports the same values as the local dev setup
+(Keycloak client secret, RustFS credentials, card encryption key, Stripe test key and
+webhook signing secret) plus `MINIKUBE_IP`:
 
 ```bash
-export MYSQL_ROOT_PASSWORD="cybertech-root"
-export KEYCLOAK_CLIENT_SECRET="rPKnibr1m14c2Oit4XybU1AhhIbuZVtt"
-export RUSTFS_ACCESS_KEY="cybertech-local"
-export RUSTFS_SECRET_KEY="$(openssl rand -hex 24)"
-export APP_CARD_ENCRYPTION_KEY="$(openssl rand -base64 32)"
-export STRIPE_API_KEY="sk_test_PLACEHOLDER"
-export STRIPE_WEBHOOK_SECRET="whsec_PLACEHOLDER"
+source src/main/resources/k8s/helm/minikube-dev-secrets.sh
 ```
 
-`MINIKUBE_IP` must also be set as shown in Step 1. The backend encryption key
-must remain stable to decrypt existing stored cards. Use alphanumeric MySQL
-and RustFS credentials for this local setup.
-
-> **Real Stripe keys:** if you want webhooks to actually work, drop your real
-> `sk_test_…` and the matching webhook signing secret here. The Wave 3 fix in
-> `04ea74b` makes the webhook handler tolerant of API-version skew, so any
-> recent Stripe account works.
+The card encryption key must stay stable, or already stored cards can no longer be
+decrypted. The in-cluster `stripe listen` derives its webhook signing secret from the API
+key, so it matches `STRIPE_WEBHOOK_SECRET`.
 
 ---
 
@@ -253,6 +245,30 @@ TOKEN=$(curl -s -X POST http://keycloak.cybertech.local/realms/cybertech/protoco
 # Hit a protected endpoint
 curl -H "Authorization: Bearer $TOKEN" http://api.cybertech.local/api/v1/services/cart/list
 ```
+
+---
+
+## Step 6b — Iterate on the backend with Skaffold
+
+Once Step 5 has deployed the stack, Skaffold replaces the manual
+`docker build` + `helm upgrade` cycle for the backend only. `skaffold.yml` (repo root)
+manages the `cybertech-app` release and nothing else; the infrastructure stays as
+Helmfile left it.
+
+```bash
+source src/main/resources/k8s/helm/minikube-dev-secrets.sh   # same env vars as Step 4
+skaffold dev --cleanup=false   # build, deploy, stream logs, forward localhost:8081, rebuild on save
+skaffold run                   # one-off build + deploy
+```
+
+- Images are built by Jib (configured in `pom.xml`) straight into Minikube's Docker daemon:
+  no `minikube docker-env`, no registry, no push. Each build gets a new tag.
+- Tests are skipped during image builds (`-DskipTests`); run `./mvnw test` separately.
+- Without `--cleanup=false`, Ctrl+C on `skaffold dev` uninstalls the `cybertech-app`
+  release; `helmfile apply` or `skaffold run` brings it back.
+- **Windows + Helm 4**: Skaffold deploys through a Helm plugin it installs as a symlink, which
+  Windows only allows with Developer Mode on (Settings → System → For developers). Without it the
+  build succeeds but the deploy fails with `A required privilege is not held by the client`.
 
 ---
 

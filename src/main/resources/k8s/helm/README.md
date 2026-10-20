@@ -219,9 +219,11 @@ kubectl delete pvc --all              # wipes data volumes
 - Helmfile deploys RustFS and Gorse; the frontend, Vault, LocalStack, Loki, and
   Grafana charts have been removed.
 - This Helmfile deploys backend services only.
-- Helm lint/render checks can validate manifests, but Minikube was stopped
-  during this audit, so a live rollout and browser-based OIDC/S3 checks remain
-  to be run after the cluster is started.
-- The RustFS, Gorse, and AWS CLI images use `latest` to match the current
-  local Compose configuration; pin image versions before treating these
-  charts as production deployment artifacts.
+- Every image is pinned to the same version as the local Compose stack. Gorse
+  0.5.x needs the Redis query engine (`FT.*` commands), which is why Redis is on
+  8.x rather than 7.x.
+- Keycloak 26 refuses JavaScript authorization policies, so the realm export
+  must not contain `"type": "js"` policies.
+- Only the `default` Helmfile environment exists; there is no production values file.
+- For the backend's edit/rebuild loop, use Skaffold (`skaffold.yml` at the repo
+  root, see `DEPLOY_MINIKUBE.md`); it only manages the `cybertech-app` release.

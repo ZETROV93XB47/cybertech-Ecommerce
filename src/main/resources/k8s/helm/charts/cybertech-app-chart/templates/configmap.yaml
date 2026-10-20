@@ -61,7 +61,7 @@ data:
     # ============================================================
     # MONGODB CONFIGURATION
     # ============================================================
-    spring.data.mongodb.uri=mongodb://{{ .Values.mongodb.host }}:{{ .Values.mongodb.port }}/{{ .Values.mongodb.database }}    
+    spring.mongodb.uri=mongodb://{{ .Values.mongodb.host }}:{{ .Values.mongodb.port }}/{{ .Values.mongodb.database }}
     logging.level.org.springframework.data.mongodb.core={{ index .Values.logging.level "org.springframework.data.mongodb.core" }}
 
     # ============================================================

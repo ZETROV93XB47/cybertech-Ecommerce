@@ -3,4 +3,4 @@ name: rustfs
 description: RustFS S3-compatible object storage for Cybertech
 type: application
 version: 0.1.0
-appVersion: "latest"
+appVersion: "1.0.3"

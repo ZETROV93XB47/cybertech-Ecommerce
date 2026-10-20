@@ -1,6 +1,6 @@
 image:
   repository: zhenghaoz/gorse-in-one
-  tag: latest
+  tag: "0.5.11"
   pullPolicy: IfNotPresent
 
 service:

@@ -1,5 +1,5 @@
 redis:
-  image: redis:7.2
+  image: redis:8.10.2
   port: 6379
 
   persistence:

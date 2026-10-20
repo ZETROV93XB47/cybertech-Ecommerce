@@ -13,6 +13,9 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
+      annotations:
+        # Rolls the pod when a secret changes; env vars are only read at start-up.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         app.kubernetes.io/name: rustfs
         app.kubernetes.io/instance: {{ .Release.Name }}

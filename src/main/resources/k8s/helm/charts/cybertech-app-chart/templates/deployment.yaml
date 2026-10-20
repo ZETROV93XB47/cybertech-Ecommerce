@@ -11,6 +11,10 @@ spec:
       app: cybertech-app
   template:
     metadata:
+      annotations:
+        # Rolls the pod when a secret or the config changes; env vars are only read at start-up.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/configmap: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
         app: cybertech-app
     spec:

@@ -11,10 +11,15 @@ spec:
       app: stripe
   template:
     metadata:
+      annotations:
+        # Rolls the pod when a secret changes; env vars are only read at start-up.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         app: stripe
     spec:
       containers:
+        # `stripe listen` is an outbound client (it forwards Stripe events to the backend);
+        # it opens no port, so there is no Service and no TCP probe.
         - name: stripe
           image: {{ .Values.stripe.image }}
           command:
@@ -32,27 +37,10 @@ spec:
                 secretKeyRef:
                   name: stripe-secret
                   key: api-key
-          ports:
-            - containerPort: {{ .Values.service.port }}
-              name: stripe
           {{- if .Values.resources }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- end }}
-          livenessProbe:
-            tcpSocket:
-              port: {{ .Values.service.port }}
-            initialDelaySeconds: 15
-            periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            tcpSocket:
-              port: {{ .Values.service.port }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 2
       {{- if .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}

@@ -40,7 +40,7 @@ services:
       - ecommerce-net
 
   redis:
-    image: redis:latest
+    image: redis:8.10.2
     container_name: redisEcommerce
     restart: unless-stopped
     command: >
@@ -85,7 +85,7 @@ services:
       - ecommerce-net
 
   gorse:
-    image: zhenghaoz/gorse-in-one:latest
+    image: zhenghaoz/gorse-in-one:0.5.11
     container_name: gorse
     restart: unless-stopped
     environment:
@@ -110,7 +110,7 @@ services:
   # =========================================================
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0.3
+    image: quay.io/keycloak/keycloak:26.0.4
     container_name: keycloak
     restart: unless-stopped
     environment:
@@ -121,9 +121,8 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: "true"
-      KC_HOSTNAME: localhost:8080
+      KC_HOSTNAME: http://localhost:8080
       KC_PROXY_HEADERS: xforwarded
-      KC_PROXY: edge
     # --import-realm scans /opt/keycloak/data/import on every boot and seeds any realm found
     # there that doesn't already exist (IGNORE_EXISTING strategy) — safe to leave on permanently:
     # a no-op once the realm is already in the keycloakDB volume, auto-provisioning on a fresh one.
@@ -150,7 +149,7 @@ services:
   # =========================================================
 
   mailpit:
-    image: axllent/mailpit
+    image: axllent/mailpit:v1.31.6
     container_name: mailpit
     environment:
       MP_DATA_FILE: /data/mailpit.db
@@ -196,7 +195,7 @@ services:
   # RUSTFS (S3 COMPATIBLE OBJECT STORAGE) for testing / local development
   # =========================================================
   rustfs:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:1.0.3
     container_name: rustfs
     restart: unless-stopped
 
@@ -220,7 +219,7 @@ services:
       - ecommerce-net
 
   s3-init:
-    image: amazon/aws-cli:latest
+    image: amazon/aws-cli:2.38.2
     container_name: rustfs-s3-init
     entrypoint: ["/bin/sh", "/init-s3.sh"]
     environment:
