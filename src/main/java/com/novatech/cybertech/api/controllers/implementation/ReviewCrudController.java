@@ -1,5 +1,8 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
+import org.springframework.data.web.PagedModel;
+import org.springframework.data.domain.Sort;
+import com.novatech.cybertech.dto.response.review.MyReviewDto;
 import com.novatech.cybertech.api.controllers.spec.ReviewCrudControllerApiSpec;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
@@ -24,6 +27,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_SORT_FIELD;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_MY_REVIEWS;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_PRODUCT_REVIEWS;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REVIEW_CRUD_CONTROLLER_BASE_PATH;
@@ -84,6 +89,15 @@ public class ReviewCrudController implements ReviewCrudControllerApiSpec {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.maxAge(PRODUCT_REVIEWS_CACHE_MAX_AGE).cachePublic())
                 .body(reviewService.getPublishedReviewsOfProduct(productUuid, pageable));
+    }
+
+    /** The caller's own reviews, paginated (10 per page, newest first by default). */
+    @Override
+    @PreAuthorize("hasRole('USER')")
+    @GetMapping(value = "/mine", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<PagedModel<MyReviewDto>> getMyReviews(@AuthenticationPrincipal final Jwt jwt,
+                                                               @PageableDefault(size = DEFAULT_PAGE_SIZE_MY_REVIEWS, sort = DEFAULT_SORT_FIELD, direction = Sort.Direction.DESC) final Pageable pageable) {
+        return ResponseEntity.ok(reviewService.getMyReviews(jwt.getSubject(), pageable));
     }
 
     /**

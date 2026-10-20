@@ -150,6 +150,7 @@ CREATE TABLE reviewTable
     rating    INTEGER  NOT NULL,
     comment   TEXT,
     isHateful BOOLEAN  NOT NULL,
+    orderUuid BINARY(16),        -- Commande d'achat du produit (nullable pour les avis antérieurs)
     createdAt DATETIME NOT NULL,
     updatedAt DATETIME,
 

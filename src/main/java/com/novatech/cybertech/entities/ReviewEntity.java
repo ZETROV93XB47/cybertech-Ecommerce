@@ -4,10 +4,13 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.validator.constraints.Range;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -29,6 +32,15 @@ public class ReviewEntity extends BaseEntity<Long> {
 
     @Column(name = "isHateful", nullable = false)
     private Boolean isHateful;
+
+    /**
+     * Order the reviewed product was bought in, checked at creation. Nullable: reviews posted
+     * before the column existed are backfilled by the 2026-10-20 migration when a matching order
+     * is found.
+     */
+    @JdbcTypeCode(SqlTypes.UUID)
+    @Column(name = "orderUuid")
+    private UUID orderUuid;
 
     @ManyToOne(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinColumn(name = "reviewId", nullable = false)

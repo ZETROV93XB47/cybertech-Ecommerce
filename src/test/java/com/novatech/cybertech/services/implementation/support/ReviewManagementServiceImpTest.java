@@ -1,5 +1,7 @@
 package com.novatech.cybertech.services.implementation.support;
 
+import org.springframework.data.web.PagedModel;
+import com.novatech.cybertech.dto.response.review.MyReviewDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.moderation.ModerationResponseDto;
@@ -198,6 +200,7 @@ class ReviewManagementServiceImpTest {
             assertThat(reviewEntity.getIsHateful()).isFalse();
             assertThat(reviewEntity.getUserEntity()).isSameAs(user);
             assertThat(reviewEntity.getProductEntity()).isSameAs(product);
+            assertThat(reviewEntity.getOrderUuid()).isEqualTo(order.getUuid());
         }
 
         @Test
@@ -867,6 +870,60 @@ class ReviewManagementServiceImpTest {
             assertThatThrownBy(() -> service.getPublishedReviewsOfProduct(productUuid, PageRequest.of(0, 10)))
                     .isInstanceOf(ProductNotFoundException.class);
             verifyNoInteractions(reviewRepository);
+        }
+    }
+
+    // ============================ getMyReviews ============================
+
+    @Nested
+    class MyReviews {
+
+        private final String keycloakId = "kc-me";
+
+        @Test
+        @DisplayName("maps the caller's page; default order createdAt desc then id desc")
+        void defaultOrderAndMapping() {
+            ReviewEntity review = ReviewEntityBuilder.aValidReview();
+            MyReviewDto dto = MyReviewDto.builder().uuid(review.getUuid()).rating(4).build();
+            when(reviewRepository.findByAuthorKeycloakId(eq(keycloakId), any(Pageable.class)))
+                    .thenAnswer(inv -> new PageImpl<>(List.of(review), inv.getArgument(1), 11));
+            when(reviewMapper.mapFromEntityToMyReviewDto(review)).thenReturn(dto);
+
+            PagedModel<MyReviewDto> result = service.getMyReviews(keycloakId, PageRequest.of(1, 10));
+
+            assertThat(result.getContent()).containsExactly(dto);
+            assertThat(result.getMetadata().totalElements()).isEqualTo(11);
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(reviewRepository).findByAuthorKeycloakId(eq(keycloakId), captor.capture());
+            assertThat(captor.getValue().getPageNumber()).isEqualTo(1);
+            assertThat(captor.getValue().getPageSize()).isEqualTo(10);
+            assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        }
+
+        @Test
+        @DisplayName("keeps an allowed sort (rating asc) and appends the id tie-breaker")
+        void allowedSortKept() {
+            when(reviewRepository.findByAuthorKeycloakId(eq(keycloakId), any(Pageable.class)))
+                    .thenAnswer(inv -> Page.empty(inv.getArgument(1)));
+
+            service.getMyReviews(keycloakId, PageRequest.of(0, 10, Sort.by(Sort.Order.asc("rating"))));
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(reviewRepository).findByAuthorKeycloakId(eq(keycloakId), captor.capture());
+            assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Order.asc("rating"), Sort.Order.desc("id")));
+        }
+
+        @Test
+        @DisplayName("an unknown sort field falls back to createdAt desc instead of failing")
+        void unknownSortFallsBack() {
+            when(reviewRepository.findByAuthorKeycloakId(eq(keycloakId), any(Pageable.class)))
+                    .thenAnswer(inv -> Page.empty(inv.getArgument(1)));
+
+            service.getMyReviews(keycloakId, PageRequest.of(0, 10, Sort.by("userEntity.email")));
+
+            ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+            verify(reviewRepository).findByAuthorKeycloakId(eq(keycloakId), captor.capture());
+            assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.novatech.cybertech.api.controllers.spec;
 
+import org.springframework.data.web.PagedModel;
+import com.novatech.cybertech.dto.response.review.MyReviewDto;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
@@ -123,6 +125,27 @@ public interface ReviewCrudControllerApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<Void> deleteReviewByUuid(final UUID reviewUuid, final Jwt jwt);
+
+    @Operation(summary = "List the caller's reviews (paginated)",
+            description = """
+                    Reviews written by the authenticated user, including those hidden by moderation, so they
+                    can be edited or deleted. Defaults: page=0, size=10, sort=createdAt,desc. Sortable fields:
+                    createdAt, updatedAt, rating; any other sort falls back to createdAt,desc.
+                    """,
+            security = @SecurityRequirement(name = "keycloak"),
+            parameters = {
+                    @Parameter(name = "page", description = "0-based page index (default 0)", required = false),
+                    @Parameter(name = "size", description = "Page size (default 10)", required = false),
+                    @Parameter(name = "sort", description = "property,direction — createdAt (default, desc), updatedAt or rating", required = false)
+            },
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "One page of the caller's reviews (possibly empty)"),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - USER role required",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<PagedModel<MyReviewDto>> getMyReviews(@Parameter(hidden = true) final Jwt jwt, @Parameter(hidden = true) final Pageable pageable);
 
     @Operation(summary = "List the products the caller can review",
             description = "Products the authenticated user has bought (order PAID, SHIPPED or DELIVERED) and not reviewed yet, with the order to reference in POST /create.",

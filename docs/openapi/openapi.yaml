@@ -2465,6 +2465,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+  /api/v1/services/review/mine:
+    get:
+      tags:
+      - Review
+      summary: List the caller's reviews (paginated)
+      description: |
+        Reviews written by the authenticated user, including those hidden by moderation, so they
+        can be edited or deleted. Defaults: page=0, size=10, sort=createdAt,desc. Sortable fields:
+        createdAt, updatedAt, rating; any other sort falls back to createdAt,desc.
+      operationId: getMyReviews
+      parameters:
+      - name: page
+        in: query
+        description: 0-based page index (default 0)
+      - name: size
+        in: query
+        description: Page size (default 10)
+      - name: sort
+        in: query
+        description: "property,direction — createdAt (default, desc), updatedAt or\
+          \ rating"
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+          - 1.0.0
+      responses:
+        "200":
+          description: One page of the caller's reviews (possibly empty)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedModelMyReviewDto"
+        "401":
+          description: Unauthorized - JWT token missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "403":
+          description: Operation forbidden - USER role required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      security:
+      - keycloak: []
   /api/v1/services/review/get/{reviewUuid}:
     get:
       tags:
@@ -5453,6 +5503,49 @@ components:
           format: date
           description: Day the review was posted (ISO date).
           example: 2026-10-14
+    MyReviewDto:
+      type: object
+      description: A review written by the authenticated user
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        productUuid:
+          type: string
+          format: uuid
+        productName:
+          type: string
+          description: Name of the reviewed product
+          example: Laptop Pro 14
+        orderUuid:
+          type: string
+          format: uuid
+          description: Order the product was bought in; null for a review older than
+            this field when no matching order was found.
+        rating:
+          type: integer
+          format: int32
+          description: Rating from 1 to 5.
+          example: 4
+        comment:
+          type: string
+          description: Review text; null when only a rating was given.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last modification; null if never modified.
+    PagedModelMyReviewDto:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/MyReviewDto"
+        page:
+          $ref: "#/components/schemas/PageMetadata"
     Pageable:
       type: object
       properties:

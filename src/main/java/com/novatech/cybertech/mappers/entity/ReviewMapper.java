@@ -2,6 +2,7 @@ package com.novatech.cybertech.mappers.entity;
 
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
+import com.novatech.cybertech.dto.response.review.MyReviewDto;
 import com.novatech.cybertech.dto.response.review.PublicReviewDto;
 import com.novatech.cybertech.dto.response.review.ReviewResponseDto;
 import com.novatech.cybertech.entities.ReviewEntity;
@@ -28,6 +29,10 @@ public interface ReviewMapper extends BaseMapper<ReviewEntity, ReviewCreateReque
     @Mapping(source = "userEntity", target = "authorFirstName", qualifiedByName = "firstNameOnly")
     @Mapping(source = "createdAt", target = "createdAt", qualifiedByName = "dayOnly")
     PublicReviewDto mapFromEntityToPublicReviewDto(ReviewEntity e);
+
+    @Mapping(source = "productEntity.uuid", target = "productUuid")
+    @Mapping(source = "productEntity.name", target = "productName")
+    MyReviewDto mapFromEntityToMyReviewDto(ReviewEntity e);
 
     @Named("firstNameOnly")
     default String firstNameOnly(final UserEntity user) {

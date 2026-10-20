@@ -31,6 +31,15 @@ public interface ReviewRepository extends CrudBaseRepository<ReviewEntity, Long>
                     + "where r.productEntity.uuid = :productUuid and r.isHateful = false")
     Page<ReviewEntity> findPublishedByProductUuid(@Param("productUuid") UUID productUuid, Pageable pageable);
 
+    /**
+     * One page of the reviews written by the user, product fetched in the same query for its name.
+     * Includes reviews flagged hateful: the author still sees and can edit or delete them.
+     */
+    @Query(value = "select r from ReviewEntity r join fetch r.productEntity "
+            + "where r.userEntity.keycloakId = :keycloakId",
+            countQuery = "select count(r) from ReviewEntity r where r.userEntity.keycloakId = :keycloakId")
+    Page<ReviewEntity> findByAuthorKeycloakId(@Param("keycloakId") String keycloakId, Pageable pageable);
+
     /** Number of a product's published reviews per rating; ratings nobody gave are absent. */
     @Query("select r.rating as rating, count(r) as count from ReviewEntity r "
             + "where r.productEntity.uuid = :productUuid and r.isHateful = false group by r.rating")

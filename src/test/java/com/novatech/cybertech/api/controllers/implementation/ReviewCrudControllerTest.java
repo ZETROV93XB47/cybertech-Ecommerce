@@ -1,5 +1,8 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
+import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Page;
+import com.novatech.cybertech.dto.response.review.MyReviewDto;
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
@@ -63,6 +66,7 @@ class ReviewCrudControllerTest {
     private static final String DELETE_REVIEW_BY_UUID_ENDPOINT = "/api/v1/services/review/delete/{reviewUuid}";
     private static final String REVIEWABLE_PRODUCTS_ENDPOINT = "/api/v1/services/review/reviewable";
     private static final String PRODUCT_REVIEWS_ENDPOINT = "/api/v1/services/review/product/{productUuid}";
+    private static final String MY_REVIEWS_ENDPOINT = "/api/v1/services/review/mine";
 
 
     @Autowired
@@ -364,6 +368,56 @@ class ReviewCrudControllerTest {
                 .andExpect(jsonPath("$[0].productUuid").value(p1.toString()))
                 .andExpect(jsonPath("$[0].orderUuid").value(o1.toString()))
                 .andExpect(jsonPath("$[0].productName").value("X1"));
+    }
+
+    // -------- GET /mine --------
+
+    @Test
+    void myReviews_authenticatedUser_returnsPageForTheJwtSubject() throws Exception {
+        final UUID reviewUuid = UUID.fromString("0f0e0d0c-0b0a-4908-8706-050403020100");
+        final UUID productUuid = UUID.fromString("1f0e0d0c-0b0a-4908-8706-050403020101");
+        final UUID orderUuid = UUID.fromString("2f0e0d0c-0b0a-4908-8706-050403020102");
+        final MyReviewDto review = MyReviewDto.builder()
+                .uuid(reviewUuid).productUuid(productUuid).productName("Laptop").orderUuid(orderUuid)
+                .rating(4).comment("Bien").createdAt(java.time.LocalDateTime.of(2026, 10, 14, 9, 30)).build();
+        when(reviewService.getMyReviews(eq("kc-1"), any(Pageable.class)))
+                .thenReturn(new PagedModel<>(new PageImpl<>(List.of(review), PageRequest.of(0, 10), 1)));
+
+        mockMvc.perform(get(MY_REVIEWS_ENDPOINT)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")).jwt(j -> j.subject("kc-1")))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "content": [
+                            {"uuid": "0f0e0d0c-0b0a-4908-8706-050403020100", "productUuid": "1f0e0d0c-0b0a-4908-8706-050403020101",
+                             "productName": "Laptop", "orderUuid": "2f0e0d0c-0b0a-4908-8706-050403020102", "rating": 4,
+                             "comment": "Bien", "createdAt": "2026-10-14T09:30:00", "updatedAt": null}
+                          ],
+                          "page": {"size": 10, "number": 0, "totalElements": 1, "totalPages": 1}
+                        }
+                        """, STRICT));
+    }
+
+    @Test
+    void myReviews_defaultsToTenPerPageNewestFirst() throws Exception {
+        when(reviewService.getMyReviews(any(String.class), any(Pageable.class)))
+                .thenReturn(new PagedModel<>(Page.empty(PageRequest.of(0, 10))));
+
+        mockMvc.perform(get(MY_REVIEWS_ENDPOINT)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")).jwt(j -> j.subject("kc-1"))))
+                .andExpect(status().isOk());
+
+        final org.mockito.ArgumentCaptor<Pageable> captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(reviewService).getMyReviews(eq("kc-1"), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(10);
+        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
+
+    @Test
+    void myReviews_anonymous_returns401() throws Exception {
+        mockMvc.perform(get(MY_REVIEWS_ENDPOINT).accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

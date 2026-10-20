@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 
+import com.novatech.cybertech.dto.response.review.MyReviewDto;
 import com.novatech.cybertech.dto.request.review.ReviewCreateRequestDto;
 import com.novatech.cybertech.dto.request.review.ReviewUpdateRequestDto;
 import com.novatech.cybertech.dto.response.moderation.ModerationResponseDto;
@@ -58,11 +59,18 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
      */
     private static final Set<OrderStatus> REVIEWABLE_ORDER_STATUSES = EnumSet.of(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
 
+    private static final String CREATED_AT = "createdAt";
+    private static final String ID = "id";
+    private static final Set<String> MY_REVIEWS_SORTABLE_FIELDS = Set.of(CREATED_AT, "updatedAt", "rating");
+    private static final Sort MY_REVIEWS_DEFAULT_ORDER = Sort.by(Sort.Direction.DESC, CREATED_AT);
+    /** Tie-breaker so pages stay stable when several reviews share the same sort value. */
+    private static final Sort BY_ID_DESC = Sort.by(Sort.Direction.DESC, ID);
+
     private static final int MIN_RATING = 1;
     private static final int MAX_RATING = 5;
     private static final int AVERAGE_RATING_SCALE = 1;
     // Newest first; id breaks ties between reviews posted in the same instant so pages never overlap.
-    private static final Sort PUBLISHED_REVIEWS_ORDER = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+    private static final Sort PUBLISHED_REVIEWS_ORDER = Sort.by(Sort.Order.desc(CREATED_AT), Sort.Order.desc(ID));
     private static final String COMMENT_REJECTED_MESSAGE = "Your comment looks similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.";
 
     private final ReviewMapper reviewMapper;
@@ -109,6 +117,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         reviewEntity.setIsHateful(false);
         reviewEntity.setUserEntity(user);
         reviewEntity.setProductEntity(product);
+        reviewEntity.setOrderUuid(order.getUuid());
 
         return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(reviewEntity));
     }
@@ -145,6 +154,21 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(review));
     }
 
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedModel<MyReviewDto> getMyReviews(final String keycloakId, final Pageable pageable) {
+        final Sort allowedSort = Sort.by(pageable.getSort().stream()
+                .filter(order -> MY_REVIEWS_SORTABLE_FIELDS.contains(order.getProperty()))
+                .toList());
+        final Sort sort = (allowedSort.isSorted() ? allowedSort : MY_REVIEWS_DEFAULT_ORDER).and(BY_ID_DESC);
+        final Page<MyReviewDto> reviews = reviewRepository
+                .findByAuthorKeycloakId(keycloakId, PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort))
+                .map(reviewMapper::mapFromEntityToMyReviewDto);
+        log.info("Reviews of user {}: page {} ({} of {} review(s))", LogSafetyUtils.maskUuid(keycloakId),
+                reviews.getNumber(), reviews.getNumberOfElements(), reviews.getTotalElements());
+        return new PagedModel<>(reviews);
+    }
 
     @Override
     @Transactional(readOnly = true)
