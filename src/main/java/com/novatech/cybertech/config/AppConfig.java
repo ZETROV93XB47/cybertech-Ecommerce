@@ -97,7 +97,7 @@ public class AppConfig implements CachingConfigurer {
     }
 
     @Bean
-    public Map<Set<PaymentType>, PaymentAttemptProcessor> paymentServiceMap(final ApplicationContext context) {
+    public Map<Set<PaymentType>, PaymentAttemptProcessor> paymentServiceMap(final @NonNull ApplicationContext context) {
         final Map<Set<PaymentType>, PaymentAttemptProcessor> serviceMap = new HashMap<Set<PaymentType>, PaymentAttemptProcessor>();
 
         final Map<String, PaymentAttemptProcessor> beans = context.getBeansOfType(PaymentAttemptProcessor.class);
