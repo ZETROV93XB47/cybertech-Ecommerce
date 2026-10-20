@@ -7,6 +7,7 @@ import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
+import com.novatech.cybertech.exceptions.BankCardAlreadyExistsException;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
@@ -30,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -59,6 +61,7 @@ class BankCardManagementControllerTest {
     private static final String ADD = BASE + "/add";
     private static final String DELETE_USER = BASE + "/delete";
     private static final String UPDATE_USER = BASE + "/update";
+    private static final String REPLACE = BASE + "/replace";
     private static final String KEYCLOAK_ID = "keycloak-subject-id";
 
     @Autowired
@@ -143,6 +146,74 @@ class BankCardManagementControllerTest {
                         .contentType(APPLICATION_JSON)
                         .accept(APPLICATION_JSON)
                         .content(asJsonString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldFailAddingBankCardWhenOneAlreadyExistsCauseConflict() throws Exception {
+        BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
+        ErrorResponseDto errorResponseDto = ErrorResponseDto.builder()
+                .message("User already has a bank card.")
+                .httpStatusCode(409)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.BANK_CARD_ALREADY_EXISTS)
+                .build();
+
+        when(bankCardService.addBankCard(eq(KEYCLOAK_ID), any(BankCardCreationRequestDto.class)))
+                .thenThrow(new BankCardAlreadyExistsException("User already has a bank card."));
+
+        mockMvc.perform(post(ADD)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(errorResponseDto), STRICT));
+    }
+
+    // ---------- PUT /replace (user) ----------
+
+    @Test
+    void shouldReplaceBankCardSuccessfully() throws Exception {
+        BankCardCreationRequestDto request = UserDtoFixtures.aValidBankCardCreationRequest();
+        BankCardResponseDto response = UserDtoFixtures.aSampleBankCardResponse();
+
+        when(bankCardService.replaceBankCard(eq(KEYCLOAK_ID), any(BankCardCreationRequestDto.class))).thenReturn(response);
+
+        mockMvc.perform(put(REPLACE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailReplacingBankCardWhenDtoBadRequest() throws Exception {
+        mockMvc.perform(put(REPLACE)
+                        .with(jwtUser(KEYCLOAK_ID))
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(new BankCardCreationRequestDto())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.httpStatusCode").value(400));
+
+        verify(bankCardService, never()).replaceBankCard(any(), any());
+    }
+
+    @Test
+    void shouldFailReplacingBankCardWhenAnonymousCauseUnauthorized() throws Exception {
+        mockMvc.perform(put(REPLACE)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .accept(APPLICATION_JSON)
+                        .content(asJsonString(UserDtoFixtures.aValidBankCardCreationRequest())))
                 .andExpect(status().isUnauthorized());
     }
 

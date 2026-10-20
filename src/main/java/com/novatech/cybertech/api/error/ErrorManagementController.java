@@ -199,6 +199,12 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, ACCESS_TOKEN_RETRIEVAL_FAILED.getResponseStatus());
     }
 
+    @ExceptionHandler(BankCardAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponseDto> handleBankCardAlreadyExistsException(BankCardAlreadyExistsException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), BANK_CARD_ALREADY_EXISTS);
+        return new ResponseEntity<>(errorResponseDto, BANK_CARD_ALREADY_EXISTS.getResponseStatus());
+    }
+
     @ExceptionHandler(BankCardExpiredException.class)
     public ResponseEntity<ErrorResponseDto> handleBankCardExpiredException(BankCardExpiredException exception) {
         final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), BANK_CARD_EXPIRED);

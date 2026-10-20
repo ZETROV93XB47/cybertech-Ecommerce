@@ -119,6 +119,53 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
       security:
       - keycloak: []
+  /api/v1/services/bank-card/replace:
+    put:
+      tags:
+      - Bank Card
+      summary: Replace current user's bank card
+      description: |
+        Replaces the authenticated user's bank card with a new one (same body as /add), or adds it
+        when the user has none. Delete and add run in a single transaction: the new card is
+        validated first and any failure keeps the current card, so the account is never left
+        without one.
+      operationId: replaceBankCard
+      parameters:
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BankCardCreationRequestDto"
+        required: true
+      responses:
+        "200":
+          description: Bank card replaced (or added)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BankCardResponseDto"
+        "400":
+          description: Invalid input or expired card (BANK_CARD_EXPIRED); the current
+            card is kept
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      security:
+      - keycloak: []
   /api/v1/webhooks/stripe:
     post:
       tags:
@@ -925,7 +972,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "409":
-          description: User already has a bank card
+          description: User already has a bank card (BANK_CARD_ALREADY_EXISTS); use
+            PUT /bank-card/replace
           content:
             application/json:
               schema:
@@ -4033,6 +4081,7 @@ components:
           - USER_NOT_AUTHOR_OF_REVIEW
           - WISHLIST_NOT_FOUND
           - ACCESS_TOKEN_RETRIEVAL_FAILED
+          - BANK_CARD_ALREADY_EXISTS
           - BANK_CARD_EXPIRED
           - BANK_CARD_NOT_FOUND
           - COMMENT_POST_NOT_ALLOWED
@@ -4071,6 +4120,34 @@ components:
           type: string
         message:
           type: string
+    BankCardCreationRequestDto:
+      type: object
+      properties:
+        cardHolderName:
+          type: string
+          minLength: 1
+        cardNumber:
+          type: string
+          maxLength: 19
+          minLength: 13
+          pattern: "\\d{13,19}"
+        expiryDate:
+          type: string
+          minLength: 1
+          pattern: "(0[1-9]|1[0-2])/[0-9]{4}"
+        cardType:
+          type: string
+          enum:
+          - VISA
+          - MASTERCARD
+          - AMERICAN_EXPRESS
+          - DISCOVER
+          - OTHER
+      required:
+      - cardHolderName
+      - cardNumber
+      - cardType
+      - expiryDate
     ProductResponseDto:
       type: object
       properties:
@@ -4104,34 +4181,6 @@ components:
         addedAt:
           type: string
           format: date-time
-    BankCardCreationRequestDto:
-      type: object
-      properties:
-        cardHolderName:
-          type: string
-          minLength: 1
-        cardNumber:
-          type: string
-          maxLength: 19
-          minLength: 13
-          pattern: "\\d{13,19}"
-        expiryDate:
-          type: string
-          minLength: 1
-          pattern: "(0[1-9]|1[0-2])/[0-9]{4}"
-        cardType:
-          type: string
-          enum:
-          - VISA
-          - MASTERCARD
-          - AMERICAN_EXPRESS
-          - DISCOVER
-          - OTHER
-      required:
-      - cardHolderName
-      - cardNumber
-      - cardType
-      - expiryDate
     UserCreateRequestDto:
       type: object
       properties:

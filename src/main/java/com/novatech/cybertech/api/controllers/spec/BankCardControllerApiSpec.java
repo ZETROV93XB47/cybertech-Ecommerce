@@ -29,10 +29,26 @@ public interface BankCardControllerApiSpec {
             responses = {
                     @ApiResponse(responseCode = "201", description = "Bank card added successfully", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
                     @ApiResponse(responseCode = "400", description = "Invalid input", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "409", description = "User already has a bank card", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = "User already has a bank card (BANK_CARD_ALREADY_EXISTS); use PUT /bank-card/replace", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<BankCardResponseDto> addBankCard(BankCardCreationRequestDto dto, Jwt jwt);
+
+    @Operation(summary = "Replace current user's bank card",
+            description = """
+                    Replaces the authenticated user's bank card with a new one (same body as /add), or adds it
+                    when the user has none. Delete and add run in a single transaction: the new card is
+                    validated first and any failure keeps the current card, so the account is never left
+                    without one.
+                    """,
+            security = @SecurityRequirement(name = "keycloak"),
+            requestBody = @RequestBody(content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardCreationRequestDto.class))),
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Bank card replaced (or added)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = BankCardResponseDto.class))),
+                    @ApiResponse(responseCode = "400", description = "Invalid input or expired card (BANK_CARD_EXPIRED); the current card is kept", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+            })
+    ResponseEntity<BankCardResponseDto> replaceBankCard(BankCardCreationRequestDto dto, Jwt jwt);
 
     @Operation(summary = "Delete current user's bank card",
             description = "Deletes the bank card associated with the authenticated user.",

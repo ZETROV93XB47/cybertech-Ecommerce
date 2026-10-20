@@ -1,5 +1,14 @@
 # Plan
 
+- [x] **Prompt front 12 — carte : suppression sans effet, 2e ajout en 500, remplacement** (2026-10-20) :
+  - [x] `deleteBankCard` (et suppression admin) : dissocier la carte de l'utilisateur pour que la suppression ne soit plus annulée par la cascade.
+  - [x] `BankCardAlreadyExistsException` → 409 `BANK_CARD_ALREADY_EXISTS` (ErrorCode, handler, OpenAPI).
+  - [x] `PUT /bank-card/replace` : validation puis suppression + ajout dans une seule transaction.
+  - [x] Tests unitaires + IT (add → delete → get 404 → add 201 ; add en double 409 ; replace 200 ; replace invalide 400 et ancienne carte conservée) ; `mvnw test` vert (2 344 tests, 0 échec) ; `BankCardFlowIT` 5/5 ; OpenAPI, `progress.md`, commit.
+- [ ] **Prompt front 13 — `GET /review/mine`** (2026-10-20) :
+  - [ ] Repository + service + `MyReviewDto` + endpoint paginé (size 10, tri `createdAt,desc`), avis de l'appelant uniquement.
+  - [ ] OpenAPI, tests (unitaires + IT : seulement mes avis, pagination, tri, 401) ; `mvnw test` vert ; `progress.md`, commit.
+
 - [x] **Prompt front 11 — détail structuré de `NOT_ENOUGH_STOCK`** (2026-10-20, estimé < 2 h, sans sous-agent) :
   - [x] `exceptions` — `StockShortage` (productUuid, requested, available ≥ 0) + `NotEnoughStockException` porteuse d'une liste.
   - [x] `StockServiceImp` — `reserveStock` / `resizeReservation` vérifient toutes les lignes puis lèvent une seule exception listant tous les défauts ; `CartStockValidator` fournit UUID/demandé/disponible.

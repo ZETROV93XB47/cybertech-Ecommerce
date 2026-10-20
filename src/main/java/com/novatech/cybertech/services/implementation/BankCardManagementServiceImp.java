@@ -6,6 +6,7 @@ import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
 import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.exceptions.BankCardAlreadyExistsException;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
@@ -48,7 +49,8 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
      * <p>Flow:
      * <ol>
      *   <li>Resolve the user by {@code keycloakId}.</li>
-     *   <li>Reject if a card already exists (one-card-per-user business rule).</li>
+     *   <li>Reject with {@link BankCardAlreadyExistsException} (409) if a card already exists
+     *       (one-card-per-user business rule); replacing goes through {@link #replaceBankCard}.</li>
      *   <li>Parse the expiry as {@code MM/yyyy}; reject past-dated cards
      *       with {@link BankCardExpiredException} <i>before</i> any persistence.</li>
      *   <li>Encrypt the PAN through {@link CardEncryptionService},
@@ -64,20 +66,37 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
 
         if (user.getBankCardEntity() != null) {
             log.warn("Add bank card rejected: user {} already has card {}", user.getUuid(), user.getBankCardEntity().getUuid());
-            throw new IllegalStateException("User already has a bank card.");
+            throw new BankCardAlreadyExistsException("User already has a bank card.");
         }
 
-        // Expiry validation happens before any mapper/repository touch.
-        validateExpiryNotInThePast(dto.getExpiryDate());
-
-        BankCardEntity bankCardEntity = bankCardMapper.mapFromCreationRequestToEntity(dto);
-        bankCardEntity.setUserEntity(user);
-
-        // Encrypt at rest; keep only the last four digits for display.
-        applyPciStorageRules(bankCardEntity, dto.getCardNumber());
-
-        BankCardEntity savedCard = bankCardRepository.save(bankCardEntity);
+        final BankCardEntity savedCard = saveNewCard(user, buildCard(user, dto));
         log.info("Bank card {} (**** {}) added for user {}", savedCard.getUuid(), savedCard.getLastFourDigits(), user.getUuid());
+        return bankCardMapper.mapFromEntityToResponseDto(savedCard);
+    }
+
+    /**
+     * Swaps the caller's card for a new one in a single transaction: the new card is validated
+     * (expiry, PAN) BEFORE the old one is touched, and a failure anywhere rolls the removal back,
+     * so the account is never left without a card. Without a current card it simply adds one.
+     */
+    @Override
+    @Transactional
+    public BankCardResponseDto replaceBankCard(final String keycloakId, final BankCardCreationRequestDto dto) {
+        final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        final BankCardEntity newCard = buildCard(user, dto);
+
+        final BankCardEntity oldCard = user.getBankCardEntity();
+        if (oldCard != null) {
+            detachAndDelete(user, oldCard);
+            // Hibernate flushes INSERTs before DELETEs: without this the new row would clash with
+            // the old one on the unique user_id column.
+            bankCardRepository.flush();
+        }
+
+        final BankCardEntity savedCard = saveNewCard(user, newCard);
+        log.info("Bank card of user {} replaced: {} -> {} (**** {})", user.getUuid(),
+                oldCard == null ? null : oldCard.getUuid(), savedCard.getUuid(), savedCard.getLastFourDigits());
         return bankCardMapper.mapFromEntityToResponseDto(savedCard);
     }
 
@@ -91,8 +110,7 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
             throw new BankCardNotFoundException("No bank card found for this user.");
         }
 
-        // Suppression via le repository pour déclencher les events JPA si besoin
-        bankCardRepository.delete(bankCard);
+        detachAndDelete(user, bankCard);
         log.info("Bank card {} (**** {}) deleted by its owner {}", bankCard.getUuid(), bankCard.getLastFourDigits(), user.getUuid());
     }
 
@@ -156,7 +174,11 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
                             LogSafetyUtils.maskUuid(keycloakId),
                             uuid,
                             LogSafetyUtils.maskUuid(ownerKeycloakId));
-                    bankCardRepository.deleteByUuid(uuid);
+                    if (card.getUserEntity() != null) {
+                        detachAndDelete(card.getUserEntity(), card);
+                    } else {
+                        bankCardRepository.delete(card);
+                    }
                 },
                 () -> log.warn("ADMIN-AUDIT: admin '{}' attempted to delete non-existent bank card {}",
                         LogSafetyUtils.maskUuid(keycloakId), uuid));
@@ -178,6 +200,38 @@ public class BankCardManagementServiceImp implements BankCardManagementService {
     }
 
     // --- helpers ----------------------------------------------------------------------
+
+    /**
+     * Validates the request and builds the encrypted, not-yet-saved card. Expiry and PAN checks
+     * run here, before any persistence and before an existing card is removed.
+     */
+    private BankCardEntity buildCard(final UserEntity user, final BankCardCreationRequestDto dto) {
+        validateExpiryNotInThePast(dto.getExpiryDate());
+
+        final BankCardEntity bankCardEntity = bankCardMapper.mapFromCreationRequestToEntity(dto);
+        bankCardEntity.setUserEntity(user);
+
+        // Encrypt at rest; keep only the last four digits for display.
+        applyPciStorageRules(bankCardEntity, dto.getCardNumber());
+        return bankCardEntity;
+    }
+
+    /** Saves the card and links it back on the user, so the managed user never points at a stale card. */
+    private BankCardEntity saveNewCard(final UserEntity user, final BankCardEntity card) {
+        final BankCardEntity savedCard = bankCardRepository.save(card);
+        user.setBankCardEntity(savedCard);
+        return savedCard;
+    }
+
+    /**
+     * Unlinks the card from its user before deleting it. {@code UserEntity.bankCardEntity} cascades
+     * ALL: left in place, the reference re-persists the card at flush and the delete is silently
+     * undone (the endpoint answered 204 while the card stayed).
+     */
+    private void detachAndDelete(final UserEntity user, final BankCardEntity card) {
+        user.setBankCardEntity(null);
+        bankCardRepository.delete(card);
+    }
 
     /**
      * Enforces that the expiry string is a valid {@code MM/yyyy} month that has

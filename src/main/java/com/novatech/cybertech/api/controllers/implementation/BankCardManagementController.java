@@ -39,6 +39,13 @@ public class BankCardManagementController implements BankCardControllerApiSpec {
 
     @Override
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PutMapping(value = "/replace", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<BankCardResponseDto> replaceBankCard(@Valid @RequestBody BankCardCreationRequestDto dto, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(bankCardService.replaceBankCard(jwt.getSubject(), dto));
+    }
+
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
     @DeleteMapping(value = "/delete", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> deleteBankCard(@AuthenticationPrincipal Jwt jwt) {
         bankCardService.deleteBankCard(jwt.getSubject());

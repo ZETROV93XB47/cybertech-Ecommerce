@@ -6,6 +6,7 @@ import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
 import com.novatech.cybertech.entities.BankCardEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.BankCardType;
+import com.novatech.cybertech.exceptions.BankCardAlreadyExistsException;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
 import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
@@ -129,14 +130,14 @@ class BankCardManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("one-card-per-user enforcement: 2nd card -> IllegalStateException")
-        void userAlreadyHasCard_throwsIllegalState() {
+        @DisplayName("one-card-per-user enforcement: 2nd card -> BankCardAlreadyExistsException (409)")
+        void userAlreadyHasCard_throwsAlreadyExists() {
             final BankCardEntity existing = BankCardEntityBuilder.aValidBankCard();
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(existing).build();
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
             assertThatThrownBy(() -> service.addBankCard(keycloakId, creationDto("12/2030")))
-                    .isInstanceOf(IllegalStateException.class)
+                    .isInstanceOf(BankCardAlreadyExistsException.class)
                     .hasMessageContaining("already has a bank card");
 
             verify(bankCardRepository, never()).save(any());
@@ -242,11 +243,77 @@ class BankCardManagementServiceImpTest {
 
     // =================================================================
     @Nested
+    @DisplayName("replaceBankCard (user context)")
+    class ReplaceBankCard {
+
+        @Test
+        @DisplayName("happy: old card unlinked + deleted and flushed BEFORE the new one is saved")
+        void happy_replacesInOrder() {
+            final BankCardEntity oldCard = BankCardEntityBuilder.aValidBankCard();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(oldCard).build();
+            final BankCardEntity mapped = BankCardEntityBuilder.aValidBankCard();
+            final BankCardEntity saved = BankCardEntityBuilder.aValidBankCard();
+            final BankCardResponseDto responseDto = new BankCardResponseDto();
+            final BankCardCreationRequestDto dto = creationDto("12/2030");
+
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(mapped);
+            when(cardEncryptionService.encrypt(anyString())).thenReturn("ENC:4242");
+            when(bankCardRepository.save(mapped)).thenReturn(saved);
+            when(bankCardMapper.mapFromEntityToResponseDto(saved)).thenReturn(responseDto);
+
+            final BankCardResponseDto result = service.replaceBankCard(keycloakId, dto);
+
+            assertThat(result).isSameAs(responseDto);
+            assertThat(user.getBankCardEntity()).isSameAs(saved);
+            assertThat(mapped.getLastFourDigits()).isEqualTo("4242");
+            final org.mockito.InOrder order = org.mockito.Mockito.inOrder(bankCardRepository);
+            order.verify(bankCardRepository).delete(oldCard);
+            order.verify(bankCardRepository).flush();
+            order.verify(bankCardRepository).save(mapped);
+        }
+
+        @Test
+        @DisplayName("no current card: behaves like add, nothing deleted")
+        void noCurrentCard_adds() {
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(null).build();
+            final BankCardEntity mapped = BankCardEntityBuilder.aValidBankCard();
+            final BankCardCreationRequestDto dto = creationDto("12/2030");
+
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(bankCardMapper.mapFromCreationRequestToEntity(dto)).thenReturn(mapped);
+            when(cardEncryptionService.encrypt(anyString())).thenReturn("ENC:4242");
+            when(bankCardRepository.save(mapped)).thenReturn(mapped);
+
+            service.replaceBankCard(keycloakId, dto);
+
+            verify(bankCardRepository, never()).delete(any(BankCardEntity.class));
+            verify(bankCardRepository).save(mapped);
+        }
+
+        @Test
+        @DisplayName("expired new card: BankCardExpiredException and the current card is untouched")
+        void expiredNewCard_keepsOldCard() {
+            final BankCardEntity oldCard = BankCardEntityBuilder.aValidBankCard();
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(oldCard).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+
+            assertThatThrownBy(() -> service.replaceBankCard(keycloakId, creationDto("01/2020")))
+                    .isInstanceOf(BankCardExpiredException.class);
+
+            assertThat(user.getBankCardEntity()).isSameAs(oldCard);
+            verify(bankCardRepository, never()).delete(any(BankCardEntity.class));
+            verify(bankCardRepository, never()).save(any());
+        }
+    }
+
+    // =================================================================
+    @Nested
     @DisplayName("deleteBankCard (user context)")
     class DeleteBankCard {
 
         @Test
-        @DisplayName("happy: user with card -> repository.delete called")
+        @DisplayName("happy: card unlinked from the user (else the cascade re-persists it) then deleted")
         void happy_deletes() {
             final BankCardEntity card = BankCardEntityBuilder.aValidBankCard();
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).bankCardEntity(card).build();
@@ -254,6 +321,7 @@ class BankCardManagementServiceImpTest {
 
             service.deleteBankCard(keycloakId);
 
+            assertThat(user.getBankCardEntity()).isNull();
             verify(bankCardRepository).delete(card);
         }
 
@@ -425,11 +493,13 @@ class BankCardManagementServiceImpTest {
                     .uuid(uuid)
                     .userEntity(owner)
                     .build();
+            owner.setBankCardEntity(card);
             when(bankCardRepository.findByUuid(uuid)).thenReturn(Optional.of(card));
 
             service.deleteByUUID(uuid, keycloakId);
 
-            verify(bankCardRepository).deleteByUuid(uuid);
+            assertThat(owner.getBankCardEntity()).isNull();
+            verify(bankCardRepository).delete(card);
         }
 
         @Test
@@ -440,7 +510,7 @@ class BankCardManagementServiceImpTest {
 
             assertThatCode(() -> service.deleteByUUID(cardUuid, keycloakId)).doesNotThrowAnyException();
 
-            verify(bankCardRepository, never()).deleteByUuid(any(UUID.class));
+            verify(bankCardRepository, never()).delete(any(BankCardEntity.class));
         }
     }
 }

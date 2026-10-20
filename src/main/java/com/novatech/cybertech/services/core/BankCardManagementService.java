@@ -23,6 +23,12 @@ public interface BankCardManagementService {
 
     void deleteBankCard(String keycloakId);
 
+    /**
+     * Replaces the caller's card (or adds one if none) in a single transaction: the old card is
+     * only removed once the new one is valid, and a failure keeps the old card.
+     */
+    BankCardResponseDto replaceBankCard(String keycloakId, BankCardCreationRequestDto bankCardCreationRequestDto);
+
     BankCardResponseDto updateBankCard(String keycloakId, BankCardUpdateRequestDto bankCardUpdateRequestDto);
 
     Page<BankCardResponseDto> getAll(Pageable pageable);
