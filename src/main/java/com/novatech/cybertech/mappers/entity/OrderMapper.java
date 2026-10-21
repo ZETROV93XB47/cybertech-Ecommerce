@@ -63,6 +63,7 @@ public interface OrderMapper {
     @Mapping(target = "orderItemUuid", source = "uuid")
     @Mapping(target = "productUuid", source = "productEntity.uuid")
     @Mapping(target = "productName", source = "productEntity.name")
+    @Mapping(target = "category", source = "productEntity.category")
     @Mapping(target = "lineItemTotalPrice", source = "subtotal")
     OrderItemResponseDto mapFromOrderItemEntityToOrderItemResponseDto(final OrderItemEntity orderItemEntity);
 

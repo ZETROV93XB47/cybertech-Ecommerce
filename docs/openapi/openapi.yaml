@@ -2382,9 +2382,7 @@ paths:
       tags:
       - Review
       summary: List the products the caller can review
-      description: "Products the authenticated user has bought (order PAID, SHIPPED\
-        \ or DELIVERED) and not reviewed yet, with the order to reference in POST\
-        \ /create."
+      description: "Products the authenticated user has bought (order PAID, AWAITING_SHIPPING, SHIPPED or DELIVERED) and not reviewed yet, with the order to reference in POST /create."
       operationId: getReviewableProducts
       parameters:
       - name: X-API-VERSION
@@ -4626,6 +4624,13 @@ components:
           format: uuid
         productName:
           type: string
+        category:
+          type:
+          - string
+          - "null"
+          description: "Category key of the product as it is now (not frozen at purchase\
+            \ time); null when the product no longer exists."
+          example: SMARTPHONE
         quantity:
           type: integer
           format: int32
@@ -4885,6 +4890,11 @@ components:
           format: uuid
         productName:
           type: string
+        category:
+          type: string
+          description: "Category key of the product (ProductCategorySchemaEntity.categoryKey,\
+            \ e.g. SMARTPHONE)."
+          example: SMARTPHONE
         quantity:
           type: integer
           format: int32

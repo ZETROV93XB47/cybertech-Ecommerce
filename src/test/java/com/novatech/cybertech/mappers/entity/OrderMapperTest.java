@@ -229,6 +229,7 @@ class OrderMapperTest {
             assertThat(dto.getOrderItemUuid()).isEqualTo(item.getUuid());
             assertThat(dto.getProductUuid()).isEqualTo(item.getProductEntity().getUuid());
             assertThat(dto.getProductName()).isEqualTo(item.getProductEntity().getName());
+            assertThat(dto.getCategory()).isEqualTo(item.getProductEntity().getCategory()).isNotNull();
             assertThat(dto.getQuantity()).isEqualTo(3);
             assertThat(dto.getUnitPrice()).isEqualByComparingTo("12.50");
             assertThat(dto.getLineItemTotalPrice()).isEqualByComparingTo("37.50");
@@ -245,6 +246,7 @@ class OrderMapperTest {
             assertThat(dto).isNotNull();
             assertThat(dto.getProductUuid()).isNull();
             assertThat(dto.getProductName()).isNull();
+            assertThat(dto.getCategory()).isNull();
             assertThat(dto.getOrderItemUuid()).isEqualTo(item.getUuid());
         }
 

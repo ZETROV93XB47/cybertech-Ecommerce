@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
@@ -474,6 +475,19 @@ class ReviewManagementServiceImpTest {
             assertOrderStatusIsRejected(OrderStatus.AWAITING_PAYMENT);
         }
 
+        @ParameterizedTest(name = "status {0} -> OrderNotReviewableException")
+        @EnumSource(value = OrderStatus.class, names = {"CANCELED", "REFUNDED", "RETURNED"})
+        @DisplayName("canceled, refunded or returned orders are not reviewable")
+        void createReviewShouldFailWhenOrderIsCanceledRefundedOrReturned(final OrderStatus status) {
+            assertOrderStatusIsRejected(status);
+        }
+
+        @Test
+        @DisplayName("status AWAITING_SHIPPING (paid, being prepared) is reviewable -> review persists")
+        void createReviewShouldSucceedWhenOrderStatusIsAwaitingShipping() {
+            assertOrderStatusIsAccepted(OrderStatus.AWAITING_SHIPPING);
+        }
+
         @Test
         @DisplayName("status PAID is reviewable -> review persists")
         void createReviewShouldSucceedWhenOrderStatusIsPaid() {
@@ -822,7 +836,7 @@ class ReviewManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("queries orderRepository with the {PAID, SHIPPED, DELIVERED} status set")
+        @DisplayName("queries orderRepository with the {PAID, AWAITING_SHIPPING, SHIPPED, DELIVERED} status set (same as create)")
         void queriesWithReviewableStatuses() {
             when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
             when(reviewRepository.findReviewedProductUuidsByUserKeycloakId(keycloakId)).thenReturn(Set.of());
@@ -833,7 +847,7 @@ class ReviewManagementServiceImpTest {
 
             org.mockito.ArgumentCaptor<Collection<OrderStatus>> cap = org.mockito.ArgumentCaptor.forClass(Collection.class);
             verify(orderRepository).findReviewableOrdersWithItemsByKeycloakIdAndStatusIn(eq(keycloakId), cap.capture());
-            assertThat(cap.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
+            assertThat(cap.getValue()).containsExactlyInAnyOrder(OrderStatus.PAID, OrderStatus.AWAITING_SHIPPING, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
         }
     }
 

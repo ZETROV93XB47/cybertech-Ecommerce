@@ -170,6 +170,7 @@ class OrderFlowIT {
 
         final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
                 .name("Sample Product " + UUID.randomUUID())
+                .category("SMARTWATCH")
                 .stock(10)
                 .reservedStock(0)
                 .build();
@@ -613,6 +614,29 @@ class OrderFlowIT {
             assertThat(reloadedAttempts).hasSizeGreaterThanOrEqualTo(2);
             assertThat(reloadedAttempts.getLast().getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
         });
+    }
+
+    // Prompt front 15: every order line carries its product's category, on the detail and on /mine.
+    @Test
+    void orderLinesCarryTheProductCategory() throws Exception {
+        addItemToCart(productUuid, 1);
+        mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andExpect(status().isCreated());
+        final UUID orderUuid = transactionTemplate.execute(tx -> orderRepository.findAll().stream()
+                .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                .findFirst().orElseThrow().getUuid());
+
+        mockMvc.perform(get("/api/v1/services/management/order/get/" + orderUuid).with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderItems[0].productUuid").value(productUuid.toString()))
+                .andExpect(jsonPath("$.orderItems[0].category").value("SMARTWATCH"));
+
+        mockMvc.perform(get("/api/v1/services/management/order/mine").with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].orderItems[0].category").value("SMARTWATCH"));
     }
 
     // 10) Prompt front 14: the status read right after a successful retry is never PAYMENT_FAILED,

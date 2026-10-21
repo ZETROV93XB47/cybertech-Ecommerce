@@ -98,6 +98,7 @@ class CartMapperTest {
             ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
                     .price(new BigDecimal("12.50"))
                     .name("widget")
+                    .category("SMARTPHONE")
                     .build();
             CartItemEntity item = CartItemEntityBuilder.aValidCartItemBuilder()
                     .productEntity(product)
@@ -110,6 +111,7 @@ class CartMapperTest {
             assertThat(dto.getCartItemUuid()).isEqualTo(item.getUuid());
             assertThat(dto.getProductUuid()).isEqualTo(product.getUuid());
             assertThat(dto.getProductName()).isEqualTo("widget");
+            assertThat(dto.getCategory()).isEqualTo("SMARTPHONE");
             // unitPrice on the response is sourced from productEntity.price — the cart item
             // itself carries no price of its own.
             assertThat(dto.getUnitPrice()).isEqualByComparingTo("12.50");
@@ -145,6 +147,7 @@ class CartMapperTest {
 
             assertThat(dto.getProductUuid()).isNull();
             assertThat(dto.getProductName()).isNull();
+            assertThat(dto.getCategory()).isNull();
             assertThat(dto.getUnitPrice()).isNull();
         }
 

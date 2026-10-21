@@ -1,6 +1,7 @@
 package com.novatech.cybertech.dto.response.cart;
 
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +23,8 @@ public class CartItemResponseDto implements Serializable {
     private UUID cartItemUuid;
     private UUID productUuid;
     private String productName;
+    @Schema(description = "Category key of the product (ProductCategorySchemaEntity.categoryKey, e.g. SMARTPHONE).", example = "SMARTPHONE")
+    private String category;
     private int quantity;
     private BigDecimal unitPrice;
     private BigDecimal lineItemTotalPrice;

@@ -58,7 +58,10 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
      * settles, without waiting for delivery. Pre-payment statuses (CREATED, AWAITING_PAYMENT,
      * PAYMENT_FAILED) and post-cancel statuses must NOT be reviewable.
      */
-    private static final Set<OrderStatus> REVIEWABLE_ORDER_STATUSES = EnumSet.of(OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
+    // A paid order stays reviewable while it is prepared (AWAITING_SHIPPING, set by the ship batch),
+    // until it is canceled, refunded or returned. Shared by create() and getReviewable().
+    private static final Set<OrderStatus> REVIEWABLE_ORDER_STATUSES =
+            EnumSet.of(OrderStatus.PAID, OrderStatus.AWAITING_SHIPPING, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
 
     private static final String CREATED_AT = "createdAt";
     private static final String ID = "id";

@@ -125,6 +125,7 @@ class CartFlowIT {
         seededProduct = productRepository.save(
                 ProductEntityBuilder.aValidProductBuilder()
                         .name("CartFlowIT Product")
+                        .category("SMARTPHONE")
                         .stock(10)
                         .reservedStock(0)
                         .build()
@@ -461,6 +462,7 @@ class CartFlowIT {
                 .andExpect(jsonPath("$.items").isArray())
                 .andExpect(jsonPath("$.items[0].quantity").value(3))
                 .andExpect(jsonPath("$.items[0].productUuid").value(seededProduct.getUuid().toString()))
+                .andExpect(jsonPath("$.items[0].category").value("SMARTPHONE"))
                 .andExpect(jsonPath("$.totalPrice").exists());
     }
 

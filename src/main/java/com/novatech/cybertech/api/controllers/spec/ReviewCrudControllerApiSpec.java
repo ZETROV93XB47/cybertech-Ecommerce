@@ -148,7 +148,7 @@ public interface ReviewCrudControllerApiSpec {
     ResponseEntity<PagedModel<MyReviewDto>> getMyReviews(@Parameter(hidden = true) final Jwt jwt, @Parameter(hidden = true) final Pageable pageable);
 
     @Operation(summary = "List the products the caller can review",
-            description = "Products the authenticated user has bought (order PAID, SHIPPED or DELIVERED) and not reviewed yet, with the order to reference in POST /create.",
+            description = "Products the authenticated user has bought (order PAID, AWAITING_SHIPPING, SHIPPED or DELIVERED) and not reviewed yet, with the order to reference in POST /create.",
             security = @SecurityRequirement(name = "keycloak"),
             responses = {
                     @ApiResponse(responseCode = "200", description = "Reviewable products (possibly empty)",

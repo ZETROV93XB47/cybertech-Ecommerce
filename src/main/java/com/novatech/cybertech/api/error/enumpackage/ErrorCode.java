@@ -62,7 +62,7 @@ public enum ErrorCode {
     DISCOUNT_TYPE_NOT_ACTIVE(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
     /** Authenticated user tried to read/update/delete a cart they do not own (IDOR). */
     UNAUTHORIZED_CART_ACCESS(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
-    /** Order is not in a status that allows reviewing (only PAID/SHIPPED/DELIVERED are reviewable). */
+    /** Order is not in a status that allows reviewing (only PAID/AWAITING_SHIPPING/SHIPPED/DELIVERED are reviewable). */
     ORDER_NOT_REVIEWABLE(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     /** A product/search request references a categoryKey with no registered schema. */
     UNKNOWN_PRODUCT_CATEGORY(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),

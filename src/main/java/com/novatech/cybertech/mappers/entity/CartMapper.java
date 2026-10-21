@@ -30,6 +30,7 @@ public interface CartMapper {
     @Mapping(expression = "java(cartItemEntity.getUuid())", target = "cartItemUuid")
     @Mapping(source = "productEntity.uuid", target = "productUuid")
     @Mapping(source = "productEntity.name", target = "productName")
+    @Mapping(source = "productEntity.category", target = "category")
     @Mapping(source = "productEntity.price", target = "unitPrice")
     @Mapping(source = "quantity", target = "quantity")
     @Mapping(target = "lineItemTotalPrice", expression = "java(lineItemTotalPrice(cartItemEntity))")
