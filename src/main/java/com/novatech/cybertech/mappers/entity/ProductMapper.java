@@ -26,8 +26,9 @@ public interface ProductMapper extends BaseMapper<ProductEntity, ProductCreateRe
 
     ProductResponseDto mapFromProductDocumentToProductResponseDto(ProductDocument productDocument);
 
-    //@Mapping(source = "reviewEntities", target = "averageRating", qualifiedByName = "calculateAverageRating")
-    //@Mapping(source = "reviewEntities", target = "reviewCount", qualifiedByName = "calculateReviewCount")
+    // Ratings come from the published reviews, set by ProductSearchIndexService.
+    @Mapping(target = "averageRating", ignore = true)
+    @Mapping(target = "reviewCount", ignore = true)
     @Mapping(source = "uuid", target = "id")
     @Mapping(target = "photoUrls", source = "photos")
     ProductDocument mapFromProductEntityToProductDocument(final ProductEntity entity);

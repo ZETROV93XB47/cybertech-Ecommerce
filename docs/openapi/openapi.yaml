@@ -371,8 +371,7 @@ paths:
       tags:
       - Product
       summary: Search products
-      description: "Searches products using filters such as name, category, brand,\
-        \ price range, attributes, etc."
+      description: "Searches products using filters such as name, category, brand, price range, attributes, etc. The optional sort (RELEVANCE, NAME_ASC, PRICE_ASC, PRICE_DESC, RATING_DESC) orders the whole result before pagination; an unknown value is a 400 MALFORMED_JSON."
       operationId: searchProducts
       parameters:
       - name: X-API-VERSION
@@ -4444,6 +4443,16 @@ components:
           type: integer
           format: int32
           minimum: 1
+        sort:
+          type: string
+          default: RELEVANCE
+          description: "Order of the whole result set, before pagination; absent = RELEVANCE. Ties are broken by product uuid, so pages are stable. RATING_DESC lists products without reviews last."
+          enum:
+          - RELEVANCE
+          - NAME_ASC
+          - PRICE_ASC
+          - PRICE_DESC
+          - RATING_DESC
     RangeFilter:
       type: object
       properties:

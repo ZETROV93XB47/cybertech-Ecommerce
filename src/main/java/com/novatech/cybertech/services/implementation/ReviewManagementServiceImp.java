@@ -15,6 +15,7 @@ import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.ReviewEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.events.ProductReviewsChangedEvent;
 import com.novatech.cybertech.exceptions.*;
 import com.novatech.cybertech.mappers.entity.ReviewMapper;
 import com.novatech.cybertech.repositories.OrderItemRepository;
@@ -27,6 +28,7 @@ import com.novatech.cybertech.services.core.ReviewManagementService;
 import com.novatech.cybertech.utils.LogSafetyUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -84,6 +86,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
     private final ReviewRepository reviewRepository;
     private final ModerationService moderationService;
     private final ProductRepository productRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
 
     @Override
@@ -128,7 +131,9 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         reviewEntity.setProductEntity(product);
         reviewEntity.setOrderUuid(order.getUuid());
 
-        return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(reviewEntity));
+        final ReviewEntity saved = reviewRepository.save(reviewEntity);
+        publishReviewsChanged(product.getUuid());
+        return reviewMapper.mapFromEntityToResponseDto(saved);
     }
 
 
@@ -164,7 +169,9 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
             review.setComment(comment);
         }
 
-        return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(review));
+        final ReviewEntity saved = reviewRepository.save(review);
+        publishReviewsChanged(review.getProductEntity().getUuid());
+        return reviewMapper.mapFromEntityToResponseDto(saved);
     }
 
 
@@ -256,6 +263,12 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         if (!isCurrentUserAuthorOfTheRequestReview) throw new UserNotAuthorOfReviewException("Current review Doesn't belongs to the connected user");
 
         reviewRepository.deleteByUuid(uuid);
+        publishReviewsChanged(review.getProductEntity().getUuid());
+    }
+
+    /** The product's average rating / review count in the search index is refreshed after commit. */
+    private void publishReviewsChanged(final UUID productUuid) {
+        eventPublisher.publishEvent(new ProductReviewsChangedEvent(this, productUuid));
     }
 
 

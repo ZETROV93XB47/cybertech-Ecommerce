@@ -6,7 +6,9 @@ import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.request.search.RangeFilter;
 import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.enums.Brand;
+import com.novatech.cybertech.entities.enums.ProductSearchSort;
 import com.novatech.cybertech.services.implementation.ProductSearchServiceImp;
+import com.novatech.cybertech.utils.ProductSearchQueryUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -38,7 +40,7 @@ import static org.mockito.Mockito.when;
  *
  * <p>Captures the {@link NativeQuery} sent to
  * {@link ElasticsearchOperations} and asserts the BoolQuery filter / must clause
- * counts match the requested DTO. The dropped Sort is pinned.
+ * counts match the requested DTO, and that the sort clauses of {@code req.sort} are forwarded.
  */
 @ExtendWith(MockitoExtension.class)
 class ProductSearchServiceImpTest {
@@ -374,8 +376,8 @@ class ProductSearchServiceImpTest {
         }
 
         @Test
-        @DisplayName("PageRequest is built with no Sort — Sort silently dropped (pin)")
-        void bug181_sortIsAlwaysUnsorted() {
+        @DisplayName("no sort: relevance order (_score, then uuid) on the whole result set; the pageable stays unsorted")
+        void noSort_relevanceSortOptions() {
             ProductSearchRequestDto req = ProductSearchRequestDto.builder()
                     .category("COMPUTER").page(0).size(10).build();
             stubEmptyHits();
@@ -383,6 +385,21 @@ class ProductSearchServiceImpTest {
             service.search(req);
             NativeQuery nq = captureQuery();
             assertThat(nq.getPageable().getSort().isUnsorted()).isTrue();
+            assertThat(nq.getSortOptions().toString()).isEqualTo(ProductSearchQueryUtils.sortOptions(req).toString());
+            assertThat(nq.getSortOptions().getFirst().isScore()).isTrue();
+        }
+
+        @Test
+        @DisplayName("sort=PRICE_DESC is forwarded as the query's sort clauses")
+        void priceDesc_forwarded() {
+            ProductSearchRequestDto req = ProductSearchRequestDto.builder()
+                    .category("COMPUTER").page(1).size(10).sort(ProductSearchSort.PRICE_DESC).build();
+            stubEmptyHits();
+
+            service.search(req);
+            NativeQuery nq = captureQuery();
+            assertThat(nq.getSortOptions().toString()).isEqualTo(ProductSearchQueryUtils.sortOptions(req).toString());
+            assertThat(nq.getSortOptions().getFirst().field().field()).isEqualTo("price");
         }
 
         @Test

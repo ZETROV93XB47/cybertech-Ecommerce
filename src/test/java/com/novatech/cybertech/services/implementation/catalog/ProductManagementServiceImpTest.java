@@ -14,6 +14,7 @@ import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ProductSearchRepository;
+import com.novatech.cybertech.services.core.ProductSearchIndexService;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import com.novatech.cybertech.services.core.S3Service;
 import com.novatech.cybertech.services.implementation.ProductManagementServiceImp;
@@ -60,6 +61,7 @@ class ProductManagementServiceImpTest {
     @Mock ProductRepository productRepository;
     @Mock ProductSearchService productSearchService;
     @Mock ProductSearchRepository productSearchRepository;
+    @Mock ProductSearchIndexService productSearchIndexService;
     @Mock ProductValidationService productValidationService;
 
     @InjectMocks ProductManagementServiceImp service;
@@ -74,21 +76,19 @@ class ProductManagementServiceImpTest {
             ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
-            ProductDocument doc = ProductDocument.builder().uuid(UUID.randomUUID()).build();
             ProductResponseDto expected = ProductDtoFixtures.aSampleProductResponse();
 
             when(productMapper.mapFromCreationRequestToEntity(req)).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
-            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(expected);
 
             ProductResponseDto result = service.create(req, "kc-admin");
 
             assertThat(result).isSameAs(expected);
-            InOrder inOrder = inOrder(productValidationService, productRepository, productSearchRepository);
+            InOrder inOrder = inOrder(productValidationService, productRepository, productSearchIndexService);
             inOrder.verify(productValidationService).validateAttributes(req.getCategory(), req.getAttributes());
             inOrder.verify(productRepository).save(mapped);
-            inOrder.verify(productSearchRepository).save(doc);
+            inOrder.verify(productSearchIndexService).index(saved);
         }
 
         @Test
@@ -101,7 +101,7 @@ class ProductManagementServiceImpTest {
             assertThatThrownBy(() -> service.create(req, "kc-admin")).isInstanceOf(IllegalArgumentException.class);
 
             verifyNoInteractions(productRepository);
-            verifyNoInteractions(productSearchRepository);
+            verifyNoInteractions(productSearchIndexService);
         }
 
         @Test
@@ -110,12 +110,10 @@ class ProductManagementServiceImpTest {
             ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
-            ProductDocument doc = ProductDocument.builder().build();
 
             when(productMapper.mapFromCreationRequestToEntity(req)).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
-            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
-            when(productSearchRepository.save(doc)).thenThrow(new RuntimeException("ES down"));
+            org.mockito.Mockito.doThrow(new RuntimeException("ES down")).when(productSearchIndexService).index(saved);
 
             assertThatThrownBy(() -> service.create(req, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
@@ -143,7 +141,6 @@ class ProductManagementServiceImpTest {
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
-            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.createWithImage(req, List.of(file1, file2), "kc-admin");
@@ -162,7 +159,6 @@ class ProductManagementServiceImpTest {
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
-            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.createWithImage(req, null, "kc-admin");
@@ -179,7 +175,6 @@ class ProductManagementServiceImpTest {
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
-            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.createWithImage(req, List.of(), "kc-admin");
@@ -199,7 +194,6 @@ class ProductManagementServiceImpTest {
             ProductEntity saved = ProductEntityBuilder.aValidProduct();
             when(productMapper.mapFromCreationRequestToEntity(any(ProductCreateRequestDto.class))).thenReturn(mapped);
             when(productRepository.save(mapped)).thenReturn(saved);
-            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.createWithImage(req, List.of(real, empty), "kc-admin");
@@ -219,21 +213,19 @@ class ProductManagementServiceImpTest {
             ProductUpdateRequestDto req = ProductDtoFixtures.aValidUpdateRequest();
             ProductEntity existing = ProductEntityBuilder.aValidProductBuilder().uuid(req.getProductUuid()).build();
             ProductEntity saved = ProductEntityBuilder.aValidProductBuilder().uuid(req.getProductUuid()).build();
-            ProductDocument doc = ProductDocument.builder().uuid(req.getProductUuid()).build();
             ProductResponseDto expected = ProductDtoFixtures.aSampleProductResponse();
 
             when(productRepository.lockByUuid(req.getProductUuid())).thenReturn(Optional.of(existing));
             when(productRepository.save(existing)).thenReturn(saved);
-            when(productMapper.mapFromProductEntityToProductDocument(saved)).thenReturn(doc);
             when(productMapper.mapFromEntityToResponseDto(saved)).thenReturn(expected);
 
             ProductResponseDto result = service.update(req, "kc-admin");
 
             assertThat(result).isSameAs(expected);
-            InOrder inOrder = inOrder(productRepository, productSearchRepository);
+            InOrder inOrder = inOrder(productRepository, productSearchIndexService);
             inOrder.verify(productRepository).lockByUuid(req.getProductUuid());
             inOrder.verify(productRepository).save(existing);
-            inOrder.verify(productSearchRepository).save(doc);
+            inOrder.verify(productSearchIndexService).index(saved);
             verify(productRepository, never()).findByUuid(any());
         }
 
@@ -248,7 +240,7 @@ class ProductManagementServiceImpTest {
                     .hasMessageContaining(req.getProductUuid().toString());
 
             verify(productRepository, never()).save(any());
-            verifyNoInteractions(productSearchRepository);
+            verifyNoInteractions(productSearchIndexService);
         }
 
         @Test
@@ -271,7 +263,6 @@ class ProductManagementServiceImpTest {
 
             when(productRepository.lockByUuid(id)).thenReturn(Optional.of(existing));
             when(productRepository.save(existing)).thenReturn(existing);
-            when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.update(req, "kc-admin");
@@ -301,7 +292,6 @@ class ProductManagementServiceImpTest {
 
             when(productRepository.lockByUuid(id)).thenReturn(Optional.of(existing));
             when(productRepository.save(existing)).thenReturn(existing);
-            when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.update(req, "kc-admin");
@@ -334,7 +324,7 @@ class ProductManagementServiceImpTest {
 
             assertThat(existing.getCategory()).isEqualTo("COMPUTER");
             verify(productRepository, never()).save(any());
-            verifyNoInteractions(productSearchRepository);
+            verifyNoInteractions(productSearchIndexService);
         }
 
         @Test
@@ -345,7 +335,6 @@ class ProductManagementServiceImpTest {
 
             when(productRepository.lockByUuid(req.getProductUuid())).thenReturn(Optional.of(existing));
             when(productRepository.save(existing)).thenReturn(existing);
-            when(productMapper.mapFromProductEntityToProductDocument(existing)).thenReturn(ProductDocument.builder().build());
             when(productMapper.mapFromEntityToResponseDto(existing)).thenReturn(ProductDtoFixtures.aSampleProductResponse());
 
             service.update(req, "kc-admin");

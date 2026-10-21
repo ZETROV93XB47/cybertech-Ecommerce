@@ -15,6 +15,7 @@ import com.novatech.cybertech.entities.OrderItemEntity;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.ReviewEntity;
 import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.events.ProductReviewsChangedEvent;
 import com.novatech.cybertech.exceptions.CommentPostNotAllowedException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
@@ -49,6 +50,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -88,6 +90,7 @@ class ReviewManagementServiceImpTest {
     @Mock private OrderItemRepository orderItemRepository;
     @Mock private ReviewRepository reviewRepository;
     @Mock private ModerationService moderationService;
+    @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private ProductRepository productRepository;
 
     @InjectMocks
@@ -126,6 +129,13 @@ class ReviewManagementServiceImpTest {
     private OrderEntity callerOrderContainingProduct(final UUID uuid) {
         UserEntity caller = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
         return orderContainingProduct(uuid, caller);
+    }
+
+    /** The search index re-reads the product's ratings after commit (catalog "best rated" sort). */
+    private void assertReviewsChangedFor(final UUID productUuid) {
+        final ArgumentCaptor<ProductReviewsChangedEvent> event = ArgumentCaptor.forClass(ProductReviewsChangedEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue().getProductUuid()).isEqualTo(productUuid);
     }
 
     private ReviewCreateRequestDto createDto() {
@@ -205,6 +215,7 @@ class ReviewManagementServiceImpTest {
             assertThat(reviewEntity.getUserEntity()).isSameAs(user);
             assertThat(reviewEntity.getProductEntity()).isSameAs(product);
             assertThat(reviewEntity.getOrderUuid()).isEqualTo(order.getUuid());
+            assertReviewsChangedFor(product.getUuid());
         }
 
         @ParameterizedTest(name = "comment = [{0}]")
@@ -591,6 +602,7 @@ class ReviewManagementServiceImpTest {
             assertThat(existing.getComment()).isEqualTo("better");
             assertThat(existing.getUserEntity()).isSameAs(author); // FK preserved
             verify(reviewRepository).save(existing);
+            assertReviewsChangedFor(existing.getProductEntity().getUuid());
         }
 
         @Test
@@ -721,6 +733,7 @@ class ReviewManagementServiceImpTest {
             service.deleteByUUID(reviewUuid, keycloakId);
 
             verify(reviewRepository).deleteByUuid(reviewUuid);
+            assertReviewsChangedFor(existing.getProductEntity().getUuid());
         }
 
         @Test

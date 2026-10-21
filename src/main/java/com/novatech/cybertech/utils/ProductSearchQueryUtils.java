@@ -1,13 +1,17 @@
 package com.novatech.cybertech.utils;
 
 import co.elastic.clients.elasticsearch._types.FieldValue;
+import co.elastic.clients.elasticsearch._types.SortOptions;
+import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
 import com.novatech.cybertech.dto.request.search.RangeFilter;
+import com.novatech.cybertech.entities.enums.ProductSearchSort;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +23,8 @@ import java.util.Optional;
  *
  * <p>As on {@code /search}, {@code attributes} and {@code numericRanges} only apply when a
  * {@code category} is given: attribute keys are only meaningful within one category.
+ *
+ * <p>{@link #sortOptions} is search-only: sorting never changes the facets.
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ProductSearchQueryUtils {
@@ -30,6 +36,11 @@ public final class ProductSearchQueryUtils {
     public static final String DESCRIPTION_FIELD = "description";
     public static final String ATTRIBUTES_PREFIX = "attributes.";
     public static final String KEYWORD_SUFFIX = ".keyword";
+    public static final String UUID_FIELD = "uuid";
+    public static final String NAME_SORT_FIELD = NAME_FIELD + KEYWORD_SUFFIX;
+    public static final String AVERAGE_RATING_FIELD = "averageRating";
+    public static final String REVIEW_COUNT_FIELD = "reviewCount";
+    private static final String MISSING_LAST = "_last";
     private static final String KEYWORD_FUZZINESS = "AUTO";
 
     /** Exact-value field of a free-text attribute ({@code attributes.<key>.keyword}). */
@@ -117,6 +128,33 @@ public final class ProductSearchQueryUtils {
         }
         req.getNumericRanges().forEach((key, range) -> filters.put(key, rangeQuery(attributeNumericField(key), range)));
         return filters;
+    }
+
+    /**
+     * Sort clauses for {@code req.sort} (absent = {@link ProductSearchSort#RELEVANCE}), always ending
+     * with a tie-break on {@code uuid} so that pagination is stable.
+     */
+    public static List<SortOptions> sortOptions(final ProductSearchRequestDto req) {
+        final ProductSearchSort sort = req.getSort() != null ? req.getSort() : ProductSearchSort.RELEVANCE;
+        final List<SortOptions> options = new ArrayList<>();
+        switch (sort) {
+            case RELEVANCE -> options.add(SortOptions.of(s -> s.score(sc -> sc.order(SortOrder.Desc))));
+            case NAME_ASC -> options.add(fieldSort(NAME_SORT_FIELD, SortOrder.Asc));
+            case PRICE_ASC -> options.add(fieldSort(PRICE_FIELD, SortOrder.Asc));
+            case PRICE_DESC -> options.add(fieldSort(PRICE_FIELD, SortOrder.Desc));
+            case RATING_DESC -> {
+                // Products without published reviews have no averageRating: listed after every rated one.
+                options.add(SortOptions.of(s -> s.field(f -> f.field(AVERAGE_RATING_FIELD).order(SortOrder.Desc)
+                        .missing(FieldValue.of(MISSING_LAST)))));
+                options.add(fieldSort(REVIEW_COUNT_FIELD, SortOrder.Desc));
+            }
+        }
+        options.add(fieldSort(UUID_FIELD, SortOrder.Asc));
+        return options;
+    }
+
+    private static SortOptions fieldSort(final String field, final SortOrder order) {
+        return SortOptions.of(s -> s.field(f -> f.field(field).order(order)));
     }
 
     private static Query rangeQuery(final String field, final RangeFilter range) {

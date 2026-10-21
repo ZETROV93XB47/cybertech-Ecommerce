@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -44,6 +45,26 @@ public interface ReviewRepository extends CrudBaseRepository<ReviewEntity, Long>
     @Query("select r.rating as rating, count(r) as count from ReviewEntity r "
             + "where r.productEntity.uuid = :productUuid and r.isHateful = false group by r.rating")
     List<RatingCount> countPublishedByRating(@Param("productUuid") UUID productUuid);
+
+    /** Average rating and number of a product's published reviews; absent without any. */
+    @Query("select r.productEntity.uuid as productUuid, avg(r.rating) as averageRating, count(r) as reviewCount "
+            + "from ReviewEntity r where r.productEntity.uuid = :productUuid and r.isHateful = false "
+            + "group by r.productEntity.uuid")
+    Optional<RatingStats> findPublishedRatingStats(@Param("productUuid") UUID productUuid);
+
+    /** {@link #findPublishedRatingStats} for every product with at least one published review (reindexing). */
+    @Query("select r.productEntity.uuid as productUuid, avg(r.rating) as averageRating, count(r) as reviewCount "
+            + "from ReviewEntity r where r.isHateful = false group by r.productEntity.uuid")
+    List<RatingStats> findPublishedRatingStatsOfAllProducts();
+
+    /** Projection of the published-rating statistics of one product. */
+    interface RatingStats {
+        UUID getProductUuid();
+
+        Double getAverageRating();
+
+        Long getReviewCount();
+    }
 
     /** Projection of {@link #countPublishedByRating}. */
     interface RatingCount {

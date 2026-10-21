@@ -47,7 +47,7 @@ public interface ProductSearchApiSpec {
 
     @Operation(
             summary = "Search products",
-            description = "Searches products using filters such as name, category, brand, price range, attributes, etc.",
+            description = "Searches products using filters such as name, category, brand, price range, attributes, etc. The optional sort (RELEVANCE, NAME_ASC, PRICE_ASC, PRICE_DESC, RATING_DESC) orders the whole result before pagination; an unknown value is a 400 MALFORMED_JSON.",
             requestBody = @RequestBody(required = true, description = "Search criteria for filtering products", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ProductSearchRequestDto.class))),
             responses = {
                     @ApiResponse(responseCode = "200", description = "List of products matching the search criteria", content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = ProductResponseDto.class)))),

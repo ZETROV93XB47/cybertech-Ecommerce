@@ -1,6 +1,8 @@
 package com.novatech.cybertech.dto.request.search;
 
 import com.novatech.cybertech.entities.enums.Brand;
+import com.novatech.cybertech.entities.enums.ProductSearchSort;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.AllArgsConstructor;
@@ -52,4 +54,10 @@ public class ProductSearchRequestDto {
 
     @Min(value = 1, message = "Size must be >= 1")
     private Integer size;
+
+    // Ignored by POST /product/search/facets: sorting never changes the facets.
+    @Schema(description = "Order of the whole result set, before pagination; absent = RELEVANCE. "
+            + "Ties are broken by product uuid, so pages are stable. RATING_DESC lists products without reviews last.",
+            defaultValue = "RELEVANCE")
+    private ProductSearchSort sort;
 }

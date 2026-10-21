@@ -13,6 +13,7 @@ import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ProductSearchRepository;
 import com.novatech.cybertech.services.core.ProductManagementService;
+import com.novatech.cybertech.services.core.ProductSearchIndexService;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import com.novatech.cybertech.services.core.S3Service;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
     private final ProductRepository productRepository;
     private final ProductSearchService productSearchService;
     private final ProductSearchRepository productSearchRepository;
+    private final ProductSearchIndexService productSearchIndexService;
     private final ProductValidationService productValidationService;
 
 
@@ -95,8 +97,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
     private ProductResponseDto persistAndIndex(final ProductEntity entity) {
         final ProductEntity savedProductEntity = productRepository.save(entity);
 
-        final ProductDocument productDocument = productMapper.mapFromProductEntityToProductDocument(savedProductEntity);
-        productSearchRepository.save(productDocument);
+        productSearchIndexService.index(savedProductEntity);
         log.info("Product {} '{}' created ({}, price {}, stock {}, {} photo(s)) and indexed", savedProductEntity.getUuid(),
                 savedProductEntity.getName(), savedProductEntity.getCategory(), savedProductEntity.getPrice(),
                 savedProductEntity.getStock(), savedProductEntity.getPhotos() == null ? 0 : savedProductEntity.getPhotos().size());
@@ -134,8 +135,8 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
         final ProductEntity saved = productRepository.save(existing);
 
-        final ProductDocument document = productMapper.mapFromProductEntityToProductDocument(saved);
-        productSearchRepository.save(document);
+        // Ratings included: a product update must not wipe averageRating / reviewCount.
+        productSearchIndexService.index(saved);
         log.info("Product {} updated (price {}, stock {}) and re-indexed", uuid, saved.getPrice(), saved.getStock());
 
         return productMapper.mapFromEntityToResponseDto(saved);

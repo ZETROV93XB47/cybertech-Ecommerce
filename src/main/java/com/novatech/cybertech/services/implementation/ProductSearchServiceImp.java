@@ -27,6 +27,7 @@ import static com.novatech.cybertech.utils.ProductSearchQueryUtils.categoryFilte
 import static com.novatech.cybertech.utils.ProductSearchQueryUtils.keywordQuery;
 import static com.novatech.cybertech.utils.ProductSearchQueryUtils.numericRangeFilters;
 import static com.novatech.cybertech.utils.ProductSearchQueryUtils.priceFilter;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.sortOptions;
 
 @Slf4j
 @Service
@@ -64,6 +65,8 @@ public class ProductSearchServiceImp implements ProductSearchService {
         final NativeQuery nativeQuery = NativeQuery.builder()
                 .withQuery(Query.of(q -> q.bool(boolBuilder.build())))
                 .withPageable(pageable)
+                // Sorts the whole result set (then paginates), with a final uuid tie-break.
+                .withSort(sortOptions(req))
                 .build();
 
         final SearchHits<ProductDocument> hits =
