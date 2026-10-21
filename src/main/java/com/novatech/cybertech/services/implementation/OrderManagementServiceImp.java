@@ -499,6 +499,13 @@ public class OrderManagementServiceImp implements OrderManagementService {
         // Lève NotEnoughStockException si le stock n'est plus disponible
         stockService.reserveStock(order.getUuid(), quantities);
 
+        // The order now awaits THIS attempt's outcome: persisted here (not only in the returned
+        // DTO) so a status poll between the retry and its webhook no longer reads the previous
+        // attempt's PAYMENT_FAILED. A late failure of that previous attempt is ignored by the
+        // payment-failed handler (it is no longer the latest attempt).
+        order.setStatus(OrderStatus.AWAITING_PAYMENT);
+        orderRepository.save(order);
+
         // 2. Récupérer le type de paiement de la dernière tentative
         PaymentType paymentType = order.getPaymentAttempts().stream()
                 .max(Comparator.comparing(BaseEntity::getCreatedAt))

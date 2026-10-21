@@ -7,6 +7,7 @@ import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.TransactionType;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -78,6 +79,18 @@ public final class OrderPaymentUtils {
         return payment.getAmount().getAmount().subtract(alreadyRefunded);
     }
 
+    /**
+     * The order's most recent PAYMENT attempt (latest {@code createdAt}, then highest id): the one
+     * whose outcome the order status must reflect. A retry or an {@code updateOrder} complement
+     * supersedes every earlier attempt.
+     */
+    public static Optional<PaymentEntity> latestPaymentAttempt(final OrderEntity order) {
+        return attemptsOf(order).stream()
+                .filter(p -> p.getTransactionType() == TransactionType.PAYMENT)
+                .max(Comparator.comparing(PaymentEntity::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(PaymentEntity::getId, Comparator.nullsFirst(Comparator.naturalOrder())));
+    }
+
     // @SuperBuilder ignores OrderEntity's field initializer, so a freshly-built order can carry a
     // null collection rather than an empty one.
     private static List<PaymentEntity> attemptsOf(final OrderEntity order) {
@@ -96,6 +109,19 @@ public final class OrderPaymentUtils {
      *
      * @return the metadata value, or {@code null} if absent at any level — never throws.
      */
+    /**
+     * Safely reads the PaymentIntent id ({@code pi_...}) off a Stripe webhook event DTO, with the
+     * same null tolerance as {@link #extractMetadata}.
+     *
+     * @return the PaymentIntent id, or {@code null} if absent at any level — never throws.
+     */
+    public static String extractPaymentIntentId(final StripeWebhookEventDto dto) {
+        if (dto == null || dto.getData() == null || dto.getData().getPaymentIntentPayload() == null) {
+            return null;
+        }
+        return dto.getData().getPaymentIntentPayload().getId();
+    }
+
     public static String extractMetadata(final StripeWebhookEventDto dto, final String metadataKey) {
         if (dto == null || dto.getData() == null || dto.getData().getPaymentIntentPayload() == null
                 || dto.getData().getPaymentIntentPayload().getMetadata() == null) {

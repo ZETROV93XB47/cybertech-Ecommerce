@@ -129,6 +129,16 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
             return;
         }
 
+        // A late failure of an earlier attempt must not overwrite a more recent one: after a
+        // retryPayment the order is AWAITING_PAYMENT on a NEW PaymentIntent, and applying the old
+        // failure would show PAYMENT_FAILED and release the stock the retry just reserved.
+        final String failedPaymentIntentId = OrderPaymentUtils.extractPaymentIntentId(event.getStripeEvent());
+        if (isSupersededAttempt(order, failedPaymentIntentId)) {
+            log.info("Order {}: payment-failed event for {} is not the latest payment attempt — ignoring stale failure",
+                    order.getUuid(), failedPaymentIntentId);
+            return;
+        }
+
         order.setStatus(OrderStatus.PAYMENT_FAILED);
         orderRepository.save(order);
 
@@ -177,6 +187,16 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
         stockService.releaseStock(order.getUuid());
 
         log.info("Order {} marked as REFUNDED", order.getUuid());
+    }
+
+    /**
+     * {@code true} when {@code paymentIntentId} is known and is NOT the order's latest PAYMENT
+     * attempt. An unknown id (malformed event) keeps the previous behaviour: the failure applies.
+     */
+    private static boolean isSupersededAttempt(final OrderEntity order, final String paymentIntentId) {
+        return paymentIntentId != null && OrderPaymentUtils.latestPaymentAttempt(order)
+                .map(latest -> !paymentIntentId.equals(latest.getStripePaymentID()))
+                .orElse(false);
     }
 
     /**

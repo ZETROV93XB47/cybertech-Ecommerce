@@ -1,5 +1,6 @@
 package com.novatech.cybertech.utils;
 
+import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.PaymentEntity;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
@@ -8,12 +9,14 @@ import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
+import com.novatech.cybertech.fixtures.dto.PaymentDtoFixtures;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -89,5 +92,31 @@ class OrderPaymentUtilsTest {
     @DisplayName("SUCCESS, PROCESSING (Stripe pending) and CREATED are not rejections")
     void nonRejectedStatuses(final PaymentAttemptStatus status) {
         assertThat(OrderPaymentUtils.isRejected(attempt(TransactionType.PAYMENT, status, "1.00"))).isFalse();
+    }
+    @Test
+    @DisplayName("latestPaymentAttempt = most recent PAYMENT row; refunds ignored; empty without payments")
+    void latestPaymentAttempt_isTheMostRecentPayment() {
+        final PaymentEntity older = PaymentEntityBuilder.aValidPaymentBuilder().stripePaymentID("pi_old")
+                .createdAt(LocalDateTime.now().minusMinutes(2)).build();
+        final PaymentEntity latest = PaymentEntityBuilder.aValidPaymentBuilder().stripePaymentID("pi_new")
+                .createdAt(LocalDateTime.now().minusMinutes(1)).build();
+        final PaymentEntity laterRefund = PaymentEntityBuilder.aValidPaymentBuilder().transactionType(TransactionType.REFUND)
+                .createdAt(LocalDateTime.now()).build();
+
+        assertThat(OrderPaymentUtils.latestPaymentAttempt(orderWith(latest, laterRefund, older))).containsSame(latest);
+        assertThat(OrderPaymentUtils.latestPaymentAttempt(orderWith(laterRefund))).isEmpty();
+        assertThat(OrderPaymentUtils.latestPaymentAttempt(OrderEntityBuilder.aValidOrderBuilder().paymentAttempts(null).build())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("extractPaymentIntentId reads data.object.id and tolerates a null DTO or payload")
+    void extractPaymentIntentId_isNullSafe() {
+        final StripeWebhookEventDto event = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+        event.getData().getPaymentIntentPayload().setId("pi_123");
+
+        assertThat(OrderPaymentUtils.extractPaymentIntentId(event)).isEqualTo("pi_123");
+        assertThat(OrderPaymentUtils.extractPaymentIntentId(null)).isNull();
+        event.getData().setPaymentIntentPayload(null);
+        assertThat(OrderPaymentUtils.extractPaymentIntentId(event)).isNull();
     }
 }

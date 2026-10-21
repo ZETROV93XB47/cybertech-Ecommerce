@@ -572,8 +572,7 @@ paths:
       tags:
       - Order
       summary: Retry payment for a failed order
-      description: Retries the payment process for an order that is in PAYMENT_FAILED
-        status. Checks stock availability before proceeding.
+      description: "Retries the payment process for an order that is in PAYMENT_FAILED status. Checks stock availability before proceeding. The order is persisted as AWAITING_PAYMENT until the payment webhook settles it (PAID or PAYMENT_FAILED); a late failure of an earlier attempt no longer overwrites it."
       operationId: retryPayment
       parameters:
       - name: uuid
@@ -593,7 +592,7 @@ paths:
           - 1.0.0
       responses:
         "200":
-          description: Payment retried successfully (Order Paid)
+          description: "Payment retried: the order is AWAITING_PAYMENT until the payment webhook settles it"
           content:
             application/json:
               schema:
@@ -2734,7 +2733,7 @@ paths:
       tags:
       - Product Category Schema
       summary: List the product categories offered
-      description: "Returns every active category (key + label), sorted by category        \ key. No authentication required."
+      description: "Returns every active category (key + label), sorted by category key. No authentication required."
       operationId: getActiveCategories
       parameters:
       - name: X-API-VERSION

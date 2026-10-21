@@ -27,6 +27,11 @@ import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.events.OrderCreatedEvent;
+import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
+import com.novatech.cybertech.events.PaymentFailedEvent;
+import com.novatech.cybertech.events.PaymentSucceededEvent;
+import com.novatech.cybertech.fixtures.dto.PaymentDtoFixtures;
+import com.novatech.cybertech.services.core.OrderPaymentConfirmationTransactionalDelegate;
 import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
@@ -135,6 +140,9 @@ class OrderFlowIT {
 
     @Autowired
     private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    private OrderPaymentConfirmationTransactionalDelegate paymentConfirmationDelegate;
 
     private UUID userUuid;
     private UUID productUuid;
@@ -605,6 +613,61 @@ class OrderFlowIT {
             assertThat(reloadedAttempts).hasSizeGreaterThanOrEqualTo(2);
             assertThat(reloadedAttempts.getLast().getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
         });
+    }
+
+    // 10) Prompt front 14: the status read right after a successful retry is never PAYMENT_FAILED,
+    //     even when the previous attempt's failure is (re)applied late, before the retry's webhook.
+    @Test
+    void statusReadAfterRetryIsNeverPaymentFailed() throws Exception {
+        final String declinedIntent = "pi_declined_" + UUID.randomUUID();
+        final String retryIntent = "pi_retry_" + UUID.randomUUID();
+        Mockito.reset(stripePaymentProcessor);
+        Mockito.when(stripePaymentProcessor.processPayment(any(UUID.class), any(), anyString(), anyString()))
+                .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.FAILED, declinedIntent))
+                .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.PROCESSING, retryIntent));
+
+        // 1) Declined order: the payment_failed webhook of the first attempt lands -> PAYMENT_FAILED.
+        addItemToCart(productUuid, 1);
+        mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andExpect(status().isCreated());
+        final UUID orderUuid = transactionTemplate.execute(tx -> orderRepository.findAll().stream()
+                .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                .findFirst().orElseThrow().getUuid());
+        paymentConfirmationDelegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(stripeEventFor(orderUuid, declinedIntent)));
+        assertStatus(orderUuid, OrderStatus.PAYMENT_FAILED);
+
+        // 2) Retry: the response AND the persisted status are AWAITING_PAYMENT.
+        mockMvc.perform(post("/api/v1/services/management/order/retry-payment/" + orderUuid)
+                        .with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(OrderStatus.AWAITING_PAYMENT.name()));
+        assertStatus(orderUuid, OrderStatus.AWAITING_PAYMENT);
+
+        // 3) A late failure of the FIRST attempt is ignored: still AWAITING_PAYMENT, stock still held.
+        paymentConfirmationDelegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(stripeEventFor(orderUuid, declinedIntent)));
+        assertStatus(orderUuid, OrderStatus.AWAITING_PAYMENT);
+        assertThat(productRepository.findByUuid(productUuid).orElseThrow().getReservedStock()).isEqualTo(1);
+
+        // 4) The retry's success webhook completes the order.
+        paymentConfirmationDelegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(stripeEventFor(orderUuid, retryIntent)));
+        assertStatus(orderUuid, OrderStatus.PAID);
+    }
+
+    private void assertStatus(final UUID orderUuid, final OrderStatus expected) throws Exception {
+        mockMvc.perform(get("/api/v1/services/management/order/status/" + orderUuid)
+                        .with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(expected.name()));
+    }
+
+    private static StripeWebhookEventDto stripeEventFor(final UUID orderUuid, final String paymentIntentId) {
+        final StripeWebhookEventDto event = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+        event.getData().getPaymentIntentPayload().setId(paymentIntentId);
+        event.getData().getPaymentIntentPayload().getMetadata().put("order_uuid", orderUuid.toString());
+        return event;
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

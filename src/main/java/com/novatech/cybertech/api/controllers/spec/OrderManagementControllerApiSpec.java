@@ -146,13 +146,13 @@ public interface OrderManagementControllerApiSpec {
 
     @Operation(
             summary = "Retry payment for a failed order",
-            description = "Retries the payment process for an order that is in PAYMENT_FAILED status. Checks stock availability before proceeding.",
+            description = "Retries the payment process for an order that is in PAYMENT_FAILED status. Checks stock availability before proceeding. The order is persisted as AWAITING_PAYMENT until the payment webhook settles it (PAID or PAYMENT_FAILED); a late failure of an earlier attempt no longer overwrites it.",
             security = @SecurityRequirement(name = "keycloak"),
             parameters = {
                     @Parameter(name = "uuid", description = "The UUID of the order to retry payment for", required = true, schema = @Schema(implementation = UUID.class))
             },
             responses = {
-                    @ApiResponse(responseCode = "200", description = "Payment retried successfully (Order Paid)", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),
+                    @ApiResponse(responseCode = "200", description = "Payment retried: the order is AWAITING_PAYMENT until the payment webhook settles it", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = OrderResponseDto.class))),
                     @ApiResponse(responseCode = "400", description = "Invalid request or Order not in FAILED state", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),

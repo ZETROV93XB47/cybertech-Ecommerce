@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -324,6 +325,61 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
         verify(orderRepository, never()).save(any());
         verifyNoInteractions(stockService);
+    }
+
+    private static OrderEntity retriedOrder(final UUID uuid, final String previousIntentId, final String retryIntentId) {
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.AWAITING_PAYMENT);
+        order.setPaymentAttempts(new ArrayList<>(List.of(
+                PaymentEntityBuilder.aValidPaymentBuilder().status(PaymentAttemptStatus.FAILED)
+                        .stripePaymentID(previousIntentId).createdAt(LocalDateTime.now().minusMinutes(1)).build(),
+                PaymentEntityBuilder.aValidPaymentBuilder().status(PaymentAttemptStatus.PROCESSING)
+                        .stripePaymentID(retryIntentId).createdAt(LocalDateTime.now()).build())));
+        return order;
+    }
+
+    private static StripeWebhookEventDto failureOf(final UUID orderUuid, final String paymentIntentId) {
+        final StripeWebhookEventDto event = eventForOrder(orderUuid);
+        event.getData().getPaymentIntentPayload().setId(paymentIntentId);
+        return event;
+    }
+
+    @Test
+    void handlePaymentFailed_ofAnEarlierAttemptAfterARetry_isIgnored_keepsRetryStock() {
+        // Late payment_intent.payment_failed of the attempt that preceded a retryPayment: the order
+        // awaits the retry's outcome, so neither its status nor the retry's stock hold may change.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = retriedOrder(uuid, "pi_previous", "pi_retry");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(failureOf(uuid, "pi_previous")));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(stockService);
+    }
+
+    @Test
+    void handlePaymentFailed_ofTheLatestAttempt_marksPaymentFailed() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = retriedOrder(uuid, "pi_previous", "pi_retry");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(failureOf(uuid, "pi_retry")));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
+        verify(stockService).releaseStock(uuid);
+    }
+
+    @Test
+    void handlePaymentFailed_withoutPaymentIntentId_stillApplies() {
+        // Malformed event (no pi id): nothing to compare, the previous behaviour is kept.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = retriedOrder(uuid, "pi_previous", "pi_retry");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(failureOf(uuid, null)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
     }
 
     @Test

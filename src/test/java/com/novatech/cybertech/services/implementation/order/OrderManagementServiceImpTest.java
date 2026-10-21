@@ -986,6 +986,25 @@ class OrderManagementServiceImpTest {
         }
 
         @Test
+        @DisplayName("persists AWAITING_PAYMENT before charging, so a status poll no longer reads the previous PAYMENT_FAILED")
+        void persistsAwaitingPaymentBeforeCharging() {
+            final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
+            when(orderRepository.findByUuid(order.getUuid())).thenReturn(Optional.of(order));
+            when(paymentService.processPayment(any(), any(), any(), anyString())).thenAnswer(invocation -> {
+                assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+                return paymentWith(PaymentAttemptStatus.SUCCESS, TransactionType.PAYMENT, PaymentType.VISA,
+                        new Money(new BigDecimal("100.00"), CurrencyCode.EUR), LocalDateTime.now());
+            });
+
+            service.retryPayment(order.getUuid(), jwt);
+
+            final InOrder ord = inOrder(orderRepository, paymentService);
+            ord.verify(orderRepository).save(order);
+            ord.verify(paymentService).processPayment(any(), any(), any(), anyString());
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+        }
+
+        @Test
         @DisplayName("no card: BANK_CARD_NOT_FOUND before any stock reservation or payment")
         void noCard_failsBeforeReservingStock() {
             final OrderEntity order = orderWithLastAttempt(OrderStatus.PAYMENT_FAILED, PaymentType.VISA, new BigDecimal("100.00"));
