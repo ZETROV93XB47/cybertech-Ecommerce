@@ -346,8 +346,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "403":
-          description: Forbidden - caller does not own the order being reviewed or
-            comment moderation rejected
+          description: "Forbidden - caller does not own the order being reviewed, or COMMENT_POST_NOT_ALLOWED when moderation judged the comment hateful"
           content:
             application/json:
               schema:
@@ -360,6 +359,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "500":
           description: Internal server error during Review creation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "503":
+          description: "MODERATION_UNAVAILABLE - the comment moderation service gave no verdict (down, timeout, non-2xx); nothing is saved, retry later without changing the text"
           content:
             application/json:
               schema:
@@ -1585,7 +1590,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "403":
-          description: Operation forbidden - caller is not the author of the review
+          description: "Operation forbidden - caller is not the author of the review, or COMMENT_POST_NOT_ALLOWED when moderation judged the new comment hateful"
           content:
             application/json:
               schema:
@@ -1598,6 +1603,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "500":
           description: Internal server error during review update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "503":
+          description: "MODERATION_UNAVAILABLE - the comment moderation service gave no verdict (down, timeout, non-2xx); nothing is saved, retry later without changing the text"
           content:
             application/json:
               schema:
@@ -4162,6 +4173,7 @@ components:
           - BANK_CARD_EXPIRED
           - BANK_CARD_NOT_FOUND
           - COMMENT_POST_NOT_ALLOWED
+          - MODERATION_UNAVAILABLE
           - IDEMPOTENCY_KEY_GENERATION_FAILED
           - NO_STRATEGY_FOUND
           - NOT_ENOUGH_STOCK

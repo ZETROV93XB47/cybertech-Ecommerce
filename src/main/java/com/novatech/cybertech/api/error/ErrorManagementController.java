@@ -223,6 +223,12 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, COMMENT_POST_NOT_ALLOWED.getResponseStatus());
     }
 
+    @ExceptionHandler(ModerationUnavailableException.class)
+    public ResponseEntity<ErrorResponseDto> handleModerationUnavailableException(ModerationUnavailableException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), MODERATION_UNAVAILABLE);
+        return new ResponseEntity<>(errorResponseDto, MODERATION_UNAVAILABLE.getResponseStatus());
+    }
+
     @ExceptionHandler(IdempotencyKeyGenerationException.class)
     public ResponseEntity<ErrorResponseDto> handleIdempotencyKeyGenerationException(IdempotencyKeyGenerationException exception) {
         final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), IDEMPOTENCY_KEY_GENERATION_FAILED);

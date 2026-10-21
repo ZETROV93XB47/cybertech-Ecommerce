@@ -117,7 +117,7 @@ stripe:
 # EXTERNAL SERVICES
 # ============================================================
 moderationApi:
-  url: "http://moderation-api:5000/analyze"
+  url: "http://moderation-api:5000/api/v1/moderation/analyze"
 
 frontend:
   url: "http://cybertech.local"

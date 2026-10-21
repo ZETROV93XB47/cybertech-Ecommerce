@@ -77,6 +77,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
     private static final int AVERAGE_RATING_SCALE = 1;
     // Newest first; id breaks ties between reviews posted in the same instant so pages never overlap.
     private static final Sort PUBLISHED_REVIEWS_ORDER = Sort.by(Sort.Order.desc(CREATED_AT), Sort.Order.desc(ID));
+    private static final String MODERATION_NO_VERDICT_MESSAGE = "Comment moderation returned no verdict, please try again in a few minutes.";
     private static final String COMMENT_REJECTED_MESSAGE = "Your comment looks similar to other hateful comments detected on our website, our moderation team will review it and decide to post it or not.";
 
     private final ReviewMapper reviewMapper;
@@ -279,7 +280,9 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
     /**
      * Fails closed on a missing / malformed moderation verdict: a null response or null verdict
-     * means we could NOT confirm the comment is clean, so we reject rather than publish blind.
+     * means we could NOT confirm the comment is clean, so the comment is not published. That is an
+     * unavailability of the moderator (503), not a rejection of the text (403 is reserved for a
+     * comment judged hateful).
      * NOTE: isHateful (not the raw score) is the classifier's verdict — the score alone is just
      * the confidence for whichever label ("toxic" or its opposite) won, so a clean comment
      * classified with high confidence would otherwise be rejected, and a toxic comment
@@ -287,8 +290,10 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
      */
     private void assertCommentPassesModeration(final String comment) {
         final ModerationResponseDto moderationResponseDto = moderationService.checkIfIsHateful(comment);
-        if (moderationResponseDto == null || moderationResponseDto.getIsHateful() == null
-                || moderationResponseDto.getIsHateful()) {
+        if (moderationResponseDto == null || moderationResponseDto.getIsHateful() == null) {
+            throw new ModerationUnavailableException(MODERATION_NO_VERDICT_MESSAGE);
+        }
+        if (moderationResponseDto.getIsHateful()) {
             throw new CommentPostNotAllowedException(COMMENT_REJECTED_MESSAGE);
         }
     }

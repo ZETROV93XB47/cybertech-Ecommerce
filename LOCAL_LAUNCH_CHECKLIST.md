@@ -22,7 +22,7 @@ The backend `application.properties` (default profile, no `prod`) hardcodes loca
 | RustFS S3      | `http://localhost:9000`               | `spring.cloud.aws.s3.endpoint`                        | YES (BLOCKER — bucket `cybertech-products`, initialized by Compose) |
 | Mailpit        | `localhost:1025` (SMTP) / `:8025` (UI) | `spring.mail.host` / `.port`                        | RECOMMENDED (mail health probe is disabled, but order/notification listeners hit SMTP) |
 | Stripe CLI     | forwards events to `localhost:8081/api/v1/webhooks/stripe` | n/a                                | RECOMMENDED only for Stripe webhook test |
-| moderation-api | `http://moderation-api:5000/analyze` | `moderation.api.url`                                  | RECOMMENDED — only hit when a review is posted; in-cluster DNS name will fail unless overridden, see Pitfall G3 |
+| moderation-api | `http://moderation-api:5000/api/v1/moderation/analyze` | `moderation.api.url`                                  | RECOMMENDED — only hit when a review is posted; in-cluster DNS name will fail unless overridden, see Pitfall G3 |
 | Gorse          | `localhost:8088/8089`                | n/a                                                   | NOT required — no live wiring in code today |
 
 ### One-shot bring-up
@@ -130,6 +130,7 @@ The default `application.properties` is already wired for localhost, so launchin
 - Main class: `com.novatech.cybertech.CybertechApplication` (Spring Boot run config)
 - VM options: `--enable-preview` (Java 26 preview features are required by the build, see `pom.xml`)
 - Active profiles: leave empty (DON'T activate `prod` — it points at in-cluster hostnames `mysql`, `keycloak`, etc.)
+- Environment variables: `MODERATION_API_URL=http://localhost:5000/api/v1/moderation/analyze` (see G.3)
 
 ### C.2 Properties already correct out-of-the-box
 
@@ -273,12 +274,10 @@ existing Keycloak database needs `createKeycloakFrontClient.ps1`.
 ### G.2 NOTE — `keycloak.client.user.management.client.secret` — no mismatch with the standard flow
 This used to be a BLOCKER back when the realm was imported from a masked, secrets-stripped export (Keycloak would regenerate a fresh secret on import, diverging from the hardcoded `application.properties` value → `POST /register` 500). It no longer applies: the file Docker Compose auto-imports today (`src/main/resources/keycloak/import/cybertech-realm.json`) ships the SAME secret as `application.properties` in clear text (`rPKnibr1m14c2Oit4XybU1AhhIbuZVtt`), checked in on purpose for this dev-only setup. Only resurfaces if you manually re-import a *different* export into an existing realm — see Section B.3's fallback.
 
-### G.3 RECOMMENDED — `moderation.api.url=http://moderation-api:5000/analyze`
-This is a Docker / k8s in-cluster hostname, NOT reachable from a Spring Boot process running on the host. Either:
-- Add a hosts entry `127.0.0.1 moderation-api`, OR
-- Run the moderation container with `--network host` (Linux), OR
-- Override locally: `-Dmoderation.api.url=http://localhost:5000/analyze` (and expose port 5000 on the moderation-api compose service — currently only `5000:5000` is published, so it's already reachable on `localhost:5000`).
-- Only matters when posting reviews / comments. Skip if you're not testing moderation.
+### G.3 RECOMMENDED — `moderation.api.url=${MODERATION_API_URL:http://moderation-api:5000/api/v1/moderation/analyze}`
+The default host is a Docker / k8s in-cluster hostname, NOT reachable from a Spring Boot process running on the host. In the IntelliJ run config, add the environment variable
+`MODERATION_API_URL=http://localhost:5000/api/v1/moderation/analyze` (docker-compose publishes `5000:5000`).
+- Without it, every review comment gets a 503 `MODERATION_UNAVAILABLE` (fail-closed); rating-only reviews are unaffected.
 
 ### G.4 RECOMMENDED — `application.frontend.url=http://localhost:4200`
 Legacy Angular default port. Email links inside registration / order confirmation will go to a non-existent port until you override to `http://localhost:3000`. Cosmetic for happy path; matters if you click email links during smoke tests.

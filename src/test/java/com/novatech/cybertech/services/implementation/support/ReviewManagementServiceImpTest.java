@@ -17,6 +17,7 @@ import com.novatech.cybertech.entities.ReviewEntity;
 import com.novatech.cybertech.entities.UserEntity;
 import com.novatech.cybertech.events.ProductReviewsChangedEvent;
 import com.novatech.cybertech.exceptions.CommentPostNotAllowedException;
+import com.novatech.cybertech.exceptions.ModerationUnavailableException;
 import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.exceptions.OrderNotReviewableException;
@@ -442,7 +443,7 @@ class ReviewManagementServiceImpTest {
         }
 
         @Test
-        @DisplayName("moderation verdict isHateful=null (malformed response) fails closed -> CommentPostNotAllowedException")
+        @DisplayName("moderation verdict isHateful=null (malformed response) fails closed as unavailability -> ModerationUnavailableException, not a rejection")
         void nullIsHatefulVerdictFailsClosed() {
             ReviewCreateRequestDto dto = createDto();
             UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
@@ -458,9 +459,32 @@ class ReviewManagementServiceImpTest {
                     .thenReturn(ModerationResponseDto.builder().label("toxic").score(0.4).build());
 
             assertThatThrownBy(() -> service.create(dto, keycloakId))
-                    .isInstanceOf(CommentPostNotAllowedException.class);
+                    .isInstanceOf(ModerationUnavailableException.class);
 
             verify(reviewRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("moderation service unavailable -> ModerationUnavailableException propagates; nothing persisted, no event")
+        void moderationUnavailableFailsClosed() {
+            ReviewCreateRequestDto dto = createDto();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            OrderEntity order = callerOrderContainingProduct(productUuid);
+            ProductEntity product = productWith(productUuid);
+            ReviewEntity reviewEntity = ReviewEntity.builder().comment("text").build();
+
+            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
+            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+            when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
+            when(moderationService.checkIfIsHateful("text"))
+                    .thenThrow(new ModerationUnavailableException("down"));
+
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
+                    .isInstanceOf(ModerationUnavailableException.class);
+
+            verify(reviewRepository, never()).save(any());
+            verifyNoInteractions(eventPublisher);
         }
 
         // ============================ Order status guard ============================
@@ -660,7 +684,7 @@ class ReviewManagementServiceImpTest {
             when(moderationService.checkIfIsHateful("text")).thenReturn(ModerationResponseDto.builder().build());
 
             assertThatThrownBy(() -> service.update(dto, keycloakId))
-                    .isInstanceOf(CommentPostNotAllowedException.class);
+                    .isInstanceOf(ModerationUnavailableException.class);
             verify(reviewRepository, never()).save(any());
         }
 

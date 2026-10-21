@@ -432,12 +432,15 @@ sequenceDiagram
     API->>SVC: createReview(dto, jwtSub)
     SVC->>OR: order ownership check
     OR-->>SVC: order belongs to user OK
-    SVC->>MD: analyze(content)
-    MD->>PY: POST /analyze {text}
-    PY-->>MD: {toxic: false, score: 0.04}
-    alt toxic
-        MD-->>SVC: rejected
-        SVC-->>API: 400 ContentModerationException
+    SVC->>MD: checkIfIsHateful(comment) (skipped for a rating-only review)
+    MD->>PY: POST /api/v1/moderation/analyze {comment}
+    PY-->>MD: {label, score, isHateful}
+    alt service down / non-2xx / no verdict (after retries)
+        MD-->>SVC: ModerationUnavailableException
+        SVC-->>API: 503 MODERATION_UNAVAILABLE
+    else isHateful
+        MD-->>SVC: hateful
+        SVC-->>API: 403 COMMENT_POST_NOT_ALLOWED
     else clean
         MD-->>SVC: ok
         SVC->>DB: save(review)
@@ -474,6 +477,10 @@ cd ../../../..
 
 L'application démarre sur `http://localhost:8081` (profil `dev`, voir `application.properties:9`).
 
+Depuis IntelliJ (hors du réseau Docker), le nom `moderation-api` ne se résout pas : ajouter la variable
+d'environnement `MODERATION_API_URL=http://localhost:5000/api/v1/moderation/analyze` à la configuration de lancement
+(port publié par docker-compose). Sans elle, chaque commentaire d'avis reçoit un 503 `MODERATION_UNAVAILABLE`.
+
 ### Lancement local — front-end
 
 ```bash
@@ -509,6 +516,7 @@ python app.py    # Flask sur :5000, charge unitary/toxic-bert (~600 MB RAM)
 | `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` | Identifiants MySQL du profil `prod` | injectés depuis un secret de déploiement |
 | `WEB_PUSH_PUBLIC_KEY` / `WEB_PUSH_PRIVATE_KEY` / `WEB_PUSH_SUBJECT` | Configuration VAPID du profil `prod` | injectés depuis un secret de déploiement |
 | `MYSQL_PORT` | Port MySQL exposé | `3306` |
+| `MODERATION_API_URL` | URL du service de modération (lancement hors Docker) | `http://localhost:5000/api/v1/moderation/analyze` |
 | `NEXT_PUBLIC_API_BASE` | URL backend lue côté front | `http://localhost:8081` |
 | `AUTH_SECRET` | Secret Auth.js | `openssl rand -base64 32` |
 | `AUTH_URL` | URL publique du front | `http://localhost:3000` |
@@ -531,7 +539,7 @@ python app.py    # Flask sur :5000, charge unitary/toxic-bert (~600 MB RAM)
 | Redis | redis://localhost:6379 |
 | RustFS S3 API | http://localhost:9000 |
 | RustFS console | http://localhost:9001/rustfs/console/ |
-| Moderation API | http://localhost:5000/analyze |
+| Moderation API | POST http://localhost:5000/api/v1/moderation/analyze |
 | Stripe CLI | forward → http://host.docker.internal:8081/api/v1/webhooks/stripe |
 | Gorse | http://localhost:8088 |
 

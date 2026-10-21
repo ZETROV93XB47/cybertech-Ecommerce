@@ -74,11 +74,13 @@ public interface ReviewCrudControllerApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Forbidden - caller does not own the order being reviewed or comment moderation rejected",
+                    @ApiResponse(responseCode = "403", description = "Forbidden - caller does not own the order being reviewed, or COMMENT_POST_NOT_ALLOWED when moderation judged the comment hateful",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Product / Order / User not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error during Review creation",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "503", description = "MODERATION_UNAVAILABLE - the comment moderation service gave no verdict (down, timeout, non-2xx); nothing is saved, retry later without changing the text",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<ReviewResponseDto> createReview(final ReviewCreateRequestDto reviewCreateRequestDto, final Jwt jwt);
@@ -95,11 +97,13 @@ public interface ReviewCrudControllerApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
-                    @ApiResponse(responseCode = "403", description = "Operation forbidden - caller is not the author of the review",
+                    @ApiResponse(responseCode = "403", description = "Operation forbidden - caller is not the author of the review, or COMMENT_POST_NOT_ALLOWED when moderation judged the new comment hateful",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Review not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error during review update",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "503", description = "MODERATION_UNAVAILABLE - the comment moderation service gave no verdict (down, timeout, non-2xx); nothing is saved, retry later without changing the text",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
             })
     ResponseEntity<ReviewResponseDto> updateReview(final ReviewUpdateRequestDto reviewUpdateRequestDto, final Jwt jwt);

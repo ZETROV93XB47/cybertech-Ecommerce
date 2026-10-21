@@ -49,6 +49,8 @@ public enum ErrorCode {
     BANK_CARD_EXPIRED(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
     BANK_CARD_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
     COMMENT_POST_NOT_ALLOWED(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
+    /** The comment moderation service gave no verdict (down, timeout, non-2xx): retry later, the text is not at fault. */
+    MODERATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, ErrorCodeType.TECHNICAL),
     IDEMPOTENCY_KEY_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL),
     NO_STRATEGY_FOUND(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeType.TECHNICAL),
     NOT_ENOUGH_STOCK(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),

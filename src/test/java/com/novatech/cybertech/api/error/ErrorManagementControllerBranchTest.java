@@ -16,6 +16,7 @@ import com.novatech.cybertech.exceptions.CartLockedException;
 import com.novatech.cybertech.exceptions.CartItemNotFoundException;
 import com.novatech.cybertech.exceptions.CartNotFoundException;
 import com.novatech.cybertech.exceptions.CommentPostNotAllowedException;
+import com.novatech.cybertech.exceptions.ModerationUnavailableException;
 import com.novatech.cybertech.exceptions.DiscountTypeCannotBeNullForStrategy;
 import com.novatech.cybertech.exceptions.DiscountCampaignAlreadyExistsException;
 import com.novatech.cybertech.exceptions.DiscountCampaignNotFoundException;
@@ -285,6 +286,16 @@ class ErrorManagementControllerBranchTest {
                 controller.handleCommentPostNotAllowedException(new CommentPostNotAllowedException("no"));
 
         assertEnvelope(response, HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL, "no");
+    }
+
+    @Test
+    @DisplayName("ModerationUnavailableException → 503 TECHNICAL MODERATION_UNAVAILABLE with passthrough message")
+    void moderationUnavailableReturns503() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleModerationUnavailableException(new ModerationUnavailableException("later"));
+
+        assertEnvelope(response, HttpStatus.SERVICE_UNAVAILABLE, ErrorCodeType.TECHNICAL, "later");
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.MODERATION_UNAVAILABLE);
     }
 
     @Test
