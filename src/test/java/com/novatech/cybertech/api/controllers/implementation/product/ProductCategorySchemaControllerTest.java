@@ -2,6 +2,7 @@ package com.novatech.cybertech.api.controllers.implementation.product;
 
 import com.novatech.cybertech.api.controllers.TestSecurityConfig;
 import com.novatech.cybertech.api.controllers.implementation.ProductCategorySchemaController;
+import com.novatech.cybertech.dto.response.product.ProductCategoryResponseDto;
 import com.novatech.cybertech.dto.response.product.ProductCategorySchemaResponseDto;
 import com.novatech.cybertech.exceptions.UnknownProductCategoryException;
 import com.novatech.cybertech.services.core.ProductCategorySchemaService;
@@ -12,6 +13,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
 
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAnonymous;
 import static com.novatech.cybertech.utils.TestUtils.asJsonString;
@@ -32,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(value = ProductCategorySchemaController.class)
 class ProductCategorySchemaControllerTest {
 
+    private static final String GET_ALL_ENDPOINT = "/api/v1/services/product-category-schemas";
     private static final String GET_BY_KEY_ENDPOINT = "/api/v1/services/product-category-schemas/{categoryKey}";
 
     @Autowired
@@ -39,6 +43,31 @@ class ProductCategorySchemaControllerTest {
 
     @MockitoBean
     ProductCategorySchemaService productCategorySchemaService;
+
+    @Test
+    void shouldListActiveCategoriesAsAnonymous() throws Exception {
+        List<ProductCategoryResponseDto> response = List.of(
+                ProductCategoryResponseDto.builder().categoryKey("COMPUTER").label("Computers").build(),
+                ProductCategoryResponseDto.builder().categoryKey("MONITOR").label("Monitors").build());
+        when(productCategorySchemaService.getActiveCategories()).thenReturn(response);
+
+        mockMvc.perform(get(GET_ALL_ENDPOINT)
+                        .with(jwtAnonymous())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldReturnEmptyListWhenNoActiveCategory() throws Exception {
+        when(productCategorySchemaService.getActiveCategories()).thenReturn(List.of());
+
+        mockMvc.perform(get(GET_ALL_ENDPOINT)
+                        .with(jwtAnonymous())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().json("[]", STRICT));
+    }
 
     @Test
     void shouldGetByCategoryKeyAsAnonymous() throws Exception {

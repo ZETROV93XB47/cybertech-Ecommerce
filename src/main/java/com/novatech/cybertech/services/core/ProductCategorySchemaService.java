@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.request.product.ProductCategorySchemaCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCategorySchemaUpdateRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductCategoryResponseDto;
 import com.novatech.cybertech.dto.response.product.ProductCategorySchemaResponseDto;
 
 import java.util.List;
@@ -14,6 +15,9 @@ import java.util.List;
 public interface ProductCategorySchemaService {
 
     List<ProductCategorySchemaResponseDto> getAll();
+
+    /** Public listing of the categories currently offered (active only), sorted by categoryKey. */
+    List<ProductCategoryResponseDto> getActiveCategories();
 
     /** Also used by the public read endpoint. */
     ProductCategorySchemaResponseDto getByCategoryKey(String categoryKey);

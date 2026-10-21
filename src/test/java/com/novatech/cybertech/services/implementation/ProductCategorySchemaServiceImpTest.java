@@ -3,6 +3,7 @@ package com.novatech.cybertech.services.implementation;
 import com.networknt.schema.JsonSchema;
 import com.novatech.cybertech.dto.request.product.ProductCategorySchemaCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCategorySchemaUpdateRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductCategoryResponseDto;
 import com.novatech.cybertech.dto.response.product.ProductCategorySchemaResponseDto;
 import com.novatech.cybertech.entities.ProductCategorySchemaEntity;
 import com.novatech.cybertech.exceptions.UnknownProductCategoryException;
@@ -56,7 +57,7 @@ class ProductCategorySchemaServiceImpTest {
     }
 
     @Nested
-    @DisplayName("getAll / getByCategoryKey")
+    @DisplayName("getAll / getActiveCategories / getByCategoryKey")
     class Reads {
 
         @Test
@@ -69,6 +70,20 @@ class ProductCategorySchemaServiceImpTest {
 
             assertThat(result).extracting(ProductCategorySchemaResponseDto::categoryKey)
                     .containsExactly("COMPUTER", "MONITOR");
+        }
+
+        @Test
+        @DisplayName("getActiveCategories returns only active rows as key + label, sorted by categoryKey")
+        void getActiveCategoriesSorted() {
+            when(productCategorySchemaRepository.findByActiveTrue())
+                    .thenReturn(List.of(entity("SMARTPHONE"), entity("COMPUTER")));
+
+            final List<ProductCategoryResponseDto> result = service.getActiveCategories();
+
+            assertThat(result).containsExactly(
+                    new ProductCategoryResponseDto("COMPUTER", "COMPUTER"),
+                    new ProductCategoryResponseDto("SMARTPHONE", "SMARTPHONE"));
+            verify(productCategorySchemaRepository, never()).findAll();
         }
 
         @Test

@@ -2729,6 +2729,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+  /api/v1/services/product-category-schemas:
+    get:
+      tags:
+      - Product Category Schema
+      summary: List the product categories offered
+      description: "Returns every active category (key + label), sorted by category        \ key. No authentication required."
+      operationId: getActiveCategories
+      parameters:
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+          - 1.0.0
+      responses:
+        "200":
+          description: Categories retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductCategoryResponseDto"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
   /api/v1/services/product-category-schemas/{categoryKey}:
     get:
       tags:
@@ -4922,6 +4953,13 @@ components:
       - categoryKey
       - jsonSchema
       - label
+    ProductCategoryResponseDto:
+      type: object
+      properties:
+        categoryKey:
+          type: string
+        label:
+          type: string
     ProductCategorySchemaResponseDto:
       type: object
       properties:

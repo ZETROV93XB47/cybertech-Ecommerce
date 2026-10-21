@@ -1,15 +1,19 @@
 package com.novatech.cybertech.api.controllers.spec;
 
 import com.novatech.cybertech.api.error.model.ErrorResponseDto;
+import com.novatech.cybertech.dto.response.product.ProductCategoryResponseDto;
 import com.novatech.cybertech.dto.response.product.ProductCategorySchemaResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+
+import java.util.List;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -19,6 +23,18 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  */
 @Tag(name = "Product Category Schema", description = "Public read access to product category JSON Schemas")
 public interface ProductCategorySchemaApiSpec {
+
+    @Operation(
+            summary = "List the product categories offered",
+            description = "Returns every active category (key + label), sorted by category key. No authentication required."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Categories retrieved successfully",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = ProductCategoryResponseDto.class)))),
+            @ApiResponse(responseCode = "500", description = "Internal server error",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    ResponseEntity<List<ProductCategoryResponseDto>> getActiveCategories();
 
     @Operation(
             summary = "Get a product category's JSON Schema",

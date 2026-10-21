@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.request.product.ProductCategorySchemaCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCategorySchemaUpdateRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductCategoryResponseDto;
 import com.novatech.cybertech.dto.response.product.ProductCategorySchemaResponseDto;
 import com.novatech.cybertech.entities.ProductCategorySchemaEntity;
 import com.novatech.cybertech.exceptions.UnknownProductCategoryException;
@@ -37,6 +38,18 @@ public class ProductCategorySchemaServiceImp implements ProductCategorySchemaSer
         return productCategorySchemaRepository.findAll().stream()
                 .sorted(Comparator.comparing(ProductCategorySchemaEntity::getCategoryKey))
                 .map(this::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductCategoryResponseDto> getActiveCategories() {
+        return productCategorySchemaRepository.findByActiveTrue().stream()
+                .sorted(Comparator.comparing(ProductCategorySchemaEntity::getCategoryKey))
+                .map(entity -> ProductCategoryResponseDto.builder()
+                        .categoryKey(entity.getCategoryKey())
+                        .label(entity.getLabel())
+                        .build())
                 .toList();
     }
 
