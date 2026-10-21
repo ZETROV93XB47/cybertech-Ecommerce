@@ -41,6 +41,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -201,6 +204,37 @@ class ReviewManagementServiceImpTest {
             assertThat(reviewEntity.getUserEntity()).isSameAs(user);
             assertThat(reviewEntity.getProductEntity()).isSameAs(product);
             assertThat(reviewEntity.getOrderUuid()).isEqualTo(order.getUuid());
+        }
+
+        @ParameterizedTest(name = "comment = [{0}]")
+        @NullSource
+        @ValueSource(strings = {"", "   "})
+        @DisplayName("rating without comment: moderation is skipped and the review is stored with a null comment")
+        void ratingOnlyReviewSkipsModeration(final String comment) {
+            ReviewCreateRequestDto dto = ReviewCreateRequestDto.builder()
+                    .orderUuid(orderUuid)
+                    .productUuid(productUuid)
+                    .rating(4)
+                    .comment(comment)
+                    .build();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            OrderEntity order = callerOrderContainingProduct(productUuid);
+            ProductEntity product = productWith(productUuid);
+            ReviewEntity reviewEntity = entityFromDto(dto);
+
+            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
+            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+            when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
+            when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
+
+            service.create(dto, keycloakId);
+
+            assertThat(reviewEntity.getRating()).isEqualTo(4);
+            assertThat(reviewEntity.getComment()).isNull();
+            assertThat(reviewEntity.getIsHateful()).isFalse();
+            verifyNoInteractions(moderationService);
+            verify(reviewRepository).save(reviewEntity);
         }
 
         @Test
@@ -619,6 +653,24 @@ class ReviewManagementServiceImpTest {
 
             assertThat(existing.getRating()).isEqualTo(3);
             assertThat(existing.getComment()).isEqualTo("Great product");
+            verifyNoInteractions(moderationService);
+        }
+
+        @ParameterizedTest(name = "comment = [{0}]")
+        @ValueSource(strings = {"", "   "})
+        @DisplayName("a blank comment on an edit removes the text without calling moderation")
+        void blankCommentEditClearsCommentAndSkipsModeration(final String comment) {
+            ReviewUpdateRequestDto dto = ReviewUpdateRequestDto.builder().reviewUuid(reviewUuid).comment(comment).build();
+            UserEntity author = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            ReviewEntity existing = ReviewEntityBuilder.aValidReviewBuilder().uuid(reviewUuid).userEntity(author).build();
+
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findByUuid(reviewUuid)).thenReturn(Optional.of(existing));
+            when(reviewRepository.save(existing)).thenReturn(existing);
+
+            service.update(dto, keycloakId);
+
+            assertThat(existing.getComment()).isNull();
             verifyNoInteractions(moderationService);
         }
 

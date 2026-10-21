@@ -34,6 +34,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PagedModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -112,7 +113,12 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         final ProductEntity product = productRepository.findByUuid(reviewCreateRequestDto.getProductUuid()).orElseThrow(() -> new ProductNotFoundException("Product related to this review doesn't exists"));
 
-        assertCommentPassesModeration(reviewEntity.getComment());
+        // A rating without a comment is a valid review: there is no text to moderate, and the
+        // fail-closed moderation would otherwise risk rejecting it.
+        reviewEntity.setComment(normalizeComment(reviewEntity.getComment()));
+        if (reviewEntity.getComment() != null) {
+            assertCommentPassesModeration(reviewEntity.getComment());
+        }
 
         reviewEntity.setIsHateful(false);
         reviewEntity.setUserEntity(user);
@@ -147,8 +153,12 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
             // Reviews are public: an edited comment goes through the same moderation as a new one,
             // otherwise a clean review could be edited into a hateful one after publication. A
             // rejected edit throws before the entity is touched, so the published text stays.
-            assertCommentPassesModeration(reviewCreateRequestDto.getComment());
-            review.setComment(reviewCreateRequestDto.getComment());
+            // A blank comment removes the text and leaves a rating-only review: nothing to moderate.
+            final String comment = normalizeComment(reviewCreateRequestDto.getComment());
+            if (comment != null) {
+                assertCommentPassesModeration(comment);
+            }
+            review.setComment(comment);
         }
 
         return reviewMapper.mapFromEntityToResponseDto(reviewRepository.save(review));
@@ -245,6 +255,11 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         reviewRepository.deleteByUuid(uuid);
     }
 
+
+    /** Blank comments are stored as {@code null}: a review without text is a rating-only review. */
+    private static String normalizeComment(final String comment) {
+        return StringUtils.hasText(comment) ? comment : null;
+    }
 
     /**
      * Fails closed on a missing / malformed moderation verdict: a null response or null verdict
