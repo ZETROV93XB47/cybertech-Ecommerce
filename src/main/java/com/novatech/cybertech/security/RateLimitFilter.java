@@ -30,6 +30,8 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
+import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_EVENT_INGESTION_BASE_PATH;
+
 /**
  * In-memory token-bucket rate limit (Bucket4j) for sensitive endpoints.
  *
@@ -45,6 +47,7 @@ import java.util.function.Supplier;
  *   <li>{@code POST /api/v1/services/order/place*} — 30 req / 1 min / JWT-sub (or IP fallback)</li>
  *   <li>{@code /api/v1/services/cart/**} — 60 req / 1 min / JWT-sub (or IP fallback)</li>
  *   <li>{@code POST /api/v1/services/management/order/quote} — same budget as the cart, own bucket</li>
+ *   <li>{@code POST /api/v1/events/**} (consume-event / consume-events) — 120 req / 1 min / JWT-sub (or IP fallback)</li>
  * </ul>
  *
  * <p>The login policy was deliberately skipped: Cybertech delegates authentication to Keycloak
@@ -69,6 +72,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final String CART_PATH_PREFIX = "/api/v1/services/cart";
     // Prices the caller's cart: same budget as the cart endpoints, in its own bucket.
     private static final String ORDER_QUOTE_EXACT_PATH = "/api/v1/services/management/order/quote";
+    // Browser recommendation signals: a few events per page, a generous budget that still stops a flood.
+    private static final String USER_EVENT_PATH_PREFIX = USER_EVENT_INGESTION_BASE_PATH;
     private static final String TOO_MANY_REQUESTS_MESSAGE = "Too many requests, please retry in %d second(s).";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -195,7 +200,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
                     ORDER_QUOTE_EXACT_PATH,
                     true,
                     "POST",
-                    () -> newBucket(60L, Duration.ofMinutes(1L)))
+                    () -> newBucket(60L, Duration.ofMinutes(1L))),
+            new Policy(
+                    "user.events",
+                    USER_EVENT_PATH_PREFIX,
+                    false,
+                    "POST",
+                    () -> newBucket(120L, Duration.ofMinutes(1L)))
     );
 
     // Visible for testing / introspection. Snapshot via Caffeine#asMap and copy to

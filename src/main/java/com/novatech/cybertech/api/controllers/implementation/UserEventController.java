@@ -1,7 +1,9 @@
 package com.novatech.cybertech.api.controllers.implementation;
 
 import com.novatech.cybertech.api.controllers.spec.UserEventControllerApiSpec;
+import com.novatech.cybertech.dto.request.event.UserEventBatchRequestDto;
 import com.novatech.cybertech.dto.request.event.UserEventDto;
+import com.novatech.cybertech.dto.response.userevent.UserEventBatchResponseDto;
 import com.novatech.cybertech.dto.response.userevent.UserEventResponseDto;
 import com.novatech.cybertech.mappers.document.UserEventMapper;
 import com.novatech.cybertech.services.core.UserEventService;
@@ -26,6 +28,10 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  * Behavioural-analytics ingestion HTTP surface. Front-end emits low-volume click / view events to be
  * persisted in MongoDB by {@link UserEventService}; the events feed the recommendation training
  * pipeline. Authentication is required so the calling user identity can be attached.
+ *
+ * <p>Only the signals the browser alone sees are accepted ({@code UserEventType#isBrowserSignal});
+ * purchases, cart, wishlist and review signals are written by the backend itself when the action is
+ * validated, and refused here with a 400 so a client cannot forge them.
  */
 @Slf4j
 @RestController
@@ -57,5 +63,19 @@ public class UserEventController implements UserEventControllerApiSpec {
         // Expose a curated DTO instead of the MongoDB entity to avoid leaking internal fields and decouple API contract from persistence schema
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(userEventMapper.toResponseDto(userEventService.processEvent(eventDto)));
+    }
+
+    /**
+     * POST /consume-events — the browser signals of one page in a single call.
+     *
+     * @param batch the events (at most {@code USER_EVENT_BATCH_MAX_SIZE})
+     * @param jwt   the caller identity, owner of every event of the batch
+     * @return 201 with the number of events stored and ignored (unknown product)
+     */
+    @Override
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping(value = "/consume-events", produces = APPLICATION_JSON_VALUE, consumes = APPLICATION_JSON_VALUE)
+    public ResponseEntity<UserEventBatchResponseDto> collectEvents(@Valid @RequestBody UserEventBatchRequestDto batch, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(userEventService.processEvents(batch, jwt.getSubject()));
     }
 }

@@ -139,6 +139,30 @@ class RateLimitFilterTest {
     }
 
     @Test
+    @DisplayName("Browser events (consume-event and consume-events share one bucket): the 121st POST in a minute is a 429 with Retry-After")
+    void shouldRateLimitUserEvents() throws Exception {
+        for (int i = 0; i < 120; i++) {
+            final String path = i % 2 == 0 ? "/api/v1/events/consume-event" : "/api/v1/events/consume-events";
+            MockHttpServletRequest req = new MockHttpServletRequest("POST", path);
+            req.setRemoteAddr("10.0.0.10");
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            filter.doFilter(req, res, mock(FilterChain.class));
+            assertThat(res.getStatus()).isEqualTo(200);
+        }
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", "/api/v1/events/consume-event");
+        req.setRemoteAddr("10.0.0.10");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(req, res, chain);
+
+        assertThat(res.getStatus()).isEqualTo(429);
+        assertThat(res.getHeader("Retry-After")).isNotBlank();
+        verify(chain, times(0)).doFilter(req, res);
+        assertThat(filter.bucketsView()).containsKey("user.events:ip:10.0.0.10");
+    }
+
+    @Test
     @DisplayName("Cart path matches any HTTP method")
     void shouldMatchCartPathAnyMethod() throws Exception {
         MockHttpServletRequest get = new MockHttpServletRequest("GET", "/api/v1/services/cart/list");

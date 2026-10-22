@@ -93,8 +93,10 @@ public interface CartWriteTransactionalDelegate {
      *
      * @return the cleared cart DTO, or {@code null} if the user has no cart / an already-empty cart
      *         (nothing to persist or cache in that case).
+     * @param userInitiated {@code true} for DELETE /cart/clear (one REMOVE_FROM_CART signal per line),
+     *                      {@code false} when the cart is emptied by an order (no signal: bought, not given up)
      */
-    CartResponseDto clearCartWithinTransaction(String keycloakId);
+    CartResponseDto clearCartWithinTransaction(String keycloakId, boolean userInitiated);
 
     /**
      * Replaces the caller's cart items wholesale inside its own committed transaction. Cache write

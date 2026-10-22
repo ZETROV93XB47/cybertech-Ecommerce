@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation.shopping;
 
+import org.springframework.context.ApplicationEventPublisher;
 import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemAddRequestDto;
 import com.novatech.cybertech.dto.request.cart.CartItemRemoveRequestDto;
@@ -74,6 +75,7 @@ class CartWriteTransactionalDelegateTest {
     @Mock UserRepository userRepository;
     @Mock CartRepository cartRepository;
     @Mock ProductRepository productRepository;
+    @Mock ApplicationEventPublisher eventPublisher;
 
     @InjectMocks CartWriteTransactionalDelegateImp delegate;
 
@@ -512,7 +514,7 @@ class CartWriteTransactionalDelegateTest {
             when(cartRepository.save(cart)).thenReturn(cart);
             when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(stubMappedResponse());
 
-            final CartResponseDto result = delegate.clearCartWithinTransaction(keycloakId);
+            final CartResponseDto result = delegate.clearCartWithinTransaction(keycloakId, true);
 
             assertThat(result).isNotNull();
             assertThat(cart.getCartItems()).isEmpty();
@@ -531,7 +533,7 @@ class CartWriteTransactionalDelegateTest {
             when(cartRepository.save(cart)).thenReturn(cart);
             when(cartMapper.mapFromEntityToResponseDto(cart)).thenReturn(stubMappedResponse());
 
-            delegate.clearCartWithinTransaction(keycloakId);
+            delegate.clearCartWithinTransaction(keycloakId, true);
             verify(cartRepository).save(cart);
         }
 
@@ -541,7 +543,7 @@ class CartWriteTransactionalDelegateTest {
             final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).cartEntity(null).build();
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
 
-            final CartResponseDto result = delegate.clearCartWithinTransaction(keycloakId);
+            final CartResponseDto result = delegate.clearCartWithinTransaction(keycloakId, true);
 
             assertThat(result).isNull();
             verify(cartRepository, never()).save(any());
@@ -551,7 +553,7 @@ class CartWriteTransactionalDelegateTest {
         @DisplayName("user missing -> UserNotFoundException")
         void userMissing_throws() {
             when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.empty());
-            assertThatThrownBy(() -> delegate.clearCartWithinTransaction(keycloakId)).isInstanceOf(UserNotFoundException.class);
+            assertThatThrownBy(() -> delegate.clearCartWithinTransaction(keycloakId, true)).isInstanceOf(UserNotFoundException.class);
             verify(cartRepository, never()).save(any());
         }
     }

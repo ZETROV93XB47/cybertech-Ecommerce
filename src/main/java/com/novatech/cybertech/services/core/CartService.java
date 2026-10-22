@@ -19,11 +19,20 @@ import java.util.UUID;
  */
 public interface CartService {
     /**
-     * Remove every line-item from the authenticated user's cart.
+     * Remove every line-item from the authenticated user's cart, at the user's request
+     * (one REMOVE_FROM_CART recommendation signal per line).
      *
      * @param keycloakId Keycloak subject of the calling user.
      */
     void clearCart(final String keycloakId);
+
+    /**
+     * Same as {@link #clearCart} once an order has been placed from the cart, without any
+     * recommendation signal: the products were bought, not removed.
+     *
+     * @param keycloakId Keycloak subject of the ordering user.
+     */
+    void clearCartAfterOrder(final String keycloakId);
 
     /**
      * Retrieve the cart owned by the authenticated user (cache-first, DB fallback).

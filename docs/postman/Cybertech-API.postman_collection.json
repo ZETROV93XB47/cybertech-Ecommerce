@@ -2406,7 +2406,7 @@
     },
     {
       "name": "Events",
-      "description": "Behavioural-event ingestion for the recommender (Mongo).",
+      "description": "Browser-only behavioural events for the recommender (MongoDB, synced to Gorse). Purchases, cart, wishlist and review signals are produced by the backend.",
       "item": [
         {
           "name": "Consume event (USER)",
@@ -2425,7 +2425,39 @@
               "mode": "raw",
               "raw": "{\n  \"eventType\": \"VIEW\",\n  \"productId\": \"11111111-2222-3333-4444-555555555555\",\n  \"sessionId\": \"sess-9b3c1c2a-fa70-4f29\",\n  \"metadata\": { \"page\": \"product-detail\", \"referrer\": \"home\" }\n}"
             },
-            "description": "Persist a behavioural event in MongoDB. The server overwrites any client-supplied `userId` with the JWT subject.\n\n- Role: USER\n- Success: 201 with the persisted `UserEvent` document.\n- Allowed `eventType` values: PURCHASE, ADD_TO_CART, WISHLIST_ADD, COMPARE (product added to the comparator; `productId` required), RATING_POSITIVE, RATING_NEGATIVE, REVIEW_POSITIVE, REVIEW_NEGATIVE, VIEW, CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, SEARCH_RESULT_CLICK, REMOVE_FROM_CART, IGNORE_RECOMMENDATION, BOUNCE."
+            "description": "Persist one browser signal in MongoDB. The server overwrites any client-supplied `userId` with the JWT subject.\n\n- Role: USER\n- Success: 201 with the persisted `UserEvent` document.\n- Unknown `productId`: 404 PRODUCT_NOT_FOUND.\n- Accepted `eventType` (browser-only signals): VIEW, CLICK, COMPARE (product added to the comparator), SEARCH_RESULT_CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, IGNORE_RECOMMENDATION, BOUNCE.\n- Refused with 400 INVALID_REQUEST (fieldErrors on eventType), nothing stored: PURCHASE, ADD_TO_CART, REMOVE_FROM_CART, WISHLIST_ADD, RATING_*, REVIEW_* — the backend writes them itself when the purchase, cart change, wishlist add or review is validated.\n- Rate limit: 120 POST / minute / user on /events/** (429 + Retry-After)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Consume events — batch (USER)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/events/consume-events",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events", "consume-events"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"events\": [\n    {\n      \"eventType\": \"VIEW\",\n      \"productId\": \"11111111-2222-3333-4444-555555555555\",\n      \"sessionId\": \"sess-9b3c1c2a-fa70-4f29\",\n      \"metadata\": {\n        \"page\": \"product-detail\"\n      }\n    },\n    {\n      \"eventType\": \"COMPARE\",\n      \"productId\": \"11111111-2222-3333-4444-555555555555\",\n      \"sessionId\": \"sess-9b3c1c2a-fa70-4f29\"\n    }\n  ]\n}"
+            },
+            "description": "Persist the browser signals of a page in one call (1 to 50 events).\n\n- Role: USER\n- Success: 201 `{ \"accepted\": n, \"ignored\": m }` — `ignored` counts events of an unknown product, dropped without failing the batch.\n- A backend-only `eventType` anywhere refuses the whole batch: 400, fieldErrors on `events[i].eventType`.\n- Accepted `eventType` (browser-only signals): VIEW, CLICK, COMPARE (product added to the comparator), SEARCH_RESULT_CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, IGNORE_RECOMMENDATION, BOUNCE.\n- Refused with 400 INVALID_REQUEST (fieldErrors on eventType), nothing stored: PURCHASE, ADD_TO_CART, REMOVE_FROM_CART, WISHLIST_ADD, RATING_*, REVIEW_* — the backend writes them itself when the purchase, cart change, wishlist add or review is validated.\n- Rate limit: 120 POST / minute / user on /events/** (429 + Retry-After)."
           },
           "event": [
             {

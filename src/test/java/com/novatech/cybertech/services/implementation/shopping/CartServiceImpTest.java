@@ -387,7 +387,7 @@ class CartServiceImpTest {
         @DisplayName("delegates the clear, then caches the returned (emptied) cart")
         void delegatesAndCaches() {
             final CartResponseDto delegated = stubMappedResponse();
-            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId)).thenReturn(delegated);
+            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId, true)).thenReturn(delegated);
 
             service.clearCart(keycloakId);
 
@@ -397,7 +397,7 @@ class CartServiceImpTest {
         @Test
         @DisplayName("delegate returns null (no cart to clear) -> cache left untouched")
         void delegateReturnsNull_skipsCache() {
-            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId)).thenReturn(null);
+            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId, true)).thenReturn(null);
 
             service.clearCart(keycloakId);
 
@@ -407,12 +407,24 @@ class CartServiceImpTest {
         @Test
         @DisplayName("delegate throws -> exception propagates, cache untouched")
         void delegateThrows_propagatesNoCache() {
-            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId))
+            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId, true))
                     .thenThrow(new UserNotFoundException("nope"));
 
             assertThatThrownBy(() -> service.clearCart(keycloakId)).isInstanceOf(UserNotFoundException.class);
 
             verify(cartCacheHelper, never()).putWithJitter(anyString(), any());
+        }
+
+        @Test
+        @DisplayName("clearCartAfterOrder: same clear, flagged as not user-initiated (no REMOVE_FROM_CART signal)")
+        void clearAfterOrder_isNotUserInitiated() {
+            final CartResponseDto delegated = stubMappedResponse();
+            when(cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId, false)).thenReturn(delegated);
+
+            service.clearCartAfterOrder(keycloakId);
+
+            verify(cartWriteTransactionalDelegate, never()).clearCartWithinTransaction(keycloakId, true);
+            verify(cartCacheHelper).putWithJitter(keycloakId, delegated);
         }
     }
 

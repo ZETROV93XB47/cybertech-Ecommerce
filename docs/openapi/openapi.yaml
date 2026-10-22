@@ -1396,9 +1396,9 @@ paths:
     post:
       tags:
       - User Events
-      summary: Ingest a user event
-      description: "Receives user events (click, view, purchase) for recommendation\
-        \ engine."
+      summary: Ingest a browser event
+      description: "Receives one signal only the browser sees, for the recommendation\
+        \ engine. Accepted eventType: VIEW, CLICK, COMPARE, SEARCH_RESULT_CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, IGNORE_RECOMMENDATION, BOUNCE. PURCHASE, ADD_TO_CART, REMOVE_FROM_CART, WISHLIST_ADD, RATING_* and REVIEW_* are written by the backend when the action is validated and refused here (400)."
       operationId: collectEvent
       parameters:
       - name: X-API-VERSION
@@ -1422,25 +1422,99 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserEventResponseDto"
         "400":
-          description: Invalid event data
+          description: "Invalid event data, or an eventType produced by the backend (INVALID_REQUEST, fieldErrors on eventType); nothing is stored"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "401":
-          description: Unauthorized
+          description: "Unauthorized"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "403":
-          description: Forbidden
+          description: "Forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: "Unknown productId (PRODUCT_NOT_FOUND)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "429":
+          description: "Too many requests (TOO_MANY_REQUESTS), see Retry-After"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
         "500":
-          description: Internal server error
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      security:
+      - keycloak: []
+  /api/v1/events/consume-events:
+    post:
+      tags:
+      - User Events
+      summary: Ingest the browser events of a page
+      description: "Same as consume-event for up to 50 events. A forbidden eventType\
+        \ fails the whole batch (400, fieldErrors on events[i].eventType); an event\
+        \ of an unknown product is ignored and counted in 'ignored'. Accepted eventType: VIEW, CLICK, COMPARE, SEARCH_RESULT_CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, IGNORE_RECOMMENDATION, BOUNCE. PURCHASE, ADD_TO_CART, REMOVE_FROM_CART, WISHLIST_ADD, RATING_* and REVIEW_* are written by the backend when the action is validated and refused here (400)."
+      operationId: collectEvents
+      parameters:
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserEventBatchRequestDto"
+        required: true
+      responses:
+        "201":
+          description: Events stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEventBatchResponseDto"
+        "400":
+          description: "Empty batch, more than 50 events, invalid event or backend-only eventType (INVALID_REQUEST); nothing is stored"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "403":
+          description: "Forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "429":
+          description: "Too many requests (TOO_MANY_REQUESTS), see Retry-After"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "500":
+          description: "Internal server error"
           content:
             application/json:
               schema:
@@ -5156,8 +5230,10 @@ components:
       properties:
         userId:
           type: string
+          description: Ignored on input; the JWT subject is used.
         eventType:
           type: string
+          description: "Accepted eventType: VIEW, CLICK, COMPARE, SEARCH_RESULT_CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, IGNORE_RECOMMENDATION, BOUNCE. PURCHASE, ADD_TO_CART, REMOVE_FROM_CART, WISHLIST_ADD, RATING_* and REVIEW_* are written by the backend when the action is validated and refused here (400)."
           enum:
           - PURCHASE
           - ADD_TO_CART
@@ -5187,6 +5263,28 @@ components:
       - eventType
       - productId
       - sessionId
+    UserEventBatchRequestDto:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserEventDto"
+          maxItems: 50
+          minItems: 1
+      required:
+      - events
+    UserEventBatchResponseDto:
+      type: object
+      properties:
+        accepted:
+          type: integer
+          format: int32
+          description: Events stored.
+        ignored:
+          type: integer
+          format: int32
+          description: Events of an unknown product, dropped without failing the batch.
     UserEventResponseDto:
       type: object
       properties:

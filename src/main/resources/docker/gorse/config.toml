@@ -8,6 +8,15 @@
 # Feedback types are the UserEventType names verbatim (GorseMapper#toFeedbackDto). Gorse v0.5 has
 # no per-type weight: a type is either positive, read, or ignored. Keep in sync with UserEventType
 # (GorseConfigConsistencyTest fails when an explicit positive event is missing here).
+#
+# Written by the backend when the action is validated: PURCHASE, ADD_TO_CART, REMOVE_FROM_CART,
+# WISHLIST_ADD, RATING_*, REVIEW_*. Sent by the browser (consume-event): VIEW, CLICK, COMPARE,
+# SEARCH_RESULT_CLICK and the other browser signals.
+#
+# NOT AN OVERSIGHT: REMOVE_FROM_CART, RATING_NEGATIVE and REVIEW_NEGATIVE are in neither list.
+# Gorse v0.5 has no negative feedback: they stay stored in MongoDB (user_events) for a later
+# recommender, and Gorse ignores them. SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY,
+# IGNORE_RECOMMENDATION and BOUNCE are ignored as well.
 
 [recommend.data_source]
 

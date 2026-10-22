@@ -13,9 +13,12 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.repositories.WishlistRepository;
 import com.novatech.cybertech.services.core.WishlistService;
+import com.novatech.cybertech.entities.enums.UserEventType;
 import com.novatech.cybertech.utils.LogSafetyUtils;
+import com.novatech.cybertech.utils.RecommendationSignalUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -34,6 +38,7 @@ public class WishlistServiceImp implements WishlistService {
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final WishlistRepository wishlistRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -54,6 +59,9 @@ public class WishlistServiceImp implements WishlistService {
         try {
             final WishlistEntity saved = wishlistRepository.save(wishlistEntity);
             log.info("Product {} ('{}') added to wishlist", productUuid, product.getName());
+            // Only a real add counts (PRODUCT_ALREADY_IN_WISHLIST threw above); written after commit.
+            RecommendationSignalUtils.publish(eventPublisher, this,
+                    List.of(RecommendationSignalUtils.signal(UserEventType.WISHLIST_ADD, userKeycloakId, product)));
             return wishlistMapper.toResponseDto(saved);
         } catch (DataIntegrityViolationException e) {
             // The pre-check above is a plain SELECT with no lock — a concurrent request (double

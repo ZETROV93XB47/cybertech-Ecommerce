@@ -26,6 +26,7 @@ import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.ModerationService;
 import com.novatech.cybertech.services.core.ReviewManagementService;
 import com.novatech.cybertech.utils.LogSafetyUtils;
+import com.novatech.cybertech.utils.RecommendationSignalUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -134,6 +135,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         final ReviewEntity saved = reviewRepository.save(reviewEntity);
         publishReviewsChanged(product.getUuid());
+        publishRecommendationSignal(keycloakId, reviewEntity, product);
         return reviewMapper.mapFromEntityToResponseDto(saved);
     }
 
@@ -172,6 +174,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
 
         final ReviewEntity saved = reviewRepository.save(review);
         publishReviewsChanged(review.getProductEntity().getUuid());
+        publishRecommendationSignal(keycloakId, review, review.getProductEntity());
         return reviewMapper.mapFromEntityToResponseDto(saved);
     }
 
@@ -272,6 +275,17 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         eventPublisher.publishEvent(new ProductReviewsChangedEvent(this, productUuid));
     }
 
+
+    /**
+     * Recommendation signal of the review as published (rating and comment after the change). Only
+     * reached once moderation accepted the comment: a refusal (403) or an unavailable moderation
+     * (503) threw before, and the transaction rollback drops the event anyway.
+     */
+    private void publishRecommendationSignal(final String keycloakId, final ReviewEntity review, final ProductEntity product) {
+        RecommendationSignalUtils.reviewSignalType(review.getRating(), review.getComment())
+                .ifPresent(type -> RecommendationSignalUtils.publish(eventPublisher, this,
+                        List.of(RecommendationSignalUtils.signal(type, keycloakId, product))));
+    }
 
     /** Blank comments are stored as {@code null}: a review without text is a rating-only review. */
     private static String normalizeComment(final String comment) {

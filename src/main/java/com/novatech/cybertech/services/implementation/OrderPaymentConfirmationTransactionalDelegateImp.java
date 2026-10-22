@@ -2,6 +2,8 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.OrderItemEntity;
+import com.novatech.cybertech.entities.enums.UserEventType;
 import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
 import com.novatech.cybertech.events.PaymentFailedEvent;
@@ -12,6 +14,7 @@ import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.services.core.OrderPaymentConfirmationTransactionalDelegate;
 import com.novatech.cybertech.services.core.StockService;
 import com.novatech.cybertech.utils.OrderPaymentUtils;
+import com.novatech.cybertech.utils.RecommendationSignalUtils;
 import com.novatech.cybertech.utils.UserContactUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -107,6 +111,7 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
                     .orderStatus(order.getStatus())
                     .userContactDto(UserContactUtils.toUserContact(order.getUserEntity()))
                     .build()));
+            publishPurchaseSignals(order);
         }
     }
 
@@ -187,6 +192,25 @@ public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPa
         stockService.releaseStock(order.getUuid());
 
         log.info("Order {} marked as REFUNDED", order.getUuid());
+    }
+
+    /**
+     * One PURCHASE recommendation signal per product of the order, written after commit. After a
+     * complement payment (modified paid order back to PAID) the products already counted for this
+     * order are skipped by {@code UserEventService#recordServerSignals} (idempotent on
+     * orderUuid + productUuid).
+     */
+    private void publishPurchaseSignals(final OrderEntity order) {
+        if (order.getOrderItemEntities() == null) {
+            return;
+        }
+        final String keycloakId = order.getUserEntity().getKeycloakId();
+        RecommendationSignalUtils.publish(eventPublisher, this, order.getOrderItemEntities().stream()
+                .map(OrderItemEntity::getProductEntity)
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(product -> RecommendationSignalUtils.signal(UserEventType.PURCHASE, keycloakId, product, order.getUuid()))
+                .toList());
     }
 
     /**

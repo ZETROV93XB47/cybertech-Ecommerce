@@ -23,8 +23,11 @@ import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import com.novatech.cybertech.services.core.CartWriteTransactionalDelegate;
 import com.novatech.cybertech.utils.LogSafetyUtils;
+import com.novatech.cybertech.utils.RecommendationSignalUtils;
+import com.novatech.cybertech.utils.RecommendationSignalUtils.CartLine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,6 +60,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
     private final UserRepository userRepository;
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -84,6 +88,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
                     .build();
             log.info("No cart yet for user {} — creating cart {}", LogSafetyUtils.maskUuid(keycloakId), cartEntity.getUuid());
         }
+        final Map<UUID, CartLine> before = RecommendationSignalUtils.snapshot(cartEntity.getCartItems());
 
         for (final Map.Entry<UUID, Integer> entry : productsToAdd.entrySet()) {
             final UUID productUuid = entry.getKey();
@@ -118,6 +123,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
         }
 
         final CartEntity savedCart = cartRepository.save(cartEntity);
+        publishCartSignals(keycloakId, before, cartEntity);
         return cartMapper.mapFromEntityToResponseDto(savedCart);
     }
 
@@ -128,11 +134,13 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
         final CartEntity cart = user.getCartEntity();
 
         if (cart != null && cart.getCartItems() != null) {
+            final Map<UUID, CartLine> before = RecommendationSignalUtils.snapshot(cart.getCartItems());
             final boolean removed = cart.getCartItems().removeIf(item -> item.getProductEntity().getUuid().equals(productUuid));
 
             if (removed) {
                 log.info("Cart {}: product {} removed, {} line(s) left", cart.getUuid(), productUuid, cart.getCartItems().size());
                 final CartEntity savedCart = cartRepository.save(cart);
+                publishCartSignals(keycloakId, before, cart);
                 return cartMapper.mapFromEntityToResponseDto(savedCart);
             }
         }
@@ -149,6 +157,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
             throw new CartIsEmptyException("Cannot decrease quantity from an empty cart.");
         }
 
+        final Map<UUID, CartLine> before = RecommendationSignalUtils.snapshot(cart.getCartItems());
         final CartItemEntity cartItemToDecrease = cart.getCartItems().stream()
                 .filter(item -> item.getProductEntity().getUuid().equals(cartItemRemoveRequestDto.getProductUuid()))
                 .findFirst()
@@ -163,12 +172,13 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
                 cartItemRemoveRequestDto.getProductUuid(), Math.max(updateResult, 0), updateResult <= 0 ? " (line removed)" : "");
 
         final CartEntity savedCart = cartRepository.save(cart);
+        publishCartSignals(keycloakId, before, cart);
         return cartMapper.mapFromEntityToResponseDto(savedCart);
     }
 
     @Override
     @Transactional
-    public CartResponseDto clearCartWithinTransaction(final String keycloakId) {
+    public CartResponseDto clearCartWithinTransaction(final String keycloakId, final boolean userInitiated) {
         final UserEntity user = userRepository.findByKeycloakId(keycloakId).orElseThrow(() -> new UserNotFoundException("User not found"));
         final CartEntity cart = user.getCartEntity();
 
@@ -178,8 +188,13 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
         }
 
         log.info("Cart {}: cleared ({} line(s) removed)", cart.getUuid(), cart.getCartItems().size());
+        final Map<UUID, CartLine> before = RecommendationSignalUtils.snapshot(cart.getCartItems());
         cart.getCartItems().clear();
         final CartEntity savedCart = cartRepository.save(cart);
+        // Emptied because an order was placed: the products were bought, not given up.
+        if (userInitiated) {
+            publishCartSignals(keycloakId, before, cart);
+        }
         return cartMapper.mapFromEntityToResponseDto(savedCart);
     }
 
@@ -213,6 +228,7 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
             productMap = Map.of();
         }
 
+        final Map<UUID, CartLine> before = RecommendationSignalUtils.snapshot(cart.getCartItems());
         log.info("Cart {}: replacing {} line(s) with {} line(s)", cartUuid,
                 cart.getCartItems() == null ? 0 : cart.getCartItems().size(), items == null ? 0 : items.size());
         if (cart.getCartItems() != null) {
@@ -233,7 +249,17 @@ public class CartWriteTransactionalDelegateImp implements CartWriteTransactional
         }
 
         final CartEntity saved = cartRepository.save(cart);
+        publishCartSignals(keycloakId, before, cart);
         return cartMapper.mapFromEntityToResponseDto(saved);
+    }
+
+    /**
+     * Recommendation signals of the change (written to MongoDB after commit, see
+     * {@code RecommendationSignalListener}). Published last: a refused change throws before.
+     */
+    private void publishCartSignals(final String keycloakId, final Map<UUID, CartLine> before, final CartEntity after) {
+        RecommendationSignalUtils.publish(eventPublisher, this,
+                RecommendationSignalUtils.cartDiff(keycloakId, before, RecommendationSignalUtils.snapshot(after.getCartItems())));
     }
 
     /**

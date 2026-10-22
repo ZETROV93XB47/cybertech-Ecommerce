@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation.shopping;
 
+import org.springframework.context.ApplicationEventPublisher;
 import com.novatech.cybertech.dto.response.wishlist.WishlistResponseDto;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.UserEntity;
@@ -28,6 +29,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import com.novatech.cybertech.entities.enums.UserEventType;
+import com.novatech.cybertech.events.RecommendationSignalsEvent;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
@@ -55,6 +58,7 @@ class WishlistServiceImpTest {
     @Mock WishlistMapper wishlistMapper;
     @Mock UserRepository userRepository;
     @Mock ProductRepository productRepository;
+    @Mock ApplicationEventPublisher eventPublisher;
     @Mock WishlistRepository wishlistRepository;
 
     @InjectMocks WishlistServiceImp service;
@@ -96,6 +100,26 @@ class WishlistServiceImpTest {
             assertThat(built.getUser()).isSameAs(user);
             assertThat(built.getProduct()).isSameAs(product);
             assertThat(built.getAddedAt()).isNotNull();
+
+            // WISHLIST_ADD recommendation signal, written to MongoDB after commit.
+            final ArgumentCaptor<RecommendationSignalsEvent> signals = ArgumentCaptor.forClass(RecommendationSignalsEvent.class);
+            verify(eventPublisher).publishEvent(signals.capture());
+            assertThat(signals.getValue().getSignals()).singleElement().satisfies(signal -> {
+                assertThat(signal.getEventType()).isEqualTo(UserEventType.WISHLIST_ADD);
+                assertThat(signal.getUserId()).isEqualTo(keycloakId);
+                assertThat(signal.getProductUuid()).isEqualTo(productUuid);
+            });
+        }
+
+        @Test
+        @DisplayName("already in the wishlist: no WISHLIST_ADD signal")
+        void duplicate_publishesNothing() {
+            final UUID productUuid = UUID.randomUUID();
+            when(wishlistRepository.existsByUser_KeycloakIdAndProduct_Uuid(keycloakId, productUuid)).thenReturn(true);
+
+            assertThatThrownBy(() -> service.addProductToMyWishlist(keycloakId, productUuid)).isInstanceOf(ProductAlreadyInWishlist.class);
+
+            verifyNoInteractions(eventPublisher);
         }
 
         @Test

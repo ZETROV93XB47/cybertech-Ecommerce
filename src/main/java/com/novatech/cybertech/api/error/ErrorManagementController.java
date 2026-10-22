@@ -52,6 +52,13 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
     }
 
+    @ExceptionHandler(UserEventTypeNotAcceptedException.class)
+    public ResponseEntity<ErrorResponseDto> handleUserEventTypeNotAcceptedException(UserEventTypeNotAcceptedException exception) {
+        final List<FieldErrorDto> fieldErrorDtos = List.of(FieldErrorDto.builder().field(exception.getField()).message(exception.getMessage()).build());
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of("Validation failed: " + exception.getField() + " (" + exception.getMessage() + ")", INVALID_REQUEST, fieldErrorDtos);
+        return new ResponseEntity<>(errorResponseDto, INVALID_REQUEST.getResponseStatus());
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponseDto> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException exception) {
         final String message = "Invalid value for parameter '" + exception.getName() + "'";

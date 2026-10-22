@@ -51,6 +51,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.novatech.cybertech.entities.enums.UserEventType;
+import com.novatech.cybertech.events.RecommendationSignalsEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -139,6 +141,21 @@ class ReviewManagementServiceImpTest {
         assertThat(event.getValue().getProductUuid()).isEqualTo(productUuid);
     }
 
+    /** The recommendation signal of the published review (written to MongoDB after commit). */
+    private void assertRecommendationSignal(final UserEventType type, final UUID productUuid) {
+        final ArgumentCaptor<RecommendationSignalsEvent> event = ArgumentCaptor.forClass(RecommendationSignalsEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue().getSignals()).singleElement().satisfies(signal -> {
+            assertThat(signal.getEventType()).isEqualTo(type);
+            assertThat(signal.getProductUuid()).isEqualTo(productUuid);
+            assertThat(signal.getUserId()).isEqualTo(keycloakId);
+        });
+    }
+
+    private void assertNoRecommendationSignal() {
+        verify(eventPublisher, never()).publishEvent(any(RecommendationSignalsEvent.class));
+    }
+
     private ReviewCreateRequestDto createDto() {
         // userUuid removed from the DTO — identity is now derived from the JWT in the controller.
         return ReviewCreateRequestDto.builder()
@@ -217,6 +234,8 @@ class ReviewManagementServiceImpTest {
             assertThat(reviewEntity.getProductEntity()).isSameAs(product);
             assertThat(reviewEntity.getOrderUuid()).isEqualTo(order.getUuid());
             assertReviewsChangedFor(product.getUuid());
+            // 5 stars with a published comment: REVIEW_POSITIVE instead of RATING_POSITIVE.
+            assertRecommendationSignal(UserEventType.REVIEW_POSITIVE, product.getUuid());
         }
 
         @ParameterizedTest(name = "comment = [{0}]")
@@ -248,6 +267,7 @@ class ReviewManagementServiceImpTest {
             assertThat(reviewEntity.getIsHateful()).isFalse();
             verifyNoInteractions(moderationService);
             verify(reviewRepository).save(reviewEntity);
+            assertRecommendationSignal(UserEventType.RATING_POSITIVE, product.getUuid());
         }
 
         @Test
@@ -418,6 +438,7 @@ class ReviewManagementServiceImpTest {
                     .isInstanceOf(CommentPostNotAllowedException.class);
 
             verify(reviewRepository, never()).save(any());
+            assertNoRecommendationSignal();
         }
 
         @Test
@@ -627,6 +648,7 @@ class ReviewManagementServiceImpTest {
             assertThat(existing.getUserEntity()).isSameAs(author); // FK preserved
             verify(reviewRepository).save(existing);
             assertReviewsChangedFor(existing.getProductEntity().getUuid());
+            assertRecommendationSignal(UserEventType.REVIEW_POSITIVE, existing.getProductEntity().getUuid());
         }
 
         @Test
@@ -670,6 +692,7 @@ class ReviewManagementServiceImpTest {
 
             assertThat(existing.getComment()).isEqualTo("Great product");
             verify(reviewRepository, never()).save(any());
+            assertNoRecommendationSignal();
         }
 
         @Test
@@ -704,6 +727,24 @@ class ReviewManagementServiceImpTest {
             assertThat(existing.getRating()).isEqualTo(3);
             assertThat(existing.getComment()).isEqualTo("Great product");
             verifyNoInteractions(moderationService);
+            // A rating of 3 is neither positive nor negative.
+            assertNoRecommendationSignal();
+        }
+
+        @Test
+        @DisplayName("an edit down to 1 star without comment -> RATING_NEGATIVE")
+        void editToOneStarPublishesRatingNegative() {
+            ReviewUpdateRequestDto dto = ReviewUpdateRequestDto.builder().reviewUuid(reviewUuid).rating(1).comment("").build();
+            UserEntity author = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            ReviewEntity existing = ReviewEntityBuilder.aValidReviewBuilder().uuid(reviewUuid).userEntity(author).build();
+
+            when(userRepository.existsByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(true);
+            when(reviewRepository.findByUuid(reviewUuid)).thenReturn(Optional.of(existing));
+            when(reviewRepository.save(existing)).thenReturn(existing);
+
+            service.update(dto, keycloakId);
+
+            assertRecommendationSignal(UserEventType.RATING_NEGATIVE, existing.getProductEntity().getUuid());
         }
 
         @ParameterizedTest(name = "comment = [{0}]")

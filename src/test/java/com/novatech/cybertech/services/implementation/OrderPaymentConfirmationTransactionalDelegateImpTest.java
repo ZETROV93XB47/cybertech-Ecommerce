@@ -27,6 +27,12 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.novatech.cybertech.dto.data.RecommendationSignalDto;
+import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.enums.UserEventType;
+import com.novatech.cybertech.events.RecommendationSignalsEvent;
+import com.novatech.cybertech.fixtures.builders.OrderItemEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
@@ -37,6 +43,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -141,6 +148,42 @@ class OrderPaymentConfirmationTransactionalDelegateImpTest {
         assertThat(dto.getOrderStatus()).isEqualTo(OrderStatus.PAID);
         assertThat(dto.getTotalAmount()).isEqualTo(order.getTotalAmount().getAmount());
         assertThat(dto.getUserContactDto().getEmail()).isEqualTo(order.getUserEntity().getEmail());
+    }
+
+    @Test
+    void handlePaymentSuccess_publishesOnePurchaseSignalPerProductWithTheOrderUuid() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-buyer");
+        final ProductEntity phone = ProductEntityBuilder.aValidProductBuilder().category("SMARTPHONE").build();
+        final ProductEntity watch = ProductEntityBuilder.aValidProductBuilder().category("SMARTWATCH").build();
+        order.setOrderItemEntities(new ArrayList<>(List.of(
+                OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(phone).orderEntity(order).build(),
+                OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(watch).orderEntity(order).build())));
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        final ArgumentCaptor<RecommendationSignalsEvent> cap = ArgumentCaptor.forClass(RecommendationSignalsEvent.class);
+        verify(eventPublisher).publishEvent(cap.capture());
+        assertThat(cap.getValue().getSignals())
+                .extracting(RecommendationSignalDto::getEventType, RecommendationSignalDto::getProductUuid,
+                        RecommendationSignalDto::getUserId, RecommendationSignalDto::getOrderUuid)
+                .containsExactlyInAnyOrder(
+                        tuple(UserEventType.PURCHASE, phone.getUuid(), "kc-buyer", uuid),
+                        tuple(UserEventType.PURCHASE, watch.getUuid(), "kc-buyer", uuid));
+    }
+
+    @Test
+    void handlePaymentFailed_publishesNoPurchaseSignal() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.AWAITING_PAYMENT);
+        order.setOrderItemEntities(new ArrayList<>(List.of(
+                OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(ProductEntityBuilder.aValidProduct()).orderEntity(order).build())));
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(eventForOrder(uuid)));
+
+        verify(eventPublisher, never()).publishEvent(any(RecommendationSignalsEvent.class));
     }
 
     @Test

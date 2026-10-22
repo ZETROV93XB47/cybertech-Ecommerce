@@ -228,7 +228,16 @@ public class CartServiceImp implements CartService {
 
     @Override
     public void clearCart(final String keycloakId) {
-        final CartResponseDto result = cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId);
+        clearCart(keycloakId, true);
+    }
+
+    @Override
+    public void clearCartAfterOrder(final String keycloakId) {
+        clearCart(keycloakId, false);
+    }
+
+    private void clearCart(final String keycloakId, final boolean userInitiated) {
+        final CartResponseDto result = cartWriteTransactionalDelegate.clearCartWithinTransaction(keycloakId, userInitiated);
         // null means the user had no cart / an already-empty cart — nothing to persist or cache.
         if (result != null) {
             cartCacheHelper.putWithJitter(keycloakId, result);

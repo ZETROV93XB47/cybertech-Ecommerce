@@ -17,6 +17,8 @@ public interface CrudBaseRepository<T extends BaseEntity, U extends Number> exte
 
     List<T> findAllByUuidIn(final Collection<UUID> uuids);
 
+    boolean existsByUuid(final UUID uuid);
+
     @Modifying
     @Transactional
     void deleteByUuid(final UUID uuid);

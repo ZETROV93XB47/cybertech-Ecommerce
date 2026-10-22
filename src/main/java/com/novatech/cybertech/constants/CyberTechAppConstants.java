@@ -100,4 +100,17 @@ public class CyberTechAppConstants {
     // see max-page-size) is split by the front; 50 keeps the IN (...) query and the URL short.
     public static final int MAX_AVAILABILITY_BATCH_SIZE = 50;
     public static final String DEFAULT_SORT_FIELD = "createdAt";
+
+    // Recommendation signals (UserEvent) written by the backend. A review rated >= POSITIVE is a
+    // positive signal, <= NEGATIVE a negative one; the rating in between produces nothing.
+    public static final int REVIEW_POSITIVE_RATING_THRESHOLD = 4;
+    public static final int REVIEW_NEGATIVE_RATING_THRESHOLD = 2;
+    // UserEvent.sessionId is required: events written by the backend carry this technical id.
+    public static final String USER_EVENT_SERVER_SESSION_ID = "server";
+    public static final String USER_EVENT_METADATA_CATEGORY = "category";
+    public static final String USER_EVENT_METADATA_BRAND = "brand";
+    public static final String USER_EVENT_METADATA_PRICE = "price";
+    public static final String USER_EVENT_METADATA_ORDER_UUID = "orderUuid";
+    // Most events of one POST /events/consume-events call (the front groups a page's signals).
+    public static final int USER_EVENT_BATCH_MAX_SIZE = 50;
 }

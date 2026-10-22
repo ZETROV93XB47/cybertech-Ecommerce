@@ -604,10 +604,11 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         final OrderEntity savedOrder = orderCreationTransactionalDelegate.createAndReserveStock(req, keycloakId);
 
-        // The delegate emptied the cart inside its (now committed) transaction; clearCart re-reads
-        // that empty cart and writes it to the Redis cache — after the commit, like every other
-        // cart write path — so the customer doesn't keep seeing the ordered items in their cart.
-        cartService.clearCart(keycloakId);
+        // The delegate emptied the cart inside its (now committed) transaction; clearCartAfterOrder
+        // re-reads that empty cart and writes it to the Redis cache — after the commit, like every
+        // other cart write path — so the customer doesn't keep seeing the ordered items in their
+        // cart. Never a REMOVE_FROM_CART recommendation signal here: the products were bought.
+        cartService.clearCartAfterOrder(keycloakId);
 
         final UserEntity user = savedOrder.getUserEntity();
         final UUID orderUuid = savedOrder.getUuid();

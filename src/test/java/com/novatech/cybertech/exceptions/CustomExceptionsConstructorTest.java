@@ -195,6 +195,16 @@ class CustomExceptionsConstructorTest {
         }
 
         @Test
+        @DisplayName("UserEventTypeNotAcceptedException — (field, message) ctor keeps the field reported in fieldErrors")
+        void userEventTypeNotAcceptedException() {
+            final UserEventTypeNotAcceptedException ex = new UserEventTypeNotAcceptedException("eventType", "not accepted");
+
+            assertThat(ex.getField()).isEqualTo("eventType");
+            assertThat(ex.getMessage()).isEqualTo("not accepted");
+            assertThat(ex).isInstanceOf(RuntimeException.class);
+        }
+
+        @Test
         @DisplayName("ProductConstraintsViolationException — second ctor accepts a Set<ValidationMessage>")
         void productConstraintsViolationException() {
             final Set<com.networknt.schema.ValidationMessage> violations = Set.of();

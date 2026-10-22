@@ -275,7 +275,7 @@ class OrderManagementServiceImpTest {
             final InOrder ord = inOrder(orderCreationTransactionalDelegate, cartService, paymentService, eventPublisher);
             ord.verify(orderCreationTransactionalDelegate).createAndReserveStock(any(OrderPlacingRequestDto.class), eq(keycloakId));
             // Cart cache refreshed once the creation transaction (which emptied the cart) committed.
-            ord.verify(cartService).clearCart(keycloakId);
+            ord.verify(cartService).clearCartAfterOrder(keycloakId);
             ord.verify(paymentService).processPayment(eq(order), any(), eq(total), anyString());
             ord.verify(eventPublisher).publishEvent(any(OrderCreatedEvent.class));
             verify(stockService, never()).releaseStock(any());
