@@ -381,6 +381,20 @@ class PaymentWebhookServiceImpTest {
         }
 
         @Test
+        @DisplayName("PaymentIntent without order_uuid metadata (another integration on the shared Stripe account): ignored, no lookup, no event, no ledger row")
+        void foreignPaymentIntentIsIgnored() {
+            final String payload = paymentIntentSucceededJson("pi_foreign", UUID.randomUUID(), "idem-foreign")
+                    .replace("\"order_uuid\"", "\"order_reference\"");
+            final Event event = toEvent(payload);
+            when(processedWebhookEventRepository.existsByStripeEventId(event.getId())).thenReturn(false);
+
+            service.handleEvent(event, payload);
+
+            verifyNoInteractions(attemptRepository, eventPublisher);
+            verify(processedWebhookEventRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("missing payment row throws PaymentNotFoundException — no events, no ledger insert")
         void missingPaymentRowThrows() {
             final String stripePaymentId = "pi_orphan";

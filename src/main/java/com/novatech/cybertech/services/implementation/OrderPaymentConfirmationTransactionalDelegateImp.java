@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.constants.CyberTechAppConstants;
 import com.novatech.cybertech.dto.data.OrderEventDto;
 import com.novatech.cybertech.entities.OrderEntity;
 import com.novatech.cybertech.entities.OrderItemEntity;
@@ -41,7 +42,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OrderPaymentConfirmationTransactionalDelegateImp implements OrderPaymentConfirmationTransactionalDelegate {
 
-    private static final String ORDER_UUID_METADATA_KEY = "order_uuid";
+    private static final String ORDER_UUID_METADATA_KEY = CyberTechAppConstants.STRIPE_METADATA_ORDER_UUID;
 
     /**
      * Source states from which a payment outcome (success / failure) may still be applied:

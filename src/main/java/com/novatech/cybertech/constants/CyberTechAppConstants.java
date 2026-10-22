@@ -113,4 +113,6 @@ public class CyberTechAppConstants {
     public static final String USER_EVENT_METADATA_ORDER_UUID = "orderUuid";
     // Most events of one POST /events/consume-events call (the front groups a page's signals).
     public static final int USER_EVENT_BATCH_MAX_SIZE = 50;
+    // Stripe metadata key carrying our order uuid, set on every PaymentIntent this application creates.
+    public static final String STRIPE_METADATA_ORDER_UUID = "order_uuid";
 }

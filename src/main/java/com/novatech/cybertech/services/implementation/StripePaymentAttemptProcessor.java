@@ -1,6 +1,7 @@
 package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.annotation.PaymentTypeHandler;
+import com.novatech.cybertech.constants.CyberTechAppConstants;
 import com.novatech.cybertech.dto.data.PaymentAttemptResult;
 import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.entities.enums.PaymentType;
@@ -33,7 +34,7 @@ public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
     private static final String FAILED = "failed";
     private static final String CANCELED = "canceled";
     private static final String SUCCEEDED = "succeeded";
-    private static final String ORDER_UUID = "order_uuid";
+    private static final String ORDER_UUID = CyberTechAppConstants.STRIPE_METADATA_ORDER_UUID;
     private static final String IDEMPOTENCY_KEY = "idempotency_key";
     private static final String STRIPE_API_RESILIENCE_INSTANCE = "stripeApi";
     private static final String REQUIRES_PAYMENT_METHOD = "requires_payment_method";

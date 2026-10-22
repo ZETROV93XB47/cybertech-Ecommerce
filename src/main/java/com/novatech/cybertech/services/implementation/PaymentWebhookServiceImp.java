@@ -11,6 +11,7 @@ import com.novatech.cybertech.exceptions.PaymentNotFoundException;
 import com.novatech.cybertech.repositories.PaymentAttemptRepository;
 import com.novatech.cybertech.repositories.ProcessedWebhookEventRepository;
 import com.novatech.cybertech.services.core.PaymentWebhookService;
+import com.novatech.cybertech.utils.OrderPaymentUtils;
 import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.model.Charge;
 import com.stripe.model.Event;
@@ -26,6 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
+import java.util.Set;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.STRIPE_METADATA_ORDER_UUID;
 
 /**
  * Default implementation of {@link PaymentWebhookService}.
@@ -47,6 +51,10 @@ import java.time.LocalDateTime;
  * {@code payment_intent.payment_failed} publishes {@link PaymentFailedEvent}.
  * {@code charge.refunded} publishes {@link PaymentRefundedEvent}.
  *
+ * <p><b>Foreign events</b>: the Stripe test account is shared, so {@code stripe listen} also
+ * forwards the payments of other integrations. A payment event without our {@code order_uuid}
+ * metadata was not created by this application: it is logged at WARN and ignored (no ledger row).
+ *
  * <p><b>Terminal-state guard</b>: out-of-order Stripe deliveries (e.g. SUCCESS then a
  * delayed FAILED for the same {@code pi_*}) MUST NOT regress a payment row from SUCCESS to FAILED.
  * The failure handler short-circuits in that case.
@@ -59,6 +67,7 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
     private static final String CHARGE_REFUNDED = "charge.refunded";
     private static final String PAYMENT_INTENT_SUCCEEDED = "payment_intent.succeeded";
     private static final String PAYMENT_INTENT_PAYMENT_FAILED = "payment_intent.payment_failed";
+    private static final Set<String> PAYMENT_EVENT_TYPES = Set.of(PAYMENT_INTENT_SUCCEEDED, PAYMENT_INTENT_PAYMENT_FAILED, CHARGE_REFUNDED);
 
     private final ApplicationEventPublisher eventPublisher;
     private final PaymentAttemptRepository attemptRepository;
@@ -112,6 +121,13 @@ public class PaymentWebhookServiceImp implements PaymentWebhookService {
         }
 
         final StripeWebhookEventDto stripeWebhookEventDto = objectMapper.readValue(eventPayload, StripeWebhookEventDto.class);
+
+        if (PAYMENT_EVENT_TYPES.contains(event.getType())
+                && OrderPaymentUtils.extractMetadata(stripeWebhookEventDto, STRIPE_METADATA_ORDER_UUID) == null) {
+            log.warn("Stripe event id={} type={} has no {} metadata: not created by this application (shared Stripe account) — ignored",
+                    stripeEventId, event.getType(), STRIPE_METADATA_ORDER_UUID);
+            return;
+        }
 
         boolean handled = false;
 
