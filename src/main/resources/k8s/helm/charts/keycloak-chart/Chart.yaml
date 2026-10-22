@@ -1,6 +1,6 @@
 apiVersion: v2
 name: keycloak
-description: Keycloak with MySQL backend
+description: Keycloak (OAuth2 / OIDC provider) backed by MySQL — Cybertech portfolio chart
 type: application
-version: 0.1.0
-appVersion: "24.0.3"
+version: 0.2.0
+appVersion: "26.0.4"

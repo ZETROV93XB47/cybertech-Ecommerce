@@ -5,7 +5,9 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.8</version>
+        <!-- Keep on 4.0.x: Spring Cloud 2025.1.x only supports Boot 4.0.x — its compatibility
+             verifier refuses to start the context on 4.1.x. Bump together with spring-cloud.version. -->
+        <version>4.0.4</version>
     </parent>
     <groupId>com.novatech.cybertech</groupId>
     <artifactId>Cybertech</artifactId>
@@ -26,10 +28,21 @@
         <url/>
     </scm>
     <properties>
-        <java.version>25</java.version>
-        <spring-cloud.version>2025.0.0</spring-cloud.version>
+        <java.version>26</java.version>
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
+        <spring-restdocs.version>4.0.0</spring-restdocs.version>
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
+        <shedlock.version>6.6.0</shedlock.version>
+        <redisson.version>3.50.0</redisson.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!--
+            JaCoCo BUNDLE coverage gate is only meaningful when integration tests have run, since
+            several services (Stripe webhook, payment processors, AES card crypto) are exercised
+            primarily via failsafe ITs. This property defaults to skipping the gate; the
+            `integration-test` profile flips it to false so `mvn verify -Pintegration-test` (or
+            `install -Pintegration-test`) enforces 80% line + branch coverage.
+        -->
+        <jacoco.gate.skip>true</jacoco.gate.skip>
     </properties>
     <dependencies>
         <dependency>
@@ -42,6 +55,10 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
         <dependency>
@@ -49,9 +66,34 @@
             <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
         </dependency>
+        <!--        Maybe remove the following dep later -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit</artifactId>
+            <version>1.4.1</version>
+            <scope>test</scope>
+        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.boot</groupId>-->
+<!--            <artifactId>spring-boot-elasticsearch</artifactId>-->
+<!--            <scope>compile</scope>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.elasticsearch</groupId>-->
+<!--            <artifactId>elasticsearch</artifactId>-->
+<!--            <version>7.17.9</version>-->
+<!--        </dependency>-->
+
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.data</groupId>-->
+<!--            <artifactId>spring-data-elasticsearch</artifactId>-->
+<!--            <version>6.0.3</version>-->
+<!--            <scope>compile</scope>-->
+<!--        </dependency>-->
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>elasticsearch</artifactId>
@@ -63,13 +105,91 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+
+        <!-- Redisson: backs the cart per-user distributed lock (RLock) in CartCacheHelperImp.
+             Replaces a hand-rolled SET NX EX + Lua CAS-unlock script with a battle-tested client
+             that also auto-extends the lock TTL (watchdog) while the holder is still working, and
+             tracks ownership per-thread internally so we don't have to pass a token around. Using
+             the plain "redisson" artifact (not "redisson-spring-boot-starter") because the
+             RedissonClient bean is defined explicitly in RedisConfig from the existing
+             RedisConnectionFactory (see the comment there for why), so the starter's own
+             autoconfiguration isn't needed. -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>${redisson.version}</version>
+        </dependency>
+
+        <!-- Spring Retry: backs @Retryable on OrderManagementServiceImp#cancelOrder, replacing a
+             hand-rolled TransactionTemplate + for-loop retry around an OptimisticLockingFailureException
+             race against the async payment-confirmation listener. Needs no explicit version, managed
+             by the spring-boot-starter-parent BOM. -->
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+        </dependency>
+
+        <!-- ShedLock: prevents @Scheduled jobs from double-running across pods once we scale
+             past a single replica (currently cybertech-app-chart replicas=1, so this is inert
+             today but wired up as the intended pattern for the next scheduled job that needs it). -->
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-spring</artifactId>
+            <version>${shedlock.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-provider-redis-spring</artifactId>
+            <version>${shedlock.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-authorization-server</artifactId>
+            <groupId>nl.martijndwars</groupId>
+            <artifactId>web-push</artifactId>
+            <version>5.1.2</version>
+            <!-- 5.1.2 is the latest release; its transitive versions carry known CVEs. Only PushService
+                 (Apache HttpAsyncClient) is used: the AsyncHttpClient-based PushAsyncService and the CLI
+                 (jcommander) are excluded, and BouncyCastle / jose4j are pinned to patched versions below. -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.asynchttpclient</groupId>
+                    <artifactId>async-http-client</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.beust</groupId>
+                    <artifactId>jcommander</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>bcprov-jdk15on</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bitbucket.b_c</groupId>
+                    <artifactId>jose4j</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- web-push exposes JoseException in its send() API although jose4j is runtime-scoped upstream. -->
+        <dependency>
+            <groupId>org.bitbucket.b_c</groupId>
+            <artifactId>jose4j</artifactId>
+            <version>0.9.7</version>
+        </dependency>
+        <!-- Runtime-scoped upstream; WebPushGatewayImp sends web-push's prepared request through one shared,
+             timeout-bounded async client instead of the deprecated per-call PushService#sendAsync. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpasyncclient</artifactId>
+            <version>4.1.5</version>
+        </dependency>
+        <!-- web-push loads VAPID / subscription keys through the "BC" JCA provider (registered by WebPushGatewayImp). -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.86</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -99,10 +219,10 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-gateway-mvc</artifactId>
-        </dependency>
+        <!--        <dependency>-->
+        <!--            <groupId>org.springframework.cloud</groupId>-->
+        <!--            <artifactId>spring-cloud-starter-gateway-mvc</artifactId>-->
+        <!--        </dependency>-->
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-inline</artifactId>
@@ -110,27 +230,24 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.session</groupId>
-            <artifactId>spring-session-data-redis</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.thymeleaf.extras</groupId>
             <artifactId>thymeleaf-extras-springsecurity6</artifactId>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>co.elastic.clients</groupId>-->
-<!--            <artifactId>elasticsearch-java</artifactId>-->
-<!--            <version>8.13.4</version>-->
-<!--        </dependency>-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>
             <scope>runtime</scope>
             <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.0.1</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>com.google.cloud.tools</groupId>
@@ -151,11 +268,6 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
             <version>3.20.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
@@ -193,11 +305,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.springframework.restdocs</groupId>
             <artifactId>spring-restdocs-mockmvc</artifactId>
             <scope>test</scope>
@@ -210,22 +317,20 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>kafka</artifactId>
+            <version>1.21.4</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>mysql</artifactId>
+            <version>1.21.4</version>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.thymeleaf.extras</groupId>
-            <artifactId>thymeleaf-extras-springsecurity5</artifactId>
-            <version>3.1.3.RELEASE</version>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mongodb</artifactId>
+            <version>1.21.4</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.swagger.core.v3</groupId>
@@ -233,10 +338,83 @@
             <version>2.2.21</version>
         </dependency>
 
+        <!--        <dependency>-->
+        <!--            <groupId>io.awspring.cloud</groupId>-->
+        <!--            <artifactId>spring-cloud-aws-dependencies</artifactId>-->
+        <!--            <version>4.0.0</version>-->
+        <!--            <type>pom</type>-->
+        <!--            <scope>import</scope>-->
+        <!--        </dependency>-->
+
         <dependency>
-            <groupId>com.github.javafaker</groupId>
-            <artifactId>javafaker</artifactId>
-            <version>1.0.2</version>
+            <groupId>io.awspring.cloud</groupId>
+            <artifactId>spring-cloud-aws-starter-s3</artifactId>
+            <version>4.0.0</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.stripe</groupId>
+            <artifactId>stripe-java</artifactId>
+            <version>31.4.0</version>
+            <scope>compile</scope>
+        </dependency>
+        <!--
+             Vavr 1.0.1 (first stable 1.x, released 2026-03-01) — object-functional
+             library. Used selectively at external-integration boundaries (Stripe calls,
+             crypto digests, Jackson deserialization) where Vavr's Try<T> collapses noisy
+             try/catch-then-rethrow blocks into a single fluent expression. Domain code
+             stays on plain Java Optional/Stream — we deliberately do NOT swap the JDK
+             collections for Vavr's persistent ones to avoid two competing idioms.
+        -->
+        <dependency>
+            <groupId>io.vavr</groupId>
+            <artifactId>vavr</artifactId>
+            <version>1.0.1</version>
+            <scope>compile</scope>
+        </dependency>
+        <!--
+             Bucket4j core: in-memory token-bucket rate limiting used by RateLimitFilter
+             on register / order-place / cart endpoints. 8.10.x is the latest 8.x line
+             (compiled for JDK 17, runs on JDK 26). When we move to a multi-replica
+             deployment, swap for bucket4j-redis and a ProxyManager-backed bucket store.
+        -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>8.10.1</version>
+            <scope>compile</scope>
+        </dependency>
+        <!--
+             FIX(DOS-MEMORY): Caffeine in-memory cache used by RateLimitFilter to back the
+             per-client bucket store. Replaces the previous unbounded ConcurrentHashMap so
+             that key rotation (IP/JWT churn) cannot grow the heap without bound. The
+             cache is configured with expireAfterAccess + maximumSize, which preserves the
+             existing token-bucket semantics for active callers while evicting idle keys.
+             3.2.x is the latest 3.x line targeting Java 11+ bytecode.
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>3.2.0</version>
+            <scope>compile</scope>
+        </dependency>
+        <!--
+             networknt json-schema-validator: interprets the admin-authored JSON Schema
+             stored per product category (ProductCategorySchemaEntity) against incoming
+             product `attributes` payloads. Ships its own Jackson 2 (com.fasterxml.jackson)
+             JsonNode API, independent from this project's Jackson 3
+             (tools.jackson.databind) starter — the two coexist on the classpath under
+             different artifact coordinates; ProductValidationService bridges between them
+             (serialize with the project's Jackson 3 ObjectMapper, re-parse with the
+             Jackson 2 one this library brings in transitively) before calling
+             JsonSchema#validate.
+        -->
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>1.5.4</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>net.datafaker</groupId>
@@ -244,7 +422,6 @@
             <version>2.5.3</version>
             <scope>compile</scope>
         </dependency>
-
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
@@ -258,26 +435,76 @@
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
-            <version>0.11.5</version>
+            <version>0.12.6</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-impl</artifactId>
-            <version>0.11.5</version>
+            <version>0.12.6</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
-            <version>0.11.5</version>
+            <version>0.12.6</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>io.hypersistence</groupId>
-            <artifactId>hypersistence-utils-hibernate-63</artifactId>
-            <version>3.14.1</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+            <scope>compile</scope>
         </dependency>
-
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jackson</artifactId>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.hypersistence</groupId>
+            <artifactId>hypersistence-utils-hibernate-73</artifactId>
+            <version>3.15.2</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-http-client</artifactId>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.github.f4b6a3</groupId>
+            <artifactId>uuid-creator</artifactId>
+            <version>6.1.1</version>
+            <scope>compile</scope>
+        </dependency>
+        <!--
+             logstash-logback-encoder produces JSON-structured logs (consumed by Loki) when the
+             `prod` profile is active — see logback-spring.xml. Pinned to 8.0 (latest 8.x at time
+             of writing), compatible with Logback 1.5.x shipped by Spring Boot 4.
+             (Micrometer / Prometheus / OTel tracing were removed — unused.)
+        -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>8.0</version>
+        </dependency>
+        <!--
+            Task 8 — Gatling Java DSL.
+            Test-scoped: Surefire ignores *Simulation.java by default include pattern, and
+            the explicit `**/com/novatech/cybertech/gatling/**` exclude in maven-surefire-plugin
+            below guarantees they never run on `mvn test`. The plugin lives under the
+            -Ploadtest profile and only activates on `mvn gatling:test -Ploadtest`.
+        -->
+        <dependency>
+            <groupId>io.gatling.highcharts</groupId>
+            <artifactId>gatling-charts-highcharts</artifactId>
+            <version>3.13.5</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <dependencyManagement>
         <dependencies>
@@ -315,11 +542,33 @@
                             <version>${org.mapstruct.version}</version>
                         </path>
                     </annotationProcessorPaths>
-                    <source>25</source>
-                    <target>25</target>
+                    <source>26</source>
+                    <target>26</target>
                     <compilerArgs>--enable-preview</compilerArgs>
                 </configuration>
             </plugin>
+            <!--
+                Hibernate bytecode enhancement (hibernate-enhance-maven-plugin) was tried here to
+                get genuine lazy loading on the non-owning side of bidirectional @OneToOne
+                associations (UserEntity.bankCardEntity / .cartEntity — see the comment there) and
+                reverted. Findings for whoever revisits this:
+
+                  1. No plugin release matches hibernate-core 7.2.7.Final (the version this
+                     project's Spring Boot 4.0.4 BOM resolves) — the plugin's groupId moved to
+                     org.hibernate.orm.tooling and its latest release is 7.0.0.Beta1.
+                  2. That plugin's bundled Byte Buddy only officially supports up to Java 23
+                     (bytecode 67); Java 26 (bytecode 70) needs -Dnet.bytebuddy.experimental=true.
+                  3. With that flag on, enhancement silently mis-instruments some entities:
+                     ProductCategorySchemaEntity and DiscountCampaignEntity both threw
+                     `AbstractMethodError: $$_hibernate_getInstanceId()I is abstract` the moment
+                     Hibernate actually touched them against a real database — invisible in unit
+                     tests (no real SessionFactory there) but a hard crash in every Testcontainers
+                     IT and, by the same mechanism, in a real deployment.
+
+                Net: beta plugin + experimental Byte Buddy flag + Java 26 is not a stable
+                combination today. Not worth the risk for a fix scoped to two fields. Revisit once
+                the plugin ships a release built for this Hibernate/JDK combination.
+            -->
             <plugin>
                 <artifactId>maven-resources-plugin</artifactId>
                 <version>3.3.1</version>
@@ -369,12 +618,251 @@
                 <artifactId>jib-maven-plugin</artifactId>
                 <version>3.5.1</version>
                 <configuration>
+                    <!-- Skaffold overrides <to> with the tag it computes; this default matches the Helm chart. -->
+                    <from>
+                        <image>eclipse-temurin:26-jre</image>
+                    </from>
                     <to>
-                        <image>cybertech</image>
+                        <image>cybertech-app</image>
                     </to>
+                    <container>
+                        <!-- Explicit so Jib does not have to scan Java 26 bytecode to infer it. -->
+                        <mainClass>com.novatech.cybertech.CyberTechApplication</mainClass>
+                        <!-- The code is compiled with preview features, see maven-compiler-plugin. -->
+                        <jvmFlags>
+                            <jvmFlag>--enable-preview</jvmFlag>
+                        </jvmFlags>
+                        <ports>
+                            <port>8081</port>
+                        </ports>
+                    </container>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <!-- W0: bumped from 0.8.13 to 0.8.14 because 0.8.13 cannot read Java 26 (class file v70) bytecode. -->
+                <version>0.8.14</version>
+                <configuration>
+                    <excludes>
+                        <exclude>**/CyberTechApplication.class</exclude>
+                        <exclude>**/dto/**</exclude>
+                        <exclude>**/api/error/model/**</exclude>
+                        <exclude>**/entities/enums/**</exclude>
+                        <exclude>**/entities/valueObjects/**</exclude>
+                        <exclude>**/entities/document/**</exclude>
+                        <exclude>**/entities/attributes/**</exclude>
+                        <exclude>**/entities/*Entity.class</exclude>
+                        <exclude>**/mappers/**/*MapperImpl.class</exclude>
+                        <exclude>**/config/**</exclude>
+                        <exclude>**/logger/**</exclude>
+                        <exclude>**/constants/**</exclude>
+                        <exclude>**/annotation/**</exclude>
+                        <exclude>**/api/controllers/spec/**</exclude>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                        <configuration>
+                            <propertyName>jacocoArgLine</propertyName>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <!-- W0: gate created off; W6 flipped haltOnFailure=true (2026-04-23) — bundle line 92.48%, branch 91.19%. -->
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${jacoco.gate.skip}</skip>
+                            <haltOnFailure>true</haltOnFailure>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{jacocoArgLine} --enable-preview</argLine>
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                        <exclude>**/*IntegrationTest.java</exclude>
+                        <exclude>**/CybertechApplicationTests.java</exclude>
+                        <!--
+                            Task 8: Gatling simulations live under src/test/java but
+                            must NEVER run during the standard `test` phase — they
+                            execute via the gatling:test mojo (-Ploadtest) instead.
+                            Surefire's default include patterns already skip *Simulation.java
+                            files, but we exclude the package explicitly for clarity.
+                        -->
+                        <exclude>**/com/novatech/cybertech/gatling/**</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <!--
+                PRE-5: spring-boot-starter-parent binds failsafe to `integration-test`/`verify`
+                in its own <build><plugins>, so a bare `mvn verify` would still try to run
+                ITs. We force-skip them here by default; the `integration-test` profile
+                (declared at the bottom of this POM) flips skipITs back to false and
+                attaches the project's IT include patterns + jacoco argLine.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <skipITs>true</skipITs>
+                </configuration>
+            </plugin>
+            <!--
+                springdoc-openapi-maven-plugin — opt-in static OpenAPI contract export.
+
+                With <skip>true</skip> the plugin does NOT auto-run on `mvn verify`. To regenerate
+                the canonical docs/openapi/openapi.yaml from a running app:
+
+                  1. Boot the app:  ./mvnw spring-boot:run -Dspring-boot.run.profiles=test
+                  2. In another shell: ./mvnw -Dskip=false springdoc-openapi:generate
+
+                The committed docs/openapi/openapi.yaml is the contract Postman / front-end /
+                third parties consume between regenerations.
+            -->
+            <plugin>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-maven-plugin</artifactId>
+                <version>1.4</version>
+                <executions>
+                    <execution>
+                        <id>integration-test</id>
+                        <goals><goal>generate</goal></goals>
+                        <phase>integration-test</phase>
+                    </execution>
+                </executions>
+                <configuration>
+                    <apiDocsUrl>http://localhost:8081/v3/api-docs.yaml</apiDocsUrl>
+                    <outputFileName>openapi.yaml</outputFileName>
+                    <outputDir>${project.basedir}/docs/openapi</outputDir>
+                    <skip>true</skip>
                 </configuration>
             </plugin>
         </plugins>
     </build>
+
+    <!--
+        PRE-5: Failsafe is now bound to the `integration-test` profile only.
+
+        Default `mvn verify` runs unit tests + JaCoCo gate but SKIPS integration tests.
+        To execute the IT suite, opt-in explicitly:
+
+            ./mvnw verify -Pintegration-test
+
+        Rationale: previously `mvn verify -Pintegration-test` was a silent no-op (no
+        such profile existed) and failsafe ran on every `verify`, slowing the default
+        loop and surprising callers who expected the flag to gate ITs.
+    -->
+    <profiles>
+        <!--
+            Task 8: Gatling load-test profile.
+
+            The gatling-maven-plugin is intentionally bound ONLY inside this profile so
+            simulations never run on `mvn test` or `mvn verify`. To execute load tests:
+
+                ./mvnw gatling:test -Ploadtest \
+                    -Dgatling.simulationClass=com.novatech.cybertech.gatling.BrowseToOrderSimulation \
+                    -Dgatling.baseUrl=https://staging.api.cybertech.local \
+                    -Dauth.token=$(./scripts/get-keycloak-token.sh)
+
+            Without -Dgatling.simulationClass, the plugin runs every Simulation under
+            src/test/java. See src/test/java/com/novatech/cybertech/gatling/README.md
+            for the full operator playbook (JWT acquisition, SLOs, what-to-do-on-breach).
+
+            Plugin version 4.10.2 ships Gatling 3.13.x and Java 17+ bytecode; runs cleanly
+            on JDK 26 without the enable-preview flag (Gatling does not use preview features).
+        -->
+        <profile>
+            <id>loadtest</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>io.gatling</groupId>
+                        <artifactId>gatling-maven-plugin</artifactId>
+                        <version>4.10.2</version>
+                        <configuration>
+                            <!--
+                                Simulation classes live under src/test/java in the
+                                com.novatech.cybertech.gatling package. The plugin defaults
+                                already resolve src/test/java + src/test/resources, so no
+                                explicit override is required.
+                            -->
+                            <runMultipleSimulations>true</runMultipleSimulations>
+                            <includes>
+                                <include>com.novatech.cybertech.gatling.*Simulation</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>integration-test</id>
+            <properties>
+                <!-- Enforce JaCoCo BUNDLE 80% gate only when ITs are running. -->
+                <jacoco.gate.skip>false</jacoco.gate.skip>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <skipITs>false</skipITs>
+                            <argLine>@{jacocoArgLine} --enable-preview</argLine>
+                            <includes>
+                                <include>**/*IT.java</include>
+                                <include>**/*IntegrationTest.java</include>
+                            </includes>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>integration-tests</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

@@ -9,9 +9,7 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
 class CybertechApplicationTests {
-
     @Test
     void contextLoads() {
     }
-
 }

@@ -1,29 +1,30 @@
 package com.novatech.cybertech.entities;
 
-import com.novatech.cybertech.entities.enums.*;
+import com.novatech.cybertech.entities.enums.Brand;
 import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.Type;
-import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
+// Batches lazy proxy initialization: when several ProductEntity references are resolved lazily
+// within the same session (e.g. one per CartItemEntity/OrderItemEntity in a listing), Hibernate
+// groups them into IN-clause batches of this size instead of issuing one SELECT per product.
+@BatchSize(size = 20)
 @Entity
-@Setter
 @Getter
+@Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
 @Table(name = "productTable")
-@EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "reviewEntities"})
-public class ProductEntity extends BaseEntity {
+@ToString(callSuper = true, exclude = {"orderItemEntities", "reviewEntities", "wishlistEntries", "recommendations"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "reviewEntities", "wishlistEntries", "recommendations"})
+public class ProductEntity extends BaseEntity<Long> {
 
     @Column(name = "name", nullable = false)
     private String name;
@@ -35,12 +36,18 @@ public class ProductEntity extends BaseEntity {
     @Column(name = "brand", nullable = false)
     private Brand brand;
 
-    @Enumerated(EnumType.STRING)
+    /** Free-form key validated against the {@code ProductCategorySchemaEntity} registry — see
+     *  {@code ProductValidationService}. No longer a Java enum, so a new category is an admin
+     *  API call, not a redeploy. */
     @Column(name = "category", nullable = false)
-    private Category category;
+    private String category;
 
-    @Column(name = "photo")
-    private String photo;
+    /** URLs of this product's photos in S3, in display order. 1-5 typically, but unbounded.
+     *  A JSON array column rather than an {@code @ElementCollection} — no secondary table, same
+     *  storage approach already used by {@link #attributes} on this entity. */
+    @Type(JsonType.class)
+    @Column(name = "photos", columnDefinition = "json")
+    private List<String> photos = new ArrayList<>();
 
     @Column(name = "stock", nullable = false)
     private Integer stock;
@@ -55,12 +62,15 @@ public class ProductEntity extends BaseEntity {
     @Column(columnDefinition = "json")
     private Map<String, Object> attributes = new HashMap<>();
 
-    @OneToMany(mappedBy = "productEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "productEntity", /*cascade = CascadeType.ALL,*/ fetch = FetchType.LAZY)
     private List<OrderItemEntity> orderItemEntities;
 
-    @OneToMany(mappedBy = "productEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "productEntity", /*cascade = CascadeType.ALL,*/ fetch = FetchType.LAZY)
     private List<ReviewEntity> reviewEntities;
-}
 
-//@OneToMany(mappedBy = "productEntity", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-//private List<CartItemEntity> cartItemEntities;
+    @OneToMany(mappedBy = "product", /*cascade = CascadeType.ALL,*/ orphanRemoval = true)
+    private Set<WishlistEntity> wishlistEntries = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", /*cascade = CascadeType.ALL,*/ orphanRemoval = true)
+    private Set<RecommendationEntity> recommendations = new HashSet<>();
+}

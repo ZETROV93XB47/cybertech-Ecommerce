@@ -1,27 +1,26 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.w3.org/1999/xhtml" lang="fr">
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8">
     <title>Confirmation de commande</title>
     <style>
-        /* Styles généraux */
         body {
-            background-color: #f4f6f8;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f8;
             margin: 0;
             padding: 0;
             color: #333333;
         }
-        .email-container {
+        .container {
             max-width: 600px;
-            background-color: #ffffff;
             margin: 40px auto;
+            background-color: #ffffff;
             padding: 30px 40px;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
+
         h1 {
-            color: #2c3e50;
             font-size: 24px;
             margin-bottom: 20px;
         }
@@ -30,32 +29,19 @@
             line-height: 1.5;
             margin: 16px 0;
         }
-        strong {
-            color: #2c3e50;
-        }
-        .order-info {
-            background-color: #ecf0f1;
+        .order-summary {
             border-radius: 6px;
             padding: 15px 20px;
             margin: 20px 0;
+        }
+        .summary-item {
             font-weight: 600;
-            color: #34495e;
+            padding: 5px 0;
         }
-        .btn {
-            display: inline-block;
-            background-color: #27ae60;
-            color: white !important;
-            text-decoration: none;
-            padding: 12px 25px;
-            border-radius: 5px;
-            font-weight: 600;
-            margin-top: 25px;
-            transition: background-color 0.3s ease;
+        .summary-item:last-child {
+            border-bottom: none;
         }
-        .btn:hover {
-            background-color: #219150;
-        }
-        footer {
+        .footer {
             font-size: 12px;
             color: #999999;
             text-align: center;
@@ -64,15 +50,25 @@
     </style>
 </head>
 <body>
-<div class="email-container">
-    <h1>Confirmation de votre commande</h1>
+<div class="container">
+    <h1 th:text="${title}" th:style="'color: ' + ${themeColor}">Confirmation de votre commande</h1>
     <p>Bonjour <strong th:text="${userName}">Nom</strong>,</p>
-    <p>Merci pour votre commande <span class="order-info">#<span th:text="${orderId}">0001</span></span>.</p>
-    <p>Total : <span class="order-info"><span th:text="${amount}">€0.00</span></span></p>
-    <a href="#" class="btn" th:href="@{${baseUrl} + '/orders/' + ${orderId}}">Voir ma commande</a>
-    <footer>
+    <p>Nous avons le plaisir de vous confirmer que votre commande <strong>#<span th:text="${orderId}">0000</span></strong> a bien été enregistrée.</p>
+
+    <div class="order-summary" th:style="'background-color: ' + ${themeBackgroundColor} + '; border: 1px solid ' + ${themeColor}">
+        <div class="summary-item" th:style="'color: ' + ${themeColor} + '; border-bottom: 1px solid ' + ${themeBorderColor}">
+            Montant total : <span th:text="${amount}">0.00</span>
+        </div>
+        <div class="summary-item" th:style="'color: ' + ${themeColor}">
+            Statut : <span th:text="${orderStatus}">PAID</span>
+        </div>
+    </div>
+
+    <p th:text="${nextStep}">Vous recevrez un nouvel email dès que votre commande sera expédiée.</p>
+
+    <div class="footer">
         Cybertech - Merci de votre confiance
-    </footer>
+    </div>
 </div>
 </body>
 </html>

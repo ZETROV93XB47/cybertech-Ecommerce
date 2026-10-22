@@ -1,0 +1,505 @@
+package com.novatech.cybertech.services.implementation;
+
+import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
+import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
+import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.TransactionType;
+import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
+import com.novatech.cybertech.entities.valueObjects.Money;
+import com.novatech.cybertech.events.OrderPaymentConfirmedEvent;
+import com.novatech.cybertech.events.PaymentFailedEvent;
+import com.novatech.cybertech.events.PaymentRefundedEvent;
+import com.novatech.cybertech.events.PaymentSucceededEvent;
+import com.novatech.cybertech.exceptions.PaymentNotFoundException;
+import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
+import com.novatech.cybertech.fixtures.dto.PaymentDtoFixtures;
+import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.services.core.StockService;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import com.novatech.cybertech.dto.data.RecommendationSignalDto;
+import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.enums.UserEventType;
+import com.novatech.cybertech.events.RecommendationSignalsEvent;
+import com.novatech.cybertech.fixtures.builders.OrderItemEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
+import org.springframework.context.ApplicationEventPublisher;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * Unit tests for {@link OrderPaymentConfirmationTransactionalDelegateImp}.
+ *
+ * <p>Migrated from the old {@code OrderPaymentConfirmationEventListenerTest} (the business logic
+ * moved here — see the delegate's javadoc), plus new ordering tests for the fix: the order-status
+ * save must happen BEFORE the stock-service call, so an
+ * {@code OptimisticLockingFailureException} on the save can't leave a deleted Redis TTL sentinel
+ * behind for a reservation the rolled-back transaction still considers live.
+ */
+@ExtendWith(MockitoExtension.class)
+class OrderPaymentConfirmationTransactionalDelegateImpTest {
+
+    @Mock
+    private StockService stockService;
+    @Mock
+    private OrderRepository orderRepository;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
+    @InjectMocks
+    private OrderPaymentConfirmationTransactionalDelegateImp delegate;
+
+    private static StripeWebhookEventDto eventForOrder(final UUID orderUuid) {
+        final StripeWebhookEventDto event = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+        event.getData().getPaymentIntentPayload().getMetadata().put("order_uuid", orderUuid.toString());
+        return event;
+    }
+
+    private static OrderEntity orderWithKeycloakId(final UUID uuid, final String keycloakId) {
+        final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+        return OrderEntityBuilder.aValidOrderBuilder().uuid(uuid).userEntity(user).build();
+    }
+
+    private static OrderEntity orderWithStatus(final UUID uuid, final OrderStatus status) {
+        final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId("kc-status").build();
+        return OrderEntityBuilder.aValidOrderBuilder().uuid(uuid).userEntity(user).status(status).build();
+    }
+
+    private static PaymentEntity successfulAttempt(final TransactionType transactionType, final BigDecimal amount) {
+        return PaymentEntityBuilder.aValidPaymentBuilder()
+                .transactionType(transactionType)
+                .status(PaymentAttemptStatus.SUCCESS)
+                .amount(new Money(amount, CurrencyCode.EUR))
+                .build();
+    }
+
+    // ---------- happy paths ----------
+
+    @Test
+    void handlePaymentSuccessShouldCommitStockAndMarkPaid() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-1");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        verify(stockService).commitStock(uuid);
+        final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(cap.capture());
+        assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.PAID);
+        // No cart interaction any more: the cart is emptied at order creation (the delegate no
+        // longer even depends on CartService), so an updateOrder complement payment can't wipe
+        // unrelated items the customer added to their cart since.
+    }
+
+    @Test
+    void handlePaymentSuccess_savesBeforeTouchingStock() {
+        // The fix: order.save (DB-transactional) must happen BEFORE stockService.commitStock
+        // (whose Redis write is NOT part of this transaction).
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-order");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        final InOrder ord = inOrder(orderRepository, stockService);
+        ord.verify(orderRepository).save(any(OrderEntity.class));
+        ord.verify(stockService).commitStock(uuid);
+    }
+
+    @Test
+    void handlePaymentSuccess_publishesPaymentConfirmedEventWithOrderAndContact() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-confirm");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        final ArgumentCaptor<OrderPaymentConfirmedEvent> cap = ArgumentCaptor.forClass(OrderPaymentConfirmedEvent.class);
+        verify(eventPublisher).publishEvent(cap.capture());
+        final var dto = cap.getValue().getOrderEventDto();
+        assertThat(dto.getOrderUuid()).isEqualTo(uuid);
+        assertThat(dto.getOrderStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(dto.getTotalAmount()).isEqualTo(order.getTotalAmount().getAmount());
+        assertThat(dto.getUserContactDto().getEmail()).isEqualTo(order.getUserEntity().getEmail());
+    }
+
+    @Test
+    void handlePaymentSuccess_publishesOnePurchaseSignalPerProductWithTheOrderUuid() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-buyer");
+        final ProductEntity phone = ProductEntityBuilder.aValidProductBuilder().category("SMARTPHONE").build();
+        final ProductEntity watch = ProductEntityBuilder.aValidProductBuilder().category("SMARTWATCH").build();
+        order.setOrderItemEntities(new ArrayList<>(List.of(
+                OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(phone).orderEntity(order).build(),
+                OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(watch).orderEntity(order).build())));
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        final ArgumentCaptor<RecommendationSignalsEvent> cap = ArgumentCaptor.forClass(RecommendationSignalsEvent.class);
+        verify(eventPublisher).publishEvent(cap.capture());
+        assertThat(cap.getValue().getSignals())
+                .extracting(RecommendationSignalDto::getEventType, RecommendationSignalDto::getProductUuid,
+                        RecommendationSignalDto::getUserId, RecommendationSignalDto::getOrderUuid)
+                .containsExactlyInAnyOrder(
+                        tuple(UserEventType.PURCHASE, phone.getUuid(), "kc-buyer", uuid),
+                        tuple(UserEventType.PURCHASE, watch.getUuid(), "kc-buyer", uuid));
+    }
+
+    @Test
+    void handlePaymentFailed_publishesNoPurchaseSignal() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.AWAITING_PAYMENT);
+        order.setOrderItemEntities(new ArrayList<>(List.of(
+                OrderItemEntityBuilder.aValidOrderItemBuilder().productEntity(ProductEntityBuilder.aValidProduct()).orderEntity(order).build())));
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(eventForOrder(uuid)));
+
+        verify(eventPublisher, never()).publishEvent(any(RecommendationSignalsEvent.class));
+    }
+
+    @Test
+    void handlePaymentSuccess_stampsPaidAtToOpenTheModificationWindow() {
+        // paidAt is what ShipAllPaidOrdersTasklet measures the grace period from.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-paid");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+        final LocalDateTime before = LocalDateTime.now();
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(order.getPaidAt()).isNotNull().isAfterOrEqualTo(before);
+    }
+
+    @Test
+    void handlePaymentSuccess_onStaleOrDuplicateWebhook_keepsTheOriginalPaidAt() {
+        // A duplicate payment_intent.succeeded must not restart the modification window.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
+        final LocalDateTime originalPaidAt = LocalDateTime.of(2026, 10, 1, 12, 0);
+        order.setPaidAt(originalPaidAt);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        assertThat(order.getPaidAt()).isEqualTo(originalPaidAt);
+    }
+
+    @Test
+    void handlePaymentSuccess_onStaleOrDuplicateWebhook_publishesNoPaymentConfirmedEvent() {
+        // Stripe retries webhooks: a second payment_intent.succeeded for an order already PAID
+        // must not send a second "payment confirmed" email.
+        final UUID uuid = UUID.randomUUID();
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(orderWithStatus(uuid, OrderStatus.PAID)));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void handlePaymentSuccessShouldThrowWhenOrderNotFound() {
+        final UUID uuid = UUID.randomUUID();
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid))))
+                .isInstanceOf(PaymentNotFoundException.class)
+                .hasMessageContaining(uuid.toString());
+        verifyNoInteractions(stockService);
+    }
+
+    @Test
+    void handlePaymentFailedShouldReleaseStockAndMarkPaymentFailed() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-2");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(eventForOrder(uuid)));
+
+        verify(stockService).releaseStock(uuid);
+        final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(cap.capture());
+        assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
+    }
+
+    @Test
+    void handlePaymentFailed_savesBeforeTouchingStock() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-order");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(eventForOrder(uuid)));
+
+        final InOrder ord = inOrder(orderRepository, stockService);
+        ord.verify(orderRepository).save(any(OrderEntity.class));
+        ord.verify(stockService).releaseStock(uuid);
+    }
+
+    @Test
+    void handleRefundShouldReleaseStockAndMarkRefunded() {
+        final UUID uuid = UUID.randomUUID();
+        // A refund only applies to an order that actually got paid (or was canceled awaiting refund).
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
+        // Full refund: a single PAYMENT/SUCCESS of 100 fully offset by a REFUND/SUCCESS of 100
+        // already recorded for this refund -> netPaid == 0, so the order must be fully closed out.
+        order.setPaymentAttempts(List.of(
+                successfulAttempt(TransactionType.PAYMENT, new BigDecimal("100.00")),
+                successfulAttempt(TransactionType.REFUND, new BigDecimal("100.00"))
+        ));
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handleRefundWithinTransaction(new PaymentRefundedEvent(eventForOrder(uuid)));
+
+        verify(stockService).releaseStock(uuid);
+        final ArgumentCaptor<OrderEntity> cap = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(cap.capture());
+        assertThat(cap.getValue().getStatus()).isEqualTo(OrderStatus.REFUNDED);
+    }
+
+    @Test
+    void handleRefund_savesBeforeTouchingStock() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
+        // netPaid must be exactly zero (payment fully offset by the recorded refund) to take the
+        // full-refund path — see handleRefund_onPartialRefund_shouldNotReleaseStockNorMarkRefunded.
+        order.setPaymentAttempts(List.of(
+                successfulAttempt(TransactionType.PAYMENT, new BigDecimal("100.00")),
+                successfulAttempt(TransactionType.REFUND, new BigDecimal("100.00"))
+        ));
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handleRefundWithinTransaction(new PaymentRefundedEvent(eventForOrder(uuid)));
+
+        final InOrder ord = inOrder(orderRepository, stockService);
+        ord.verify(orderRepository).save(any(OrderEntity.class));
+        ord.verify(stockService).releaseStock(uuid);
+    }
+
+    @Test
+    void handleRefund_onPartialRefund_shouldNotReleaseStockNorMarkRefunded() {
+        // The customer dropped one item from an already-paid order (OrderManagementServiceImp#updateOrder
+        // refunds only the difference). The confirming charge.refunded webhook must NOT be treated as a
+        // full refund: stock still reserved for the kept items must stay reserved, and the order must
+        // keep its current (non-terminal) status.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
+        order.setPaymentAttempts(List.of(
+                successfulAttempt(TransactionType.PAYMENT, new BigDecimal("100.00")),
+                successfulAttempt(TransactionType.REFUND, new BigDecimal("30.00"))
+        ));
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handleRefundWithinTransaction(new PaymentRefundedEvent(eventForOrder(uuid)));
+
+        verify(stockService, never()).releaseStock(any());
+        verify(orderRepository, never()).save(any());
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+    }
+
+    // ---------- status guard: stale / out-of-order webhooks must not regress the order ----------
+
+    @Test
+    void handlePaymentSuccess_onCanceledOrder_isIgnored_noResurrection() {
+        // A late payment_intent.succeeded arriving AFTER the user canceled (and got refunded)
+        // must NOT resurrect the order to PAID.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.CANCELED);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(stockService);
+    }
+
+    @Test
+    void handlePaymentSuccess_onRetryablePaymentFailedOrder_completesToPaid() {
+        // retryPayment leaves the order in PAYMENT_FAILED; the success webhook must still complete it.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.PAYMENT_FAILED);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid)));
+
+        verify(stockService).commitStock(uuid);
+        verify(orderRepository).save(any());
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+    }
+
+    @Test
+    void handlePaymentFailed_onPaidOrder_isIgnored_noRegression() {
+        // A late payment_intent.payment_failed must NOT regress an already-PAID order.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.PAID);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(eventForOrder(uuid)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(stockService);
+    }
+
+    private static OrderEntity retriedOrder(final UUID uuid, final String previousIntentId, final String retryIntentId) {
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.AWAITING_PAYMENT);
+        order.setPaymentAttempts(new ArrayList<>(List.of(
+                PaymentEntityBuilder.aValidPaymentBuilder().status(PaymentAttemptStatus.FAILED)
+                        .stripePaymentID(previousIntentId).createdAt(LocalDateTime.now().minusMinutes(1)).build(),
+                PaymentEntityBuilder.aValidPaymentBuilder().status(PaymentAttemptStatus.PROCESSING)
+                        .stripePaymentID(retryIntentId).createdAt(LocalDateTime.now()).build())));
+        return order;
+    }
+
+    private static StripeWebhookEventDto failureOf(final UUID orderUuid, final String paymentIntentId) {
+        final StripeWebhookEventDto event = eventForOrder(orderUuid);
+        event.getData().getPaymentIntentPayload().setId(paymentIntentId);
+        return event;
+    }
+
+    @Test
+    void handlePaymentFailed_ofAnEarlierAttemptAfterARetry_isIgnored_keepsRetryStock() {
+        // Late payment_intent.payment_failed of the attempt that preceded a retryPayment: the order
+        // awaits the retry's outcome, so neither its status nor the retry's stock hold may change.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = retriedOrder(uuid, "pi_previous", "pi_retry");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(failureOf(uuid, "pi_previous")));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(stockService);
+    }
+
+    @Test
+    void handlePaymentFailed_ofTheLatestAttempt_marksPaymentFailed() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = retriedOrder(uuid, "pi_previous", "pi_retry");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(failureOf(uuid, "pi_retry")));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
+        verify(stockService).releaseStock(uuid);
+    }
+
+    @Test
+    void handlePaymentFailed_withoutPaymentIntentId_stillApplies() {
+        // Malformed event (no pi id): nothing to compare, the previous behaviour is kept.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = retriedOrder(uuid, "pi_previous", "pi_retry");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(failureOf(uuid, null)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
+    }
+
+    @Test
+    void handleRefund_onAlreadyRefundedOrder_isIgnored() {
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithStatus(uuid, OrderStatus.REFUNDED);
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+
+        delegate.handleRefundWithinTransaction(new PaymentRefundedEvent(eventForOrder(uuid)));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.REFUNDED);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(stockService);
+    }
+
+    @Test
+    void handlePaymentFailedShouldThrowWhenOrderNotFound() {
+        final UUID uuid = UUID.randomUUID();
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(eventForOrder(uuid))))
+                .isInstanceOf(PaymentNotFoundException.class)
+                .hasMessageContaining(uuid.toString());
+    }
+
+    // ---------- no null-guard on metadata.order_uuid ----------
+
+    @Test
+    void handlePaymentSuccess_nullOrderUuidInMetadata_shouldThrowDomainError() {
+        final StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+        stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
+        // Missing order_uuid is translated to a domain-level PaymentNotFoundException
+        // instead of a raw NullPointerException out of UUID.fromString(null).
+        assertThatThrownBy(() -> delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(stripe)))
+                .isInstanceOf(PaymentNotFoundException.class)
+                .hasMessageContaining("order_uuid");
+        verifyNoInteractions(stockService, orderRepository);
+    }
+
+    @Test
+    void handlePaymentFailed_nullOrderUuidInMetadata_shouldThrowDomainError() {
+        final StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+        stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
+        assertThatThrownBy(() -> delegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(stripe)))
+                .isInstanceOf(PaymentNotFoundException.class)
+                .hasMessageContaining("order_uuid");
+        verifyNoInteractions(stockService, orderRepository);
+    }
+
+    @Test
+    void handleRefund_nullOrderUuidInMetadata_shouldThrowDomainError() {
+        final StripeWebhookEventDto stripe = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+        stripe.getData().getPaymentIntentPayload().getMetadata().remove("order_uuid");
+        assertThatThrownBy(() -> delegate.handleRefundWithinTransaction(new PaymentRefundedEvent(stripe)))
+                .isInstanceOf(PaymentNotFoundException.class)
+                .hasMessageContaining("order_uuid");
+        verifyNoInteractions(stockService, orderRepository);
+    }
+
+    // ---------- regression: a failed save must never reach the stock/Redis call ----------
+
+    @Test
+    void handlePaymentSuccess_saveThrows_stockServiceNeverCalled() {
+        // Regression test for the bug documented in progress.md: if orderRepository.save throws
+        // (e.g. OptimisticLockingFailureException racing a concurrent cancelOrder/updateOrder),
+        // stockService (whose commitStock ends with a non-transactional Redis write) must never
+        // be reached — otherwise a rolled-back save would leave a deleted Redis TTL sentinel
+        // behind for a reservation the DB still considers live.
+        final UUID uuid = UUID.randomUUID();
+        final OrderEntity order = orderWithKeycloakId(uuid, "kc-race");
+        when(orderRepository.findByUuid(uuid)).thenReturn(Optional.of(order));
+        doThrow(new org.springframework.dao.OptimisticLockingFailureException("version conflict"))
+                .when(orderRepository).save(any(OrderEntity.class));
+
+        assertThatThrownBy(() -> delegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(eventForOrder(uuid))))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+
+        verifyNoInteractions(stockService);
+    }
+}

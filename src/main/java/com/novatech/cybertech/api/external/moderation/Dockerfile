@@ -10,7 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 
 # Étape cruciale : installer la version CPU de Torch pour gagner plusieurs Go
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# --extra-index-url (et non --index-url) : garde PyPI accessible pour les dépendances
+# transitives de torch (sympy, networkx, typing-extensions...) qui ne sont pas toutes
+# mirrorées sur l'index PyTorch, sinon leur build depuis les sources échoue faute de
+# backend (flit_core) introuvable. Le pin exact "+cpu" évite qu'un torch CUDA (~2 Go)
+# ne soit résolu depuis PyPI à la place.
+RUN pip install --no-cache-dir torch==2.6.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .

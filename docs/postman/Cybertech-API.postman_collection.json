@@ -1,0 +1,2733 @@
+{
+  "info": {
+    "_postman_id": "8c2b4e1a-6f9d-4d27-bd1e-4cbf6c7c19a1",
+    "name": "Cybertech E-Commerce API",
+    "description": "End-to-end Postman collection for the Cybertech Spring Boot 4 / Java 26 e-commerce backend.\n\n- Base path: `/api/v1/services/...`\n- API version is sent via header `X-API-VERSION: 1.0` (per `spring.mvc.apiversion.use.header`).\n- Default server port is `8081` (see `application.properties`).\n- All requests use bearer JWTs minted by Keycloak. The collection-level pre-request script auto-refreshes the token from Keycloak's password-grant endpoint when `{{access_token}}` is empty or expired.\n- Public endpoints (no token needed): `/api/v1/services/user/register`, `/api/v1/services/product/**`, `/api/v1/services/discounts/**`, `/api/v1/webhooks/**`, `/swagger-ui/**`, `/v3/api-docs/**`.\n- ADMIN-only endpoints are clearly tagged in each request description.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{access_token}}", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const tokenUrl = pm.environment.get(\"keycloak_token_url\");",
+          "const clientId = pm.environment.get(\"keycloak_client_id\");",
+          "const clientSecret = pm.environment.get(\"keycloak_client_secret\");",
+          "const username = pm.environment.get(\"keycloak_username\");",
+          "const password = pm.environment.get(\"keycloak_password\");",
+          "const existing = pm.environment.get(\"access_token\");",
+          "const expiresAt = pm.environment.get(\"access_token_expires_at\");",
+          "",
+          "const now = Date.now();",
+          "if (existing && expiresAt && now < parseInt(expiresAt, 10)) { return; }",
+          "",
+          "if (!tokenUrl || !clientId || !username) {",
+          "    console.log(\"Keycloak token vars not set - skipping auth refresh\");",
+          "    return;",
+          "}",
+          "",
+          "pm.sendRequest({",
+          "    url: tokenUrl,",
+          "    method: \"POST\",",
+          "    header: { \"Content-Type\": \"application/x-www-form-urlencoded\" },",
+          "    body: {",
+          "        mode: \"urlencoded\",",
+          "        urlencoded: [",
+          "            { key: \"grant_type\", value: \"password\" },",
+          "            { key: \"client_id\", value: clientId },",
+          "            { key: \"client_secret\", value: clientSecret || \"\" },",
+          "            { key: \"username\", value: username },",
+          "            { key: \"password\", value: password }",
+          "        ]",
+          "    }",
+          "}, (err, res) => {",
+          "    if (err || res.code !== 200) {",
+          "        console.log(\"Keycloak token fetch failed\", err, res && res.text());",
+          "        return;",
+          "    }",
+          "    const json = res.json();",
+          "    pm.environment.set(\"access_token\", json.access_token);",
+          "    pm.environment.set(\"access_token_expires_at\", String(now + (json.expires_in - 30) * 1000));",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8081", "type": "default" },
+    { "key": "api_version", "value": "1.0", "type": "default" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Anonymous registration plus an ADMIN-only synthetic-user mint.",
+      "item": [
+        {
+          "name": "Register (public)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/user/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "user", "register"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.doe@example.com\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"sex\": \"F\",\n  \"phoneNumber\": \"+33612345678\",\n  \"favoriteCommunicationChanel\": \"EMAIL\",\n  \"street\": \"21 Rue du Test\",\n  \"city\": \"Paris\",\n  \"zipCode\": \"75001\",\n  \"country\": \"France\",\n  \"birthDate\": \"1995-04-15T00:00:00\",\n  \"password\": \"P@ssword123\"\n}"
+            },
+            "description": "Public anonymous signup. Whitelisted exactly at `/api/v1/services/user/register` in `SecurityConfig.PUBLIC_URLS`. Creates a Keycloak user and a local `UserEntity` in the same transaction.\n\n- Roles: none (public)\n- Success: 201 Created with `{ id, keycloakId }`\n- Errors: 400 validation, 409 if the email already exists in Keycloak."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": { "raw": "{{base_url}}/api/v1/services/user/register" },
+                "body": { "mode": "raw", "raw": "{\"email\":\"jane.doe@example.com\"}" }
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"email\": \"jane.doe@example.com\",\n  \"username\": \"jane.doe\"\n}"
+            },
+            {
+              "name": "409 Email already exists",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": { "raw": "{{base_url}}/api/v1/services/user/register" },
+                "body": { "mode": "raw", "raw": "{\"email\":\"taken@example.com\"}" }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"message\": \"A user with email taken@example.com already exists\",\n  \"httpStatusCode\": 409,\n  \"errorCodeType\": \"FUNCTIONAL\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/user/ok",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "user", "ok"]
+            },
+            "description": "Authenticated liveness ping — returns a string. Useful for verifying the JWT chain end-to-end.\n\n- Roles: any authenticated user.\n- Success: 200 OK with plain JSON string."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "description": "User self-service plus admin user management at `/services/admin/user`.",
+      "item": [
+        {
+          "name": "Get user by UUID (USER own / ADMIN any)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/user/get/:userUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "user", "get", ":userUuid"],
+              "variable": [
+                { "key": "userUuid", "value": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e" }
+              ]
+            },
+            "description": "Loads a user by UUID.\n\n- Roles: USER (own profile only) or ADMIN (any).\n- Success: 200 OK with `UserResponseDto`.\n- Errors: 403 if a USER requests another user's UUID, 404 if not found."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get my profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/user/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "user",
+                "me"
+              ]
+            },
+            "description": "Profile of the authenticated caller, resolved from the JWT subject (no UUID needed).\n\n- Roles: USER or ADMIN.\n- Success: 200 OK with `UserResponseDto`.\n- Errors: 401 without token (`AUTHENTICATION_REQUIRED`), 404 if the subject has no local user (`USER_NOT_FOUND`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update my profile (self-service)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/user/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "user", "me"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"phoneNumber\": \"+33611111111\",\n  \"street\": \"42 rue Selfservice\",\n  \"city\": \"Lyon\",\n  \"zipCode\": \"69001\",\n  \"country\": \"France\"\n}"
+            },
+            "description": "Self-service profile patch (Frontend-gap #3). Only firstName/lastName/phoneNumber and the address (street/city/zipCode/country) are mutable here — email, role and status are Keycloak/admin-owned and off-limits by design (see UserSelfUpdateRequestDto). Caller identity is resolved from the JWT subject, not the body.\n\n- Roles: USER or ADMIN\n- Success: 200 with the refreshed `UserResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List all users (ADMIN, paged)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/user/get/all?page=0&size=20&sort=createdAt,DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "user", "get", "all"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "createdAt,DESC" }
+              ]
+            },
+            "description": "Paginated user listing. ADMIN only (controller-level `@PreAuthorize`).\n\n- Role: ADMIN\n- Success: 200 OK with Spring Data `Page<UserResponseDto>`.\n- Errors: 403 if caller is not ADMIN."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Create user (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/user/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "user", "create"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"new.admin.created@example.com\",\n  \"firstName\": \"Lucas\",\n  \"lastName\": \"Martin\",\n  \"sex\": \"M\",\n  \"phoneNumber\": \"+33700000000\",\n  \"favoriteCommunicationChanel\": \"EMAIL\",\n  \"street\": \"1 Place de la Concorde\",\n  \"city\": \"Paris\",\n  \"zipCode\": \"75008\",\n  \"country\": \"France\",\n  \"birthDate\": \"1990-01-01T00:00:00\",\n  \"password\": \"P@ssword123\"\n}"
+            },
+            "description": "ADMIN-side user creation. Useful when on-boarding internal users without going through the public `/register` flow.\n\n- Role: ADMIN\n- Success: 201 with `UserResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update user (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/user/update",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "user", "update"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"sex\": \"F\",\n  \"email\": \"jane.smith@example.com\",\n  \"street\": \"22 Rue de Rivoli\",\n  \"city\": \"Paris\",\n  \"zipCode\": \"75001\",\n  \"country\": \"France\",\n  \"birthDate\": \"1995-04-15T00:00:00\"\n}"
+            },
+            "description": "PATCH user fields. Only the fields supplied are updated.\n\n- Role: ADMIN\n- Success: 200 with the refreshed `UserResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Change user role (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/user/update-role/:userUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "user", "update-role", ":userUuid"],
+              "variable": [
+                { "key": "userUuid", "value": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"ADMIN\"\n}"
+            },
+            "description": "Promote / demote a user (USER <-> ADMIN). Keycloak is updated first, then the DB, through the same outbox saga as the admin user update.\n\n- Role: ADMIN\n- Success: 200 with the refreshed `UserResponseDto`.\n- Errors: 404 unknown user."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Delete user by UUID (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/user/delete/:userUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "user", "delete", ":userUuid"],
+              "variable": [
+                { "key": "userUuid", "value": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e" }
+              ]
+            },
+            "description": "Hard-delete a user (Keycloak + DB).\n\n- Role: ADMIN\n- Success: 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Register synthetic user (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/user/register/auto/single",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "user", "register", "auto", "single"]
+            },
+            "description": "Developer / load-test utility — mints one synthetic user via `DataGenerator`. Moved from the user-facing controller onto `UserManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 201 with `{ id, keycloakId, email, username }`\n- Errors: 403 if caller is not ADMIN."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Product",
+      "description": "Public product catalog reads + ADMIN management writes.",
+      "item": [
+        {
+          "name": "Get product by UUID (public)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product/get/:productUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "product", "get", ":productUuid"],
+              "variable": [
+                { "key": "productUuid", "value": "11111111-2222-3333-4444-555555555555" }
+              ]
+            },
+            "description": "Public product details. Whitelisted under `/api/v1/services/product/**`.\n\n- Roles: none (public).\n- Success: 200 with `ProductResponseDto`.\n- Errors: 404 if unknown UUID."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Search products (public)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "product", "search"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"laptop\",\n  \"priceMin\": 500,\n  \"priceMax\": 4000,\n  \"category\": \"COMPUTER\",\n  \"brands\": [\"DELL\", \"LENOVO\"],\n  \"attributes\": { \"ram\": [\"16GB\", \"32GB\"], \"ssd\": [\"512GB\"] },\n  \"numericRanges\": {},\n  \"page\": 0,\n  \"size\": 20\n}"
+            },
+            "description": "Elasticsearch-backed product search with faceting.\n\n- Roles: none (public).\n- Success: 200 with `Page<ProductResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Search facets (public)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product/search/facets",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "product",
+                "search",
+                "facets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"\",\n  \"category\": \"COMPUTER\",\n  \"brands\": [\n    \"LENOVO\"\n  ],\n  \"attributes\": {\n    \"cpu\": [\n      \"Intel Core i7-13700H\"\n    ]\n  },\n  \"numericRanges\": {\n    \"ram\": {\n      \"min\": 16\n    }\n  }\n}"
+            },
+            "description": "Catalog facets of a search: same body as /search (`page` and `size` ignored). Returns `totalHits`, `brands`, `price` bounds and, when `category` is given, `attributes` (values of each text attribute of the category JSON Schema) and `numericAttributes` (bounds of each integer / number attribute).\n\nDisjunctive counting: each facet is counted under every active filter except its own (ticking LENOVO keeps the other brands listed). Values sorted by count desc then alphabetically, max 50 per facet. Served with `Cache-Control: max-age=60, public`.\n\n- Public.\n- Success: 200 OK with `ProductFacetsResponseDto`.\n- Errors: 400 `INVALID_REQUEST` (validation, as /search), 400 `UNKNOWN_PRODUCT_CATEGORY`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/services/product/search/facets"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "max-age=60, public"
+                }
+              ],
+              "body": "{\n  \"totalHits\": 3,\n  \"brands\": [\n    {\n      \"value\": \"DELL\",\n      \"count\": 7\n    },\n    {\n      \"value\": \"LENOVO\",\n      \"count\": 3\n    },\n    {\n      \"value\": \"HP\",\n      \"count\": 2\n    }\n  ],\n  \"price\": {\n    \"min\": 349.0,\n    \"max\": 3299.0\n  },\n  \"attributes\": {\n    \"cpu\": [\n      {\n        \"value\": \"Intel Core i7-13700H\",\n        \"count\": 3\n      },\n      {\n        \"value\": \"AMD Ryzen 7 7840HS\",\n        \"count\": 1\n      }\n    ],\n    \"gpu\": [\n      {\n        \"value\": \"NVIDIA RTX 4060\",\n        \"count\": 3\n      }\n    ],\n    \"os\": [\n      {\n        \"value\": \"Windows 11\",\n        \"count\": 3\n      }\n    ],\n    \"connectivity\": [\n      {\n        \"value\": \"Wi-Fi 6E\",\n        \"count\": 3\n      }\n    ],\n    \"displayType\": [\n      {\n        \"value\": \"OLED\",\n        \"count\": 2\n      },\n      {\n        \"value\": \"IPS\",\n        \"count\": 1\n      }\n    ]\n  },\n  \"numericAttributes\": {\n    \"ram\": {\n      \"min\": 16.0,\n      \"max\": 32.0\n    },\n    \"memory\": {\n      \"min\": 512.0,\n      \"max\": 1024.0\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Best sellers (public, paged)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product/best-sellers?page=0&size=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "product", "best-sellers"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            },
+            "description": "Returns the best-selling products by sales count.\n\n- Roles: none (public).\n- Success: 200 with `Page<ProductResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Product availability (public, live stock)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product/availability?uuids=11111111-2222-3333-4444-555555555555",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "product",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "uuids",
+                  "value": "11111111-2222-3333-4444-555555555555",
+                  "description": "1 to 50 product uuids, comma-separated or repeated"
+                }
+              ]
+            },
+            "description": "Live availability (`stock - reservedStock`) of up to 50 products, read from the database and served with `Cache-Control: no-store`.\n\n- Public.\n- Success: 200 OK with `ProductAvailabilityDto[]` (`productUuid`, `availableStock`, `inStock`); unknown uuids are absent.\n- Errors: 400 (`INVALID_REQUEST` / `METHOD_ARGUMENT_TYPE_MISMATCH`) for an empty, malformed or oversized batch."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List all products (ADMIN, paged)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/management/product/get/all?page=0&size=20&sort=createdAt,DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "management", "product", "get", "all"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "createdAt,DESC" }
+              ]
+            },
+            "description": "Admin: list every product (including soft-archived).\n\n- Role: ADMIN\n- Success: 200 with `Page<ProductResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Create product (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/management/product/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "management", "product", "create"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dell XPS 15\",\n  \"price\": 2499.99,\n  \"brand\": \"DELL\",\n  \"category\": \"COMPUTER\",\n  \"stock\": 50,\n  \"description\": \"15-inch OLED, 32GB RAM, 1TB SSD, RTX 4070\",\n  \"attributes\": {\n    \"cpu\": \"Intel Core i9-13900H\",\n    \"gpu\": \"NVIDIA RTX 4070\",\n    \"ram\": 32,\n    \"os\": \"Windows 11\",\n    \"connectivity\": \"WiFi 6E/Bluetooth 5.3\",\n    \"displayType\": \"OLED\",\n    \"memory\": 1024\n  }\n}"
+            },
+            "description": "Create a new product. `attributes` is validated against the `COMPUTER` category's JSON Schema (see the Product Category Schemas folder) — indexed in Elasticsearch on commit.\n\n- Role: ADMIN\n- Success: 201 with `ProductResponseDto`.\n- Errors: 400 if `attributes` fails the category's schema (`ProductConstraintsViolationException`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update product (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/management/product/update/:productUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "management", "product", "update", ":productUuid"],
+              "variable": [
+                { "key": "productUuid", "value": "11111111-2222-3333-4444-555555555555" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n  \"name\": \"Dell XPS 15 (2026 refresh)\",\n  \"price\": 2399.00,\n  \"brand\": \"DELL\",\n  \"category\": \"COMPUTER\",\n  \"photos\": [\"https://images.cybertech.local/xps15.jpg\"],\n  \"stock\": 60,\n  \"description\": \"Refreshed XPS 15 with Intel Core Ultra 9.\"\n}"
+            },
+            "description": "PATCH product. Path UUID and body UUID must match (the controller throws `IllegalArgumentException` otherwise).\n\n- Role: ADMIN\n- Success: 200 with `ProductResponseDto`.\n- Errors: 400 if UUIDs mismatch."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Delete product (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/management/product/delete/:productUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "management", "product", "delete", ":productUuid"],
+              "variable": [
+                { "key": "productUuid", "value": "11111111-2222-3333-4444-555555555555" }
+              ]
+            },
+            "description": "Delete a product.\n\n- Role: ADMIN\n- Success: 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Create product with image (ADMIN, multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/management/product/create-with-image",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "management", "product", "create-with-image"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "product",
+                  "type": "text",
+                  "contentType": "application/json",
+                  "value": "{\"name\":\"Dell XPS 13\",\"price\":1499.00,\"brand\":\"DELL\",\"category\":\"COMPUTER\",\"photo\":\"placeholder.jpg\",\"stock\":15,\"description\":\"Compact ultrabook\",\"attributes\":{\"ram\":\"16GB\"}}"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "description": "Multipart: JSON `product` part + `image` file part. Image is uploaded to S3 and the resulting URL is set on the product.\n\n- Role: ADMIN\n- Success: 201 with `ProductResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cart",
+      "description": "User-owned cart. JWT subject identifies the cart owner.",
+      "item": [
+        {
+          "name": "Get my cart",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/cart/get",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "cart", "get"]
+            },
+            "description": "Loads the current user's cart based on the JWT subject.\n\n- Roles: USER or ADMIN\n- Success: 200 with `CartResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Add items to my cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/cart/add",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "cart", "add"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemAddRequestDtos\": [\n    { \"productUuid\": \"11111111-2222-3333-4444-555555555555\", \"quantity\": 1 }\n  ]\n}"
+            },
+            "description": "Append items to the caller's existing cart.\n\n- Roles: USER or ADMIN\n- Success: 201 with refreshed `CartResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update cart by UUID",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/cart/update/:cartUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "cart", "update", ":cartUuid"],
+              "variable": [
+                { "key": "cartUuid", "value": "33333333-4444-5555-6666-777777777777" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemAddRequestDtos\": [\n    { \"productUuid\": \"11111111-2222-3333-4444-555555555555\", \"quantity\": 3 }\n  ]\n}"
+            },
+            "description": "Replace the cart's item list. Ownership-checked.\n\n- Roles: USER or ADMIN\n- Success: 200 with `CartResponseDto`.\n- Errors: 403 IDOR, 404 cart not found."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Remove product from cart",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/cart/remove/:productUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "cart", "remove", ":productUuid"],
+              "variable": [
+                { "key": "productUuid", "value": "11111111-2222-3333-4444-555555555555" }
+              ]
+            },
+            "description": "Remove a single product entirely from the caller's cart.\n\n- Roles: USER or ADMIN\n- Success: 200 with refreshed `CartResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Decrease quantity",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/cart/decreaseQuantity",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "cart", "decreaseQuantity"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n  \"quantity\": 1\n}"
+            },
+            "description": "Decrease a line-item's quantity by `quantity`. If the line drops to zero, the product is removed.\n\n- Roles: USER or ADMIN\n- Success: 200 with `CartResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Clear my cart",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/cart/clear",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "cart", "clear"]
+            },
+            "description": "Empty all items from the caller's cart.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Order",
+      "description": "Order placement, cancellation, payment retry, and admin deletion.",
+      "item": [
+        {
+          "name": "Place order",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/place",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "management", "order", "place"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentType\": \"VISA\",\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"shippingStreet\": \"21 Rue du Test\",\n  \"shippingCity\": \"Paris\",\n  \"shippingZipCode\": \"75001\",\n  \"shippingCountry\": \"France\",\n  \"discountKey\": \"NO_DISCOUNT\"\n}"
+            },
+            "description": "Place an order from the user's existing cart. Identity comes from the JWT subject (no `userUuid` accepted).\n\n- Roles: USER or ADMIN\n- Success: 201 with `OrderResponseDto`, including the price breakdown: `totalAmount = max(0, subtotalAmount - discountAmount) + shippingCost`, all in `currency`. Orders placed before the breakdown existed return `subtotalAmount`, `discountAmount`, `shippingCost` and `discountCalculationType` as null.\n- Errors: 409 empty cart (`CART_IS_EMPTY`), 402 payment failure, 409 stock conflict."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": { "raw": "{{base_url}}/api/v1/services/management/order/place" }
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"uuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\",\n  \"userUuid\": \"7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e\",\n  \"orderDate\": \"2026-10-02\",\n  \"createdAt\": \"2026-10-02T14:30:05\",\n  \"status\": \"PAID\",\n  \"totalAmount\": 2514.99,\n  \"refundedAmount\": 0,\n  \"currency\": \"EUR\",\n  \"subtotalAmount\": 2499.99,\n  \"discountKey\": \"NO_DISCOUNT\",\n  \"discountCalculationType\": \"NONE\",\n  \"discountAmount\": 0.00,\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"shippingCost\": 15.00,\n  \"shippingAddress\": \"21 Rue du Test, 75001 Paris, France\",\n  \"orderItems\": [\n    {\n      \"orderItemUuid\": \"01a0fd1e-fc5c-772c-b23c-51af471b3da9\",\n      \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n      \"productName\": \"Dell XPS 15\",\n      \"quantity\": 1,\n      \"unitPrice\": 2499.99,\n      \"lineItemTotalPrice\": 2499.99\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Quote order (price of my cart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/quote",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "management",
+                "order",
+                "quote"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shippingType\": \"STANDARD\",\n  \"shippingProvider\": \"DHL\",\n  \"discountKey\": \"NO_DISCOUNT\"\n}"
+            },
+            "description": "Price of the order `Place order` would create now from the caller's cart (lines and current prices come from the server cart, never from the body), with the same computation: `totalAmount` equals the total of the order placed right after with the same options. No side effect (no order, no stock reservation, no payment).\n\n- Roles: USER or ADMIN\n- Body: `shippingType`, `shippingProvider`, optional `discountKey` (default `NO_DISCOUNT`).\n- Success: 200 with `OrderQuoteResponseDto` (`subtotalAmount`, `discountKey`, `discountCalculationType`, `discountAmount`, `discountApplied` — false without campaign or below `minOrderAmount` —, `minOrderAmount`, `shippingCost`, `totalAmount`, `currency`).\n- Errors: 409 empty cart (`CART_IS_EMPTY`), 400 unknown/inactive campaign (`DISCOUNT_TYPE_NOT_ACTIVE`) or validation (`INVALID_REQUEST`), 429 rate limit (same budget as the cart)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/services/management/order/quote"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"subtotalAmount\": 2499.99,\n  \"discountKey\": \"NO_DISCOUNT\",\n  \"discountCalculationType\": \"NONE\",\n  \"discountAmount\": 0.00,\n  \"discountApplied\": false,\n  \"minOrderAmount\": null,\n  \"shippingCost\": 15.00,\n  \"totalAmount\": 2514.99,\n  \"currency\": \"EUR\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancel order",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "management", "order", "cancel"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderUuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\"\n}"
+            },
+            "description": "Cancel a pending order; refunds Stripe payment if it was captured.\n\n- Roles: USER (own only) or ADMIN\n- Success: 200 with refreshed `OrderResponseDto`.\n- Errors: 403 not the owner, 409 if already shipped."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update order",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/update",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "management", "order", "update"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\",\n  \"paymentType\": \"VISA\",\n  \"shippingType\": \"EXPRESS\",\n  \"shippingProvider\": \"FEDEX\",\n  \"shippingStreet\": \"21 Rue du Test\",\n  \"shippingCity\": \"Paris\",\n  \"shippingZipCode\": \"75001\",\n  \"shippingCountry\": \"France\",\n  \"itemUpdateRequestDtoList\": [\n    { \"productUuid\": \"11111111-2222-3333-4444-555555555555\", \"quantity\": 2 }\n  ]\n}"
+            },
+            "description": "Update shipping options or items on a pending order.\n\n- Roles: USER (own) or ADMIN\n- Success: 200 with updated `OrderResponseDto`.\n- Pricing: the order keeps the discount it was placed with (terms frozen at placement, even if the campaign was disabled since), re-applied to the new lines (no discount if the new subtotal is below the campaign minimum); shipping follows the new provider/type. The difference with what was already paid is charged (402 if declined) or refunded."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Retry payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/retry-payment/:uuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "management", "order", "retry-payment", ":uuid"],
+              "variable": [
+                { "key": "uuid", "value": "99999999-aaaa-bbbb-cccc-dddddddddddd" }
+              ]
+            },
+            "description": "Re-creates the Stripe PaymentIntent for an order that previously failed payment.\n\n- Roles: USER (own) or ADMIN\n- Success: 200 with `OrderResponseDto` containing a fresh `clientSecret`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get order by UUID (USER own / ADMIN any)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/get/:uuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "management", "order", "get", ":uuid"],
+              "variable": [
+                { "key": "uuid", "value": "99999999-aaaa-bbbb-cccc-dddddddddddd" }
+              ]
+            },
+            "description": "ownership-checked at the service layer.\n\n- Roles: USER (own) or ADMIN\n- Success: 200 with `OrderResponseDto`.\n- Errors: 403 if order belongs to a different user."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get order status by UUID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/status/:uuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "management", "order", "status", ":uuid"],
+              "variable": [
+                { "key": "uuid", "value": "99999999-aaaa-bbbb-cccc-dddddddddddd" }
+              ]
+            },
+            "description": "Lightweight status read used by the order-confirmation poller.\n\n- Roles: USER (own) or ADMIN\n- Success: 200 with `OrderStatusDto { status }`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get my orders (paged, optional status filter)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/management/order/mine?page=0&size=20&sort=createdAt,DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "management", "order", "mine"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "createdAt,DESC" },
+                { "key": "status", "value": "PAID", "disabled": true }
+              ]
+            },
+            "description": "Frontend-gap #1 — paginated listing of the caller's own orders. Optional repeatable `status` query param filters by OrderStatus (CREATED, AWAITING_PAYMENT, PAID, SHIPPED, DELIVERED, CANCELED...) — omit for all statuses.\n\n- Roles: USER or ADMIN\n- Success: 200 OK with Spring Data `Page<OrderResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Delete order (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/management/order/delete/:uuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "management", "order", "delete", ":uuid"],
+              "variable": [
+                { "key": "uuid", "value": "99999999-aaaa-bbbb-cccc-dddddddddddd" }
+              ]
+            },
+            "description": "Hard-delete an order. Lives on `OrderManagementAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: list all orders (paged, filterable)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/management/order/get/all?page=0&size=20&sort=createdAt,DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "management", "order", "get", "all"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "createdAt,DESC" },
+                { "key": "status", "value": "PAID", "disabled": true },
+                { "key": "userKeycloakId", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Frontend-gap #2 — admin-side paginated order listing across every user, with optional `status` (repeatable OrderStatus) and `userKeycloakId` filters.\n\n- Role: ADMIN (controller-level `@PreAuthorize`)\n- Success: 200 OK with Spring Data `Page<OrderResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Shipping",
+      "description": "Public shipping options and fees.",
+      "item": [
+        {
+          "name": "List shipping options (public)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/shipping/options?provider=DHL",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "shipping",
+                "options"
+              ],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "DHL",
+                  "description": "Optional: DHL or FEDEX. All carriers when omitted.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Every available (provider, type) pair with its fee and indicative delivery time (business days Monday to Friday, holidays ignored; an order placed after `cutoffTime` is handled the next business day), sorted by provider then cost. `cost` is exactly the `shippingCost` an order placed with that pair is charged. Served with `Cache-Control: max-age=600, public`.\n\n- Public.\n- Success: 200 OK with `ShippingOptionResponseDto[]` (`provider`, `type`, `cost`, `currency`, `minDeliveryBusinessDays`, `maxDeliveryBusinessDays`, `cutoffTime` (\"HH:mm\", nullable), `timeZone`).\n- Errors: 400 `METHOD_ARGUMENT_TYPE_MISMATCH` for an unknown `provider`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/services/shipping/options"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "max-age=600, public"
+                }
+              ],
+              "body": "[\n  {\n    \"provider\": \"DHL\",\n    \"type\": \"STANDARD\",\n    \"cost\": 15.00,\n    \"currency\": \"EUR\",\n    \"minDeliveryBusinessDays\": 2,\n    \"maxDeliveryBusinessDays\": 3,\n    \"cutoffTime\": null,\n    \"timeZone\": \"Europe/Paris\"\n  },\n  {\n    \"provider\": \"DHL\",\n    \"type\": \"EXPRESS\",\n    \"cost\": 25.00,\n    \"currency\": \"EUR\",\n    \"minDeliveryBusinessDays\": 1,\n    \"maxDeliveryBusinessDays\": 1,\n    \"cutoffTime\": \"15:00\",\n    \"timeZone\": \"Europe/Paris\"\n  },\n  {\n    \"provider\": \"FEDEX\",\n    \"type\": \"STANDARD\",\n    \"cost\": 15.00,\n    \"currency\": \"EUR\",\n    \"minDeliveryBusinessDays\": 1,\n    \"maxDeliveryBusinessDays\": 2,\n    \"cutoffTime\": null,\n    \"timeZone\": \"Europe/Paris\"\n  },\n  {\n    \"provider\": \"FEDEX\",\n    \"type\": \"EXPRESS\",\n    \"cost\": 25.00,\n    \"currency\": \"EUR\",\n    \"minDeliveryBusinessDays\": 1,\n    \"maxDeliveryBusinessDays\": 1,\n    \"cutoffTime\": \"15:00\",\n    \"timeZone\": \"Europe/Paris\"\n  }\n]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Push notifications",
+      "description": "Browser Web Push subscriptions. Push is not a favorite communication channel: payment-confirmed and order-shipped pushes are always sent, in addition to e-mail/SMS, to every browser the user subscribed (5 browsers max, the oldest is replaced). See `docs/web-push.md`.",
+      "item": [
+        {
+          "name": "Get VAPID public key (public)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/notifications/push/public-key",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "notifications",
+                "push",
+                "public-key"
+              ]
+            },
+            "description": "Key the browser passes as `applicationServerKey` to `pushManager.subscribe()`.\n\n- Public.\n- Success: 200 OK `{ \"publicKey\": \"...\" }`.\n- Errors: 503 `PUSH_SERVICE_NOT_CONFIGURED` when VAPID keys are not set."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register browser subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"endpoint\": \"https://fcm.googleapis.com/fcm/send/replace-with-browser-endpoint\",\n  \"expirationTime\": null,\n  \"keys\": {\n    \"p256dh\": \"<65-byte uncompressed P-256 key, base64url>\",\n    \"auth\": \"<16-byte secret, base64url>\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/notifications/push/subscriptions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "notifications",
+                "push",
+                "subscriptions"
+              ]
+            },
+            "description": "Body = the browser's `PushSubscription.toJSON()`. The owner is the JWT subject.\n\n- USER.\n- Success: 201 Created `{ \"uuid\": \"...\" }` (same endpoint again = update). A 6th browser replaces the user's oldest subscription.\n- Errors: 400 `INVALID_PUSH_ENDPOINT` (not HTTPS / push-service host not allowed), 400 invalid keys, 409 `PUSH_SUBSCRIPTION_CONFLICT` (endpoint owned by another account), 503 `PUSH_SERVICE_NOT_CONFIGURED`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove browser subscription",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/notifications/push/subscriptions/:subscriptionUuid",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "notifications",
+                "push",
+                "subscriptions",
+                ":subscriptionUuid"
+              ],
+              "variable": [
+                {
+                  "key": "subscriptionUuid",
+                  "value": "3f6c1a2b-8d4e-4f5a-9b6c-7d8e9f0a1b2c"
+                }
+              ]
+            },
+            "description": "Call on logout or when the user turns notifications off.\n\n- USER.\n- Success: 204 No Content.\n- Errors: 403 `PUSH_SUBSCRIPTION_NOT_OWNED` (another user's subscription), 404 `PUSH_SUBSCRIPTION_NOT_FOUND` (already removed or replaced: treat as unsubscribed)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Review",
+      "description": "Product reviews tied to past purchases.",
+      "item": [
+        {
+          "name": "Get review by UUID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/review/get/:reviewUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "review", "get", ":reviewUuid"],
+              "variable": [
+                { "key": "reviewUuid", "value": "44444444-5555-6666-7777-888888888888" }
+              ]
+            },
+            "description": "Authenticated read of a single review.\n\n- Roles: any authenticated user.\n- Success: 200 with `ReviewResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Product reviews (public)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "X-API-VERSION",
+                "value": "{{api_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/review/product/:productUuid?page=0&size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "services",
+                "review",
+                "product",
+                ":productUuid"
+              ],
+              "variable": [
+                {
+                  "key": "productUuid",
+                  "value": "11111111-2222-3333-4444-555555555555"
+                }
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Default 10, max 100. Any sort is ignored: newest first."
+                }
+              ]
+            },
+            "description": "Published reviews of a product: `averageRating` (1 decimal, null without reviews), `reviewCount`, `distribution` (keys \"1\" to \"5\" always present) and one page of `PublicReviewDto` (`uuid`, `rating`, `comment`, `authorFirstName` (first name only), `createdAt` (ISO date)), newest first. Reviews rejected by moderation are never listed. Served with `Cache-Control: max-age=60, public`.\n\n- Public.\n- Success: 200 OK with `ProductReviewsResponseDto`.\n- Errors: 404 `PRODUCT_NOT_FOUND`, 400 `METHOD_ARGUMENT_TYPE_MISMATCH` (malformed uuid)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/services/review/product/:productUuid"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "max-age=60, public"
+                }
+              ],
+              "body": "{\n  \"averageRating\": 4.3,\n  \"reviewCount\": 3,\n  \"distribution\": {\n    \"1\": 0,\n    \"2\": 0,\n    \"3\": 0,\n    \"4\": 2,\n    \"5\": 1\n  },\n  \"reviews\": {\n    \"content\": [\n      {\n        \"uuid\": \"0f0e0d0c-0b0a-4908-8706-050403020100\",\n        \"rating\": 4,\n        \"comment\": \"Très bon écran\",\n        \"authorFirstName\": \"Jean\",\n        \"createdAt\": \"2026-10-02\"\n      }\n    ],\n    \"page\": {\n      \"size\": 10,\n      \"number\": 0,\n      \"totalElements\": 3,\n      \"totalPages\": 1\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create review (USER)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/review/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "review", "create"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderUuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\",\n  \"productUuid\": \"11111111-2222-3333-4444-555555555555\",\n  \"rating\": 5,\n  \"comment\": \"Excellent laptop, blazing fast.\"\n}"
+            },
+            "description": "Post a 1-5 review against a product the user actually purchased (`order` must exist and be PAID/SHIPPED/DELIVERED). Identity is taken from the JWT.\n\n- Role: USER\n- Success: 201 with `ReviewResponseDto`.\n- Errors: 403 not the order owner, 409 review already exists."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update review (USER)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/review/update/:reviewUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "review", "update", ":reviewUuid"],
+              "variable": [
+                { "key": "reviewUuid", "value": "44444444-5555-6666-7777-888888888888" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reviewUuid\": \"44444444-5555-6666-7777-888888888888\",\n  \"rating\": 4,\n  \"comment\": \"Updated rating after a month of use.\"\n}"
+            },
+            "description": "Edit your own review.\n\n- Role: USER (must be the author)\n- Success: 200 with refreshed `ReviewResponseDto`.\n- Errors: 403 not author."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Delete review (USER)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/review/delete/:reviewUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "review", "delete", ":reviewUuid"],
+              "variable": [
+                { "key": "reviewUuid", "value": "44444444-5555-6666-7777-888888888888" }
+              ]
+            },
+            "description": "Delete your own review.\n\n- Role: USER (author only)\n- Success: 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List reviewable products (USER)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/review/reviewable",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "review", "reviewable"]
+            },
+            "description": "Products the caller bought (orders in PAID / SHIPPED / DELIVERED) but has not yet reviewed; each entry carries the `orderUuid` to forward to `POST /create`.\n\n- Role: USER\n- Success: 200 with `List<ReviewableProductDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Bank Card",
+      "description": "User-owned default card plus admin CRUD over all cards.",
+      "item": [
+        {
+          "name": "Add bank card (USER)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/bank-card/add",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "bank-card", "add"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardHolderName\": \"Jane Doe\",\n  \"cardNumber\": \"4242424242424242\",\n  \"expiryDate\": \"12/2030\",\n  \"cardType\": \"VISA\"\n}"
+            },
+            "description": "Add a bank card to the caller's profile. Card number is encrypted at rest, only the last 4 are kept in plaintext.\n\n- Roles: USER or ADMIN\n- Success: 201 with masked `BankCardResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update my bank card",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/bank-card/update",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "bank-card", "update"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardHolderName\": \"Jane Doe\",\n  \"expiryDate\": \"06/2031\"\n}"
+            },
+            "description": "Edit the caller's card holder name and expiry date (the card number is write-once: delete and re-add to change it).\n\n- Roles: USER or ADMIN\n- Success: 200 with masked `BankCardResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Delete my bank card",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/bank-card/delete",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "bank-card", "delete"]
+            },
+            "description": "Delete the caller's bank card.\n\n- Roles: USER or ADMIN\n- Success: 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get my bank card",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/bank-card/get",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "bank-card", "get"]
+            },
+            "description": "Return the caller's bank card (masked) — a user has at most one card; 404 when none.\n\n- Roles: USER or ADMIN\n- Success: 200 with `BankCardResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: list all bank cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/bank-card/get/all?page=0&size=20&sort=createdAt,DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "bank-card", "get", "all"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "createdAt,DESC" }
+              ]
+            },
+            "description": "Admin paged listing of every card. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 200 with `Page<BankCardResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: get card by UUID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/bank-card/get/:uuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "bank-card", "get", ":uuid"],
+              "variable": [
+                { "key": "uuid", "value": "55555555-6666-7777-8888-999999999999" }
+              ]
+            },
+            "description": "ADMIN-only fetch of any card by UUID. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 200 with `BankCardResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: delete card by UUID",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/bank-card/delete/:uuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "bank-card", "delete", ":uuid"],
+              "variable": [
+                { "key": "uuid", "value": "55555555-6666-7777-8888-999999999999" }
+              ]
+            },
+            "description": "ADMIN: hard-delete a card. Lives on `BankCardAdminController` (admin-split refactor).\n\n- Role: ADMIN\n- Success: 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Wishlist",
+      "description": "Authenticated wishlist add/remove + paged read.",
+      "item": [
+        {
+          "name": "Add product to wishlist",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/wishlist/add/:productUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "wishlist", "add", ":productUuid"],
+              "variable": [
+                { "key": "productUuid", "value": "11111111-2222-3333-4444-555555555555" }
+              ]
+            },
+            "description": "Add a product to the caller's wishlist.\n\n- Roles: any authenticated user.\n- Success: 201 with `WishlistResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Remove product from wishlist",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/wishlist/remove/:productUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "wishlist", "remove", ":productUuid"],
+              "variable": [
+                { "key": "productUuid", "value": "11111111-2222-3333-4444-555555555555" }
+              ]
+            },
+            "description": "Remove a product from the caller's wishlist.\n\n- Roles: any authenticated user.\n- Success: 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "My wishlist (paged)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/wishlist/my-wishlist?page=0&size=20&sort=createdAt,DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "wishlist", "my-wishlist"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "createdAt,DESC" }
+              ]
+            },
+            "description": "Returns the caller's wishlist as a Spring Data `Page`.\n\n- Roles: any authenticated user.\n- Success: 200 with `Page<WishlistResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Discount",
+      "description": "Public read of currently-active campaigns + admin PATCH to tune them.",
+      "item": [
+        {
+          "name": "Active campaigns (public)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/discounts/active",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "discounts", "active"]
+            },
+            "description": "Public list of every campaign that is `enabled=true` AND inside its `[startsAt, endsAt]` window. Whitelisted under `/api/v1/services/discounts/**`.\n\n- Roles: none (public).\n- Success: 200 with `List<DiscountContext>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: list all campaigns",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/discounts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "discounts"]
+            },
+            "description": "ADMIN: list every campaign regardless of state.\n\n- Role: ADMIN\n- Success: 200 with `List<DiscountCampaignResponseDto>`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: get campaign by key",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/discounts/:discountKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "discounts", ":discountKey"],
+              "variable": [
+                { "key": "discountKey", "value": "BLACK_FRIDAY" }
+              ]
+            },
+            "description": "ADMIN: load one campaign by its key. Keys are free-form (created via POST); seeded ones: `NO_DISCOUNT`, `BLACK_FRIDAY`, `WINTER_SALES`, `SPRING_SALES`, `BUY_ONE_GET_ONE_FREE`.\n\n- Role: ADMIN\n- Success: 200.\n- Errors: 404 unknown key."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: update campaign",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/discounts/:discountKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "discounts", ":discountKey"],
+              "variable": [
+                { "key": "discountKey", "value": "BLACK_FRIDAY" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"calculationType\": \"PERCENTAGE\",\n  \"percentage\": 25.00,\n  \"fixedAmount\": null,\n  \"minOrderAmount\": 100.00,\n  \"maxDiscountAmount\": 500.00,\n  \"startsAt\": \"2026-11-25T00:00:00\",\n  \"endsAt\": \"2026-11-30T23:59:59\",\n  \"priority\": 10\n}"
+            },
+            "description": "ADMIN: PATCH a campaign. All fields are optional — null means \"do not change\". Cache flushes after a successful write so the next price calculation picks up the new state.\n\n- Role: ADMIN\n- Success: 200 with refreshed `DiscountCampaignResponseDto`.\n- Errors: 404 unknown key."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: create campaign",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/discounts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "discounts"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"discountKey\": \"SUMMER_SALES\",\n  \"calculationType\": \"PERCENTAGE\",\n  \"enabled\": true,\n  \"percentage\": 15.00,\n  \"minOrderAmount\": 50.00,\n  \"maxDiscountAmount\": 200.00,\n  \"startsAt\": \"2027-06-21T00:00:00\",\n  \"endsAt\": \"2027-07-21T23:59:59\",\n  \"priority\": 5\n}"
+            },
+            "description": "ADMIN: register a new discount campaign under a free-form key (no redeploy needed). `discountKey` and `calculationType` are required; the key must not already exist.\n\n- Role: ADMIN\n- Success: 201 with `DiscountCampaignResponseDto`.\n- Errors: 400 invalid payload, 409 key already used."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Admin: delete campaign",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/discounts/:discountKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "discounts", ":discountKey"],
+              "variable": [
+                { "key": "discountKey", "value": "SUMMER_SALES" }
+              ]
+            },
+            "description": "ADMIN: delete a campaign by key.\n\n- Role: ADMIN\n- Success: 204.\n- Errors: 404 unknown key."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Recommendations",
+      "description": "Personalised product recommendations (Gorse).",
+      "item": [
+        {
+          "name": "My recommendations",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/recommendations/my-recommendations?n=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "recommendations", "my-recommendations"],
+              "query": [
+                { "key": "n", "value": "10" }
+              ]
+            },
+            "description": "Products recommended to the caller by Gorse, resolved to full product DTOs. `n` = how many (default 10).\n\n- Roles: any authenticated user\n- Success: 200 with a list of `ProductResponseDto` (possibly empty)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Events",
+      "description": "Browser-only behavioural events for the recommender (MongoDB, synced to Gorse). Purchases, cart, wishlist and review signals are produced by the backend.",
+      "item": [
+        {
+          "name": "Consume event (USER)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/events/consume-event",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events", "consume-event"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"VIEW\",\n  \"productId\": \"11111111-2222-3333-4444-555555555555\",\n  \"sessionId\": \"sess-9b3c1c2a-fa70-4f29\",\n  \"metadata\": { \"page\": \"product-detail\", \"referrer\": \"home\" }\n}"
+            },
+            "description": "Persist one browser signal in MongoDB. The server overwrites any client-supplied `userId` with the JWT subject.\n\n- Role: USER\n- Success: 201 with the persisted `UserEvent` document.\n- Unknown `productId`: 404 PRODUCT_NOT_FOUND.\n- Accepted `eventType` (browser-only signals): VIEW, CLICK, COMPARE (product added to the comparator), SEARCH_RESULT_CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, IGNORE_RECOMMENDATION, BOUNCE.\n- Refused with 400 INVALID_REQUEST (fieldErrors on eventType), nothing stored: PURCHASE, ADD_TO_CART, REMOVE_FROM_CART, WISHLIST_ADD, RATING_*, REVIEW_* — the backend writes them itself when the purchase, cart change, wishlist add or review is validated.\n- Rate limit: 120 POST / minute / user on /events/** (429 + Retry-After)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Consume events — batch (USER)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/events/consume-events",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events", "consume-events"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"events\": [\n    {\n      \"eventType\": \"VIEW\",\n      \"productId\": \"11111111-2222-3333-4444-555555555555\",\n      \"sessionId\": \"sess-9b3c1c2a-fa70-4f29\",\n      \"metadata\": {\n        \"page\": \"product-detail\"\n      }\n    },\n    {\n      \"eventType\": \"COMPARE\",\n      \"productId\": \"11111111-2222-3333-4444-555555555555\",\n      \"sessionId\": \"sess-9b3c1c2a-fa70-4f29\"\n    }\n  ]\n}"
+            },
+            "description": "Persist the browser signals of a page in one call (1 to 50 events).\n\n- Role: USER\n- Success: 201 `{ \"accepted\": n, \"ignored\": m }` — `ignored` counts events of an unknown product, dropped without failing the batch.\n- A backend-only `eventType` anywhere refuses the whole batch: 400, fieldErrors on `events[i].eventType`.\n- Accepted `eventType` (browser-only signals): VIEW, CLICK, COMPARE (product added to the comparator), SEARCH_RESULT_CLICK, SCROLL_DEPTH_HIGH, HOVER, SEARCH_QUERY, IGNORE_RECOMMENDATION, BOUNCE.\n- Refused with 400 INVALID_REQUEST (fieldErrors on eventType), nothing stored: PURCHASE, ADD_TO_CART, REMOVE_FROM_CART, WISHLIST_ADD, RATING_*, REVIEW_* — the backend writes them itself when the purchase, cart change, wishlist add or review is validated.\n- Rate limit: 120 POST / minute / user on /events/** (429 + Retry-After)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhook",
+      "description": "Stripe webhook ingestion. Public, signature-verified — for Stripe to call, not humans.",
+      "item": [
+        {
+          "name": "Stripe webhook (HMAC-signed)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Stripe-Signature", "value": "t=1719500000,v1=replace_with_stripe_signed_value" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/stripe",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "webhooks", "stripe"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_test_webhook\",\n  \"object\": \"event\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_test_123\",\n      \"object\": \"payment_intent\",\n      \"amount\": 249999,\n      \"currency\": \"eur\",\n      \"status\": \"succeeded\",\n      \"metadata\": { \"orderUuid\": \"99999999-aaaa-bbbb-cccc-dddddddddddd\" }\n    }\n  }\n}"
+            },
+            "description": "Stripe-only endpoint. Use the Stripe CLI (`stripe listen --forward-to ...`) to deliver real signed events; this Postman entry is for documentation only — calling it directly will return 400 because the `Stripe-Signature` header is fake.\n\n- Roles: none (public, signature-verified).\n- Success: 200 OK (Stripe is informed not to retry).\n- Errors: 400 if signature is invalid or payload is malformed JSON."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 or 400\", () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK (event accepted)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": { "raw": "{{base_url}}/api/v1/webhooks/stripe" }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [],
+              "body": ""
+            },
+            {
+              "name": "400 Invalid signature",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": { "raw": "{{base_url}}/api/v1/webhooks/stripe" }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [],
+              "body": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Product Category Schemas",
+      "description": "Admin-managed registry of product-category JSON Schemas. Registering a new category (or changing an existing one's validation rules) here takes effect immediately for product create/update — no code change or redeploy.",
+      "item": [
+        {
+          "name": "Get category schema by key (public)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/product-category-schemas/:categoryKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "product-category-schemas", ":categoryKey"],
+              "variable": [
+                { "key": "categoryKey", "value": "COMPUTER" }
+              ]
+            },
+            "description": "Public read of one category's JSON Schema. Whitelisted under `/api/v1/services/product-category-schemas/**`.\n\n- Roles: none (public).\n- Success: 200 with `ProductCategorySchemaResponseDto`.\n- Errors: 400 if categoryKey is unregistered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List all category schemas (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/get/all",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "get", "all"]
+            },
+            "description": "Lists every registered category schema, including disabled ones.\n\n- Role: ADMIN\n- Success: 200 with an array of `ProductCategorySchemaResponseDto`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get category schema by key (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/get/:categoryKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "get", ":categoryKey"],
+              "variable": [
+                { "key": "categoryKey", "value": "COMPUTER" }
+              ]
+            },
+            "description": "- Role: ADMIN\n- Success: 200 with `ProductCategorySchemaResponseDto`.\n- Errors: 400 if categoryKey is unregistered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Create category schema (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "create"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryKey\": \"TABLET\",\n  \"label\": \"Tablets\",\n  \"jsonSchema\": \"{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"screenSize\\\":{\\\"type\\\":\\\"number\\\",\\\"minimum\\\":4},\\\"storage\\\":{\\\"type\\\":\\\"integer\\\",\\\"minimum\\\":16}},\\\"required\\\":[\\\"screenSize\\\",\\\"storage\\\"]}\"\n}"
+            },
+            "description": "Registers a brand-new product category. The schema is compiled before saving — a malformed schema is rejected with 400 and nothing is persisted. Once saved, product create/update validates against it immediately.\n\n- Role: ADMIN\n- Success: 201 with `ProductCategorySchemaResponseDto`.\n- Errors: 400 if the schema is malformed or categoryKey is already registered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update category schema (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/update/:categoryKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "update", ":categoryKey"],
+              "variable": [
+                { "key": "categoryKey", "value": "TABLET" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Tablets & E-readers\"\n}"
+            },
+            "description": "PATCH — only supplied fields are updated. A new `jsonSchema` is re-compiled before saving.\n\n- Role: ADMIN\n- Success: 200 with `ProductCategorySchemaResponseDto`.\n- Errors: 400 if the schema is malformed or categoryKey is unregistered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Delete category schema (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/admin/product-category-schemas/delete/:categoryKey",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "admin", "product-category-schemas", "delete", ":categoryKey"],
+              "variable": [
+                { "key": "categoryKey", "value": "TABLET" }
+              ]
+            },
+            "description": "- Role: ADMIN\n- Success: 204 No Content.\n- Errors: 400 if categoryKey is unregistered."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}

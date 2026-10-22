@@ -1,20 +1,63 @@
-apiVersion: skaffold/v4beta11
+# Skaffold — inner dev loop of the backend on Minikube.
+#
+# Scope: ONLY the `cybertech-app` release. The infrastructure (MySQL, MongoDB, Redis,
+# Elasticsearch, Keycloak, RustFS, Gorse, Mailpit, moderation-api, Stripe CLI) is deployed
+# once with Helmfile (src/main/resources/k8s/helm/helmfile.yaml.gotmpl) and left running.
+# Skaffold reuses the same release name, so it upgrades the release Helmfile created
+# instead of installing a second copy.
+#
+# Prerequisites: `minikube start`, `helmfile apply` done once, and the same environment
+# variables as Helmfile in the shell:
+#   source src/main/resources/k8s/helm/minikube-dev-secrets.sh
+# On Windows, Helm 4 + Skaffold also need Developer Mode (symlinked Helm plugin).
+#
+# Usage:
+#   skaffold dev --cleanup=false   # build + deploy + logs + port-forward, rebuild on every change
+#   (without --cleanup=false, Ctrl+C uninstalls the cybertech-app release)
+#   skaffold run   # build + deploy once and leave it running
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: cybertech-project
+  name: cybertech-backend
+
 build:
   artifacts:
-    # Ton application Java avec Jib
     - image: cybertech-app
       jib:
-        project: com.novatech.cybertech:Cybertech # Nom du projet Maven
+        # Base image, JVM flags and main class are configured in the jib-maven-plugin (pom.xml).
+        # Tests are run by `mvnw test`, not by every image rebuild.
+        args:
+          - -DskipTests
   local:
-    push: false # Ne pas pousser sur Docker Hub, utiliser le cache local
+    # Against the minikube context Skaffold builds straight into Minikube's Docker daemon:
+    # no registry and no push.
+    push: false
 
 deploy:
   helm:
     releases:
-      - name: cybertech-release
-        chartPath: "./src/main/resources/k8s/helm/charts/cybertech-app-chart" # Chemin vers ton chart
+      - name: cybertech-app
+        namespace: default
+        chartPath: src/main/resources/k8s/helm/charts/cybertech-app-chart
+        valuesFiles:
+          - src/main/resources/k8s/helm/charts/cybertech-app-chart/values.yaml
+        # Same overrides as the cybertech-app release of the Helmfile, plus the image Skaffold built.
         setValueTemplates:
           cybertechApp.image: "{{.IMAGE_FULLY_QUALIFIED_cybertech_app}}"
+          keycloak.clientSecret: "{{.KEYCLOAK_CLIENT_SECRET}}"
+          aws.s3.accessKeyId: "{{.RUSTFS_ACCESS_KEY}}"
+          aws.s3.secretAccessKey: "{{.RUSTFS_SECRET_KEY}}"
+          appSecrets.cardEncryptionKey: "{{.APP_CARD_ENCRYPTION_KEY}}"
+          hostAliases[0].ip: "{{.MINIKUBE_IP}}"
+          hostAliases[0].hostnames[0]: s3.cybertech.local
+          hostAliases[0].hostnames[1]: keycloak.cybertech.local
+          stripe.apiKey: "{{.STRIPE_API_KEY}}"
+          stripe.webhookSecret: "{{.STRIPE_WEBHOOK_SECRET}}"
+        wait: true
+
+portForward:
+  - resourceType: service
+    resourceName: cybertech-app
+    namespace: default
+    port: 8081
+    localPort: 8081

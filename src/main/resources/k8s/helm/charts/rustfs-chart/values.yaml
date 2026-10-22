@@ -1,0 +1,34 @@
+image:
+  repository: rustfs/rustfs
+  tag: "1.0.3"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  apiPort: 9000
+  consolePort: 9001
+
+credentials:
+  accessKey: ""
+  secretKey: ""
+
+bucket:
+  name: cybertech-products
+  region: us-east-1
+
+persistence:
+  size: 5Gi
+  storageClass: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  host: s3.cybertech.local
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi

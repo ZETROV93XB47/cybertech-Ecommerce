@@ -4,7 +4,12 @@ GRANT ALL PRIVILEGES ON keycloakDB.* TO 'rookie'@'%';
 
 FLUSH PRIVILEGES;
 
+CREATE DATABASE IF NOT EXISTS cybertechDB;
+
+
 use cybertechDB;
+
+CREATE DATABASE IF NOT EXISTS cybertechDB;
 
 CREATE TABLE userTable
 (
@@ -12,16 +17,18 @@ CREATE TABLE userTable
     id                         BIGINT       NOT NULL AUTO_INCREMENT,
     uuid                       BINARY(16) NOT NULL UNIQUE,
     version                    BIGINT       NOT NULL,
+    createdAt                  DATETIME     NOT NULL,
+    updatedAt                  DATETIME,
 
     -- Champs spécifiques à UserEntity
-    email                      VARCHAR(50)  NOT NULL UNIQUE,
+    email                      VARCHAR(254) NOT NULL UNIQUE,
     firstName                  VARCHAR(50),
     lastName                   VARCHAR(50),
     sex                        VARCHAR(255) NOT NULL, -- EnumType.STRING
-    addressStreet             VARCHAR(255),
-    addressCity               VARCHAR(255),
-    addressZipCode           VARCHAR(20),
-    addressCountry            VARCHAR(255),
+    address_street             VARCHAR(255),
+    address_city               VARCHAR(255),
+    address_zip_code           VARCHAR(20),
+    address_country            VARCHAR(255),
     birthDate                  DATE,
     keycloakId                 VARCHAR(100) NOT NULL UNIQUE,
     role                       VARCHAR(255) NOT NULL, -- EnumType.STRING
@@ -40,6 +47,8 @@ CREATE TABLE productTable
     id            BIGINT         NOT NULL AUTO_INCREMENT,
     uuid          BINARY(16) NOT NULL UNIQUE,
     version       BIGINT         NOT NULL,
+    createdAt     DATETIME       NOT NULL,
+    updatedAt     DATETIME,
 
     -- Champs spécifiques à ProductEntity
     name          VARCHAR(255)   NOT NULL,
@@ -56,25 +65,31 @@ CREATE TABLE productTable
 );
 
 
-CREATE TABLE paymentTable
+CREATE TABLE paymentAttemptTable
 (
     -- Hérité de BaseEntity
-    id            BIGINT         NOT NULL AUTO_INCREMENT,
-    uuid          BINARY(16) NOT NULL UNIQUE,
-    version       BIGINT         NOT NULL,
+    id             BIGINT         NOT NULL AUTO_INCREMENT,
+    uuid           BINARY(16)     NOT NULL UNIQUE,
+    version        BIGINT         NOT NULL,
 
-    -- Champs spécifiques à PaymentEntity
-    amount        DECIMAL(19, 2) NOT NULL,
-    paymentType   VARCHAR(255)   NOT NULL, -- EnumType.STRING
-    paymentStatus VARCHAR(255)   NOT NULL, -- EnumType.STRING
-    paymentDate   DATETIME       NOT NULL,
+    -- Champs spécifiques à PaymentAttemptEntity
+    amount         DECIMAL(19, 2) NOT NULL,
+    currency       VARCHAR(10)    NOT NULL,
+    paymentType    VARCHAR(255)   NOT NULL, -- EnumType.STRING
+    transactionType VARCHAR(255)  NOT NULL, -- EnumType.STRING (PAYMENT, REFUND)
+    status         VARCHAR(255)   NOT NULL, -- EnumType.STRING
+    stripePaymentID    VARCHAR(255),
+    idempotencyKey VARCHAR(64)    NOT NULL,
+    createdAt      DATETIME       NOT NULL,
+    updatedAt      DATETIME,
 
-    -- Clé étrangère implicite pour la relation OneToOne vers OrderEntity
-    -- L'annotation 'mappedBy' sur paymentEntity dans OrderEntity indique
-    -- que la colonne de clé étrangère (paymentId) se trouve dans orderTable.
-    -- Par conséquent, cette table n'a pas besoin de colonne d'ID de commande ici.
+    -- Relation ManyToOne vers OrderEntity
+    orderId        BIGINT         NOT NULL,
 
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+
+    -- Contrainte d'unicité sur idempotencyKey
+    CONSTRAINT uk_payment_attempt_idem UNIQUE (idempotencyKey)
 );
 
 
@@ -90,7 +105,8 @@ CREATE TABLE stockTable
     product_uuid      BINARY(16) NOT NULL,
     quantity          INT          NOT NULL,
     reservationStatus VARCHAR(255) NOT NULL, -- EnumType.STRING
-    createdAt         DATETIME,
+    createdAt         DATETIME     NOT NULL,
+    updatedAt         DATETIME,
 
     PRIMARY KEY (id),
 
@@ -105,13 +121,13 @@ CREATE TABLE bankCardTable
     id             BIGINT       NOT NULL AUTO_INCREMENT,
     uuid           BINARY(16) NOT NULL UNIQUE,
     version        BIGINT       NOT NULL,
+    createdAt      DATETIME     NOT NULL,
+    updatedAt      DATETIME,
 
     -- Champs spécifiques à BankCardEntity
     cardHolderName VARCHAR(100) NOT NULL,
-    cardNumber     VARCHAR(100) NOT NULL,
     expiryDate     VARCHAR(7)   NOT NULL, -- MM/YYYY
     cardType       VARCHAR(255) NOT NULL, -- EnumType.STRING
-    isDefault      BOOLEAN      NOT NULL,
 
     -- Relation ManyToOne vers UserEntity
     user_id        BIGINT       NOT NULL,
@@ -134,6 +150,7 @@ CREATE TABLE reviewTable
     rating    INTEGER  NOT NULL,
     comment   TEXT,
     isHateful BOOLEAN  NOT NULL,
+    orderUuid BINARY(16),        -- Commande d'achat du produit (nullable pour les avis antérieurs)
     createdAt DATETIME NOT NULL,
     updatedAt DATETIME,
 
@@ -152,6 +169,50 @@ CREATE TABLE reviewTable
      CONSTRAINT chk_rating CHECK (rating >= 1 AND rating <= 5)
 );
 
+CREATE TABLE cartTable
+(
+    -- Hérité de BaseEntity
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    uuid          BINARY(16)   NOT NULL UNIQUE,
+    version       BIGINT       NOT NULL,
+
+    -- Champs spécifiques à CartEntity
+    userId        BIGINT       NOT NULL,
+    createdAt     DATETIME     NOT NULL,
+    updatedAt     DATETIME,
+
+    PRIMARY KEY (id),
+    -- One cart per user — closes the concurrent-add race in
+    -- CartServiceImp.addItemsToCart. The Redis lock + SELECT ... FOR UPDATE serialise
+    -- the read-modify-write *when a row already exists*, but two concurrent first-time
+    -- inserts could both succeed without this constraint. Combined with the
+    -- retry-once-on-DataIntegrityViolationException path in the service, the second
+    -- insert deterministically falls back to "load the row the other thread just wrote
+    -- and continue mutating".
+    UNIQUE KEY uk_cart_user (userId),
+    FOREIGN KEY (userId) REFERENCES userTable (id)
+);
+
+CREATE TABLE cartItemTable
+(
+    -- Hérité de BaseEntity
+    id            BIGINT         NOT NULL AUTO_INCREMENT,
+    uuid          BINARY(16)     NOT NULL UNIQUE,
+    version       BIGINT         NOT NULL,
+    createdAt     DATETIME       NOT NULL,
+    updatedAt     DATETIME,
+
+    -- Champs spécifiques à CartItemEntity
+    quantity      INTEGER        NOT NULL,
+    unitPrice     DECIMAL(10, 2) NOT NULL,
+    cartId        BIGINT         NOT NULL,
+    productEntity BIGINT         NOT NULL, -- FK to productTable
+    addedAt       DATETIME       NOT NULL,
+
+    PRIMARY KEY (id),
+    FOREIGN KEY (cartId) REFERENCES cartTable (id),
+    FOREIGN KEY (productEntity) REFERENCES productTable (id)
+);
 
 CREATE TABLE orderTable
 (
@@ -159,6 +220,7 @@ CREATE TABLE orderTable
     id               BIGINT         NOT NULL AUTO_INCREMENT,
     uuid             BINARY(16) NOT NULL UNIQUE,
     version          BIGINT         NOT NULL,
+    createdAt        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     -- Champs spécifiques à OrderEntity
     orderDate        DATETIME       NOT NULL,
@@ -172,20 +234,36 @@ CREATE TABLE orderTable
     shippingType     VARCHAR(255)   NOT NULL, -- EnumType.STRING
     shippingProvider VARCHAR(255)   NOT NULL, -- EnumType.STRING
     discountType     VARCHAR(255)   NOT NULL, -- EnumType.STRING
+    -- Détail du prix (nullable : commandes antérieures)
+    subtotalAmount          DECIMAL(19, 2),
+    discountAmount          DECIMAL(19, 2),
+    shippingCost            DECIMAL(19, 2),
+    -- Instantané des conditions de la remise au moment de la commande (DiscountTermsSnapshot)
+    discountCalculationType VARCHAR(255),   -- EnumType.STRING
+    discountPercentage      DECIMAL(5, 2),
+    discountFixedAmount     DECIMAL(19, 2),
+    discountMinOrderAmount  DECIMAL(19, 2),
+    discountMaxAmount       DECIMAL(19, 2),
+    -- Dates de livraison indicatives (nullable : commandes antérieures)
+    estimatedDeliveryFrom   DATE,
+    estimatedDeliveryTo     DATE,
     updatedAt        DATETIME,
 
     -- Relations ManyToOne et OneToOne
     userId           BIGINT,                  -- Vers UserEntity
-    paymentId        BIGINT,                  -- Vers PaymentEntity
 
     PRIMARY KEY (id),
 
     -- Contraintes de clés étrangères (PaymentEntity est également déduit)
-    FOREIGN KEY (userId) REFERENCES userTable (id),
-    -- On suppose l'existence de la table paymentTable
-    FOREIGN KEY (paymentId) REFERENCES paymentTable (id)
+    FOREIGN KEY (userId) REFERENCES userTable (id)
 );
 
+-- Ajout de la contrainte FK pour paymentAttemptTable vers orderTable
+-- Note: Cela crée une dépendance circulaire potentielle si on insère les deux en même temps,
+-- mais c'est cohérent avec le modèle objet.
+ALTER TABLE paymentAttemptTable
+ADD CONSTRAINT FK_PaymentAttempt_Order
+FOREIGN KEY (orderId) REFERENCES orderTable (id);
 
 
 CREATE TABLE orderItemTable
@@ -194,6 +272,8 @@ CREATE TABLE orderItemTable
     id            BIGINT         NOT NULL AUTO_INCREMENT,
     uuid          BINARY(16) NOT NULL UNIQUE,
     version       BIGINT         NOT NULL,
+    createdAt     DATETIME       NOT NULL,
+    updatedAt     DATETIME,
 
     -- Champs spécifiques à OrderItemEntity
     quantity      INTEGER        NOT NULL,
@@ -311,3 +391,46 @@ CREATE TABLE BATCH_JOB_SEQ (
 ) ENGINE=InnoDB;
 
 INSERT INTO BATCH_JOB_SEQ (ID, UNIQUE_KEY) select * from (select 0 as ID, '0' as UNIQUE_KEY) as tmp where not exists(select * from BATCH_JOB_SEQ);
+
+CREATE TABLE discount_campaign
+(
+    id                 BIGINT        NOT NULL AUTO_INCREMENT,
+    uuid               BINARY(16)    NOT NULL UNIQUE,
+    version            BIGINT        NOT NULL,
+    createdAt          DATETIME(6)   NOT NULL,
+    updatedAt          DATETIME(6),
+    discountType       VARCHAR(50)   NOT NULL UNIQUE,
+    calculationType    VARCHAR(50)   NOT NULL,
+    enabled            BOOLEAN       NOT NULL DEFAULT FALSE,
+    percentage         DECIMAL(5, 2),
+    fixedAmount        DECIMAL(10, 2),
+    minOrderAmount     DECIMAL(10, 2),
+    maxDiscountAmount  DECIMAL(10, 2),
+    startsAt           DATETIME(6),
+    endsAt             DATETIME(6),
+    priority           INT,
+    PRIMARY KEY (id),
+    INDEX idx_discount_campaign_type (discountType),
+    INDEX idx_discount_campaign_enabled (enabled)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4;
+
+CREATE TABLE keycloak_outbox
+(
+    id            BIGINT        NOT NULL AUTO_INCREMENT,
+    uuid          BINARY(16)    NOT NULL UNIQUE,
+    version       BIGINT        NOT NULL,
+    createdAt     DATETIME(6)   NOT NULL,
+    updatedAt     DATETIME(6),
+    operationType VARCHAR(16)   NOT NULL,
+    status        VARCHAR(16)   NOT NULL,
+    keycloakId    VARCHAR(255),
+    email         VARCHAR(255),
+    payload       VARCHAR(2000),
+    attempts      INT           NOT NULL DEFAULT 0,
+    lastError     VARCHAR(1000),
+    PRIMARY KEY (id),
+    INDEX idx_outbox_status (status),
+    INDEX idx_outbox_email (email)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4;

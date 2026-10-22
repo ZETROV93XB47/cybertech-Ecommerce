@@ -3,7 +3,7 @@ package com.novatech.cybertech.mappers.entity;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
-import com.novatech.cybertech.entities.ProductDocument;
+import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.ReviewEntity;
 import org.mapstruct.Mapper;
@@ -12,6 +12,7 @@ import org.mapstruct.Named;
 import org.mapstruct.ReportingPolicy;
 
 import java.util.List;
+import java.util.Map;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface ProductMapper extends BaseMapper<ProductEntity, ProductCreateRequestDto, ProductUpdateRequestDto, ProductResponseDto> {
@@ -19,15 +20,18 @@ public interface ProductMapper extends BaseMapper<ProductEntity, ProductCreateRe
     @Mapping(target = "reservedStock", expression = "java(0)")
     ProductEntity mapFromCreationRequestToEntity(ProductCreateRequestDto productCreateRequestDto);
 
+    @Override
+    @Mapping(target = "photoUrls", source = "photos")
+    ProductResponseDto mapFromEntityToResponseDto(ProductEntity entity);
+
     ProductResponseDto mapFromProductDocumentToProductResponseDto(ProductDocument productDocument);
 
+    // Ratings come from the published reviews, set by ProductSearchIndexService.
+    @Mapping(target = "averageRating", ignore = true)
+    @Mapping(target = "reviewCount", ignore = true)
     @Mapping(source = "uuid", target = "id")
-        // Mappe l'UUID de l'entité vers l'ID du document
-        //@Mapping(source = "reviewEntities", target = "averageRating", qualifiedByName = "calculateAverageRating")
-        //@Mapping(source = "reviewEntities", target = "reviewCount", qualifiedByName = "calculateReviewCount")
+    @Mapping(target = "photoUrls", source = "photos")
     ProductDocument mapFromProductEntityToProductDocument(final ProductEntity entity);
-
-    List<ProductDocument> toDocuments(final List<ProductEntity> entities);
 
     /**
      * Calcule la note moyenne à partir d'une liste d'avis.

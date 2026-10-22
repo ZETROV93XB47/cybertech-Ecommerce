@@ -1,0 +1,12 @@
+Thank you for installing {{ .Chart.Name }}!
+
+MongoDB {{ .Values.image.tag }} has been deployed.
+
+To connect from within the cluster run:
+
+  kubectl run --rm -i --tty mongo-client --image={{ .Values.image.repository }}:{{ .Values.image.tag }} -- bash -il
+  mongo --host {{ include "mongodb.fullname" . }} --port {{ .Values.service.port }}
+
+If auth is enabled, use the credentials stored in the secret:
+  kubectl get secret {{ include "mongodb.fullname" . }}-auth -o yaml
+

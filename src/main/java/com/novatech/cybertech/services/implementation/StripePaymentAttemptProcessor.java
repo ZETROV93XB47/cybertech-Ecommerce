@@ -1,0 +1,253 @@
+package com.novatech.cybertech.services.implementation;
+
+import com.novatech.cybertech.annotation.PaymentTypeHandler;
+import com.novatech.cybertech.dto.data.PaymentAttemptResult;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.PaymentType;
+import com.novatech.cybertech.entities.valueObjects.Money;
+import com.novatech.cybertech.exceptions.PaymentProcessingException;
+import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
+import com.stripe.exception.CardException;
+import com.stripe.exception.StripeException;
+import com.stripe.model.PaymentIntent;
+import com.stripe.model.Refund;
+import com.stripe.model.StripeError;
+import com.stripe.net.RequestOptions;
+import com.stripe.param.PaymentIntentCreateParams;
+import com.stripe.param.RefundCreateParams;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.util.Optional;
+import java.util.UUID;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@PaymentTypeHandler({PaymentType.MASTERCARD, PaymentType.VISA, PaymentType.APPLE_PAY, PaymentType.GOOGLE_PAY})
+public class StripePaymentAttemptProcessor implements PaymentAttemptProcessor {
+
+    private static final String FAILED = "failed";
+    private static final String CANCELED = "canceled";
+    private static final String SUCCEEDED = "succeeded";
+    private static final String ORDER_UUID = "order_uuid";
+    private static final String IDEMPOTENCY_KEY = "idempotency_key";
+    private static final String STRIPE_API_RESILIENCE_INSTANCE = "stripeApi";
+    private static final String REQUIRES_PAYMENT_METHOD = "requires_payment_method";
+
+    // Protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
+    @Override
+    @Retry(name = STRIPE_API_RESILIENCE_INSTANCE)
+    @CircuitBreaker(name = STRIPE_API_RESILIENCE_INSTANCE, fallbackMethod = "processPaymentFallback")
+    public PaymentAttemptResult processPayment(
+            final UUID orderUuid,
+            final Money amount,
+            final String idempotencyKey,
+            final String paymentMethod
+    ) {
+
+        final long amountInMinorUnit = toMinorUnit(amount);
+
+        final PaymentIntentCreateParams params = buildPaymentIntentParams(
+                orderUuid,
+                amount,
+                amountInMinorUnit,
+                idempotencyKey,
+                paymentMethod
+        );
+
+        final RequestOptions options = RequestOptions.builder()
+                .setIdempotencyKey(idempotencyKey)
+                .build();
+
+        try {
+            log.info("Creating Stripe PaymentIntent | order={} | amount={} {} | idemKey={}",
+                    orderUuid,
+                    amount.getAmount(),
+                    amount.getCurrencyCode(),
+                    idempotencyKey
+            );
+
+            final PaymentIntent intent = PaymentIntent.create(params, options);
+
+            final PaymentAttemptStatus status = mapStripeStatus(intent.getStatus());
+
+            log.info("Stripe PaymentIntent created | order={} | intentId={} | stripeStatus={}",
+                    orderUuid,
+                    intent.getId(),
+                    intent.getStatus()
+            );
+
+            return new PaymentAttemptResult(
+                    status,
+                    intent.getId()
+            );
+
+        } catch (CardException e) {
+
+            // A card decline is a BUSINESS outcome, not an infrastructure failure: with
+            // confirm=true Stripe reports it as an HTTP 402 card_error (thrown as CardException)
+            // rather than returning a PaymentIntent in requires_payment_method. Returning FAILED
+            // here — instead of throwing PaymentProcessingException like a real Stripe outage —
+            // keeps the attempt row persisted (retryPayment needs it to find the payment type),
+            // lets callers apply their business-decline handling, and keeps declines out of the
+            // circuit breaker's failure rate (a burst of declined cards must not open the
+            // breaker for every other customer).
+            log.warn("Stripe card declined | order={} | code={} | declineCode={}",
+                    orderUuid,
+                    e.getCode(),
+                    e.getDeclineCode()
+            );
+
+            return new PaymentAttemptResult(
+                    PaymentAttemptStatus.FAILED,
+                    declinedPaymentIntentId(e)
+            );
+
+        } catch (StripeException e) {
+
+            log.error("Stripe error | order={} | code={} | message={}",
+                    orderUuid,
+                    e.getCode(),
+                    e.getMessage()
+            );
+
+            throw new PaymentProcessingException("Stripe payment failed for order " + orderUuid, e);
+        }
+    }
+
+    // Protect Stripe API calls against transient network failures — idempotency key already set on RequestOptions makes retries safe
+    @Override
+    @Retry(name = STRIPE_API_RESILIENCE_INSTANCE)
+    @CircuitBreaker(name = STRIPE_API_RESILIENCE_INSTANCE, fallbackMethod = "refundFallback")
+    public PaymentAttemptResult refund(UUID orderUuid, Money amount, String idempotencyKey, String stripePaymentID) {
+
+        RefundCreateParams params = RefundCreateParams.builder()
+                .setPaymentIntent(stripePaymentID)
+                .setAmount(toMinorUnit(amount))
+                .putMetadata("orderUuid", orderUuid.toString())
+                .build();
+
+        RequestOptions options = RequestOptions.builder()
+                .setIdempotencyKey(idempotencyKey)
+                .build();
+
+        try {
+            Refund refund = Refund.create(params, options);
+
+            return new PaymentAttemptResult(
+                    mapRefundStatus(refund.getStatus()),
+                    refund.getId()
+            );
+
+        } catch (StripeException e) {
+            log.error("Error creating Stripe Refund for order {}: {}", orderUuid, e.getMessage());
+            throw new PaymentProcessingException("Stripe refund failed for order " + orderUuid + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * The PaymentIntent Stripe created before declining the card, when the error carries it —
+     * {@code null} otherwise (the attempt row simply has no Stripe reference then).
+     */
+    private static String declinedPaymentIntentId(final CardException e) {
+        return Optional.ofNullable(e.getStripeError())
+                .map(StripeError::getPaymentIntent)
+                .map(PaymentIntent::getId)
+                .orElse(null);
+    }
+
+    private long toMinorUnit(final Money money) {
+
+        return money.getAmount()
+                .movePointRight(2)
+                .longValueExact();
+    }
+
+    private PaymentIntentCreateParams buildPaymentIntentParams(
+            UUID orderUuid,
+            Money amount,
+            long amountInMinorUnit,
+            String idempotencyKey,
+            String paymentMethod
+    ) {
+
+        // The PaymentMethod is a Stripe test one picked from the user's card number
+        // (TestCardPaymentUtils): Stripe then plays out the success or the decline and sends the
+        // matching payment_intent.* webhook. Redirects are forbidden: there is no user to redirect.
+        return PaymentIntentCreateParams.builder()
+                .setAmount(amountInMinorUnit)
+                .setCurrency(amount.getCurrencyCode().getCode().toLowerCase())
+                .putMetadata(ORDER_UUID, orderUuid.toString())
+                .putMetadata(IDEMPOTENCY_KEY, idempotencyKey)
+                .setAutomaticPaymentMethods(
+                        PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                                .setEnabled(true)
+                                .setAllowRedirects(PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
+                                .build()
+                )
+                .setPaymentMethod(paymentMethod)
+                .setConfirm(true)
+                .build();
+    }
+
+    private PaymentAttemptStatus mapStripeStatus(String stripeStatus) {
+
+        return switch (stripeStatus) {
+            case SUCCEEDED -> PaymentAttemptStatus.SUCCESS;
+            case REQUIRES_PAYMENT_METHOD, CANCELED -> PaymentAttemptStatus.FAILED;
+            // A plain switch(String) throws its own NPE on a null selector unless `case null` is
+            // explicit — Stripe's SDK types status as a plain String with no documented non-null
+            // guarantee, so fold null into the same PROCESSING fallback as any other unknown status.
+            case null, default -> PaymentAttemptStatus.PROCESSING;
+        };
+    }
+
+    private PaymentAttemptStatus mapRefundStatus(String refundStatus) {
+        return switch (refundStatus) {
+            case SUCCEEDED -> PaymentAttemptStatus.SUCCESS;
+            case FAILED -> PaymentAttemptStatus.FAILED;
+            case CANCELED -> PaymentAttemptStatus.CANCELED;
+            // See mapStripeStatus: a plain switch(String) throws its own NPE on a null selector
+            // unless `case null` is explicit.
+            case null, default -> PaymentAttemptStatus.PROCESSING;
+        };
+    }
+
+    /**
+     * Resilience4j fallback for {@link #processPayment(UUID, Money, String, String)}. Invoked when the
+     * circuit breaker is OPEN or after the retry budget is exhausted. The signature must mirror
+     * the protected method's args plus a trailing {@link Throwable}.
+     */
+    @SuppressWarnings("unused") // referenced by name from @CircuitBreaker(fallbackMethod = ...)
+    private PaymentAttemptResult processPaymentFallback(
+            final UUID orderUuid,
+            final Money amount,
+            final String idempotencyKey,
+            final String paymentMethod,
+            final Throwable cause
+    ) {
+        log.error("Stripe processPayment fallback engaged | order={} | cause={}", orderUuid, cause != null ? cause.getMessage() : "<no cause>");
+        throw new PaymentProcessingException("Stripe payment unavailable for order " + orderUuid + " (resilience4j fallback)", cause);
+    }
+
+    /**
+     * Resilience4j fallback for {@link #refund(UUID, Money, String, String)}. Invoked when the
+     * circuit breaker is OPEN or after the retry budget is exhausted.
+     */
+    @SuppressWarnings("unused") // referenced by name from @CircuitBreaker(fallbackMethod = ...)
+    private PaymentAttemptResult refundFallback(
+            final UUID orderUuid,
+            final Money amount,
+            final String idempotencyKey,
+            final String stripePaymentID,
+            final Throwable cause
+    ) {
+        log.error("Stripe refund fallback engaged | order={} | cause={}", orderUuid, cause != null ? cause.getMessage() : "<no cause>");
+        throw new PaymentProcessingException("Stripe refund unavailable for order " + orderUuid + " (resilience4j fallback)", cause);
+    }
+
+}

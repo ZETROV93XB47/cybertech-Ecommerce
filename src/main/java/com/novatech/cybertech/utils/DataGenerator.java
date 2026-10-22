@@ -1,10 +1,7 @@
 package com.novatech.cybertech.utils;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.github.javafaker.Faker;
-import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import net.datafaker.Faker;
+import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
 import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
@@ -12,6 +9,7 @@ import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
 import com.novatech.cybertech.entities.*;
 import com.novatech.cybertech.entities.enums.*;
 import com.novatech.cybertech.entities.valueObjects.Address;
+import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.entities.valueObjects.Money;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -59,16 +57,13 @@ public class DataGenerator {
     public static ReviewEntity generateReviewEntity() {
 
         UserEntity userEntity = generateUser();
-        userEntity.setId((long) (Math.random() * 1000));
 
         return ReviewEntity.builder()
-                //.id(new Random().nextLong())
                 .rating(5)
-                .comment("Fuck you nigga, i hope your family die from cancer")
+                .comment("This product is absolutely terrible, I want a refund!")
                 .isHateful(false)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
-                .uuid(UUID.randomUUID())
                 .userEntity(userEntity)
                 .productEntity(generateProduct())
                 .build();
@@ -76,26 +71,15 @@ public class DataGenerator {
 
     public static ProductEntity generateProduct() {
         return ProductEntity.builder()
-                //.id(new Random().nextLong())
-                .uuid(UUID.randomUUID())
                 .name(FAKER.commerce().productName())
                 .description("Gaming PC Fireeeee")
                 .price(new BigDecimal(2300))
-//                .cpu("core ultra 7")
-//                .gpu("RTX 5090 Ti")
-//                .ram(Ram.GO_128)
-                .category(Category.COMPUTER)
+                .category("COMPUTER")
                 .brand(Brand.ASUS)
                 .reservedStock(Math.abs(3))
-//                .connectivity("WIFI 7")
-//                .displaySize(DisplaySize._15_INCHES)
-//                .displayType(DisplayType.AMVA)
                 .stock(1000)
-//                .os(Os.WINDOWS)
-//                .ssd(SSD.GO_8192)
-                .photo(FAKER.internet().image())
+                .photos(List.of(FAKER.internet().image()))
                 .orderItemEntities(List.of())
-                //.reviewEntities(List.of())
                 .build();
     }
 
@@ -106,8 +90,7 @@ public class DataGenerator {
                 .name(computerTypeProductAttributes.get("brand") + " " + FAKER.commerce().productName())
                 .price(new BigDecimal("1299.99"))
                 .brand((Brand) computerTypeProductAttributes.get("brand"))
-                .category(Category.COMPUTER)
-                .photo("https://example.com/images/pc.jpg")
+                .category("COMPUTER")
                 .stock(15000)
                 .description("Ordinateur portable performant avec processeur Intel et carte graphique NVIDIA.")
                 .attributes(computerTypeProductAttributes)
@@ -118,18 +101,15 @@ public class DataGenerator {
 
     public static UserEntity generateUser() {
         return UserEntity.builder()
-                //.id(1875L)
                 .email(FAKER.internet().emailAddress())
                 .firstName(FAKER.name().firstName())
                 .lastName(FAKER.name().lastName())
                 .sex(M)
                 .address(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
                 .birthDate(LocalDateTime.ofInstant(FAKER.date().birthday().toInstant(), ZoneId.systemDefault()))
-                //.password(FAKER.internet().password())
                 .role(USER)
                 .numberOfHatefulComments(0)
                 .orderEntities(new ArrayList<>())
-                .reviewEntities(new ArrayList<>())
                 .build();
     }
 
@@ -147,12 +127,10 @@ public class DataGenerator {
                     .favoriteCommunicationChanel(EMAIL)
                     .address(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
                     .birthDate(LocalDateTime.ofInstant(FAKER.date().birthday().toInstant(), ZoneId.systemDefault()))
-                    //.password(passwordEncoder.encode("password"))
                     .role(ADMIN)
                     .isActive(true)
                     .numberOfHatefulComments(0)
                     .orderEntities(new ArrayList<>())
-                    //.cartEntities(new ArrayList<>())
                     .reviewEntities(new ArrayList<>())
                     .build();
 
@@ -163,26 +141,19 @@ public class DataGenerator {
 
             for (long i = 1; i < numberOfUsers + 1; i++) {
                 UserEntity userEntity = UserEntity.builder()
-                        .uuid(UUID.randomUUID())
                         .email(FAKER.internet().emailAddress())
                         .firstName(FAKER.name().firstName())
                         .lastName(FAKER.name().lastName())
                         .sex(i % 2 == 0 ? Sex.F : M)
                         .address(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
                         .birthDate(LocalDateTime.ofInstant(FAKER.date().birthday().toInstant(), ZoneId.systemDefault()))
-                        //.password(passwordEncoder.encode("password"))
                         .role(ADMIN)
                         .favoriteCommunicationChanel(EMAIL)
                         .isActive(true)
                         .numberOfHatefulComments(0)
                         .orderEntities(new ArrayList<>())
                         .reviewEntities(new ArrayList<>())
-                        .bankCardEntities(new ArrayList<>())
-                        //.cartEntities(new ArrayList<>())
                         .build();
-
-                //ReviewEntity reviewEntity = generateReviewEntity(userEntity);
-                //userEntity.getReviewEntities().add(reviewEntity);
 
                 users.add(userEntity);
 
@@ -213,29 +184,26 @@ public class DataGenerator {
                         .cardNumber(FAKER.finance().creditCard())
                         .expiryDate("12/2029")
                         .cardType(BankCardType.VISA)
-                        .isDefault(true)
                         .build())
                 .build();
     }
 
     public static OrderEntity generateOrder() {
         return OrderEntity.builder()
-                .uuid(UUID.randomUUID())
                 .orderDate(LocalDateTime.now())
                 .orderItemEntities(new ArrayList<>())
                 .shippingAddress(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
-                .status(OrderStatus.PROCESSING)
-                .totalAmount(new Money(BigDecimal.ZERO, "EUR"))
-                .paymentEntity(generatePayment())
+                .status(OrderStatus.CREATED)
+                .totalAmount(new Money(BigDecimal.ZERO, CurrencyCode.EUR))
+                .paymentAttempts(List.of(generatePayment()))
                 .build();
     }
 
     public static PaymentEntity generatePayment() {
         return PaymentEntity.builder()
-                .uuid(UUID.randomUUID())
-                .amount(new BigDecimal(0))
-                .paymentDate(LocalDateTime.now())
-                .paymentStatus(PaymentStatus.SUCCESS)
+                .amount(Money.of(new BigDecimal(0)))
+                .createdAt(LocalDateTime.now())
+                .status(PaymentAttemptStatus.SUCCESS)
                 .paymentType(PaymentType.VISA)
                 .build();
     }
@@ -249,85 +217,49 @@ public class DataGenerator {
             users.add(
                     UserEntity.builder()
                             .id(firstId++)
-
                             .email(FAKER.internet().emailAddress())
                             .firstName(FAKER.name().firstName())
                             .lastName(FAKER.name().lastName())
                             .sex(i % 2 == 0 ? Sex.F : M)
                             .address(new Address(FAKER.address().streetAddress(), FAKER.address().city(), FAKER.address().zipCode(), FAKER.address().country()))
                             .birthDate(LocalDateTime.ofInstant(FAKER.date().birthday().toInstant(), ZoneId.systemDefault()))
-                            //.password(FAKER.internet().password())
                             .role(USER)
                             .orderEntities(new ArrayList<>())
-                            //.cartEntities(new ArrayList<>())
                             .build()
             );
         }
         return users;
-
     }
 
-    public static OrderPlacingRequestDto orderGenerator() {
-        UUID productUUID_1 = UUID.fromString("ac1d3001-9bce-1597-819b-ce22697d000e");
-        UUID productUUID_2 = UUID.fromString("ac1d3001-9bce-1597-819b-ce2274f2000f");
-        UUID productUUID_3 = UUID.fromString("ac1d3001-9bce-1597-819b-ce227aba0010");
-
-        return OrderPlacingRequestDto.builder()
-                .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
-                .shippingAddress(FAKER.address().fullAddress())
-                .shippingType(ShippingType.STANDARD)
-                .shippingProvider(ShippingProvider.FEDEX)
-                .paymentType(PaymentType.VISA)
-                .orderItems(List.of(
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_1).quantity(1).build(),
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_2).quantity(2).build(),
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_3).quantity(3).build()
+    public static OrderUpdateRequestDto generateOrderUpdateRequestDto() {
+        return OrderUpdateRequestDto.builder()
+                .uuid(UUID.randomUUID())
+                .paymentType(PaymentType.MASTERCARD)
+                .shippingType(ShippingType.EXPRESS)
+                .shippingProvider(ShippingProvider.DHL)
+                .shippingStreet(FAKER.address().streetAddress())
+                .shippingCity(FAKER.address().city())
+                .shippingZipCode(FAKER.address().zipCode())
+                .shippingCountry(FAKER.address().country())
+                .itemUpdateRequestDtoList(List.of(
+                        OrderItemCreateRequestDto.builder()
+                                .productUuid(UUID.randomUUID())
+                                .quantity(FAKER.number().numberBetween(1, 5))
+                                .build()
                 ))
                 .build();
-
     }
 
     public static void convertToUUID(final String UUIDString) {
-        String hex = "0xAC1D30019BCE1597819BCE15DAC20000".substring(2);
-
-        // 2. Convertir l'hexa en un nombre de 128 bits
+        String hex = UUIDString.substring(2);
         BigInteger b = new BigInteger(hex, 16);
-
-        // 3. Extraire les deux moitiés de 64 bits
         long mostSigBits = b.shiftRight(64).longValue();
         long leastSigBits = b.longValue();
-
-        // 4. Créer l'UUID
         UUID uuid = new UUID(mostSigBits, leastSigBits);
-
         System.out.println(uuid);
     }
 
-//    public static OrderItemCreateRequestDto orderItemGenerator() {
-//
-//    }
-
-
-    static void main(String[] args) throws JsonProcessingException {
-        UUID productUUID_1 = UUID.fromString("ac1d3001-9bce-1597-819b-ce22697d000e");
-        UUID productUUID_2 = UUID.fromString("ac1d3001-9bce-1597-819b-ce2274f2000f");
-        UUID productUUID_3 = UUID.fromString("ac1d3001-9bce-1597-819b-ce227aba0010");
-
-        OrderPlacingRequestDto orderPlacingRequestDto = OrderPlacingRequestDto.builder()
-                .userUuid(UUID.fromString("ac1d3001-9bce-1597-819b-ce15dac20000"))
-                .shippingAddress(FAKER.address().fullAddress())
-                .shippingType(ShippingType.STANDARD)
-                .shippingProvider(ShippingProvider.FEDEX)
-                .paymentType(PaymentType.VISA)
-                .orderItems(List.of(
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_1).quantity(1).build(),
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_2).quantity(2).build(),
-                        OrderItemCreateRequestDto.builder().productUuid(productUUID_3).quantity(3).build()
-                ))
-                .build();
-
-        ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-
-        System.out.println(objectMapper.writeValueAsString(orderPlacingRequestDto));
+    static void dosmth(String[] args) {
+        convertToUUID("0x019C3FA4B4D2700D94694FE90CED0D7A");
     }
 }

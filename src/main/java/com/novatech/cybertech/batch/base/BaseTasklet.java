@@ -2,10 +2,16 @@ package com.novatech.cybertech.batch.base;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.*;
+import org.springframework.batch.core.job.JobExecution;
+import org.springframework.batch.core.job.parameters.JobParameters;
+import org.springframework.batch.core.listener.StepExecutionListener;
 import org.springframework.batch.core.scope.context.ChunkContext;
+import org.springframework.batch.core.step.StepContribution;
+import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.core.step.tasklet.Tasklet;
-import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 
+import java.lang.ScopedValue;
 import java.time.LocalDateTime;
 
 @Slf4j
@@ -38,16 +44,28 @@ public abstract class BaseTasklet implements Tasklet, StepExecutionListener {
                 jobExecution.getJobParameters(),
                 context.getStepContext().getStepExecution());
 
-        return ScopedValue.where(STEP_SETTINGS, taskletProps).call(() -> {
+        try {
+            return ScopedValue.where(STEP_SETTINGS, taskletProps).call(() -> {
 
-            try {
-                return execute(stepContribution, taskletProps);
-            }
-            catch (Exception e) {
-                log.error("An Error occurred during step : {} : Exception : {} \n", stepContribution.getStepExecution().getStepName(), e);
-                return RepeatStatus.FINISHED;
-            }
-        });
+                try {
+                    return execute(stepContribution, taskletProps);
+                }
+                catch (Exception e) {
+                    log.error("An Error occurred during step : {} : Exception : {} \n", stepContribution.getStepExecution().getStepName(), e);
+                    // Surface the failure to Spring Batch: marking ExitStatus FAILED and
+                    // rethrowing makes the step (and job) execution history reflect the real
+                    // outcome instead of silently completing.
+                    stepContribution.setExitStatus(ExitStatus.FAILED);
+                    throw e;
+                }
+            });
+        }
+        catch (RuntimeException e) {
+            throw e;
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

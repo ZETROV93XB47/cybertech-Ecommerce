@@ -1,0 +1,72 @@
+package com.novatech.cybertech.api.controllers.implementation;
+
+import com.novatech.cybertech.api.controllers.spec.BankCardControllerApiSpec;
+import com.novatech.cybertech.dto.request.user.BankCardCreationRequestDto;
+import com.novatech.cybertech.dto.request.user.BankCardUpdateRequestDto;
+import com.novatech.cybertech.dto.response.user.BankCardResponseDto;
+import com.novatech.cybertech.services.core.BankCardManagementService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.BANK_CARD_CRUD_CONTROLLER_BASE_PATH;
+import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
+
+@Slf4j
+@RestController
+@RequiredArgsConstructor
+@RequestMapping(version = APP_API_VERSION, value = BANK_CARD_CRUD_CONTROLLER_BASE_PATH)
+public class BankCardManagementController implements BankCardControllerApiSpec {
+
+    private final BankCardManagementService bankCardService;
+
+    // --- Endpoints Sécurisés ---
+
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PostMapping(value = "/add", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<BankCardResponseDto> addBankCard(@Valid @RequestBody BankCardCreationRequestDto dto, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(bankCardService.addBankCard(jwt.getSubject(), dto));
+    }
+
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PutMapping(value = "/replace", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<BankCardResponseDto> replaceBankCard(@Valid @RequestBody BankCardCreationRequestDto dto, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(bankCardService.replaceBankCard(jwt.getSubject(), dto));
+    }
+
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @DeleteMapping(value = "/delete", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> deleteBankCard(@AuthenticationPrincipal Jwt jwt) {
+        bankCardService.deleteBankCard(jwt.getSubject());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PutMapping(value = "/update", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<BankCardResponseDto> updateBankCard(@Valid @RequestBody BankCardUpdateRequestDto dto, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(bankCardService.updateBankCard(jwt.getSubject(), dto));
+    }
+
+    /**
+     * Returns the caller's single bank card as a masked response DTO.
+     */
+    @Override
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @GetMapping(value = "/get", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<BankCardResponseDto> getBankCard(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(bankCardService.getCard(jwt.getSubject()));
+    }
+
+}

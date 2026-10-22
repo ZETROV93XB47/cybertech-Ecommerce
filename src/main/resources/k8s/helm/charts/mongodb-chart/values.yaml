@@ -1,0 +1,41 @@
+image:
+  repository: mongo
+  tag: "8.2.5"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  #::::clusterIP: None  # Headless service for StatefulSet DNS
+  port: 27017
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 5Gi
+  # IMPORTANT: StatefulSet crée 1 PVC par replica via volumeClaimTemplates
+  # Ne pas créer de PVC séparé
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+auth:
+  enabled: false
+  rootUser: "root"
+  rootPassword: "password"
+  database: "admin"
+
+extraEnv: []
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

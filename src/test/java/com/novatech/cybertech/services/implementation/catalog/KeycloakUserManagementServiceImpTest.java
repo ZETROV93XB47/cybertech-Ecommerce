@@ -1,0 +1,495 @@
+package com.novatech.cybertech.services.implementation.catalog;
+
+import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
+import com.novatech.cybertech.entities.enums.Role;
+import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
+import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
+import com.novatech.cybertech.services.implementation.KeycloakUserManagementServiceImp;
+import jakarta.ws.rs.core.Response;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.resource.RealmResource;
+import org.keycloak.admin.client.resource.RoleMappingResource;
+import org.keycloak.admin.client.resource.RoleResource;
+import org.keycloak.admin.client.resource.RoleScopeResource;
+import org.keycloak.admin.client.resource.RolesResource;
+import org.keycloak.admin.client.resource.UserResource;
+import org.keycloak.admin.client.resource.UsersResource;
+import org.keycloak.representations.idm.RoleRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/**
+ * Mockito unit tests for {@link KeycloakUserManagementServiceImp}.
+ *
+ * <p>Pins the Keycloak admin client never being closed.
+ * Uses the Keycloak chain: {@code keycloak.realm(realm).users().create(...)} +
+ * {@code .roles().get(role).toRepresentation()} + {@code .users().get(id).roles().realmLevel().add(...)}.
+ */
+@org.junit.jupiter.api.extension.ExtendWith(MockitoExtension.class)
+class KeycloakUserManagementServiceImpTest {
+
+    private static final String REALM = "cybertech";
+
+    @Mock Keycloak keycloak;
+    @Mock RealmResource realmResource;
+    @Mock UsersResource usersResource;
+    @Mock UserResource userResource;
+    @Mock RolesResource rolesResource;
+    @Mock RoleResource roleResource;
+    @Mock RoleMappingResource roleMappingResource;
+    @Mock RoleScopeResource roleScopeResource;
+    @Mock RoleResource adminRoleResource;
+
+    private KeycloakUserManagementServiceImp service;
+
+    @BeforeEach
+    void setUp() {
+        service = new KeycloakUserManagementServiceImp(keycloak);
+        ReflectionTestUtils.setField(service, "realm", REALM);
+    }
+
+    private Response create201(String userId) {
+        Response resp = org.mockito.Mockito.mock(Response.class);
+        when(resp.getStatus()).thenReturn(201);
+        when(resp.getLocation()).thenReturn(URI.create("https://keycloak/admin/realms/" + REALM + "/users/" + userId));
+        return resp;
+    }
+
+    private Response conflict() {
+        Response resp = org.mockito.Mockito.mock(Response.class);
+        when(resp.getStatus()).thenReturn(409);
+        return resp;
+    }
+
+    // -----------------------------------------------------------------
+    @Nested
+    @DisplayName("createUser")
+    class CreateUser {
+
+        @Test
+        @DisplayName("happy chain — creates user, parses Location, assigns realm role")
+        void createUser_happyChain() {
+            String userId = "abc-123";
+            Response resp = create201(userId);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("USER")).thenReturn(roleResource);
+            RoleRepresentation roleRep = new RoleRepresentation();
+            roleRep.setName("USER");
+            when(roleResource.toRepresentation()).thenReturn(roleRep);
+            when(usersResource.get(userId)).thenReturn(userResource);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            String result = service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER);
+
+            assertThat(result).isEqualTo(userId);
+            ArgumentCaptor<List<RoleRepresentation>> rolesCaptor = ArgumentCaptor.forClass(List.class);
+            verify(roleScopeResource).add(rolesCaptor.capture());
+            assertThat(rolesCaptor.getValue()).extracting(RoleRepresentation::getName).containsExactly("USER");
+        }
+
+        @Test
+        @DisplayName("non-201 / non-409 response throws IllegalStateException with status + body")
+        void createUser_4xx_throws() {
+            Response resp = org.mockito.Mockito.mock(Response.class);
+            when(resp.getStatus()).thenReturn(400);
+            when(resp.readEntity(String.class)).thenReturn("invalid password");
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+
+            assertThatThrownBy(() -> service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("400")
+                    .hasMessageContaining("invalid password");
+
+            // Role lookup must NOT happen on failure.
+            verify(realmResource, never()).roles();
+        }
+
+        @Test
+        @DisplayName("409 with the email already registered throws UserAlreadyExistsException (→ 409 USER_ALREADY_EXISTS)")
+        void createUser_409_emailTaken_throwsUserAlreadyExists() {
+            Response resp = conflict();
+            UserRepresentation existing = new UserRepresentation();
+            existing.setId("kc-existing");
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(usersResource.searchByEmail("a@b.com", true)).thenReturn(List.of(existing));
+
+            assertThatThrownBy(() -> service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER))
+                    .isInstanceOf(UserAlreadyExistsException.class);
+
+            verify(usersResource, times(1)).create(any(UserRepresentation.class));
+            verify(realmResource, never()).roles();
+            verify(resp).close();
+        }
+
+        @Test
+        @DisplayName("409 on a username clash only (homonym) retries with a suffixed username and succeeds")
+        void createUser_409_usernameTaken_retriesWithSuffix() {
+            String userId = "kc-new";
+            Response conflict = conflict();
+            Response created = create201(userId);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            List<String> sentUsernames = new ArrayList<>();
+            when(usersResource.create(any(UserRepresentation.class))).thenAnswer(inv -> {
+                sentUsernames.add(inv.<UserRepresentation>getArgument(0).getUsername());
+                return sentUsernames.size() == 1 ? conflict : created;
+            });
+            when(usersResource.searchByEmail("a@b.com", true)).thenReturn(List.of());
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("USER")).thenReturn(roleResource);
+            when(roleResource.toRepresentation()).thenReturn(new RoleRepresentation());
+            when(usersResource.get(userId)).thenReturn(userResource);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            String result = service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER);
+
+            assertThat(result).isEqualTo(userId);
+            assertThat(sentUsernames).hasSize(2);
+            assertThat(sentUsernames.get(0)).isEqualTo("john.smith");
+            assertThat(sentUsernames.get(1)).matches("john\\.smith\\.\\d+");
+            verify(conflict).close();
+            verify(created).close();
+        }
+
+        @Test
+        @DisplayName("409 username clash on every attempt gives up with IllegalStateException (bounded retry)")
+        void createUser_409_usernameAlwaysTaken_givesUp() {
+            Response resp = conflict();
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(usersResource.searchByEmail("a@b.com", true)).thenReturn(List.of());
+
+            assertThatThrownBy(() -> service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("john.smith");
+
+            verify(usersResource, times(5)).create(any(UserRepresentation.class));
+            verify(realmResource, never()).roles();
+        }
+
+        @Test
+        @DisplayName("201 response with no Location header throws IllegalStateException")
+        void createUser_201WithNoLocation_throws() {
+            Response resp = org.mockito.Mockito.mock(Response.class);
+            when(resp.getStatus()).thenReturn(201);
+            when(resp.getLocation()).thenReturn(null);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+
+            assertThatThrownBy(() -> service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Location");
+
+            verify(realmResource, never()).roles();
+            verify(resp).close();
+        }
+
+        @Test
+        @DisplayName("UserRepresentation carries email, names, enabled=true, emailVerified=true")
+        void createUser_userRepresentationFields() {
+            String userId = "u1";
+            Response resp = create201(userId);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("ADMIN")).thenReturn(roleResource);
+            when(roleResource.toRepresentation()).thenReturn(new RoleRepresentation());
+            when(usersResource.get(userId)).thenReturn(userResource);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            service.createUser("admin@x.com", "Jane", "Doe", "pw", Role.ADMIN);
+
+            ArgumentCaptor<UserRepresentation> captor = ArgumentCaptor.forClass(UserRepresentation.class);
+            verify(usersResource).create(captor.capture());
+            UserRepresentation rep = captor.getValue();
+            assertThat(rep.getEmail()).isEqualTo("admin@x.com");
+            assertThat(rep.getFirstName()).isEqualTo("Jane");
+            assertThat(rep.getLastName()).isEqualTo("Doe");
+            assertThat(rep.isEnabled()).isTrue();
+            assertThat(rep.isEmailVerified()).isTrue();
+            assertThat(rep.getUsername()).isEqualTo("jane.doe");
+            assertThat(rep.getCredentials()).hasSize(1);
+            assertThat(rep.getCredentials().get(0).getValue()).isEqualTo("pw");
+            assertThat(rep.getCredentials().get(0).isTemporary()).isFalse();
+        }
+
+        @Test
+        @DisplayName("blank firstName falls back to email-prefix as username")
+        void createUser_blankFirstName_emailPrefixUsername() {
+            String userId = "u2";
+            Response resp = create201(userId);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("USER")).thenReturn(roleResource);
+            when(roleResource.toRepresentation()).thenReturn(new RoleRepresentation());
+            when(usersResource.get(userId)).thenReturn(userResource);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            service.createUser("nick@example.org", "", "Doe", "pw", Role.USER);
+
+            ArgumentCaptor<UserRepresentation> captor = ArgumentCaptor.forClass(UserRepresentation.class);
+            verify(usersResource).create(captor.capture());
+            assertThat(captor.getValue().getUsername()).isEqualTo("nick");
+        }
+
+        @Test
+        @DisplayName("createUser does NOT close the injected Keycloak admin client (leak risk pin)")
+        void bug085_keycloakClientNeverClosed() {
+            String userId = "abc-123";
+            Response resp = create201(userId);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("USER")).thenReturn(roleResource);
+            when(roleResource.toRepresentation()).thenReturn(new RoleRepresentation());
+            when(usersResource.get(userId)).thenReturn(userResource);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER);
+
+            verify(keycloak, never()).close();
+        }
+
+        @Test
+        @DisplayName("Response from create() is closed (try-with-resources)")
+        void createUser_responseIsClosed() {
+            String userId = "abc-123";
+            Response resp = create201(userId);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.create(any(UserRepresentation.class))).thenReturn(resp);
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("USER")).thenReturn(roleResource);
+            when(roleResource.toRepresentation()).thenReturn(new RoleRepresentation());
+            when(usersResource.get(userId)).thenReturn(userResource);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            service.createUser("a@b.com", "John", "Smith", "S3cret!!", Role.USER);
+
+            verify(resp).close();
+        }
+    }
+
+    // -----------------------------------------------------------------
+    @Nested
+    @DisplayName("deleteUser — idempotent (404-tolerant) for outbox reconciliation")
+    class DeleteUser {
+
+        private Response deleteResponse(int status) {
+            Response resp = org.mockito.Mockito.mock(Response.class);
+            when(resp.getStatus()).thenReturn(status);
+            return resp;
+        }
+
+        @Test
+        @DisplayName("2xx — delegates to keycloak.realm(realm).users().delete(id) and closes the Response")
+        void deleteUser_happyPath() {
+            Response resp = deleteResponse(204);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.delete("abc-123")).thenReturn(resp);
+
+            service.deleteUser("abc-123");
+
+            verify(usersResource).delete("abc-123");
+            verify(resp).close();
+        }
+
+        @Test
+        @DisplayName("404 — user already gone is treated as success (idempotent re-issue from the outbox job)")
+        void deleteUser_404_isIdempotentNoop() {
+            Response resp = deleteResponse(404);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.delete("gone")).thenReturn(resp);
+
+            org.assertj.core.api.Assertions.assertThatCode(() -> service.deleteUser("gone"))
+                    .doesNotThrowAnyException();
+            verify(resp).close();
+        }
+
+        @Test
+        @DisplayName("other 4xx/5xx — surfaces IllegalStateException (no longer silently swallowed)")
+        void deleteUser_500_throws() {
+            Response resp = deleteResponse(500);
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.delete("boom")).thenReturn(resp);
+
+            assertThatThrownBy(() -> service.deleteUser("boom"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("500");
+            verify(resp).close();
+        }
+    }
+
+    // -----------------------------------------------------------------
+    @Nested
+    @DisplayName("searchByEmail — outbox CREATE reconciliation lookup")
+    class SearchByEmail {
+
+        @Test
+        @DisplayName("returns the first matching Keycloak id on an exact-email hit")
+        void searchByEmail_returnsFirstMatchingId() {
+            UserRepresentation rep = new UserRepresentation();
+            rep.setId("kc-123");
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.searchByEmail("a@b.com", true)).thenReturn(List.of(rep));
+
+            assertThat(service.searchByEmail("a@b.com")).contains("kc-123");
+        }
+
+        @Test
+        @DisplayName("returns empty when no Keycloak user carries that email")
+        void searchByEmail_emptyWhenNoMatch() {
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.searchByEmail("none@b.com", true)).thenReturn(List.of());
+
+            assertThat(service.searchByEmail("none@b.com")).isEmpty();
+        }
+    }
+
+    // -----------------------------------------------------------------
+    @Nested
+    @DisplayName("updateUser")
+    class UpdateUser {
+
+        @Test
+        @DisplayName("partial update — only non-null DTO fields are propagated to UserRepresentation")
+        void updateUser_partialUpdate_nonNullOnly() {
+            UserUpdateRequestDto dto = new UserUpdateRequestDto();
+            dto.setEmail("new@example.com"); // only email, names null
+
+            UserRepresentation existing = new UserRepresentation();
+            existing.setFirstName("OldFirst");
+            existing.setLastName("OldLast");
+            existing.setEmail("old@example.com");
+
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.get("kc-1")).thenReturn(userResource);
+            when(userResource.toRepresentation()).thenReturn(existing);
+
+            service.updateUser("kc-1", dto);
+
+            assertThat(existing.getFirstName()).isEqualTo("OldFirst");
+            assertThat(existing.getLastName()).isEqualTo("OldLast");
+            assertThat(existing.getEmail()).isEqualTo("new@example.com");
+            verify(userResource).update(existing);
+        }
+
+        @Test
+        @DisplayName("full update — all three fields propagated")
+        void updateUser_allFields() {
+            UserUpdateRequestDto dto = UserDtoFixtures.aValidUpdateRequest();
+            dto.setFirstName("Alice");
+            dto.setLastName("New");
+            dto.setEmail("alice@x.com");
+
+            UserRepresentation existing = new UserRepresentation();
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.get("kc-2")).thenReturn(userResource);
+            when(userResource.toRepresentation()).thenReturn(existing);
+
+            service.updateUser("kc-2", dto);
+
+            assertThat(existing.getFirstName()).isEqualTo("Alice");
+            assertThat(existing.getLastName()).isEqualTo("New");
+            assertThat(existing.getEmail()).isEqualTo("alice@x.com");
+            verify(userResource).update(existing);
+        }
+
+        @Test
+        @DisplayName("null role never touches the Keycloak roles API")
+        void updateUser_nullRole_rolesApiUntouched() {
+            UserUpdateRequestDto dto = new UserUpdateRequestDto();
+            dto.setFirstName("Alice");
+
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.get("kc-3")).thenReturn(userResource);
+            when(userResource.toRepresentation()).thenReturn(new UserRepresentation());
+
+            service.updateUser("kc-3", dto);
+
+            verify(realmResource, never()).roles();
+        }
+
+        @Test
+        @DisplayName("non-null role replaces the realm role assignment: removes USER+ADMIN, adds only the target")
+        void updateUser_roleChange_replacesRealmRole() {
+            UserUpdateRequestDto dto = new UserUpdateRequestDto();
+            dto.setRole(Role.ADMIN);
+
+            RoleRepresentation userRole = new RoleRepresentation();
+            userRole.setName("USER");
+            RoleRepresentation adminRole = new RoleRepresentation();
+            adminRole.setName("ADMIN");
+
+            when(keycloak.realm(REALM)).thenReturn(realmResource);
+            when(realmResource.users()).thenReturn(usersResource);
+            when(usersResource.get("kc-3")).thenReturn(userResource);
+            when(userResource.toRepresentation()).thenReturn(new UserRepresentation());
+            when(realmResource.roles()).thenReturn(rolesResource);
+            when(rolesResource.get("USER")).thenReturn(roleResource);
+            when(rolesResource.get("ADMIN")).thenReturn(adminRoleResource);
+            when(roleResource.toRepresentation()).thenReturn(userRole);
+            when(adminRoleResource.toRepresentation()).thenReturn(adminRole);
+            when(userResource.roles()).thenReturn(roleMappingResource);
+            when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
+
+            service.updateUser("kc-3", dto);
+
+            ArgumentCaptor<List<RoleRepresentation>> removeCaptor = ArgumentCaptor.forClass(List.class);
+            verify(roleScopeResource).remove(removeCaptor.capture());
+            assertThat(removeCaptor.getValue()).extracting(RoleRepresentation::getName)
+                    .containsExactlyInAnyOrder("USER", "ADMIN");
+
+            ArgumentCaptor<List<RoleRepresentation>> addCaptor = ArgumentCaptor.forClass(List.class);
+            verify(roleScopeResource).add(addCaptor.capture());
+            assertThat(addCaptor.getValue()).extracting(RoleRepresentation::getName).containsExactly("ADMIN");
+        }
+    }
+}

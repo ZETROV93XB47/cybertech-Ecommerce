@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Annulation de commande</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 0;
+            color: #333333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #e74c3c; /* Rouge pour l'annulation */
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 16px;
+            line-height: 1.5;
+            margin: 16px 0;
+        }
+        .order-list {
+            background-color: #fff5f5;
+            border: 1px solid #feb2b2;
+            border-radius: 6px;
+            padding: 15px 20px;
+            margin: 20px 0;
+            list-style-type: none;
+        }
+        .order-item {
+            font-weight: 600;
+            color: #c0392b;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .order-item:last-child {
+            border-bottom: none;
+        }
+        .footer {
+            font-size: 12px;
+            color: #999999;
+            text-align: center;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Commande(s) Annulée(s)</h1>
+    <p>Bonjour,</p>
+    <p>Nous vous informons que les commandes suivantes ont été annulées (en raison d'un échec de paiement ou de l'expiration du délai de validation) :</p>
+
+    <ul class="order-list">
+        <!-- 'orderId' est une List<Long> passée par le listener -->
+        <li class="order-item" th:each="id : ${orderId}">
+            Commande #<span th:text="${id}">0000</span>
+        </li>
+    </ul>
+
+    <p>Si vous pensez qu'il s'agit d'une erreur ou si vous souhaitez repasser commande, n'hésitez pas à visiter notre site.</p>
+
+    <div class="footer">
+        Cybertech - Merci de votre compréhension
+    </div>
+</div>
+</body>
+</html>

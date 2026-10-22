@@ -1,0 +1,518 @@
+package com.novatech.cybertech.api.controllers.implementation.user;
+
+import com.novatech.cybertech.api.controllers.TestSecurityConfig;
+import com.novatech.cybertech.api.controllers.implementation.UserManagementAdminController;
+import com.novatech.cybertech.api.error.ErrorManagementController;
+import com.novatech.cybertech.api.error.enumpackage.ErrorCode;
+import com.novatech.cybertech.api.error.model.ErrorResponseDto;
+import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserRoleUpdateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
+import com.novatech.cybertech.dto.response.user.UserResponseDto;
+import com.novatech.cybertech.entities.enums.Role;
+import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
+import com.novatech.cybertech.exceptions.UserNotActiveException;
+import com.novatech.cybertech.exceptions.UserNotFoundException;
+import com.novatech.cybertech.fixtures.dto.UserDtoFixtures;
+import com.novatech.cybertech.services.core.UserManagementService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+import java.util.UUID;
+
+import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.FUNCTIONAL;
+import static com.novatech.cybertech.api.error.enumpackage.ErrorCodeType.TECHNICAL;
+import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtAdmin;
+import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
+import static com.novatech.cybertech.utils.TestUtils.asJsonString;
+import static org.hamcrest.Matchers.startsWith;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.json.JsonCompareMode.STRICT;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * @WebMvcTest slice for {@link UserManagementAdminController}.
+ *
+ * <p>The controller is class-annotated {@code @PreAuthorize("hasRole('ADMIN')")};
+ * {@code @EnableMethodSecurity} on {@link TestSecurityConfig} should enforce role on every
+ * endpoint. Pinned bug status:
+ * <ul>
+ *   <li>{@link UserAlreadyExistsException} → 409 (handler verified).
+ *       Asserted by {@link #shouldFailCreateUserAlreadyExistsAs409}.</li>
+ *   <li>{@link UserNotActiveException} → 403 (handler verified).
+ *       Asserted by {@link #shouldFailUpdateUserNotActiveAs403}.</li>
+ *   <li>{@code AccessDeniedException}/{@code AuthorizationDeniedException} → 403.
+ *       Asserted by every {@code shouldRejectXxxAsRoleUserReturning403}.</li>
+ * </ul>
+ */
+@Import({TestSecurityConfig.class, ErrorManagementController.class})
+@WebMvcTest(value = UserManagementAdminController.class)
+class UserManagementAdminControllerTest {
+
+    private static final String GET_ALL_USERS_ENDPOINT = "/api/v1/services/admin/user/get/all";
+    private static final String CREATE_USER_ENDPOINT = "/api/v1/services/admin/user/create";
+    private static final String UPDATE_USER_ENDPOINT = "/api/v1/services/admin/user/update";
+    private static final String UPDATE_USER_ROLE_ENDPOINT = "/api/v1/services/admin/user/update-role/{userUuid}";
+    private static final String DELETE_USER_BY_UUID_ENDPOINT = "/api/v1/services/admin/user/delete/{userUuid}";
+    private static final String REGISTER_AUTO_SINGLE_ENDPOINT = "/api/v1/services/admin/user/register/auto/single";
+
+    private static final String ADMIN_KEYCLOAK_ID = "keycloak-admin";
+    private static final String USER_KEYCLOAK_ID = "keycloak-user";
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @MockitoBean
+    UserManagementService userManagementServiceImp;
+
+    // ---------- GET /get/all ----------
+
+    @Test
+    void shouldGetAllUsersAsAdminSuccessfully() throws Exception {
+        final UserResponseDto u1 = UserDtoFixtures.aSampleUserResponse();
+        final Page<UserResponseDto> page = new PageImpl<>(List.of(u1));
+
+        when(userManagementServiceImp.getAll(any(Pageable.class))).thenReturn(page);
+
+        mockMvc.perform(get(GET_ALL_USERS_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.content[0].uuid").value(u1.getUuid().toString()))
+                .andExpect(jsonPath("$.content.length()").value(1));
+    }
+
+    @Test
+    void shouldRejectGetAllUsersAsRoleUserReturning403() throws Exception {
+        // ROLE_USER hitting an admin-only endpoint must yield 403 FUNCTIONAL.
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message("Access denied")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
+                .build();
+
+        mockMvc.perform(get(GET_ALL_USERS_ENDPOINT)
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    @Test
+    void shouldRejectGetAllUsersWhenAnonymousReturning401() throws Exception {
+        mockMvc.perform(get(GET_ALL_USERS_ENDPOINT)
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- POST /create ----------
+
+    @Test
+    void shouldCreateUserAsAdminSuccessfully() throws Exception {
+        final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequest();
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponse();
+
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID))).thenReturn(response);
+
+        mockMvc.perform(post(CREATE_USER_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailCreateUserCauseDtoBadRequestReturning400() throws Exception {
+        final UserCreateRequestDto invalid = new UserCreateRequestDto();
+
+        mockMvc.perform(post(CREATE_USER_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(invalid)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailCreateUserAlreadyExistsAs409() throws Exception {
+        // UserAlreadyExistsException → 409 verification.
+        final UserCreateRequestDto request = UserDtoFixtures.aValidCreateRequest();
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message("User already exists")
+                .httpStatusCode(409)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_ALREADY_EXISTS)
+                .build();
+
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
+                .thenThrow(new UserAlreadyExistsException("User already exists"));
+
+        mockMvc.perform(post(CREATE_USER_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    @Test
+    void shouldRejectCreateUserAsRoleUserReturning403() throws Exception {
+        // Access-denied verification.
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message("Access denied")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
+                .build();
+
+        mockMvc.perform(post(CREATE_USER_ENDPOINT)
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(UserDtoFixtures.aValidCreateRequest())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    // ---------- PATCH /update ----------
+
+    @Test
+    void shouldUpdateUserAsAdminSuccessfully() throws Exception {
+        final UserUpdateRequestDto request = UserDtoFixtures.aValidUpdateRequest();
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder().uuid(request.getUuid()).build();
+
+        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID))).thenReturn(response);
+
+        mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailUpdateUserCauseDtoBadRequestReturning400() throws Exception {
+        // No uuid → @NotNull("User UUID cannot be null") triggers MethodArgumentNotValidException → 400.
+        final UserUpdateRequestDto invalid = new UserUpdateRequestDto();
+
+        mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(invalid)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailUpdateUserNotFoundReturning404() throws Exception {
+        final UserUpdateRequestDto request = UserDtoFixtures.aValidUpdateRequest();
+        final String message = "No user with the UUID: " + request.getUuid() + " found";
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message(message)
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
+                .build();
+
+        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
+                .thenThrow(new UserNotFoundException(message));
+
+        mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    @Test
+    void shouldFailUpdateUserNotActiveAs403() throws Exception {
+        // UserNotActiveException → 403 FORBIDDEN (FUNCTIONAL).
+        final UserUpdateRequestDto request = UserDtoFixtures.aValidUpdateRequest();
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message("User is not active")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_ACTIVE)
+                .build();
+
+        when(userManagementServiceImp.update(any(UserUpdateRequestDto.class), eq(ADMIN_KEYCLOAK_ID)))
+                .thenThrow(new UserNotActiveException("User is not active"));
+
+        mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    @Test
+    void shouldRejectUpdateUserAsRoleUserReturning403() throws Exception {
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message("Access denied")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
+                .build();
+
+        mockMvc.perform(patch(UPDATE_USER_ENDPOINT)
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(UserDtoFixtures.aValidUpdateRequest())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    // ---------- PATCH /update-role/{userUuid} ----------
+
+    @Test
+    void shouldUpdateUserRoleAsAdminSuccessfully() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final UserRoleUpdateRequestDto request = UserRoleUpdateRequestDto.builder().role(Role.ADMIN).build();
+        final UserResponseDto response = UserDtoFixtures.aSampleUserResponseBuilder().uuid(uuid).build();
+
+        when(userManagementServiceImp.updateRole(uuid, Role.ADMIN, ADMIN_KEYCLOAK_ID)).thenReturn(response);
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(content().json(asJsonString(response), STRICT));
+    }
+
+    @Test
+    void shouldFailUpdateUserRoleCauseDtoBadRequestReturning400() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final UserRoleUpdateRequestDto invalid = new UserRoleUpdateRequestDto();
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(invalid)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.message", startsWith("Validation failed:")))
+                .andExpect(jsonPath("$.httpStatusCode").value(400))
+                .andExpect(jsonPath("$.errorCodeType").value("TECHNICAL"));
+    }
+
+    @Test
+    void shouldFailUpdateUserRoleWhenNotFoundReturning404() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final String message = "No user with the UUID: " + uuid + " found";
+        final UserRoleUpdateRequestDto request = UserRoleUpdateRequestDto.builder().role(Role.ADMIN).build();
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message(message)
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
+                .build();
+
+        when(userManagementServiceImp.updateRole(uuid, Role.ADMIN, ADMIN_KEYCLOAK_ID))
+                .thenThrow(new UserNotFoundException(message));
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    @Test
+    void shouldRejectUpdateUserRoleWhenAnonymousCauseUnauthorized() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final UserRoleUpdateRequestDto request = UserRoleUpdateRequestDto.builder().role(Role.ADMIN).build();
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldRejectUpdateUserRoleAsRoleUserReturning403() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final UserRoleUpdateRequestDto request = UserRoleUpdateRequestDto.builder().role(Role.ADMIN).build();
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message("Access denied")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
+                .build();
+
+        mockMvc.perform(patch(UPDATE_USER_ROLE_ENDPOINT, uuid)
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(asJsonString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    // ---------- DELETE /delete/{uuid} ----------
+
+    @Test
+    void shouldDeleteUserByUuidAsAdminReturning204() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        doNothing().when(userManagementServiceImp).deleteByUUID(uuid, ADMIN_KEYCLOAK_ID);
+
+        mockMvc.perform(delete(DELETE_USER_BY_UUID_ENDPOINT, uuid)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNoContent());
+
+        verify(userManagementServiceImp).deleteByUUID(uuid, ADMIN_KEYCLOAK_ID);
+    }
+
+    @Test
+    void shouldFailDeleteUserByUuidWhenNotFoundReturning404() throws Exception {
+        final UUID uuid = UUID.randomUUID();
+        final String message = "No user with the UUID: " + uuid + " found";
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message(message)
+                .httpStatusCode(404)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.USER_NOT_FOUND)
+                .build();
+
+        doThrow(new UserNotFoundException(message)).when(userManagementServiceImp).deleteByUUID(uuid, ADMIN_KEYCLOAK_ID);
+
+        mockMvc.perform(delete(DELETE_USER_BY_UUID_ENDPOINT, uuid)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    @Test
+    void shouldRejectDeleteUserByUuidAsRoleUserReturning403() throws Exception {
+        final ErrorResponseDto error = ErrorResponseDto.builder()
+                .message("Access denied")
+                .httpStatusCode(403)
+                .errorCodeType(FUNCTIONAL)
+                .errorCode(ErrorCode.ACCESS_DENIED)
+                .build();
+
+        mockMvc.perform(delete(DELETE_USER_BY_UUID_ENDPOINT, UUID.randomUUID())
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(content().json(asJsonString(error), STRICT));
+    }
+
+    // ---------- POST /register/auto/single ----------
+
+    @Test
+    void shouldRejectRegisterAutoSingleWhenAnonymousAfterBug201Fix() throws Exception {
+        // registerAuto() is now @PreAuthorize("hasRole('ADMIN')") AND the
+        // SecurityConfig#PUBLIC_URLS whitelist no longer covers /register/auto/** (only the
+        // exact /register path is anonymous). The URL is now `anyRequest().authenticated()`
+        // → CustomAuthenticationEntryPoint translates a missing JWT into 401.
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldRejectRegisterAutoSingleAsRoleUserReturning403() throws Exception {
+        // Even an authenticated non-ADMIN must be rejected (403) by @PreAuthorize.
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(jwtUser(USER_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldRegisterAutoSingleAsAdminReturning201() throws Exception {
+        // Admin call still works — covers the happy path regardless of the access-control wiring above.
+        // The response body is a Map.of(id, keycloakId, email, username)
+        // (mirrors the /register endpoint) so the synthetic user's keycloakId is exposed —
+        // the @JsonIgnore on UserResponseDto.keycloakId would have suppressed it otherwise.
+        final UserResponseDto created = UserDtoFixtures.aSampleUserResponse();
+        when(userManagementServiceImp.create(any(UserCreateRequestDto.class), eq(ADMIN_KEYCLOAK_ID))).thenReturn(created);
+
+        mockMvc.perform(post(REGISTER_AUTO_SINGLE_ENDPOINT)
+                        .with(jwtAdmin(ADMIN_KEYCLOAK_ID))
+                        .with(csrf())
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.id").value(created.getUuid().toString()))
+                .andExpect(jsonPath("$.keycloakId").value(created.getKeycloakId()))
+                .andExpect(jsonPath("$.email").value(created.getEmail()))
+                .andExpect(jsonPath("$.username").value(created.getUsername()));
+    }
+}

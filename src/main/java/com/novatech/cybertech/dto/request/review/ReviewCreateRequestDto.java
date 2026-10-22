@@ -3,18 +3,24 @@ package com.novatech.cybertech.dto.request.review;
 
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReviewCreateRequestDto {
 
-    @NotNull(message = "User UUID cannot be null")
-    private UUID userUuid;
+    // Identity (userUuid) removed: identity is authoritatively derived from the JWT subject in the
+    // controller/service layer. Allowing the client to declare a userUuid in the body created a
+    // spoofing footgun if any future refactor accidentally read the DTO field instead of the JWT.
+
+    @NotNull(message = "Order UUID cannot be null")
+    private UUID orderUuid;
 
     @NotNull(message = "Product UUID cannot be null")
     private UUID productUuid;

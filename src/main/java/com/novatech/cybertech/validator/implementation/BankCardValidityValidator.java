@@ -2,6 +2,7 @@ package com.novatech.cybertech.validator.implementation;
 
 import com.novatech.cybertech.dto.data.OrderValidationDto;
 import com.novatech.cybertech.exceptions.BankCardExpiredException;
+import com.novatech.cybertech.exceptions.BankCardNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -16,16 +17,11 @@ public class BankCardValidityValidator extends ChainableOrderValidator {
     @Override
     public void validate(final OrderValidationDto orderValidationDto) {
 
-//        final BankCardEntity bankCardEntity = order
-//                .getUserEntity()
-//                .getBankCardEntities()
-//                .stream()
-//                .filter(b -> b.getIsDefault().equals(true))
-//                .findFirst()
-//                .orElseThrow(() -> new NoDefaultBankCartSetException("No default bank card set, please, set a default bank card and retry ..."));
+        if (orderValidationDto.getBankCardValidationDto() == null) {
+            throw new BankCardNotFoundException("No default bank card associated with this order");
+        }
 
-
-        if (LocalDate.now().isAfter(convertExpiryDateToLocalDate(orderValidationDto.getUserDefaultBankCard().getExpiryDate())))
+        if (LocalDate.now().isAfter(convertExpiryDateToLocalDate(orderValidationDto.getBankCardValidationDto().getExpiryDate())))
             throw new BankCardExpiredException("Bank card expired");
         log.info("Bank card valid");
         nextStep(orderValidationDto);

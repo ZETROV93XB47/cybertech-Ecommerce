@@ -2,41 +2,87 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.annotation.NotificationTypeHandler;
 import com.novatech.cybertech.dto.data.NotificationContext;
-import com.novatech.cybertech.dto.data.OrderEventDto;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
+import com.novatech.cybertech.entities.enums.EmailTemplateType;
+import com.novatech.cybertech.entities.enums.NotificationSubject;
 import com.novatech.cybertech.entities.enums.NotificationType;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
 import com.novatech.cybertech.services.core.AbstractNotification;
-import com.novatech.cybertech.services.core.NotificationProcessor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
-@Primary
 @Service
 @NotificationTypeHandler(NotificationType.ORDER_CONFIRMATION)
 public class OrderConfirmationNotification extends AbstractNotification {
 
-    public OrderConfirmationNotification(NotificationProcessor notificationProcessor) {
-        super(notificationProcessor);
-    }
+    private static final String USER_NAME = "userName";
+    private static final String ORDER_ID = "orderId";
+    private static final String AMOUNT = "amount";
+    private static final String EMAIL = "email";
+    private static final String ORDER_STATUS = "orderStatus";
+    private static final String TITLE = "title";
+    private static final String THEME_COLOR = "themeColor";
+    private static final String THEME_BACKGROUND_COLOR = "themeBackgroundColor";
+    private static final String THEME_BORDER_COLOR = "themeBorderColor";
+    private static final String NEXT_STEP = "nextStep";
 
     @Override
-    public void sendNotification(final NotificationContext notificationContext) {
+    protected void prepareContext(final NotificationContext<?> context) {
+        final OrderConfirmationPayload payload = (OrderConfirmationPayload) context.getPayload();
+        final OrderNotificationFormat format = OrderNotificationFormat.of(payload.getPaymentAttemptStatus());
 
-        OrderEventDto orderEventDto = (OrderEventDto) notificationContext.getPayload();
+        log.info("Preparing order confirmation notification, paymentStatus={}", payload.getPaymentAttemptStatus());
 
-        final Map<String, Object> model = new HashMap<>();
+        context.setSubject(format.subject());
+        context.setTemplatePath(EmailTemplateType.ORDER_CONFIRMATION.getTemplatePath());
+        context.setTemplateVariables(Map.of(
+                USER_NAME, payload.getUserContactDto().getName(),
+                ORDER_ID, payload.getOrderUuid(),
+                AMOUNT, payload.getTotalAmount(),
+                EMAIL, payload.getUserContactDto().getEmail(),
+                ORDER_STATUS, payload.getOrderStatus(),
+                TITLE, format.title(),
+                THEME_COLOR, format.themeColor(),
+                THEME_BACKGROUND_COLOR, format.themeBackgroundColor(),
+                THEME_BORDER_COLOR, format.themeBorderColor(),
+                NEXT_STEP, format.nextStep()
+        ));
+    }
 
-        model.put("userName", orderEventDto.getUserContactDto().getName());
-        model.put("orderId", orderEventDto.getOrderUuid());
-        model.put("amount", orderEventDto.getTotalAmount());
-        model.put("email", orderEventDto.getUserContactDto().getEmail());
-
-        notificationContext.setData(model);
-
-        notificationProcessor.sendMessage(notificationContext);
+    private record OrderNotificationFormat(
+            String subject,
+            String title,
+            String themeColor,
+            String themeBackgroundColor,
+            String themeBorderColor,
+            String nextStep
+    ) {
+        static OrderNotificationFormat of(final PaymentAttemptStatus status) {
+            if (PaymentAttemptStatus.SUCCESS.equals(status)) {
+                return new OrderNotificationFormat(
+                        NotificationSubject.ORDER_CONFIRMATION.getSubject(),
+                        "Confirmation de votre commande",
+                        "#27ae60", "#eafaf1", "#d5f5e3",
+                        "Vous recevrez un nouvel email dès que votre commande sera expédiée."
+                );
+            }
+            if (PaymentAttemptStatus.FAILED.equals(status) || PaymentAttemptStatus.CANCELED.equals(status)) {
+                return new OrderNotificationFormat(
+                        "Commande enregistrée - Paiement échoué",
+                        "Commande créée mais paiement non abouti",
+                        "#e74c3c", "#fdedec", "#fadbd8",
+                        "Votre paiement n'a pas pu être validé. Vous pouvez le relancer depuis votre espace client."
+                );
+            }
+            return new OrderNotificationFormat(
+                    "Commande enregistrée - Paiement en attente",
+                    "Commande créée - Paiement en cours de validation",
+                    "#f39c12", "#fef9e7", "#fdebd0",
+                    "Vous recevrez un nouvel email dès que votre paiement sera confirmé."
+            );
+        }
     }
 }

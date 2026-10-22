@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Paiement en attente</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 0;
+            color: #333333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #f39c12; /* Orange pour l'avertissement/attente */
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 16px;
+            line-height: 1.5;
+            margin: 16px 0;
+        }
+        .order-list {
+            background-color: #fef9e7;
+            border: 1px solid #f39c12;
+            border-radius: 6px;
+            padding: 15px 20px;
+            margin: 20px 0;
+            list-style-type: none;
+        }
+        .order-item {
+            font-weight: 600;
+            color: #d35400;
+            padding: 5px 0;
+            border-bottom: 1px solid #fae5d3;
+        }
+        .order-item:last-child {
+            border-bottom: none;
+        }
+        .footer {
+            font-size: 12px;
+            color: #999999;
+            text-align: center;
+            margin-top: 40px;
+        }
+
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Action requise : Paiement en attente</h1>
+    <p>Bonjour,</p>
+    <p>Nous avons constaté que le paiement pour les commandes suivantes n'a pas pu être finalisé ou est en attente :</p>
+
+    <ul class="order-list">
+        <!-- 'orderId' est une List<UUID> passée par le listener -->
+        <li class="order-item" th:each="id : ${orderId}">
+            Commande #<span th:text="${id}">0000</span>
+        </li>
+    </ul>
+
+    <p>Afin de valider votre commande et déclencher l'expédition, nous vous invitons à régulariser le paiement dès que possible via votre espace client.</p>
+    <p>Sans action de votre part, ces commandes risquent d'être annulées automatiquement.</p>
+
+    <div class="footer">
+        Cybertech - Service Client
+    </div>
+</div>
+</body>
+</html>

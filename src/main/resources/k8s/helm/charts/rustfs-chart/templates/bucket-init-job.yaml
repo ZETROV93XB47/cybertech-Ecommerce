@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rustfs-bucket-init
+  labels:
+    {{- include "rustfs.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rustfs-init
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bucket-init
+          image: amazon/aws-cli:2.38.2
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              attempt=1
+              until aws --endpoint-url http://rustfs:{{ .Values.service.apiPort }} s3api list-buckets >/dev/null 2>&1; do
+                if [ "$attempt" -ge 60 ]; then
+                  echo "RustFS did not become ready after 60 attempts." >&2
+                  exit 1
+                fi
+                attempt=$((attempt + 1))
+                sleep 2
+              done
+              if ! aws --endpoint-url http://rustfs:{{ .Values.service.apiPort }} s3api head-bucket --bucket {{ .Values.bucket.name | quote }} >/dev/null 2>&1; then
+                aws --endpoint-url http://rustfs:{{ .Values.service.apiPort }} s3api create-bucket --bucket {{ .Values.bucket.name | quote }}
+              fi
+              aws --endpoint-url http://rustfs:{{ .Values.service.apiPort }} s3api put-bucket-policy \
+                --bucket {{ .Values.bucket.name | quote }} \
+                --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"PublicReadGetObject\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::{{ .Values.bucket.name }}/*\"}]}"
+              aws --endpoint-url http://rustfs:{{ .Values.service.apiPort }} s3api put-bucket-cors \
+                --bucket {{ .Values.bucket.name | quote }} \
+                --cors-configuration '{"CORSRules":[{"AllowedOrigins":["http://cybertech.local","http://localhost:3000","http://localhost:4200"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3000}]}'
+              echo "Bucket {{ .Values.bucket.name }} is ready."
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-secret
+                  key: access-key
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-secret
+                  key: secret-key
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.bucket.region | quote }}
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"

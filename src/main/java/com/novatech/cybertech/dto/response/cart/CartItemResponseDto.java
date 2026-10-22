@@ -1,11 +1,14 @@
 package com.novatech.cybertech.dto.response.cart;
 
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -13,10 +16,15 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CartItemResponseDto {
+public class CartItemResponseDto implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private UUID cartItemUuid;
     private UUID productUuid;
     private String productName;
+    @Schema(description = "Category key of the product (ProductCategorySchemaEntity.categoryKey, e.g. SMARTPHONE).", example = "SMARTPHONE")
+    private String category;
     private int quantity;
     private BigDecimal unitPrice;
     private BigDecimal lineItemTotalPrice;

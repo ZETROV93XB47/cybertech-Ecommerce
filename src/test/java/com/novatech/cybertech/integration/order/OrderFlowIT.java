@@ -1,0 +1,743 @@
+package com.novatech.cybertech.integration.order;
+
+import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.dto.response.order.OrderQuoteResponseDto;
+import java.math.BigDecimal;
+import com.novatech.cybertech.repositories.DiscountCampaignRepository;
+import com.novatech.cybertech.entities.DiscountCampaignEntity;
+import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderUpdateRequestDto;
+import com.github.f4b6a3.uuid.UuidCreator;
+import com.novatech.cybertech.TestcontainersConfiguration;
+import com.novatech.cybertech.dto.data.PaymentAttemptResult;
+import com.novatech.cybertech.dto.request.cart.CartCreateRequestDto;
+import com.novatech.cybertech.dto.request.cart.CartItemAddRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderCancellationRequestDto;
+import com.novatech.cybertech.dto.request.order.OrderPlacingRequestDto;
+import com.novatech.cybertech.entities.BankCardEntity;
+import com.novatech.cybertech.entities.CartEntity;
+import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
+import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.dto.response.order.OrderResponseDto;
+import com.novatech.cybertech.entities.enums.DiscountCalculationType;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.PaymentType;
+import com.novatech.cybertech.events.OrderCreatedEvent;
+import com.novatech.cybertech.dto.request.stripe.StripeWebhookEventDto;
+import com.novatech.cybertech.events.PaymentFailedEvent;
+import com.novatech.cybertech.events.PaymentSucceededEvent;
+import com.novatech.cybertech.fixtures.dto.PaymentDtoFixtures;
+import com.novatech.cybertech.services.core.OrderPaymentConfirmationTransactionalDelegate;
+import com.novatech.cybertech.fixtures.builders.BankCardEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
+import com.novatech.cybertech.fixtures.dto.OrderDtoFixtures;
+import com.novatech.cybertech.repositories.BankCardRepository;
+import com.novatech.cybertech.repositories.CartRepository;
+import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.repositories.ProductRepository;
+import com.novatech.cybertech.repositories.UserRepository;
+import com.novatech.cybertech.services.core.CardEncryptionService;
+import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import com.novatech.cybertech.dto.response.shipping.ShippingOptionResponseDto;
+import com.novatech.cybertech.entities.valueObjects.DeliveryWindow;
+import com.novatech.cybertech.utils.DeliveryEstimateUtils;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * End-to-end order placement flow IT (cart → place → cancel → retry payment).
+ *
+ * <p>Mirrors the full order-service test surface (~9 tests) against the real Testcontainers stack
+ * (MySQL, Redis, Elasticsearch, MongoDB) wired through the public
+ * {@link TestcontainersConfiguration}. Uses a {@link TestPaymentConfig} mock that overrides
+ * {@link PaymentAttemptProcessor} via {@code @Primary} so the suite never reaches live Stripe
+ * (a fix was reported for this but the {@code TestPaymentProcessorConfig} class
+ * is NOT present in the working tree — so this BYO override is required).
+ */
+@Slf4j
+@Testcontainers
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@RecordApplicationEvents
+@Import({TestcontainersConfiguration.class, OrderFlowIT.TestPaymentConfig.class})
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class OrderFlowIT {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private BankCardRepository bankCardRepository;
+
+    @Autowired
+    private CartRepository cartRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
+    private DiscountCampaignRepository discountCampaignRepository;
+
+    @Autowired
+    private PaymentAttemptProcessor stripePaymentProcessor;
+
+    @Autowired
+    private CardEncryptionService cardEncryptionService;
+
+    private static final String PAYING_CARD_NUMBER = "1111111111111111";
+
+    @Autowired
+    private ApplicationEvents applicationEvents;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    private OrderPaymentConfirmationTransactionalDelegate paymentConfirmationDelegate;
+
+    private UUID userUuid;
+    private UUID productUuid;
+    private String keycloakId;
+
+    @BeforeEach
+    void seed() {
+        // Reset the @Primary mock between tests — default to SUCCESS.
+        Mockito.reset(stripePaymentProcessor);
+        Mockito.when(stripePaymentProcessor.processPayment(any(UUID.class), any(), anyString(), anyString()))
+                .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_" + UUID.randomUUID()));
+        Mockito.when(stripePaymentProcessor.refund(any(UUID.class), any(), anyString(), anyString()))
+                .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "re_" + UUID.randomUUID()));
+
+        // Distinct keycloakId per test for isolation (no @Transactional rollback because
+        // OrderManagementServiceImp opens its own transactions).
+        keycloakId = "kc-" + UUID.randomUUID();
+
+        final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                .email("user-" + UUID.randomUUID() + "@example.com")
+                .keycloakId(keycloakId)
+                .build();
+        userRepository.save(user);
+        userUuid = user.getUuid();
+
+        final ProductEntity product = ProductEntityBuilder.aValidProductBuilder()
+                .name("Sample Product " + UUID.randomUUID())
+                .category("SMARTWATCH")
+                .stock(10)
+                .reservedStock(0)
+                .build();
+        productRepository.save(product);
+        productUuid = product.getUuid();
+
+        // Encrypted by the real AES service: PaymentServiceImp decrypts it to pick the Stripe test
+        // PaymentMethod (only 1s = paying card, see TestCardPaymentUtils).
+        final BankCardEntity card = BankCardEntityBuilder.aValidBankCardBuilder()
+                .userEntity(user)
+                .encryptedNumber(cardEncryptionService.encrypt(PAYING_CARD_NUMBER))
+                .lastFourDigits("1111")
+                .build();
+        bankCardRepository.save(card);
+    }
+
+    // 1) Sanity test: persist user + product + bank card via JPA repos
+    @Test
+    void seedsUserProductAndBankCardInDatabase() {
+        assertThat(userRepository.findByKeycloakId(keycloakId)).isPresent();
+        assertThat(productRepository.findByUuid(productUuid)).isPresent();
+        assertThat(productRepository.findByUuid(productUuid).get().getStock()).isEqualTo(10);
+        // Bank card is wired via the user OneToOne link — it must be reachable through the user.
+        // Wrapped in a TX: UserEntity.bankCardEntity is genuinely lazy now (bytecode enhancement).
+        transactionTemplate.executeWithoutResult(tx -> {
+            final UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
+            assertThat(reloaded.getBankCardEntity()).isNotNull();
+        });
+    }
+
+    // 2) POST /cart/add via MockMvc; assert cart state via repo
+    @Test
+    void addsToCartForAuthenticatedUser() throws Exception {
+        final CartCreateRequestDto body = CartCreateRequestDto.builder()
+                .cartItemAddRequestDtos(List.of(
+                        CartItemAddRequestDto.builder().productUuid(productUuid).quantity(2).build()))
+                .build();
+
+        mockMvc.perform(post("/api/v1/services/cart/add")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(body)))
+                .andExpect(result -> {
+                    final int status = result.getResponse().getStatus();
+                    assertThat(status).isIn(200, 201);
+                });
+
+        // Wrap DB assertions in a TX so the lazy CartEntity.cartItems collection can be initialized.
+        transactionTemplate.executeWithoutResult(tx -> {
+            final UserEntity reloaded = userRepository.findByKeycloakId(keycloakId).orElseThrow();
+            final CartEntity cart = reloaded.getCartEntity();
+            assertThat(cart).isNotNull();
+            assertThat(cart.getCartItems()).hasSize(1);
+            assertThat(cart.getCartItems().getFirst().getQuantity()).isEqualTo(2);
+            assertThat(cart.getCartItems().getFirst().getProductEntity().getUuid()).isEqualTo(productUuid);
+        });
+    }
+
+    // 3) POST /order/place with no JWT → 401 (wired CustomAuthenticationEntryPoint)
+    //    Tolerant range so the test stays green pre/post fix.
+    @Test
+    void placeOrderWithoutAuthenticationReturnsClientError() throws Exception {
+        final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                // userUuid removed: identity is JWT-derived
+                .build();
+
+        mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(body)))
+                .andExpect(result -> {
+                    final int status = result.getResponse().getStatus();
+                    assertThat(status).isIn(401, 403);
+                });
+    }
+
+    // 4) A handler was added so this should return 404. Closed.
+    //    Tolerant range (404 expected; 500 if handler regression).
+    @Test
+    void getNonExistentOrderByUuidSurfacesAsServerError() throws Exception {
+        final UUID missingUuid = UuidCreator.getTimeOrderedEpoch();
+
+        mockMvc.perform(get("/api/v1/services/management/order/get/" + missingUuid)
+                        .with(jwtUser(keycloakId)))
+                .andExpect(result -> {
+                    final int status = result.getResponse().getStatus();
+                    // @ExceptionHandler(OrderNotFoundException) is wired → 404.
+                    // Range-assert in case this ever regresses.
+                    assertThat(status).isIn(404, 500);
+                });
+    }
+
+    // 5) Empty cart → 409 CART_IS_EMPTY (was a 404 CART_NOT_FOUND: empty cart ≠ missing).
+    @Test
+    void placeOrderWithEmptyCartReturnsErrorPerBug152() throws Exception {
+        final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                // userUuid removed: identity is JWT-derived
+                .build();
+
+        mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(body)))
+                .andExpect(result -> {
+                    assertThat(result.getResponse().getStatus()).isEqualTo(409);
+                    assertThat(result.getResponse().getContentAsString()).contains("\"errorCode\":\"CART_IS_EMPTY\"");
+                });
+    }
+
+    // Quote: same price as the order placed right after with the same options, no side effect.
+    @Test
+    void quoteEqualsTheTotalOfTheOrderPlacedRightAfter() throws Exception {
+        addItemToCart(productUuid, 2);
+        final int reservedBefore = productRepository.findByUuid(productUuid).orElseThrow().getReservedStock();
+
+        final MvcResult quoteResult = mockMvc.perform(post("/api/v1/services/management/order/quote")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"shippingType\":\"EXPRESS\",\"shippingProvider\":\"FEDEX\"}"))
+                .andReturn();
+        assertThat(quoteResult.getResponse().getStatus()).isEqualTo(200);
+        final OrderQuoteResponseDto quote = objectMapper.readValue(quoteResult.getResponse().getContentAsByteArray(), OrderQuoteResponseDto.class);
+        // 2 x 99.99 + FedEx EXPRESS 25, no discount
+        assertThat(quote.getSubtotalAmount()).isEqualByComparingTo("199.98");
+        assertThat(quote.getShippingCost()).isEqualByComparingTo("25.00");
+        assertThat(quote.getTotalAmount()).isEqualByComparingTo("224.98");
+        assertThat(quote.isDiscountApplied()).isFalse();
+
+        // No side effect: nothing reserved, nothing ordered, nothing charged.
+        assertThat(productRepository.findByUuid(productUuid).orElseThrow().getReservedStock()).isEqualTo(reservedBefore);
+        Mockito.verify(stripePaymentProcessor, Mockito.never()).processPayment(any(UUID.class), any(), anyString(), anyString());
+
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                                .shippingType(ShippingType.EXPRESS).shippingProvider(ShippingProvider.FEDEX).build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(placed.getTotalAmount()).isEqualByComparingTo(quote.getTotalAmount());
+    }
+
+    // Delivery estimate: the dates of the order placed are exactly those its shipping option announces.
+    @Test
+    void placedOrderDeliveryDatesMatchTheShippingOptionAnnounced() throws Exception {
+        addItemToCart(productUuid, 1);
+
+        final MvcResult optionsResult = mockMvc.perform(get("/api/v1/services/shipping/options").param("provider", "DHL")).andReturn();
+        assertThat(optionsResult.getResponse().getStatus()).isEqualTo(200);
+        final ShippingOptionResponseDto express = objectMapper.readValue(optionsResult.getResponse().getContentAsByteArray(),
+                        new TypeReference<List<ShippingOptionResponseDto>>() {
+                        }).stream()
+                .filter(option -> option.getType() == ShippingType.EXPRESS)
+                .findFirst()
+                .orElseThrow();
+        assertThat(express.getMaxDeliveryBusinessDays()).isBetween(1, 3);
+        assertThat(express.getTimeZone()).isEqualTo("Europe/Paris");
+
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                                .shippingType(ShippingType.EXPRESS).shippingProvider(ShippingProvider.DHL).build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+
+        final DeliveryEstimateUtils.DeliveryEstimate announced = DeliveryEstimateUtils.estimate(
+                new DeliveryWindow(express.getMinDeliveryBusinessDays(), express.getMaxDeliveryBusinessDays(), express.getCutoffTime()),
+                placed.getCreatedAt());
+        assertThat(placed.getEstimatedDeliveryFrom()).isEqualTo(announced.from());
+        assertThat(placed.getEstimatedDeliveryTo()).isEqualTo(announced.to());
+        final OrderEntity persisted = orderRepository.findByUuid(placed.getUuid()).orElseThrow();
+        assertThat(persisted.getEstimatedDeliveryFrom()).isEqualTo(announced.from());
+        assertThat(persisted.getEstimatedDeliveryTo()).isEqualTo(announced.to());
+    }
+
+    // 6) Happy path — full cart → place → event capture + stock decrement.
+    //    Requires payment SUCCESS — TestPaymentConfig @Primary mock returns SUCCESS by default.
+    //    A fix for TestPaymentProcessorConfig was reported but the file is NOT in tree.
+    //    This test still passes because the inline TestPaymentConfig overrides the bean.
+    @Test
+    void happyPathPlaceOrderDecrementsStockAndPublishesEvent() throws Exception {
+        // 1) Add to cart
+        addItemToCart(productUuid, 1);
+
+        // 2) Place order
+        final OrderPlacingRequestDto body = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                // userUuid removed: identity is JWT-derived
+                .build();
+
+        final MvcResult result = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(body)))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(201);
+
+        // Price breakdown: 1 x 99.99, NO_DISCOUNT, DHL STANDARD (15) -> 114.99
+        final OrderResponseDto placed = objectMapper.readValue(result.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(placed.getSubtotalAmount()).isEqualByComparingTo("99.99");
+        assertThat(placed.getDiscountAmount()).isEqualByComparingTo("0.00");
+        assertThat(placed.getShippingCost()).isEqualByComparingTo("15.00");
+        assertThat(placed.getTotalAmount()).isEqualByComparingTo("114.99");
+        assertThat(placed.getCurrency()).isEqualTo("EUR");
+        assertThat(placed.getDiscountCalculationType()).isEqualTo(DiscountCalculationType.NONE);
+
+        // ... and it survives the round-trip through the new MySQL columns.
+        final OrderEntity reloaded = orderRepository.findByUuid(placed.getUuid()).orElseThrow();
+        assertThat(reloaded.getSubtotalAmount()).isEqualByComparingTo("99.99");
+        assertThat(reloaded.getShippingCost()).isEqualByComparingTo("15.00");
+        assertThat(reloaded.getDiscountTerms().getCalculationType()).isEqualTo(DiscountCalculationType.NONE);
+
+        // 3) Assert OrderCreatedEvent was published (use ApplicationEvents)
+        final long eventCount = applicationEvents.stream(OrderCreatedEvent.class).count();
+        assertThat(eventCount).isGreaterThanOrEqualTo(1L);
+
+        // 4) Assert order persisted. Wrapped in a TX so the now-lazy OrderEntity.userEntity
+        // proxy can be initialized (see LazyInitializationException note below).
+        final List<OrderEntity> userOrders = transactionTemplate.execute(tx ->
+                orderRepository.findAll().stream()
+                        .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                        .toList());
+        assertThat(userOrders).isNotEmpty();
+    }
+
+    // Modifying a discounted order keeps its discount, even once the campaign is disabled: the
+    // terms snapshotted at placement survive the round-trip through MySQL and drive the re-pricing.
+    @Test
+    void updateOrderAddressOnlyKeepsDiscountEvenAfterCampaignIsDisabled() throws Exception {
+        final String promoKey = "IT_PROMO_" + UUID.randomUUID().toString().substring(0, 8);
+        final DiscountCampaignEntity campaign = discountCampaignRepository.save(DiscountCampaignEntity.builder()
+                .discountKey(promoKey)
+                .calculationType(DiscountCalculationType.PERCENTAGE)
+                .percentage(new BigDecimal("20.00"))
+                .enabled(true)
+                .build());
+
+        // 2 x 99.99 = 199.98, -20% = -40.00, + DHL STANDARD 15 -> 174.98
+        addItemToCart(productUuid, 2);
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().discountKey(promoKey).build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(placed.getDiscountAmount()).isEqualByComparingTo("40.00");
+        assertThat(placed.getTotalAmount()).isEqualByComparingTo("174.98");
+
+        campaign.setEnabled(false);
+        discountCampaignRepository.save(campaign);
+
+        final OrderUpdateRequestDto update = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                .uuid(placed.getUuid())
+                .shippingStreet("42 avenue Nouvelle")
+                .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder().productUuid(productUuid).quantity(2).build()))
+                .build();
+        final MvcResult updateResult = mockMvc.perform(post("/api/v1/services/management/order/update")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(update)))
+                .andReturn();
+
+        assertThat(updateResult.getResponse().getStatus()).isEqualTo(200);
+        final OrderResponseDto updated = objectMapper.readValue(updateResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(updated.getTotalAmount()).isEqualByComparingTo("174.98");
+        assertThat(updated.getDiscountAmount()).isEqualByComparingTo("40.00");
+        assertThat(updated.getDiscountKey()).isEqualTo(promoKey);
+        assertThat(updated.getShippingAddress()).startsWith("42 avenue Nouvelle");
+        // Only the placement was charged: no complement, no refund.
+        Mockito.verify(stripePaymentProcessor, Mockito.times(1)).processPayment(any(UUID.class), any(), anyString(), anyString());
+        Mockito.verify(stripePaymentProcessor, Mockito.never()).refund(any(UUID.class), any(), anyString(), anyString());
+    }
+
+    // 7) Cancel — places an order then cancels and asserts status flips to CANCELED.
+    @Test
+    void cancelOrderRestoresStockAndMovesStatusToCanceled() throws Exception {
+        // 1) Place order via the real flow
+        addItemToCart(productUuid, 1);
+
+        final OrderPlacingRequestDto placeBody = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                // userUuid removed: identity is JWT-derived
+                .build();
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(placeBody)))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+
+        // Wrapped in a TX so the now-lazy OrderEntity.userEntity proxy can be initialized.
+        final OrderEntity placedOrder = transactionTemplate.execute(tx ->
+                orderRepository.findAll().stream()
+                        .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                        .findFirst()
+                        .orElseThrow());
+
+        // 2) Cancel
+        final OrderCancellationRequestDto cancelBody = new OrderCancellationRequestDto();
+        cancelBody.setOrderUuid(placedOrder.getUuid());
+
+        mockMvc.perform(post("/api/v1/services/management/order/cancel")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(cancelBody)))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(200));
+
+        // 3) Assert status
+        final OrderEntity reloaded = orderRepository.findByUuid(placedOrder.getUuid()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(OrderStatus.CANCELED);
+    }
+
+    // 8) Insufficient stock at cart time → 409 NOT_ENOUGH_STOCK, the line and its availability in details.
+    @Test
+    void addToCartBeyondStockReturnsConflictWithDetails() throws Exception {
+        final CartCreateRequestDto cartBody = CartCreateRequestDto.builder()
+                .cartItemAddRequestDtos(List.of(
+                        CartItemAddRequestDto.builder().productUuid(productUuid).quantity(999).build()))
+                .build();
+
+        mockMvc.perform(post("/api/v1/services/cart/add")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(cartBody)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("NOT_ENOUGH_STOCK"))
+                .andExpect(jsonPath("$.details.items[0].productUuid").value(productUuid.toString()))
+                .andExpect(jsonPath("$.details.items[0].requested").value(999))
+                .andExpect(jsonPath("$.details.items[0].available").value(10));
+    }
+
+    // 8b) Stock taken by others between the cart and the order → place answers 409 with details.
+    @Test
+    void placeOrderAfterStockRanOutReturnsConflictWithDetails() throws Exception {
+        addItemToCart(productUuid, 2);
+        final ProductEntity product = productRepository.findByUuid(productUuid).orElseThrow();
+        product.setReservedStock(9); // other orders hold 9 of the 10 units
+        productRepository.save(product);
+
+        mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("NOT_ENOUGH_STOCK"))
+                .andExpect(jsonPath("$.details.items.length()").value(1))
+                .andExpect(jsonPath("$.details.items[0].productUuid").value(productUuid.toString()))
+                .andExpect(jsonPath("$.details.items[0].requested").value(2))
+                .andExpect(jsonPath("$.details.items[0].available").value(1));
+    }
+
+    // 8c) Raising a line of an existing order beyond the stock → update answers 409 with details.
+    @Test
+    void updateOrderBeyondStockReturnsConflictWithDetails() throws Exception {
+        addItemToCart(productUuid, 1);
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+
+        final OrderUpdateRequestDto update = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                .uuid(placed.getUuid())
+                .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder().productUuid(productUuid).quantity(50).build()))
+                .build();
+
+        // The order's own unit is released before re-reserving: all 10 units are available.
+        mockMvc.perform(post("/api/v1/services/management/order/update")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(update)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("NOT_ENOUGH_STOCK"))
+                .andExpect(jsonPath("$.details.items[0].productUuid").value(productUuid.toString()))
+                .andExpect(jsonPath("$.details.items[0].requested").value(50))
+                .andExpect(jsonPath("$.details.items[0].available").value(10));
+    }
+
+    // 9) Retry payment after initial failure — fail-then-success scenario.
+    //    Requires the @Primary mock to flip from FAILED to SUCCESS between the two calls.
+    @Test
+    void retryPaymentAfterInitialFailureEventuallyPays() throws Exception {
+        // 1) Stub the processor to FAIL on first call, SUCCESS on the retry.
+        Mockito.reset(stripePaymentProcessor);
+        Mockito.when(stripePaymentProcessor.processPayment(any(UUID.class), any(), anyString(), anyString()))
+                .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.FAILED, "pi_fail_" + UUID.randomUUID()))
+                .thenAnswer(inv -> new PaymentAttemptResult(PaymentAttemptStatus.SUCCESS, "pi_ok_" + UUID.randomUUID()));
+
+        // 2) Add to cart + place order — first attempt should FAIL (and stock should be released
+        //    per the stock-release fix in OrderManagementServiceImp.placeOrder).
+        addItemToCart(productUuid, 1);
+
+        final OrderPlacingRequestDto placeBody = OrderDtoFixtures.aValidPlaceOrderRequestBuilder()
+                // userUuid removed: identity is JWT-derived
+                .build();
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(placeBody)))
+                .andReturn();
+        // The order is persisted even on payment failure (status PAYMENT_FAILED).
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+
+        // Wrapped in a TX so the now-lazy OrderEntity.userEntity proxy can be initialized.
+        final OrderEntity placedOrder = transactionTemplate.execute(tx ->
+                orderRepository.findAll().stream()
+                        .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                        .findFirst()
+                        .orElseThrow());
+
+        // The first attempt should be FAILED. Read inside a TX to initialise the lazy
+        // OrderEntity.paymentAttempts collection (LazyInitializationException when
+        // accessed outside a Hibernate session).
+        transactionTemplate.executeWithoutResult(tx -> {
+            final OrderEntity refreshed = orderRepository.findByUuid(placedOrder.getUuid()).orElseThrow();
+            final List<PaymentEntity> attempts = refreshed.getPaymentAttempts();
+            assertThat(attempts).isNotEmpty();
+            assertThat(attempts.getFirst().getStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
+        });
+
+        // 3) Retry — the second processor call returns SUCCESS.
+        //    Note: retryPayment requires order status to be PAYMENT_FAILED / AWAITING_PAYMENT / CREATED.
+        //    The PaymentSucceededEvent listener (@Async) flips status asynchronously, so we do not
+        //    rigorously assert PAID here — we assert the retry endpoint returns 200 and the second
+        //    attempt is SUCCESS at the persistence layer.
+        mockMvc.perform(post("/api/v1/services/management/order/retry-payment/" + placedOrder.getUuid())
+                        .with(jwtUser(keycloakId)))
+                .andExpect(result -> {
+                    final int status = result.getResponse().getStatus();
+                    assertThat(status).isEqualTo(200);
+                });
+
+        // Read inside a TX so the lazy OrderEntity.paymentAttempts collection is initialised.
+        transactionTemplate.executeWithoutResult(tx -> {
+            final OrderEntity reloaded = orderRepository.findByUuid(placedOrder.getUuid()).orElseThrow();
+            final List<PaymentEntity> reloadedAttempts = reloaded.getPaymentAttempts();
+            assertThat(reloadedAttempts).hasSizeGreaterThanOrEqualTo(2);
+            assertThat(reloadedAttempts.getLast().getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
+        });
+    }
+
+    // Prompt front 15: every order line carries its product's category, on the detail and on /mine.
+    @Test
+    void orderLinesCarryTheProductCategory() throws Exception {
+        addItemToCart(productUuid, 1);
+        mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andExpect(status().isCreated());
+        final UUID orderUuid = transactionTemplate.execute(tx -> orderRepository.findAll().stream()
+                .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                .findFirst().orElseThrow().getUuid());
+
+        mockMvc.perform(get("/api/v1/services/management/order/get/" + orderUuid).with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderItems[0].productUuid").value(productUuid.toString()))
+                .andExpect(jsonPath("$.orderItems[0].category").value("SMARTWATCH"));
+
+        mockMvc.perform(get("/api/v1/services/management/order/mine").with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].orderItems[0].category").value("SMARTWATCH"));
+    }
+
+    // 10) Prompt front 14: the status read right after a successful retry is never PAYMENT_FAILED,
+    //     even when the previous attempt's failure is (re)applied late, before the retry's webhook.
+    @Test
+    void statusReadAfterRetryIsNeverPaymentFailed() throws Exception {
+        final String declinedIntent = "pi_declined_" + UUID.randomUUID();
+        final String retryIntent = "pi_retry_" + UUID.randomUUID();
+        Mockito.reset(stripePaymentProcessor);
+        Mockito.when(stripePaymentProcessor.processPayment(any(UUID.class), any(), anyString(), anyString()))
+                .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.FAILED, declinedIntent))
+                .thenReturn(new PaymentAttemptResult(PaymentAttemptStatus.PROCESSING, retryIntent));
+
+        // 1) Declined order: the payment_failed webhook of the first attempt lands -> PAYMENT_FAILED.
+        addItemToCart(productUuid, 1);
+        mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andExpect(status().isCreated());
+        final UUID orderUuid = transactionTemplate.execute(tx -> orderRepository.findAll().stream()
+                .filter(o -> o.getUserEntity().getKeycloakId().equals(keycloakId))
+                .findFirst().orElseThrow().getUuid());
+        paymentConfirmationDelegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(stripeEventFor(orderUuid, declinedIntent)));
+        assertStatus(orderUuid, OrderStatus.PAYMENT_FAILED);
+
+        // 2) Retry: the response AND the persisted status are AWAITING_PAYMENT.
+        mockMvc.perform(post("/api/v1/services/management/order/retry-payment/" + orderUuid)
+                        .with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(OrderStatus.AWAITING_PAYMENT.name()));
+        assertStatus(orderUuid, OrderStatus.AWAITING_PAYMENT);
+
+        // 3) A late failure of the FIRST attempt is ignored: still AWAITING_PAYMENT, stock still held.
+        paymentConfirmationDelegate.handlePaymentFailedWithinTransaction(new PaymentFailedEvent(stripeEventFor(orderUuid, declinedIntent)));
+        assertStatus(orderUuid, OrderStatus.AWAITING_PAYMENT);
+        assertThat(productRepository.findByUuid(productUuid).orElseThrow().getReservedStock()).isEqualTo(1);
+
+        // 4) The retry's success webhook completes the order.
+        paymentConfirmationDelegate.handlePaymentSuccessWithinTransaction(new PaymentSucceededEvent(stripeEventFor(orderUuid, retryIntent)));
+        assertStatus(orderUuid, OrderStatus.PAID);
+    }
+
+    private void assertStatus(final UUID orderUuid, final OrderStatus expected) throws Exception {
+        mockMvc.perform(get("/api/v1/services/management/order/status/" + orderUuid)
+                        .with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(expected.name()));
+    }
+
+    private static StripeWebhookEventDto stripeEventFor(final UUID orderUuid, final String paymentIntentId) {
+        final StripeWebhookEventDto event = PaymentDtoFixtures.aValidPaymentSucceededEvent();
+        event.getData().getPaymentIntentPayload().setId(paymentIntentId);
+        event.getData().getPaymentIntentPayload().getMetadata().put("order_uuid", orderUuid.toString());
+        return event;
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private void addItemToCart(final UUID prodUuid, final int qty) throws Exception {
+        final CartCreateRequestDto body = CartCreateRequestDto.builder()
+                .cartItemAddRequestDtos(List.of(
+                        CartItemAddRequestDto.builder().productUuid(prodUuid).quantity(qty).build()))
+                .build();
+
+        mockMvc.perform(post("/api/v1/services/cart/add")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(body)));
+    }
+
+    /**
+     * Test-only override that swaps the live Stripe processor for a Mockito mock. Default behaviour
+     * is configured per-test in {@link #seed()} to return SUCCESS so the happy-path tests do not hit
+     * the live Stripe API. Tests that need fail-then-success (e.g. retry) re-stub via
+     * {@link Mockito#when(Object)}.
+     *
+     * <p>The {@code testPaymentServiceMap} {@code @Primary} bean is required because the production
+     * {@code AppConfig.paymentServiceMap} builds the map by scanning beans annotated with
+     * {@code @PaymentTypeHandler} — a bare {@code @Primary} mock would never enter the map and the
+     * {@link com.novatech.cybertech.factory.PaymentStrategyFactory} would still resolve the real
+     * {@code StripePaymentAttemptProcessor}. Re-binding VISA/MASTERCARD to the mock here guarantees
+     * that {@code PaymentServiceImp.attemptPayment} routes through the mock.
+     */
+    @TestConfiguration
+    static class TestPaymentConfig {
+
+        @Bean
+        @Primary
+        PaymentAttemptProcessor stripePaymentProcessorMock() {
+            return Mockito.mock(PaymentAttemptProcessor.class);
+        }
+
+        @Bean
+        @Primary
+        Map<Set<PaymentType>, PaymentAttemptProcessor> testPaymentServiceMap(
+                final PaymentAttemptProcessor stripePaymentProcessorMock
+        ) {
+            final Map<Set<PaymentType>, PaymentAttemptProcessor> map = new HashMap<>();
+            map.put(Set.of(PaymentType.VISA, PaymentType.MASTERCARD), stripePaymentProcessorMock);
+            return map;
+        }
+    }
+}

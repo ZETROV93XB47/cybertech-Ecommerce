@@ -1,100 +1,82 @@
 package com.novatech.cybertech.services.implementation;
 
-import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
-import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
-import com.novatech.cybertech.entities.ProductDocument;
+import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHit;
+import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_PRODUCT_SEARCH;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.attributeFilters;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.brandsFilter;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.categoryFilter;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.keywordQuery;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.numericRangeFilters;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.priceFilter;
+import static com.novatech.cybertech.utils.ProductSearchQueryUtils.sortOptions;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductSearchServiceImp implements ProductSearchService {
 
-    private static final String DOT = ".";
-    private static final String BRAND = "brand";
-    private static final String PRICE = "price";
-    private static final String NAME_FIELD = "name";
-    private static final String CATEGORY = "category";
-    private static final String ATTRIBUTES = "attributes";
-    private static final String DESCRIPTION_FIELD = "description";
+    private static final int DEFAULT_PAGE = 0;
 
     private final ElasticsearchOperations elasticsearchOperations;
 
     @Override
-    public List<ProductDocument> search(final ProductSearchRequestDto req) {
+    public Page<ProductDocument> search(final ProductSearchRequestDto req) {
 
-        BoolQuery.Builder bool = new BoolQuery.Builder();
+        final int page = req.getPage() != null ? req.getPage() : DEFAULT_PAGE;
+        final int size = req.getSize() != null ? req.getSize() : DEFAULT_PAGE_SIZE_PRODUCT_SEARCH;
+        final Pageable pageable = PageRequest.of(page, size);
 
-        // 1) Catégorie (filter)
-        if (req.getCategory() != null) {
-            bool.filter(f -> f.term(t -> t.field(CATEGORY).value(req.getCategory().name())));
+        // Criteria are built by ProductSearchQueryUtils, shared with the catalog facets.
+        final List<Query> filters = new ArrayList<>();
+        categoryFilter(req).ifPresent(filters::add);
+        brandsFilter(req).ifPresent(filters::add);
+        priceFilter(req).ifPresent(filters::add);
+        filters.addAll(attributeFilters(req).values());
+        filters.addAll(numericRangeFilters(req).values());
+        final List<Query> musts = keywordQuery(req).stream().toList();
+
+        final BoolQuery.Builder boolBuilder = new BoolQuery.Builder();
+        if (!musts.isEmpty()) {
+            boolBuilder.must(musts);
+        }
+        if (!filters.isEmpty()) {
+            boolBuilder.filter(filters);
         }
 
-        // 2) Marques (filter)
-        if (req.getBrands() != null && !req.getBrands().isEmpty()) {
-            List<String> brandValues = req.getBrands().stream().map(Enum::name).toList();
-
-            bool.filter(f -> f.terms(t -> t
-                    .field(BRAND)
-                    .terms(v -> v.value(brandValues.stream().map(FieldValue::of).toList()))
-            ));
-        }
-
-        // 3) Recherche textuelle (must)
-        if (StringUtils.hasText(req.getKeyword())) {
-            bool.must(m -> m.multiMatch(MultiMatchQuery.of(mm -> mm
-                    .query(req.getKeyword())
-                    .fields(NAME_FIELD, DESCRIPTION_FIELD)
-                    .fuzziness("AUTO")
-            )));
-        }
-
-        // 4) Range de prix (filter)
-        if (req.getPriceMin() != null && req.getPriceMax() != null) {
-            bool.filter(f -> f.range(r -> r.number(n ->
-                            n.field(PRICE)
-                                    .gte(FieldValue.of(req.getPriceMin()).doubleValue())
-                                    .lte(FieldValue.of(req.getPriceMax()).doubleValue())
-                    )
-            ));
-        }
-
-        // 5) Attributs dynamiques (flattened): attributes.key IN (values...) (filter)
-        if (req.getAttributes() != null) {
-            req.getAttributes().forEach((key, values) -> {
-                if (values != null && !values.isEmpty()) {
-                    String field = ATTRIBUTES + DOT + key;
-
-                    bool.filter(f -> f.terms(t -> t
-                            .field(field)
-                            .terms(v -> v.value(values.stream()
-                                    .map(FieldValue::of)
-                                    .toList()))
-                    ));
-                }
-            });
-        }
-
-        Query finalQuery = bool.build()._toQuery();
-
-        NativeQuery query = NativeQuery.builder()
-                .withQuery(finalQuery)
+        final NativeQuery nativeQuery = NativeQuery.builder()
+                .withQuery(Query.of(q -> q.bool(boolBuilder.build())))
+                .withPageable(pageable)
+                // Sorts the whole result set (then paginates), with a final uuid tie-break.
+                .withSort(sortOptions(req))
                 .build();
 
-        return elasticsearchOperations.search(query, ProductDocument.class)
+        final SearchHits<ProductDocument> hits =
+                elasticsearchOperations.search(nativeQuery, ProductDocument.class);
+
+        final List<ProductDocument> content = hits.getSearchHits()
+                .stream()
                 .map(SearchHit::getContent)
                 .toList();
+
+        return new PageImpl<>(content, pageable, hits.getTotalHits());
     }
 }

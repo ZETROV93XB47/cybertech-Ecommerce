@@ -1,40 +1,89 @@
 package com.novatech.cybertech.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.novatech.cybertech.dto.data.DiscountContext;
+import com.novatech.cybertech.dto.response.cart.CartResponseDto;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.provider.redis.spring.RedisLockProvider;
+import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
+import org.redisson.Redisson;
+import org.redisson.api.RedissonClient;
+import org.redisson.config.Config;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.repository.configuration.EnableRedisRepositories;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
+import org.springframework.data.redis.serializer.JacksonJsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import tools.jackson.databind.DefaultTyping;
+import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
+
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DISCOUNT_CAMPAIGNS_CACHE;
 
 @Configuration
 @EnableRedisRepositories
+@EnableSchedulerLock(defaultLockAtMostFor = "PT10M")
 public class RedisConfig {
 
-    @Bean
-    public RedisTemplate<String, Object> redisTemplate(
-            RedisConnectionFactory connectionFactory,
-            ObjectMapper objectMapper) {
+    private static final String CART_CACHE = "cart";
+    private static final String USER_EXISTENCE_CACHE = "userExistence";
+    private static final String SHEDLOCK_ENVIRONMENT = "cybertech";
 
+    /**
+     * Backs {@code @SchedulerLock} on {@code @Scheduled} jobs — keeps a job from double-running
+     * if the app is ever scaled past a single replica (today: cybertech-app-chart replicas=1, so
+     * this is a no-op in practice).
+     */
+    @Bean
+    public LockProvider lockProvider(final RedisConnectionFactory connectionFactory) {
+        return new RedisLockProvider(connectionFactory, SHEDLOCK_ENVIRONMENT);
+    }
+
+    /**
+     * Backs the per-user cart write/rebuild lock in {@code CartCacheHelperImp} — see that class
+     * for the "why a distributed lock at all" rationale. Built from the same
+     * {@link RedisConnectionFactory} every other bean here uses (rather than re-reading
+     * {@code spring.data.redis.host}/{@code port} directly) so it always points at the same Redis
+     * instance as {@code redisTemplate}, including under Testcontainers: the {@code @ServiceConnection}
+     * used by ITs populates the connection factory directly and does NOT set those properties in the
+     * environment, so reading them independently here would silently point Redisson at the wrong
+     * (or a nonexistent) host during ITs.
+     */
+    @Bean(destroyMethod = "shutdown")
+    public RedissonClient redissonClient(final RedisConnectionFactory connectionFactory) {
+        final RedisStandaloneConfiguration standalone = ((LettuceConnectionFactory) connectionFactory).getStandaloneConfiguration();
+        final Config config = new Config();
+        config.useSingleServer().setAddress("redis://" + standalone.getHostName() + ":" + standalone.getPort());
+        return Redisson.create(config);
+    }
+
+    @Bean
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory, @Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
-        // 🔑 Clés en String (OBLIGATOIRE)
         StringRedisSerializer stringSerializer = new StringRedisSerializer();
+        GenericJacksonJsonRedisSerializer jsonSerializer = new GenericJacksonJsonRedisSerializer(redisObjectMapper);
 
-        // 📦 Valeurs en JSON (lisible, safe)
-        GenericJackson2JsonRedisSerializer jsonSerializer =
-                new GenericJackson2JsonRedisSerializer(objectMapper);
-
-        // Configuration des serializers
         template.setKeySerializer(stringSerializer);
         template.setValueSerializer(jsonSerializer);
-
         template.setHashKeySerializer(stringSerializer);
         template.setHashValueSerializer(jsonSerializer);
 
@@ -42,14 +91,97 @@ public class RedisConfig {
         return template;
     }
 
-    /**
-     * ObjectMapper dédié Redis (important)
-     */
-    @Bean
+
+    @Bean("redisObjectMapper")
     public ObjectMapper redisObjectMapper() {
-        return JsonMapper.builder()
-                .addModule(new JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+        // GenericJacksonJsonRedisSerializer relies on @class type hints to
+        // reconstruct domain objects on read. Without DefaultTyping every cached
+        // object would silently come back as a LinkedHashMap.
+        //
+        // Tighten the polymorphic type validator from a blanket
+        // `allowIfBaseType(Object.class)` to an explicit per-class allowlist of cached
+        // domain DTOs and the JDK collection / wrapper types that show up inside their
+        // serialised graphs. Allowing arbitrary base types lets a malicious cache writer
+        // (or a poisoned cache row) trigger gadget-chain deserialisation on read; the
+        // whitelist below limits the attack surface to types we actually round-trip.
+        final PolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
+                // Cached domain DTOs — the actual @Cacheable / putWithJitter payloads.
+                .allowIfSubType(com.novatech.cybertech.dto.response.cart.CartResponseDto.class)
+                .allowIfSubType(com.novatech.cybertech.dto.response.cart.CartItemResponseDto.class)
+                .allowIfSubType(com.novatech.cybertech.dto.data.DiscountContext.class)
+                .allowIfSubType(com.novatech.cybertech.dto.response.product.ProductResponseDto.class)
+                // Domain enums embedded in the DTOs above.
+                .allowIfSubType(com.novatech.cybertech.entities.enums.DiscountCalculationType.class)
+                // JDK collection / wrapper types referenced by the DTO graphs (CartResponseDto.items
+                // is a List<CartItemResponseDto>, DiscountContext fields are LocalDateTime/BigDecimal,
+                // userExistence cache stores Boolean, etc.).
+                .allowIfSubType(java.util.List.class)
+                .allowIfSubType(java.util.Map.class)
+                .allowIfSubType(java.util.Set.class)
+                .allowIfSubType(java.util.Collection.class)
+                .allowIfSubType(java.util.UUID.class)
+                .allowIfSubType(java.math.BigDecimal.class)
+                .allowIfSubType(java.time.LocalDateTime.class)
+                .allowIfSubType(Boolean.class)
+                .allowIfSubType(String.class)
+                .allowIfSubType(Number.class)
                 .build();
+
+        return JsonMapper.builder()
+                .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
+                .activateDefaultTyping(ptv, DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY)
+                .build();
+    }
+
+
+    @Bean
+    public RedisCacheManager cacheManager(
+            RedisConnectionFactory connectionFactory,
+            RedisCacheConfiguration baseConfig,
+            @Value("${app.cache.default.ttl.expiration.time.seconds}") int baseTtlSeconds
+    ) {
+
+        final RedisCacheConfiguration defaultConfig = baseConfig.entryTtl(Duration.ofHours(1));
+
+        final JacksonJsonRedisSerializer<Boolean> userExistSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(Boolean.class);
+        final JacksonJsonRedisSerializer<CartResponseDto> cartSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(CartResponseDto.class);
+        // DiscountContext is a record, hence final: the default serializer's DefaultTyping.NON_FINAL
+        // writes it WITHOUT an @class hint, then fails to read it back as Object ("missing type id
+        // property '@class'") on the first cache hit — every order with a discount after the first
+        // one ended in a 500. A serializer bound to the concrete type needs no type hint at all.
+        final JacksonJsonRedisSerializer<DiscountContext> discountSerializer = new org.springframework.data.redis.serializer.JacksonJsonRedisSerializer<>(DiscountContext.class);
+
+        final RedisCacheConfiguration cartConfig = defaultConfig
+                .entryTtl(Duration.ofSeconds(baseTtlSeconds))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(cartSerializer));
+
+        final RedisCacheConfiguration userExistConfig = defaultConfig
+                .entryTtl(Duration.ofHours(24))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(userExistSerializer));
+
+        final RedisCacheConfiguration discountConfig = defaultConfig
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(discountSerializer));
+
+        final Map<String, RedisCacheConfiguration> configs = new HashMap<>();
+
+        configs.put(CART_CACHE, cartConfig);
+        configs.put(USER_EXISTENCE_CACHE, userExistConfig);
+        configs.put(DISCOUNT_CAMPAIGNS_CACHE, discountConfig);
+
+        return RedisCacheManager.builder(connectionFactory)
+                .cacheDefaults(defaultConfig)
+                .withInitialCacheConfigurations(configs)
+                .build();
+    }
+
+    @Bean
+    public RedisCacheConfiguration cacheConfiguration(
+            @Qualifier("redisObjectMapper") final ObjectMapper redisObjectMapper,
+            @Value("${app.cache.default.ttl.expiration.time.seconds}") int baseTtlSeconds
+    ) {
+        return RedisCacheConfiguration
+                .defaultCacheConfig()
+                .entryTtl(Duration.ofSeconds(baseTtlSeconds))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJacksonJsonRedisSerializer(redisObjectMapper)));
     }
 }

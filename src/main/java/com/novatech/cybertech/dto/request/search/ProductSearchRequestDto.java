@@ -1,10 +1,10 @@
 package com.novatech.cybertech.dto.request.search;
 
 import com.novatech.cybertech.entities.enums.Brand;
-import com.novatech.cybertech.entities.enums.Category;
+import com.novatech.cybertech.entities.enums.ProductSearchSort;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,8 +27,9 @@ public class ProductSearchRequestDto {
     @Max(value = 1000000, message = "Le prix maximum doit être supérieur ou égal à 1000000")
     private Double priceMax;
 
-    @NotNull(message = "La catégorie ne peut pas être nulle")
-    private Category category; // Ton Enum
+    // Category is now optional: a null value means "no category filter"
+    // (keyword-only or cross-category search). The search service guards on null.
+    private String category;
 
     private List<Brand> brands;     // Ton Enum
 
@@ -38,4 +39,25 @@ public class ProductSearchRequestDto {
      */
     //private Map<String, List<String>> attributes;
     private Map<String, List<String>> attributes;
+
+    // Pour les ranges numériques (ex: RAM min/max)
+    private Map<String, RangeFilter> numericRanges;
+
+    // Boxed (not primitive int): Jackson binds this DTO through its all-args constructor, where a
+    // property missing from the JSON body is passed as a literal null — that can't be assigned to
+    // a primitive int and blows up as "Malformed JSON request body" before validation even runs.
+    // A missing page/size must be a legal, absent value here; ProductSearchServiceImp applies the
+    // actual default (DEFAULT_PAGE_SIZE_PRODUCT_SEARCH) when building the Pageable. @Min still
+    // catches an explicit size=0 as a clean 400 instead of a raw PageRequest.of() crash.
+    @Min(value = 0, message = "Page must be >= 0")
+    private Integer page;
+
+    @Min(value = 1, message = "Size must be >= 1")
+    private Integer size;
+
+    // Ignored by POST /product/search/facets: sorting never changes the facets.
+    @Schema(description = "Order of the whole result set, before pagination; absent = RELEVANCE. "
+            + "Ties are broken by product uuid, so pages are stable. RATING_DESC lists products without reviews last.",
+            defaultValue = "RELEVANCE")
+    private ProductSearchSort sort;
 }

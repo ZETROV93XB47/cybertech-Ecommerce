@@ -1,10 +1,16 @@
 redis:
-  image: redis:7.2
+  image: redis:8.10.2
   port: 6379
 
   persistence:
     enabled: true
     size: 1Gi
+    # IMPORTANT: StatefulSet crée 1 PVC par replica via volumeClaimTemplates
+    # Ne pas créer de PVC séparé
+
+service:
+  type: ClusterIP
+  #::::clusterIP: None  # Headless service for StatefulSet DNS
 
 config:
   filename: redis.conf

@@ -16,7 +16,9 @@ spec:
       containers:
         - name: redis
           image: {{ .Values.redis.image }}
-          command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+          # args, not command: keeps the image entrypoint, which loads the bundled modules
+          # (redisearch etc.) that Gorse needs.
+          args: ["redis-server", "/usr/local/etc/redis/redis.conf"]
           ports:
             - containerPort: {{ .Values.redis.port }}
           volumeMounts:

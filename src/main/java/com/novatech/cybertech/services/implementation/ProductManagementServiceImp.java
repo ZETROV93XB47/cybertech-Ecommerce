@@ -3,24 +3,32 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
+import com.novatech.cybertech.dto.response.product.ProductAvailabilityDto;
 import com.novatech.cybertech.dto.response.product.ProductResponseDto;
-import com.novatech.cybertech.entities.ProductDocument;
 import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.validator.ProductValidationService;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.repositories.ProductSearchRepository;
 import com.novatech.cybertech.services.core.ProductManagementService;
+import com.novatech.cybertech.services.core.ProductSearchIndexService;
 import com.novatech.cybertech.services.core.ProductSearchService;
+import com.novatech.cybertech.services.core.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.MAX_AVAILABILITY_BATCH_SIZE;
 
 
 @Slf4j
@@ -28,73 +36,152 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ProductManagementServiceImp implements ProductManagementService {
 
+    static final String AVAILABILITY_BATCH_SIZE_MESSAGE = "Between 1 and " + MAX_AVAILABILITY_BATCH_SIZE + " product uuids are required";
+
+    public static final String PRODUCTS_S3_BUCKET_NAME = "cybertech-products";
+
+    private final S3Service s3Service;
     private final ProductMapper productMapper;
     private final ProductRepository productRepository;
     private final ProductSearchService productSearchService;
     private final ProductSearchRepository productSearchRepository;
+    private final ProductSearchIndexService productSearchIndexService;
     private final ProductValidationService productValidationService;
+
 
     @Override
     @Transactional(readOnly = true)
-    public Collection<ProductResponseDto> getAll() {
-        return productMapper.mapFromEntityToResponseDto(productRepository.findAll());
+    public Page<ProductResponseDto> getAll(final Pageable pageable) {
+        return productRepository.findAll(pageable).map(productMapper::mapFromEntityToResponseDto);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public ProductResponseDto getByUUID(UUID uuid) {
+    public ProductResponseDto getByUUID(final UUID uuid, final String keycloakId) {
         return productMapper.mapFromEntityToResponseDto(productRepository.findByUuid(uuid).orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + uuid + " found")));
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Collection<ProductResponseDto> getByUUIDs(Collection<UUID> uuids) {
-        return productMapper.mapFromEntityToResponseDto(productRepository.findAllByUuidIn(uuids));
+    @Transactional
+    public ProductResponseDto create(final ProductCreateRequestDto productCreateRequestDto, final String keycloakId) {
+        productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
+
+        return persistAndIndex(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
     }
 
+    /**
+     * {@code ProductCreateRequestDto} carries no photo field at all — on this path the caller
+     * sends raw image files, not URLs, so there is nothing meaningful a DTO field could hold.
+     * The uploaded URLs are set directly on the freshly-mapped entity instead.
+     */
     @Override
     @Transactional
-    public ProductResponseDto create(ProductCreateRequestDto productCreateRequestDto) {
+    public ProductResponseDto createWithImage(final ProductCreateRequestDto productCreateRequestDto, final List<MultipartFile> images, final String keycloakId) {
         productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
-        final ProductEntity savedProductEntity = productRepository.save(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
 
-        productSearchRepository.save(productMapper.mapFromProductEntityToProductDocument(savedProductEntity));
+        final ProductEntity entity = productMapper.mapFromCreationRequestToEntity(productCreateRequestDto);
+
+        if (images != null && !images.isEmpty()) {
+            final List<String> uploadedUrls = images.stream()
+                    .filter(image -> image != null && !image.isEmpty())
+                    .map(image -> s3Service.uploadFile(image, PRODUCTS_S3_BUCKET_NAME))
+                    .toList();
+            if (!uploadedUrls.isEmpty()) {
+                entity.setPhotos(uploadedUrls);
+            }
+        }
+
+        return persistAndIndex(entity);
+    }
+
+    private ProductResponseDto persistAndIndex(final ProductEntity entity) {
+        final ProductEntity savedProductEntity = productRepository.save(entity);
+
+        productSearchIndexService.index(savedProductEntity);
+        log.info("Product {} '{}' created ({}, price {}, stock {}, {} photo(s)) and indexed", savedProductEntity.getUuid(),
+                savedProductEntity.getName(), savedProductEntity.getCategory(), savedProductEntity.getPrice(),
+                savedProductEntity.getStock(), savedProductEntity.getPhotos() == null ? 0 : savedProductEntity.getPhotos().size());
 
         return productMapper.mapFromEntityToResponseDto(savedProductEntity);
     }
 
     @Override
     @Transactional
-    public ProductResponseDto update(final ProductUpdateRequestDto productCreateRequestDto) {
-        return productMapper.mapFromEntityToResponseDto(productRepository.save(productMapper.mapFromUpdateRequestToEntity(productCreateRequestDto)));
+    public ProductResponseDto update(final ProductUpdateRequestDto productUpdateRequestDto, final String keycloakId) {
+        final UUID uuid = productUpdateRequestDto.getProductUuid();
+        final ProductEntity existing = productRepository.lockByUuid(uuid)
+                .orElseThrow(() -> new ProductNotFoundException("No product with the UUID : " + uuid + " found"));
+
+        final String effectiveCategory = productUpdateRequestDto.getCategory() != null
+                ? productUpdateRequestDto.getCategory()
+                : existing.getCategory();
+        final var effectiveAttributes = productUpdateRequestDto.getAttributes() != null
+                ? productUpdateRequestDto.getAttributes()
+                : existing.getAttributes();
+        if (productUpdateRequestDto.getCategory() != null || productUpdateRequestDto.getAttributes() != null) {
+            productValidationService.validateAttributes(effectiveCategory, effectiveAttributes);
+        }
+
+        if (productUpdateRequestDto.getName() != null) existing.setName(productUpdateRequestDto.getName());
+        if (productUpdateRequestDto.getPrice() != null) existing.setPrice(productUpdateRequestDto.getPrice());
+        if (productUpdateRequestDto.getBrand() != null) existing.setBrand(productUpdateRequestDto.getBrand());
+        if (productUpdateRequestDto.getCategory() != null) existing.setCategory(productUpdateRequestDto.getCategory());
+        if (productUpdateRequestDto.getPhotos() != null) existing.setPhotos(productUpdateRequestDto.getPhotos());
+        if (productUpdateRequestDto.getStock() != null) existing.setStock(productUpdateRequestDto.getStock());
+        if (productUpdateRequestDto.getDescription() != null) existing.setDescription(productUpdateRequestDto.getDescription());
+        if (productUpdateRequestDto.getAttributes() != null) {
+            existing.setAttributes(productUpdateRequestDto.getAttributes());
+        }
+
+        final ProductEntity saved = productRepository.save(existing);
+
+        // Ratings included: a product update must not wipe averageRating / reviewCount.
+        productSearchIndexService.index(saved);
+        log.info("Product {} updated (price {}, stock {}) and re-indexed", uuid, saved.getPrice(), saved.getStock());
+
+        return productMapper.mapFromEntityToResponseDto(saved);
     }
 
     @Override
     @Transactional
-    public void deleteByUUID(UUID uuid) {
+    public void deleteByUUID(final UUID uuid, final String keycloakId) {
         productRepository.deleteByUuid(uuid);
         productSearchRepository.deleteByUuid(uuid);
+        log.info("Product {} deleted from DB and search index", uuid);
     }
 
     @Override
-    @Transactional
-    public void deleteByUUIDs(Collection<UUID> uuids) {
-        productRepository.deleteAllByUuidIn(uuids);
-    }
-
-    public List<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto) {
-        final List<ProductDocument> productDocuments = productSearchService.search(productSearchRequestDto);
-        return productDocuments.stream().map(productMapper::mapFromProductDocumentToProductResponseDto).toList();
+    public Page<ProductResponseDto> searchProducts(final ProductSearchRequestDto productSearchRequestDto) {
+        final Page<ProductDocument> productDocuments = productSearchService.search(productSearchRequestDto);
+        log.info("Product search {}: {} hit(s), returning page {} ({} item(s))", productSearchRequestDto, productDocuments.getTotalElements(),
+                productDocuments.getNumber(), productDocuments.getNumberOfElements());
+        return productDocuments.map(productMapper::mapFromProductDocumentToProductResponseDto);
     }
 
 
-    @Transactional
-    public ProductEntity temporarySaveProductEntity(final ProductCreateRequestDto productCreateRequestDto) {
-        productValidationService.validateAttributes(productCreateRequestDto.getCategory(), productCreateRequestDto.getAttributes());
-        final ProductEntity savedProductEntity = productRepository.save(productMapper.mapFromCreationRequestToEntity(productCreateRequestDto));
-        productSearchRepository.save(productMapper.mapFromProductEntityToProductDocument(savedProductEntity));
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDto> getBestSellers(final Pageable pageable) {
+        return productRepository.findBestSellers(pageable).map(productMapper::mapFromEntityToResponseDto);
+    }
 
-        //return productMapper.mapFromEntityToResponseDto(savedProductEntity);
-        return savedProductEntity;
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductAvailabilityDto> getAvailability(final Set<UUID> productUuids) {
+        if (productUuids == null || productUuids.isEmpty() || productUuids.size() > MAX_AVAILABILITY_BATCH_SIZE) {
+            throw new IllegalArgumentException(AVAILABILITY_BATCH_SIZE_MESSAGE);
+        }
+        // Same "available" definition as the reservation path (StockServiceImp): units pinned to live
+        // reservations are not sellable. Clamped at 0 so a transient over-reservation never shows as negative.
+        return productRepository.findAllByUuidIn(productUuids).stream()
+                .map(product -> {
+                    final int available = Math.max(0, product.getStock() - product.getReservedStock());
+                    return ProductAvailabilityDto.builder()
+                            .productUuid(product.getUuid())
+                            .availableStock(available)
+                            .inStock(available > 0)
+                            .build();
+                })
+                .toList();
     }
 }

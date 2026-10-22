@@ -1,0 +1,12 @@
+{
+  "index": {
+    "analysis": {
+      "normalizer": {
+        "sort_normalizer": {
+          "type": "custom",
+          "filter": ["lowercase", "asciifolding"]
+        }
+      }
+    }
+  }
+}
