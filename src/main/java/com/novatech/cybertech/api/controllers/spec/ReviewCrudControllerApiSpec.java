@@ -78,6 +78,8 @@ public interface ReviewCrudControllerApiSpec {
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "404", description = "Product / Order / User not found",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
+                    @ApiResponse(responseCode = "409", description = "ORDER_NOT_REVIEWABLE - the order is not in a reviewable status; REVIEW_ALREADY_EXISTS - the caller has already reviewed this product (one review per user and product, edit it with PATCH /review/update/{reviewUuid})",
+                            content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "500", description = "Internal server error during Review creation",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "503", description = "MODERATION_UNAVAILABLE - the comment moderation service gave no verdict (down, timeout, non-2xx); nothing is saved, retry later without changing the text",

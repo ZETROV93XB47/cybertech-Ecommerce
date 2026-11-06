@@ -43,6 +43,7 @@ import com.novatech.cybertech.exceptions.ProductConstraintsViolationException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.ReviewNotFoundException;
 import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
+import com.novatech.cybertech.exceptions.ReviewAlreadyExistsException;
 import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
 import com.novatech.cybertech.exceptions.UserNotActiveException;
 import com.novatech.cybertech.exceptions.UserNotAuthorOfReviewException;
@@ -406,6 +407,16 @@ class ErrorManagementControllerBranchTest {
                 controller.handleUserAlreadyExistsException(new UserAlreadyExistsException("dupe user"));
 
         assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "dupe user");
+    }
+
+    @Test
+    @DisplayName("ReviewAlreadyExistsException → 409 FUNCTIONAL with passthrough message")
+    void reviewAlreadyExistsReturns409() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleReviewAlreadyExistsException(new ReviewAlreadyExistsException("dupe review"));
+
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "dupe review");
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.REVIEW_ALREADY_EXISTS);
     }
 
     @Test

@@ -4,7 +4,6 @@ import com.novatech.cybertech.api.error.model.ErrorResponseDto;
 import com.novatech.cybertech.dto.response.wishlist.WishlistResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -62,12 +61,19 @@ public interface WishlistManagementApiSpec {
             @Parameter(description = "UUID of the product to remove") UUID productUuid,
             @Parameter(hidden = true) @AuthenticationPrincipal final Jwt jwt);
 
-    @Operation(summary = "Get my wishlist",
-            description = "Retrieves all products in the connected user's wishlist.",
+    @Operation(summary = "Get my wishlist (paginated)",
+            description = """
+                    One page of the products in the connected user's wishlist, as a PagedModel
+                    ({content, page}). Defaults: page=0, size=20, sort=createdAt,desc; size is capped at 100.
+                    """,
             security = @SecurityRequirement(name = "keycloak"),
+            parameters = {
+                    @Parameter(name = "page", description = "0-based page index (default 0)", required = false),
+                    @Parameter(name = "size", description = "Page size (default 20, max 100)", required = false),
+                    @Parameter(name = "sort", description = "property,direction (default createdAt,desc)", required = false)
+            },
             responses = {
-                    @ApiResponse(responseCode = "200", description = "Wishlist retrieved successfully",
-                            content = @Content(mediaType = APPLICATION_JSON_VALUE, array = @ArraySchema(schema = @Schema(implementation = WishlistResponseDto.class)))),
+                    @ApiResponse(responseCode = "200", description = "One page of the wishlist (possibly empty)"),
                     @ApiResponse(responseCode = "401", description = "Unauthorized - User not logged in",
                             content = @Content(mediaType = APPLICATION_JSON_VALUE, schema = @Schema(implementation = ErrorResponseDto.class))),
                     @ApiResponse(responseCode = "403", description = "Forbidden - Access denied",

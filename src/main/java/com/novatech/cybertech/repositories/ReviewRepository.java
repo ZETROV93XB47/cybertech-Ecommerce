@@ -22,6 +22,9 @@ public interface ReviewRepository extends CrudBaseRepository<ReviewEntity, Long>
     @Query("select r.productEntity.uuid from ReviewEntity r where r.userEntity.keycloakId = :keycloakId")
     Set<UUID> findReviewedProductUuidsByUserKeycloakId(@Param("keycloakId") String keycloakId);
 
+    /** Whether the user has already reviewed the product (one review per user and product). */
+    boolean existsByUserEntity_KeycloakIdAndProductEntity_Uuid(String keycloakId, UUID productUuid);
+
     /**
      * One page of a product's published reviews (not flagged hateful), author fetched in the same
      * query since the public listing shows their first name.

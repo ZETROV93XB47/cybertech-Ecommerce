@@ -66,6 +66,8 @@ public enum ErrorCode {
     UNAUTHORIZED_CART_ACCESS(HttpStatus.FORBIDDEN, ErrorCodeType.FUNCTIONAL),
     /** Order is not in a status that allows reviewing (only PAID/AWAITING_SHIPPING/SHIPPED/DELIVERED are reviewable). */
     ORDER_NOT_REVIEWABLE(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
+    /** The user has already reviewed this product (one review per user and product). */
+    REVIEW_ALREADY_EXISTS(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     /** A product/search request references a categoryKey with no registered schema. */
     UNKNOWN_PRODUCT_CATEGORY(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
     /** Admin submitted a categoryKey/jsonSchema pair that fails to compile as a JSON Schema. */

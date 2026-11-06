@@ -357,6 +357,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: "ORDER_NOT_REVIEWABLE - the order is not in a reviewable status; REVIEW_ALREADY_EXISTS - the caller has already reviewed this product (one review per user and product, edit it with PATCH /review/update/{reviewUuid})"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
         "500":
           description: Internal server error during Review creation
           content:
@@ -2294,10 +2300,21 @@ paths:
     get:
       tags:
       - Wishlist
-      summary: Get my wishlist
-      description: Retrieves all products in the connected user's wishlist.
+      summary: Get my wishlist (paginated)
+      description: |
+        One page of the products in the connected user's wishlist, as a PagedModel
+        ({content, page}). Defaults: page=0, size=20, sort=createdAt,desc; size is capped at 100.
       operationId: getMyWishlist
       parameters:
+      - name: page
+        in: query
+        description: 0-based page index (default 0)
+      - name: size
+        in: query
+        description: "Page size (default 20, max 100)"
+      - name: sort
+        in: query
+        description: "property,direction (default createdAt,desc)"
       - name: X-API-VERSION
         in: header
         schema:
@@ -2307,13 +2324,11 @@ paths:
           - "1.0"
       responses:
         "200":
-          description: Wishlist retrieved successfully
+          description: One page of the wishlist (possibly empty)
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/WishlistResponseDto"
+                $ref: "#/components/schemas/PagedModelWishlistResponseDto"
         "401":
           description: Unauthorized - User not logged in
           content:
@@ -4260,6 +4275,7 @@ components:
           - DISCOUNT_TYPE_NOT_ACTIVE
           - UNAUTHORIZED_CART_ACCESS
           - ORDER_NOT_REVIEWABLE
+          - REVIEW_ALREADY_EXISTS
           - UNKNOWN_PRODUCT_CATEGORY
           - INVALID_PRODUCT_CATEGORY_SCHEMA
           - DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD
@@ -5703,6 +5719,15 @@ components:
           type: string
           format: date-time
           description: Last modification; null if never modified.
+    PagedModelWishlistResponseDto:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/WishlistResponseDto"
+        page:
+          $ref: "#/components/schemas/PageMetadata"
     PagedModelMyReviewDto:
       type: object
       properties:

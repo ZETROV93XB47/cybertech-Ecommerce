@@ -56,6 +56,7 @@ class ReviewableOrderFlowIT {
 
     private static final String REVIEWABLE_ENDPOINT = "/api/v1/services/review/reviewable";
     private static final String CREATE_ENDPOINT = "/api/v1/services/review/create";
+    private static final String MY_REVIEWS_ENDPOINT = "/api/v1/services/review/mine";
 
     @Autowired
     private MockMvc mockMvc;
@@ -140,6 +141,29 @@ class ReviewableOrderFlowIT {
         mockMvc.perform(get(REVIEWABLE_ENDPOINT).with(jwtUser(keycloakId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("second review of the same product -> 409 REVIEW_ALREADY_EXISTS, only the first one is stored")
+    void secondReviewOfTheSameProductIsRejected() throws Exception {
+        final UUID orderUuid = seedOrder(OrderStatus.DELIVERED);
+
+        mockMvc.perform(post(CREATE_ENDPOINT)
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ratingOnlyReview(orderUuid)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post(CREATE_ENDPOINT)
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ratingOnlyReview(orderUuid)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("REVIEW_ALREADY_EXISTS"));
+
+        mockMvc.perform(get(MY_REVIEWS_ENDPOINT).with(jwtUser(keycloakId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page.totalElements").value(1));
     }
 
     @ParameterizedTest(name = "{0}: not listed, create -> 409 ORDER_NOT_REVIEWABLE")

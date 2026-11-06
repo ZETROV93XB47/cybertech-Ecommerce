@@ -1,10 +1,12 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : événements de recommandation produits par le backend (prompt front 18) — branche `develop_back`._
+_Dernière mise à jour : bugs simples du backlog (avis en doublon, doc wishlist, dépendance Jib) — branche `develop_back`._
 
 ---
 
 ## 1. SITTREP
+
+**Session du 2026-11-06 — Bugs simples du backlog.** Tri d'abord : trois notes de la section 2 étaient périmées (email en doublon à l'inscription déjà en 409 depuis `ad38902`, handler `ORDER_UPDATE` présent via `OrderUpdateNotification`, revalidation des attributs au changement de catégorie déjà faite) et ont été retirées. Corrigé : (1) un utilisateur ne peut plus publier deux avis sur le même produit → **409 `REVIEW_ALREADY_EXISTS`** ; (2) la doc OpenAPI de `GET /wishlist/my-wishlist` annonçait un tableau alors que l'endpoint renvoie un `PagedModel` → corrigée, avec `page` / `size` / `sort` ; (3) `jib-maven-plugin` retiré des dépendances (il restait embarqué dans le jar). `mvnw test` 2 499 tests, 0 échec ; ITs avis 30/30. Rien de commencé ensuite.
 
 **Session du 2026-10-22 — Prompt front 18 : événements de recommandation produits par le backend.** Gorse n'apprenait rien (aucun `UserEvent` jamais écrit). Le backend écrit désormais lui-même `PURCHASE` (transition effective vers `PAID`, idempotent par commande + produit), `ADD_TO_CART` / `REMOVE_FROM_CART` (différence avant / après sur chaque écriture panier, rien au vidage par `placeOrder`), `WISHLIST_ADD` et `RATING_*` / `REVIEW_*` (seuils 4 / 2), après commit et en asynchrone : une panne MongoDB ne bloque ni panier, ni avis, ni paiement. `consume-event` n'accepte plus que les signaux du navigateur (400 + `fieldErrors` sinon, 404 pour un produit inconnu, limité à 120/min) ; nouvel endpoint par lot `consume-events` (≤ 50). Tests : `mvnw verify` 2 488 tests, 0 échec ; nouveaux ITs `RecommendationSignalsFlowIT` (parcours complet jusqu'au `PUT /api/feedback` d'un faux Gorse) et `RecommendationSignalsMongoDownFlowIT`, 4/4. **Vérification manuelle faite** (section 2) : 12 `UserEvent` dans MongoDB, retours reçus par Gorse, `NumTotalPosFeedback` 0 → 10 ; recommandations pas encore personnalisées (aucun modèle Gorse entraîné, trop peu d'utilisateurs). Détail : `docs/recommendation-events.md`.
 
@@ -67,6 +69,12 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ## 2. Tâches faites / tâches suivantes
 
 ### Faites (cette phase de travail)
+
+- **2026-11-06 — Avis en doublon, doc wishlist, dépendance Jib.**
+  - **Avis** : `ReviewManagementServiceImp.create` vérifie `ReviewRepository.existsByUserEntity_KeycloakIdAndProductEntity_Uuid` après les contrôles de commande et avant la modération (pas d'appel au service de modération pour un doublon). Nouvelle `ReviewAlreadyExistsException` → 409 `REVIEW_ALREADY_EXISTS` (`ErrorCode`, handler). Règle : un avis par utilisateur et par produit (la même règle que `GET /review/reviewable`, qui masquait déjà les produits notés) ; pour changer d'avis, `PATCH /review/update/{reviewUuid}`. OpenAPI : 409 documenté sur `POST /review/create` (`ORDER_NOT_REVIEWABLE` y manquait aussi). Pas de contrainte d'unicité en base : deux requêtes simultanées peuvent encore passer (voir section 3).
+  - **Wishlist** : `WishlistManagementApiSpec` documente `page` (0), `size` (20, max 100), `sort` (`createdAt,desc`) ; la réponse 200 pointe sur `PagedModelWishlistResponseDto` au lieu d'un tableau. `openapi.yaml` modifié à la main. **Côté front : `npm run gen:api`** (le type généré était un tableau).
+  - **Pom** : `jib-maven-plugin` retiré des `<dependencies>` ; le plugin reste dans `<build>` pour Skaffold.
+  - Tests : `ReviewManagementServiceImpTest#alreadyReviewedProductRejects`, `ErrorManagementControllerBranchTest#reviewAlreadyExistsReturns409`, `ReviewableOrderFlowIT#secondReviewOfTheSameProductIsRejected` (201 puis 409, un seul avis dans `/review/mine`) ; ITs avis + recommandations verts (`ReviewableOrderFlowIT` 7/7, `MyReviewsFlowIT` 5/5, `ProductReviewsFlowIT` 5/5, `RecommendationSignalsFlowIT` 2/2). `ReviewModerationFlowIT` 11/11. Suite complète `mvnw test` : 2 499 tests, 0 échec, 17 ignorés.
 
 - **2026-10-22 — Webhooks Stripe étrangers** : la clé de test étant partagée, `stripe listen` transmet aussi les paiements d'autres intégrations (constaté : `pi_3UTOGH…`, metadata `customer_name` / `order_reference`, aucune ligne en base), loggués en ERROR avec stack trace. `PaymentWebhookServiceImp` ignore désormais tout `payment_intent.succeeded` / `payment_failed` / `charge.refunded` sans metadata `order_uuid` : une ligne WARN, ni recherche en base, ni événement, ni ligne de dédup. Un `order_uuid` présent mais un paiement introuvable reste en ERROR. Clé `order_uuid` extraite dans `CyberTechAppConstants.STRIPE_METADATA_ORDER_UUID`. Test : `PaymentWebhookServiceImpTest#foreignPaymentIntentIsIgnored` ; `mvnw verify` 2 489 tests, 0 échec.
 
@@ -270,14 +278,10 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 - **2026-10-20 (suite) — Keycloak hostname épinglé** : `keycloak.hostname` = `http://keycloak.cybertech.local` (URL complète) ; l'`iss` ne dépend plus du port d'accès, un token obtenu via `kubectl port-forward svc/keycloak` est accepté par le backend du cluster (401 sans token → 403 avec un token de service account). Accès par port-forward documenté (Step 6a de `DEPLOY_MINIKUBE.md`). Le login navigateur du front exige toujours l'ingress (port 80 occupé par IIS sur le poste).
 - **Minikube — validation fonctionnelle** : le cluster tourne (2026-10-20) ; reste à tester l'authentification OIDC via `keycloak.cybertech.local`, l'upload/lecture d'une image via `s3.cybertech.local` et une commande payée de bout en bout (webhook Stripe). Les anciennes releases Loki/Grafana/LocalStack ne sont plus installées. Une ancienne claim `data-mongo-mongodb-0` (211 j) reste sans pod : à examiner avant suppression.
 - **Minikube — secret root MySQL** : la valeur Helm `MYSQL_ROOT_PASSWORD` n'est appliquée qu'à l'initialisation d'un volume vide ; le volume actuel (comme le dev) a un root sans mot de passe.
-- **Pom** : `jib-maven-plugin` est aussi déclaré comme `<dependency>`, ce qui embarque le plugin dans le jar applicatif ; à retirer.
 - **Suite IT complète rouge (préexistant)** : `./mvnw verify -Pintegration-test` → 13 erreurs, toutes `ProductSearchFlowIT` (« Connection refused » vers le port Elasticsearch Testcontainers d'un contexte Spring mis en cache dont le conteneur est déjà arrêté). Seul, l'IT passe (13/13). Reproduit à l'identique sur `d50e661` (avant le lot 2) le 2026-10-13 : non causé par le lot 2. Les 49 autres ITs sont verts. Piste : conteneur ES partagé statique (singleton) ou `@DirtiesContext` sur l'IT.
 - `updateOrder` reprend le prix **actuel** des produits, pas le prix figé de la commande (voir remarque du prompt 2).
 
-- `NotificationType.ORDER_UPDATE` n'a aucun handler (`@NotificationTypeHandler`) : `OrderEventListener.onOrderUpdated` finit en `NoStrategyFoundForProcessingTheRequest`, aucun email n'est envoyé après un `updateOrder`.
 - Email de création : « Statut : AWAITING_PAYMENT » affiche l'enum brut au client (libellé français à prévoir ; `Map.of` du handler est déjà à 10 entrées).
-
-- `WishlistManagementApiSpec` ne documente pas les paramètres de pagination de `/wishlist/my-wishlist`.
 
 - **Audit `CrudBaseService` (2026-10-02)** :
   - `BankCardManagementService` : **fait le 2026-10-02**. L'héritage `CrudBaseService` et le `create`/`update` admin sont retirés ; l'admin peut seulement lister, lire et supprimer. Doublon résolu : `findAllMine` / `GET /bank-card/all-mine` a été supprimé, et `getDefaultCard` / `GET /bank-card/default` a été renommé en `getCard` / `GET /bank-card/get`.
@@ -290,10 +294,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 - **Limite connue, non traitée** : un remboursement `pending` qui échoue ENSUITE chez Stripe (événement `charge.refund.updated` / `refund.failed`) n'est pas écouté — la ligne `REFUND` reste `PROCESSING` et compte comme remboursée. Rare pour des cartes.
 
 - **`FlashSaleSimulation` / `BrowseToOrderSimulation`** utilisent un unique `AUTH_TOKEN` statique pour tous les VUs — le `userFeeder` de `BrowseToOrderSimulation` est chargé mais jamais référencé. Invalide en partie la prémisse "multi-utilisateurs" des deux scénarios, en particulier `FlashSaleSimulation` qui est censé tester la contention stock inter-acheteurs et teste en réalité la contention panier d'un seul compte.
-- Inscription avec email en doublon → 500 (devrait être 409).
-- Protection anti-doublon sur les reviews produit : absente.
 - Indexation Elasticsearch avant commit DB (ordre à revoir).
-- Changement de catégorie produit sans revalidation des attributs associés.
 - Sort du branch de sauvegarde `claude/session-2026-09-25-fixes` (contient les 7 commits désormais supersédés par la reconciliation) : à garder ou supprimer, décision non prise.
 
 ### Explicitement mis de côté (sur décision du propriétaire du projet — ne pas traiter sans demande explicite)
@@ -309,6 +310,8 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ---
 
 ## 3. Remarques
+
+- **Avis en doublon (2026-11-06)** : le contrôle est applicatif. Deux `POST /review/create` simultanés du même utilisateur sur le même produit peuvent encore créer deux lignes. Pour fermer complètement : contrainte unique `(user_id, product_id)` sur `reviewTable` + capture de la violation (même pattern que la wishlist), après avoir vérifié qu'aucun doublon n'existe déjà en base. Des doublons créés avant ce correctif restent en base.
 
 - **Recommandations (2026-10-22)** : changement de contrat de `consume-event` : les types PURCHASE, ADD_TO_CART, REMOVE_FROM_CART, WISHLIST_ADD, RATING_*, REVIEW_* sont désormais refusés (400) et un produit inconnu donne 404. Le front ne l'appelait pas encore, donc rien ne casse côté front. L'idempotence du PURCHASE est une vérification avant écriture, sans index unique (pas d'auto-création d'index Mongo dans le projet) : deux confirmations simultanées de la même commande pourraient l'écrire deux fois, sans effet dans Gorse (`PUT` écrase). Une modification d'avis sans changement réémet le signal (sans effet non plus pour Gorse).
 - **Déploiement Helm/Minikube** : les checks sont statiques uniquement. Après démarrage de Minikube, réexporter `MINIKUBE_IP` avant `helmfile apply`, vérifier le secret Keycloak contre le client du realm et conserver `APP_CARD_ENCRYPTION_KEY` pour pouvoir déchiffrer les cartes existantes. Le frontend n'est pas déployé. `helmfile apply` ne supprime pas d'anciennes releases (`front-app`, `localstack`, `loki`, `grafana`) ; désinstaller seulement celles présentes et vérifier les données/PVC avant suppression. Les images enregistrées avec les anciens endpoints LocalStack doivent être réimportées.

@@ -67,6 +67,7 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
             EnumSet.of(OrderStatus.PAID, OrderStatus.AWAITING_SHIPPING, OrderStatus.SHIPPED, OrderStatus.DELIVERED);
 
     private static final String CREATED_AT = "createdAt";
+    private static final String REVIEW_ALREADY_EXISTS_MESSAGE = "The user has already reviewed this product, product UUID : ";
     private static final String ID = "id";
     private static final Set<String> MY_REVIEWS_SORTABLE_FIELDS = Set.of(CREATED_AT, "updatedAt", "rating");
     private static final Sort MY_REVIEWS_DEFAULT_ORDER = Sort.by(Sort.Direction.DESC, CREATED_AT);
@@ -116,6 +117,10 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         }
 
         checkIfUserAlreadyBoughtThisProduct(reviewCreateRequestDto, keycloakId, order, user);
+
+        if (reviewRepository.existsByUserEntity_KeycloakIdAndProductEntity_Uuid(keycloakId, reviewCreateRequestDto.getProductUuid())) {
+            throw new ReviewAlreadyExistsException(REVIEW_ALREADY_EXISTS_MESSAGE + reviewCreateRequestDto.getProductUuid());
+        }
 
         ReviewEntity reviewEntity = reviewMapper.mapFromCreationRequestToEntity(reviewCreateRequestDto);
 

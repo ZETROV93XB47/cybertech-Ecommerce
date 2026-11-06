@@ -22,6 +22,7 @@ import com.novatech.cybertech.exceptions.OrderDoesntBelongsToUserException;
 import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.exceptions.OrderNotReviewableException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.exceptions.ReviewAlreadyExistsException;
 import com.novatech.cybertech.exceptions.ReviewNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotAuthorOfReviewException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
@@ -236,6 +237,25 @@ class ReviewManagementServiceImpTest {
             assertReviewsChangedFor(product.getUuid());
             // 5 stars with a published comment: REVIEW_POSITIVE instead of RATING_POSITIVE.
             assertRecommendationSignal(UserEventType.REVIEW_POSITIVE, product.getUuid());
+        }
+
+        @Test
+        @DisplayName("product already reviewed by the user -> ReviewAlreadyExistsException; no moderation, nothing persisted")
+        void alreadyReviewedProductRejects() {
+            ReviewCreateRequestDto dto = createDto();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            OrderEntity order = callerOrderContainingProduct(productUuid);
+
+            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
+            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+            when(reviewRepository.existsByUserEntity_KeycloakIdAndProductEntity_Uuid(keycloakId, productUuid)).thenReturn(true);
+
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
+                    .isInstanceOf(ReviewAlreadyExistsException.class)
+                    .hasMessageContaining(productUuid.toString());
+
+            verifyNoInteractions(moderationService);
+            verify(reviewRepository, never()).save(any());
         }
 
         @ParameterizedTest(name = "comment = [{0}]")

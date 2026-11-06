@@ -1,5 +1,12 @@
 # Plan
 
+- [x] **Bugs simples du backlog** (2026-11-06, estimé ~1 h, sans sous-agent) :
+  - [x] Tri du backlog : email en doublon à l'inscription (déjà 409, `ad38902`), handler `ORDER_UPDATE` (existe : `OrderUpdateNotification`), revalidation catégorie produit (déjà faite) → notes périmées retirées de `progress.md`.
+  - [x] `pom.xml` : retirer `jib-maven-plugin` des `<dependencies>` (le plugin reste dans `<build>`).
+  - [x] Avis en doublon : un seul avis par utilisateur et par produit → `ReviewAlreadyExistsException` 409 `REVIEW_ALREADY_EXISTS` (ErrorCode, handler, OpenAPI, tests).
+  - [x] `WishlistManagementApiSpec` : documenter `page` / `size` / `sort` de `/wishlist/my-wishlist`.
+  - [x] `mvnw test` vert, `progress.md`, commit.
+
 - [x] **Prompt front 12 — carte : suppression sans effet, 2e ajout en 500, remplacement** (2026-10-20) :
   - [x] `deleteBankCard` (et suppression admin) : dissocier la carte de l'utilisateur pour que la suppression ne soit plus annulée par la cascade.
   - [x] `BankCardAlreadyExistsException` → 409 `BANK_CARD_ALREADY_EXISTS` (ErrorCode, handler, OpenAPI).
@@ -10,9 +17,9 @@
   - [x] `BankCardAlreadyExistsException` → 409 `BANK_CARD_ALREADY_EXISTS` (ErrorCode, handler, OpenAPI).
   - [x] `PUT /bank-card/replace` : validation puis suppression + ajout dans une seule transaction.
   - [x] Tests unitaires + IT (add → delete → get 404 → add 201 ; add en double 409 ; replace 200 ; replace invalide 400 et ancienne carte conservée) ; `mvnw test` vert (2 344 tests, 0 échec) ; `BankCardFlowIT` 5/5 ; OpenAPI, `progress.md`, commit.
-- [ ] **Prompt front 13 — `GET /review/mine`** (2026-10-20) :
-  - [ ] Repository + service + `MyReviewDto` + endpoint paginé (size 10, tri `createdAt,desc`), avis de l'appelant uniquement.
-  - [ ] OpenAPI, tests (unitaires + IT : seulement mes avis, pagination, tri, 401) ; `mvnw test` vert ; `progress.md`, commit.
+- [x] **Prompt front 13 — `GET /review/mine`** (2026-10-20, livré `bddcafd`) :
+  - [x] Repository + service + `MyReviewDto` + endpoint paginé (size 10, tri `createdAt,desc`), avis de l'appelant uniquement.
+  - [x] OpenAPI, tests (unitaires + IT : seulement mes avis, pagination, tri, 401) ; `mvnw test` vert ; `progress.md`, commit.
 
 - [x] **Prompt front 11 — détail structuré de `NOT_ENOUGH_STOCK`** (2026-10-20, estimé < 2 h, sans sous-agent) :
   - [x] `exceptions` — `StockShortage` (productUuid, requested, available ≥ 0) + `NotEnoughStockException` porteuse d'une liste.

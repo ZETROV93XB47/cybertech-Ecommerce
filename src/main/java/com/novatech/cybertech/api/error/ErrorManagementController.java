@@ -412,6 +412,16 @@ public class ErrorManagementController {
         return new ResponseEntity<>(errorResponseDto, ORDER_NOT_REVIEWABLE.getResponseStatus());
     }
 
+    /**
+     * Maps {@link ReviewAlreadyExistsException} to HTTP 409 CONFLICT: the user has already reviewed
+     * this product (one review per user and product); the existing review can be edited instead.
+     */
+    @ExceptionHandler(ReviewAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponseDto> handleReviewAlreadyExistsException(ReviewAlreadyExistsException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), REVIEW_ALREADY_EXISTS);
+        return new ResponseEntity<>(errorResponseDto, REVIEW_ALREADY_EXISTS.getResponseStatus());
+    }
+
     @ExceptionHandler(UnknownProductCategoryException.class)
     public ResponseEntity<ErrorResponseDto> handleUnknownProductCategoryException(UnknownProductCategoryException exception) {
         final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), UNKNOWN_PRODUCT_CATEGORY);
