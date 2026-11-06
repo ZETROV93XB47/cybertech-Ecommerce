@@ -1,10 +1,12 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : bugs simples du backlog (avis en doublon, doc wishlist, dépendance Jib) — branche `develop_back`._
+_Dernière mise à jour : statut de commande en français dans les emails — branche `develop_back`._
 
 ---
 
 ## 1. SITTREP
+
+**Session du 2026-11-06 (suite) — Statut de commande en français dans les emails.** Les emails de création et de modification de commande affichaient l'enum brut (« Statut : AWAITING_PAYMENT »). `OrderStatus` porte maintenant un libellé français (`getLabel()`), utilisé par `OrderConfirmationNotification` et `OrderUpdateNotification`. L'API, la base et les payloads continuent d'utiliser le nom de l'enum. `mvnw test` 2 511 tests, 0 échec ; `PaymentWebhookFlowIT` 12/12, `OrderFlowIT` 16/16.
 
 **Session du 2026-11-06 — Bugs simples du backlog.** Tri d'abord : trois notes de la section 2 étaient périmées (email en doublon à l'inscription déjà en 409 depuis `ad38902`, handler `ORDER_UPDATE` présent via `OrderUpdateNotification`, revalidation des attributs au changement de catégorie déjà faite) et ont été retirées. Corrigé : (1) un utilisateur ne peut plus publier deux avis sur le même produit → **409 `REVIEW_ALREADY_EXISTS`** ; (2) la doc OpenAPI de `GET /wishlist/my-wishlist` annonçait un tableau alors que l'endpoint renvoie un `PagedModel` → corrigée, avec `page` / `size` / `sort` ; (3) `jib-maven-plugin` retiré des dépendances (il restait embarqué dans le jar). `mvnw test` 2 499 tests, 0 échec ; ITs avis 30/30. Rien de commencé ensuite.
 
@@ -69,6 +71,8 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ## 2. Tâches faites / tâches suivantes
 
 ### Faites (cette phase de travail)
+
+- **2026-11-06 — Statut de commande lisible dans les emails.** `OrderStatus` : champ `label` (Créée, En attente de paiement, Paiement échoué, Payée, En préparation, Expédiée, Livrée, Retournée, Annulée, Remboursée). `OrderConfirmationNotification` et `OrderUpdateNotification` passent `getLabel()` à la variable `orderStatus` des templates `order-confirmation.html` / `order-update.html` (texte d'aperçu des templates mis à jour). Rien ne change pour l'API (Jackson sérialise toujours le nom de l'enum), JPA (`EnumType.STRING`) ni les payloads de redrive. Tests : `OrderStatusEnumTest` (libellé non vide, différent du nom, unique ; correspondance figée), `OrderConfirmationNotificationTest` / `OrderUpdateNotificationTest` (libellé dans les variables). `mvnw test` 2 511 tests, 0 échec, 17 ignorés ; `PaymentWebhookFlowIT` 12/12, `OrderFlowIT` 16/16.
 
 - **2026-11-06 — Avis en doublon, doc wishlist, dépendance Jib.**
   - **Avis** : `ReviewManagementServiceImp.create` vérifie `ReviewRepository.existsByUserEntity_KeycloakIdAndProductEntity_Uuid` après les contrôles de commande et avant la modération (pas d'appel au service de modération pour un doublon). Nouvelle `ReviewAlreadyExistsException` → 409 `REVIEW_ALREADY_EXISTS` (`ErrorCode`, handler). Règle : un avis par utilisateur et par produit (la même règle que `GET /review/reviewable`, qui masquait déjà les produits notés) ; pour changer d'avis, `PATCH /review/update/{reviewUuid}`. OpenAPI : 409 documenté sur `POST /review/create` (`ORDER_NOT_REVIEWABLE` y manquait aussi). Pas de contrainte d'unicité en base : deux requêtes simultanées peuvent encore passer (voir section 3).
@@ -281,7 +285,6 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 - **Suite IT complète rouge (préexistant)** : `./mvnw verify -Pintegration-test` → 13 erreurs, toutes `ProductSearchFlowIT` (« Connection refused » vers le port Elasticsearch Testcontainers d'un contexte Spring mis en cache dont le conteneur est déjà arrêté). Seul, l'IT passe (13/13). Reproduit à l'identique sur `d50e661` (avant le lot 2) le 2026-10-13 : non causé par le lot 2. Les 49 autres ITs sont verts. Piste : conteneur ES partagé statique (singleton) ou `@DirtiesContext` sur l'IT.
 - `updateOrder` reprend le prix **actuel** des produits, pas le prix figé de la commande (voir remarque du prompt 2).
 
-- Email de création : « Statut : AWAITING_PAYMENT » affiche l'enum brut au client (libellé français à prévoir ; `Map.of` du handler est déjà à 10 entrées).
 
 - **Audit `CrudBaseService` (2026-10-02)** :
   - `BankCardManagementService` : **fait le 2026-10-02**. L'héritage `CrudBaseService` et le `create`/`update` admin sont retirés ; l'admin peut seulement lister, lire et supprimer. Doublon résolu : `findAllMine` / `GET /bank-card/all-mine` a été supprimé, et `getDefaultCard` / `GET /bank-card/default` a été renommé en `getCard` / `GET /bank-card/get`.

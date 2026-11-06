@@ -60,7 +60,7 @@ class OrderUpdateNotificationTest {
         assertThat(ctx.getTemplateVariables())
                 .containsEntry("userName", "Jane")
                 .containsEntry("amount", new BigDecimal("249.90"))
-                .containsEntry("orderStatus", OrderStatus.PAID)
+                .containsEntry("orderStatus", "Payée")
                 .containsEntry("themeColor", "#27ae60");
         verify(notificationProcessor).sendMessage(ctx);
     }

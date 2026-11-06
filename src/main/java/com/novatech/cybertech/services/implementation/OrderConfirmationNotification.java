@@ -43,7 +43,7 @@ public class OrderConfirmationNotification extends AbstractNotification {
                 ORDER_ID, payload.getOrderUuid(),
                 AMOUNT, payload.getTotalAmount(),
                 EMAIL, payload.getUserContactDto().getEmail(),
-                ORDER_STATUS, payload.getOrderStatus(),
+                ORDER_STATUS, payload.getOrderStatus().getLabel(),
                 TITLE, format.title(),
                 THEME_COLOR, format.themeColor(),
                 THEME_BACKGROUND_COLOR, format.themeBackgroundColor(),

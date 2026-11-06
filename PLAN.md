@@ -1,5 +1,10 @@
 # Plan
 
+- [x] **Statut de commande en français dans les emails** (2026-11-06, estimé ~20 min) :
+  - [x] `OrderStatus` : libellé français par valeur (`getLabel()`).
+  - [x] `OrderConfirmationNotification` / `OrderUpdateNotification` : passer le libellé au template au lieu de l'enum.
+  - [x] Tests (enum : libellé non vide pour chaque valeur ; handlers : libellé dans les variables) ; `mvnw test` vert ; `progress.md`, commit.
+
 - [x] **Bugs simples du backlog** (2026-11-06, estimé ~1 h, sans sous-agent) :
   - [x] Tri du backlog : email en doublon à l'inscription (déjà 409, `ad38902`), handler `ORDER_UPDATE` (existe : `OrderUpdateNotification`), revalidation catégorie produit (déjà faite) → notes périmées retirées de `progress.md`.
   - [x] `pom.xml` : retirer `jib-maven-plugin` des `<dependencies>` (le plugin reste dans `<build>`).

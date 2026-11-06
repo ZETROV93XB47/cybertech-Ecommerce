@@ -78,7 +78,7 @@ class OrderConfirmationNotificationTest {
                 .containsEntry("orderId", p.getOrderUuid())
                 .containsEntry("amount", new BigDecimal("199.99"))
                 .containsEntry("email", "jane@example.com")
-                .containsEntry("orderStatus", OrderStatus.CREATED)
+                .containsEntry("orderStatus", "Créée")
                 .containsEntry("title", "Confirmation de votre commande")
                 .containsEntry("themeColor", "#27ae60")
                 .containsEntry("themeBackgroundColor", "#eafaf1")

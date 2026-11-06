@@ -17,7 +17,7 @@ import java.util.Map;
  * E-mail sent on {@link NotificationType#ORDER_UPDATE}: after {@code updateOrder} (the new total
  * was charged as a complement or partly refunded) and after {@code retryPayment}. The payload's
  * {@code paymentAttemptStatus} is the outcome of that payment or refund, which picks the wording.
- * The order status is shown raw (enum name), like in the order-confirmation e-mail.
+ * The order status is shown with its French label ({@link com.novatech.cybertech.entities.enums.OrderStatus#getLabel()}), like in the order-confirmation e-mail.
  */
 @Slf4j
 @Service
@@ -49,7 +49,7 @@ public class OrderUpdateNotification extends AbstractNotification {
                 ORDER_ID, payload.getOrderUuid(),
                 AMOUNT, payload.getTotalAmount(),
                 EMAIL, payload.getUserContactDto().getEmail(),
-                ORDER_STATUS, payload.getOrderStatus(),
+                ORDER_STATUS, payload.getOrderStatus().getLabel(),
                 TITLE, format.title(),
                 THEME_COLOR, format.themeColor(),
                 THEME_BACKGROUND_COLOR, format.themeBackgroundColor(),
