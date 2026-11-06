@@ -8,16 +8,16 @@ import com.novatech.cybertech.dto.response.product.ProductResponseDto;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.validator.ProductValidationService;
+import com.novatech.cybertech.events.ProductCatalogChangedEvent;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
-import com.novatech.cybertech.repositories.ProductSearchRepository;
 import com.novatech.cybertech.services.core.ProductManagementService;
-import com.novatech.cybertech.services.core.ProductSearchIndexService;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import com.novatech.cybertech.services.core.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -44,8 +44,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
     private final ProductMapper productMapper;
     private final ProductRepository productRepository;
     private final ProductSearchService productSearchService;
-    private final ProductSearchRepository productSearchRepository;
-    private final ProductSearchIndexService productSearchIndexService;
+    private final ApplicationEventPublisher eventPublisher;
     private final ProductValidationService productValidationService;
 
 
@@ -97,8 +96,9 @@ public class ProductManagementServiceImp implements ProductManagementService {
     private ProductResponseDto persistAndIndex(final ProductEntity entity) {
         final ProductEntity savedProductEntity = productRepository.save(entity);
 
-        productSearchIndexService.index(savedProductEntity);
-        log.info("Product {} '{}' created ({}, price {}, stock {}, {} photo(s)) and indexed", savedProductEntity.getUuid(),
+        // Indexed after commit (ProductSearchIndexListener): no search document for a rolled-back product.
+        eventPublisher.publishEvent(new ProductCatalogChangedEvent(this, savedProductEntity.getUuid()));
+        log.info("Product {} '{}' created ({}, price {}, stock {}, {} photo(s))", savedProductEntity.getUuid(),
                 savedProductEntity.getName(), savedProductEntity.getCategory(), savedProductEntity.getPrice(),
                 savedProductEntity.getStock(), savedProductEntity.getPhotos() == null ? 0 : savedProductEntity.getPhotos().size());
 
@@ -135,9 +135,9 @@ public class ProductManagementServiceImp implements ProductManagementService {
 
         final ProductEntity saved = productRepository.save(existing);
 
-        // Ratings included: a product update must not wipe averageRating / reviewCount.
-        productSearchIndexService.index(saved);
-        log.info("Product {} updated (price {}, stock {}) and re-indexed", uuid, saved.getPrice(), saved.getStock());
+        // Re-indexed after commit, ratings included (a product update must not wipe averageRating / reviewCount).
+        eventPublisher.publishEvent(new ProductCatalogChangedEvent(this, uuid));
+        log.info("Product {} updated (price {}, stock {})", uuid, saved.getPrice(), saved.getStock());
 
         return productMapper.mapFromEntityToResponseDto(saved);
     }
@@ -146,8 +146,9 @@ public class ProductManagementServiceImp implements ProductManagementService {
     @Transactional
     public void deleteByUUID(final UUID uuid, final String keycloakId) {
         productRepository.deleteByUuid(uuid);
-        productSearchRepository.deleteByUuid(uuid);
-        log.info("Product {} deleted from DB and search index", uuid);
+        // Removed from the search index after commit: a rolled-back deletion keeps its document.
+        eventPublisher.publishEvent(new ProductCatalogChangedEvent(this, uuid));
+        log.info("Product {} deleted", uuid);
     }
 
     @Override

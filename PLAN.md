@@ -1,5 +1,11 @@
 # Plan
 
+- [x] **Index Elasticsearch produit mis à jour après le commit MySQL** (2026-11-06, estimé ~45 min) :
+  - [x] `ProductCatalogChangedEvent` publié par `create` / `createWithImage` / `update` / `deleteByUUID` au lieu d'écrire dans ES dans la transaction.
+  - [x] `ProductSearchIndexService.syncFromDatabase(uuid)` (REQUIRES_NEW, lecture seule) : produit présent → indexé, absent → document supprimé.
+  - [x] `ProductSearchIndexListener` (AFTER_COMMIT, synchrone) : panne ES loguée en ERROR, la requête réussit.
+  - [x] Tests unitaires (service, index service, listener) ; `ProductSearchFlowIT` + `ProductSearchSortFlowIT` ; `mvnw test` vert ; `progress.md`, commit.
+
 - [x] **Statut de commande en français dans les emails** (2026-11-06, estimé ~20 min) :
   - [x] `OrderStatus` : libellé français par valeur (`getLabel()`).
   - [x] `OrderConfirmationNotification` / `OrderUpdateNotification` : passer le libellé au template au lieu de l'enum.

@@ -14,6 +14,7 @@ import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.document.Document;
 import org.springframework.data.elasticsearch.core.query.UpdateQuery;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -45,6 +46,18 @@ public class ProductSearchIndexServiceImp implements ProductSearchIndexService {
     @Override
     public void index(final ProductEntity product) {
         productSearchRepository.save(toDocument(product, reviewRepository.findPublishedRatingStats(product.getUuid())));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public void syncFromDatabase(final UUID productUuid) {
+        productRepository.findByUuid(productUuid).ifPresentOrElse(product -> {
+            index(product);
+            log.info("Product {} indexed", productUuid);
+        }, () -> {
+            productSearchRepository.deleteByUuid(productUuid);
+            log.info("Product {} no longer in the database — removed from the search index", productUuid);
+        });
     }
 
     @Override

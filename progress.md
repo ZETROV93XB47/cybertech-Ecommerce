@@ -1,10 +1,12 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : statut de commande en français dans les emails — branche `develop_back`._
+_Dernière mise à jour : index Elasticsearch produit écrit après le commit MySQL — branche `develop_back`._
 
 ---
 
 ## 1. SITTREP
+
+**Session du 2026-11-06 (suite 2) — Index Elasticsearch produit écrit après le commit MySQL.** `create` / `createWithImage` / `update` / `deleteByUUID` écrivaient dans Elasticsearch au milieu de la transaction MySQL : un rollback laissait un document de recherche pour un produit inexistant (ou faisait disparaître de la recherche un produit dont la suppression avait échoué). Le service publie maintenant `ProductCatalogChangedEvent` ; `ProductSearchIndexListener` (AFTER_COMMIT, synchrone) relit le produit en base et l'indexe, ou supprime son document s'il n'existe plus. **Changement de comportement** : une panne Elasticsearch ne fait plus échouer la requête admin (le produit est enregistré, ERROR dans les logs). `mvnw test` 2 515 tests, 0 échec ; `ProductSearchFlowIT` 20/20, `ProductSearchSortFlowIT` 7/7.
 
 **Session du 2026-11-06 (suite) — Statut de commande en français dans les emails.** Les emails de création et de modification de commande affichaient l'enum brut (« Statut : AWAITING_PAYMENT »). `OrderStatus` porte maintenant un libellé français (`getLabel()`), utilisé par `OrderConfirmationNotification` et `OrderUpdateNotification`. L'API, la base et les payloads continuent d'utiliser le nom de l'enum. `mvnw test` 2 511 tests, 0 échec ; `PaymentWebhookFlowIT` 12/12, `OrderFlowIT` 16/16.
 
@@ -71,6 +73,8 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ## 2. Tâches faites / tâches suivantes
 
 ### Faites (cette phase de travail)
+
+- **2026-11-06 — Index Elasticsearch produit après commit.** Nouveaux : `events/ProductCatalogChangedEvent` (UUID du produit), `listener/ProductSearchIndexListener` (`@TransactionalEventListener(AFTER_COMMIT)`, sans `@Async` pour que le produit soit cherchable dès la réponse ; exception ES capturée et loguée en ERROR), `ProductSearchIndexService.syncFromDatabase(uuid)` (`REQUIRES_NEW`, lecture seule, obligatoire en AFTER_COMMIT : la transaction d'origine est terminée ; produit présent → `index`, absent → `deleteByUuid`). `ProductManagementServiceImp` ne dépend plus de `ProductSearchRepository` ni de `ProductSearchIndexService`, seulement d'`ApplicationEventPublisher`. Même schéma que `ProductRatingIndexListener` (notes). Tests : `ProductManagementServiceImpTest` (événement publié après save / delete ; rien de publié si la base échoue — remplace les tests qui figeaient « panne ES → exception »), `ProductSearchIndexServiceImpTest` (+2 : sync présent / absent), `ProductSearchIndexListenerTest` (2). `ProductSearchFlowIT` 20/20 (création, modification, suppression via l'API contre un vrai ES), `ProductSearchSortFlowIT` 7/7 ; `mvnw test` 2 515 tests, 0 échec, 17 ignorés.
 
 - **2026-11-06 — Statut de commande lisible dans les emails.** `OrderStatus` : champ `label` (Créée, En attente de paiement, Paiement échoué, Payée, En préparation, Expédiée, Livrée, Retournée, Annulée, Remboursée). `OrderConfirmationNotification` et `OrderUpdateNotification` passent `getLabel()` à la variable `orderStatus` des templates `order-confirmation.html` / `order-update.html` (texte d'aperçu des templates mis à jour). Rien ne change pour l'API (Jackson sérialise toujours le nom de l'enum), JPA (`EnumType.STRING`) ni les payloads de redrive. Tests : `OrderStatusEnumTest` (libellé non vide, différent du nom, unique ; correspondance figée), `OrderConfirmationNotificationTest` / `OrderUpdateNotificationTest` (libellé dans les variables). `mvnw test` 2 511 tests, 0 échec, 17 ignorés ; `PaymentWebhookFlowIT` 12/12, `OrderFlowIT` 16/16.
 
@@ -297,7 +301,6 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 - **Limite connue, non traitée** : un remboursement `pending` qui échoue ENSUITE chez Stripe (événement `charge.refund.updated` / `refund.failed`) n'est pas écouté — la ligne `REFUND` reste `PROCESSING` et compte comme remboursée. Rare pour des cartes.
 
 - **`FlashSaleSimulation` / `BrowseToOrderSimulation`** utilisent un unique `AUTH_TOKEN` statique pour tous les VUs — le `userFeeder` de `BrowseToOrderSimulation` est chargé mais jamais référencé. Invalide en partie la prémisse "multi-utilisateurs" des deux scénarios, en particulier `FlashSaleSimulation` qui est censé tester la contention stock inter-acheteurs et teste en réalité la contention panier d'un seul compte.
-- Indexation Elasticsearch avant commit DB (ordre à revoir).
 - Sort du branch de sauvegarde `claude/session-2026-09-25-fixes` (contient les 7 commits désormais supersédés par la reconciliation) : à garder ou supprimer, décision non prise.
 
 ### Explicitement mis de côté (sur décision du propriétaire du projet — ne pas traiter sans demande explicite)
@@ -313,6 +316,8 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ---
 
 ## 3. Remarques
+
+- **Index produit (2026-11-06)** : si Elasticsearch est en panne au moment d'un enregistrement admin, le produit est en base mais pas (ou pas à jour) dans la recherche. Le document est réparé à la prochaine modification du produit, ou au démarrage si l'index est vide. Il n'existe pas d'endpoint de réindexation complète (`ProductSearchIndexService.reindexAll()` existe mais n'est appelé qu'au démarrage) : à ajouter côté admin si ce cas devient gênant.
 
 - **Avis en doublon (2026-11-06)** : le contrôle est applicatif. Deux `POST /review/create` simultanés du même utilisateur sur le même produit peuvent encore créer deux lignes. Pour fermer complètement : contrainte unique `(user_id, product_id)` sur `reviewTable` + capture de la violation (même pattern que la wishlist), après avoir vérifié qu'aucun doublon n'existe déjà en base. Des doublons créés avant ce correctif restent en base.
 

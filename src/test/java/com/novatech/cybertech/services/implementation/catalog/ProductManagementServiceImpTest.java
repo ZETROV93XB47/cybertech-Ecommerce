@@ -8,13 +8,12 @@ import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.document.ProductDocument;
 import com.novatech.cybertech.entities.enums.Brand;
 import com.novatech.cybertech.entities.validator.ProductValidationService;
+import com.novatech.cybertech.events.ProductCatalogChangedEvent;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
 import com.novatech.cybertech.fixtures.dto.ProductDtoFixtures;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
-import com.novatech.cybertech.repositories.ProductSearchRepository;
-import com.novatech.cybertech.services.core.ProductSearchIndexService;
 import com.novatech.cybertech.services.core.ProductSearchService;
 import com.novatech.cybertech.services.core.S3Service;
 import com.novatech.cybertech.services.implementation.ProductManagementServiceImp;
@@ -22,10 +21,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
@@ -60,18 +61,24 @@ class ProductManagementServiceImpTest {
     @Mock ProductMapper productMapper;
     @Mock ProductRepository productRepository;
     @Mock ProductSearchService productSearchService;
-    @Mock ProductSearchRepository productSearchRepository;
-    @Mock ProductSearchIndexService productSearchIndexService;
+    @Mock ApplicationEventPublisher eventPublisher;
     @Mock ProductValidationService productValidationService;
 
     @InjectMocks ProductManagementServiceImp service;
+
+    /** The search index is written after commit by ProductSearchIndexListener: the service only publishes. */
+    private void assertCatalogChangedPublishedFor(final UUID productUuid) {
+        final ArgumentCaptor<ProductCatalogChangedEvent> captor = ArgumentCaptor.forClass(ProductCatalogChangedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().getProductUuid()).isEqualTo(productUuid);
+    }
 
     @Nested
     @DisplayName("create")
     class Create {
 
         @Test
-        @DisplayName("happy path saves SQL entity then ES document, returns mapped response")
+        @DisplayName("happy path saves SQL entity then publishes the catalog change, returns mapped response")
         void create_happyPath_savesSqlAndEs() {
             ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
@@ -85,10 +92,11 @@ class ProductManagementServiceImpTest {
             ProductResponseDto result = service.create(req, "kc-admin");
 
             assertThat(result).isSameAs(expected);
-            InOrder inOrder = inOrder(productValidationService, productRepository, productSearchIndexService);
+            InOrder inOrder = inOrder(productValidationService, productRepository, eventPublisher);
             inOrder.verify(productValidationService).validateAttributes(req.getCategory(), req.getAttributes());
             inOrder.verify(productRepository).save(mapped);
-            inOrder.verify(productSearchIndexService).index(saved);
+            inOrder.verify(eventPublisher).publishEvent(any(ProductCatalogChangedEvent.class));
+            assertCatalogChangedPublishedFor(saved.getUuid());
         }
 
         @Test
@@ -101,24 +109,22 @@ class ProductManagementServiceImpTest {
             assertThatThrownBy(() -> service.create(req, "kc-admin")).isInstanceOf(IllegalArgumentException.class);
 
             verifyNoInteractions(productRepository);
-            verifyNoInteractions(productSearchIndexService);
+            verifyNoInteractions(eventPublisher);
         }
 
         @Test
-        @DisplayName("ES failure propagates after SQL save")
-        void create_esFailure_propagates() {
+        @DisplayName("SQL save failure: no catalog change published, so nothing reaches the search index")
+        void create_saveFails_nothingPublished() {
             ProductCreateRequestDto req = ProductDtoFixtures.aValidCreateRequest();
             ProductEntity mapped = ProductEntityBuilder.aValidProduct();
-            ProductEntity saved = ProductEntityBuilder.aValidProduct();
 
             when(productMapper.mapFromCreationRequestToEntity(req)).thenReturn(mapped);
-            when(productRepository.save(mapped)).thenReturn(saved);
-            org.mockito.Mockito.doThrow(new RuntimeException("ES down")).when(productSearchIndexService).index(saved);
+            when(productRepository.save(mapped)).thenThrow(new RuntimeException("DB down"));
 
             assertThatThrownBy(() -> service.create(req, "kc-admin"))
                     .isInstanceOf(RuntimeException.class)
-                    .hasMessage("ES down");
-            verify(productRepository).save(mapped);
+                    .hasMessage("DB down");
+            verifyNoInteractions(eventPublisher);
         }
     }
 
@@ -208,7 +214,7 @@ class ProductManagementServiceImpTest {
     class Update {
 
         @Test
-        @DisplayName("uses lockByUuid and re-indexes into ES")
+        @DisplayName("uses lockByUuid, saves, then publishes the catalog change")
         void update_happyPath_locksAndReindexes() {
             ProductUpdateRequestDto req = ProductDtoFixtures.aValidUpdateRequest();
             ProductEntity existing = ProductEntityBuilder.aValidProductBuilder().uuid(req.getProductUuid()).build();
@@ -222,10 +228,11 @@ class ProductManagementServiceImpTest {
             ProductResponseDto result = service.update(req, "kc-admin");
 
             assertThat(result).isSameAs(expected);
-            InOrder inOrder = inOrder(productRepository, productSearchIndexService);
+            InOrder inOrder = inOrder(productRepository, eventPublisher);
             inOrder.verify(productRepository).lockByUuid(req.getProductUuid());
             inOrder.verify(productRepository).save(existing);
-            inOrder.verify(productSearchIndexService).index(saved);
+            inOrder.verify(eventPublisher).publishEvent(any(ProductCatalogChangedEvent.class));
+            assertCatalogChangedPublishedFor(req.getProductUuid());
             verify(productRepository, never()).findByUuid(any());
         }
 
@@ -240,7 +247,7 @@ class ProductManagementServiceImpTest {
                     .hasMessageContaining(req.getProductUuid().toString());
 
             verify(productRepository, never()).save(any());
-            verifyNoInteractions(productSearchIndexService);
+            verifyNoInteractions(eventPublisher);
         }
 
         @Test
@@ -324,7 +331,7 @@ class ProductManagementServiceImpTest {
 
             assertThat(existing.getCategory()).isEqualTo("COMPUTER");
             verify(productRepository, never()).save(any());
-            verifyNoInteractions(productSearchIndexService);
+            verifyNoInteractions(eventPublisher);
         }
 
         @Test
@@ -354,25 +361,26 @@ class ProductManagementServiceImpTest {
     class DeleteByUUID {
 
         @Test
-        @DisplayName("happy path deletes from SQL and ES")
-        void deleteByUUID_happyPath_bothSinks() {
+        @DisplayName("happy path deletes from SQL, then publishes the catalog change (document removed after commit)")
+        void deleteByUUID_happyPath_deletesThenPublishes() {
             UUID id = UUID.randomUUID();
             service.deleteByUUID(id, "kc-admin");
 
-            InOrder inOrder = inOrder(productRepository, productSearchRepository);
+            InOrder inOrder = inOrder(productRepository, eventPublisher);
             inOrder.verify(productRepository).deleteByUuid(id);
-            inOrder.verify(productSearchRepository).deleteByUuid(id);
+            inOrder.verify(eventPublisher).publishEvent(any(ProductCatalogChangedEvent.class));
+            assertCatalogChangedPublishedFor(id);
         }
 
         @Test
-        @DisplayName("ES failure after SQL delete propagates")
-        void deleteByUUID_esFailure_propagates() {
+        @DisplayName("SQL delete failure: nothing published, the search document stays")
+        void deleteByUUID_sqlFailure_nothingPublished() {
             UUID id = UUID.randomUUID();
-            org.mockito.Mockito.doThrow(new RuntimeException("ES boom"))
-                    .when(productSearchRepository).deleteByUuid(id);
+            org.mockito.Mockito.doThrow(new RuntimeException("DB boom"))
+                    .when(productRepository).deleteByUuid(id);
 
             assertThatThrownBy(() -> service.deleteByUUID(id, "kc-admin")).isInstanceOf(RuntimeException.class);
-            verify(productRepository).deleteByUuid(id);
+            verifyNoInteractions(eventPublisher);
         }
     }
 

@@ -74,6 +74,34 @@ class ProductSearchIndexServiceImpTest {
     }
 
     @Test
+    @DisplayName("syncFromDatabase: product still in the database -> document indexed with its ratings")
+    void syncIndexesAnExistingProduct() {
+        final ProductEntity product = ProductEntityBuilder.aValidProduct();
+        final ProductDocument document = stubDocument(product);
+        when(productRepository.findByUuid(product.getUuid())).thenReturn(Optional.of(product));
+        when(reviewRepository.findPublishedRatingStats(product.getUuid()))
+                .thenReturn(Optional.of(stats(product.getUuid(), 3.0, 1)));
+
+        service.syncFromDatabase(product.getUuid());
+
+        verify(productSearchRepository).save(document);
+        verify(productSearchRepository, never()).deleteByUuid(any());
+        assertThat(document.getAverageRating()).isEqualTo(3.0);
+    }
+
+    @Test
+    @DisplayName("syncFromDatabase: product gone from the database -> document deleted")
+    void syncDeletesAMissingProduct() {
+        final UUID productUuid = UUID.randomUUID();
+        when(productRepository.findByUuid(productUuid)).thenReturn(Optional.empty());
+
+        service.syncFromDatabase(productUuid);
+
+        verify(productSearchRepository).deleteByUuid(productUuid);
+        verify(productSearchRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("index: the document carries the published-review statistics")
     void indexCarriesRatings() {
         final ProductEntity product = ProductEntityBuilder.aValidProduct();

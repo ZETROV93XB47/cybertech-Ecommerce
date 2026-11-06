@@ -15,6 +15,12 @@ public interface ProductSearchIndexService {
     void index(ProductEntity product);
 
     /**
+     * Aligns the product's document with the database, in its own read-only transaction (called
+     * after the writing transaction committed): indexed if the product exists, deleted otherwise.
+     */
+    void syncFromDatabase(UUID productUuid);
+
+    /**
      * Rewrites only {@code averageRating} / {@code reviewCount} of an indexed product, after one of
      * its published reviews was created, modified or deleted. No-op if the product is not indexed.
      */
