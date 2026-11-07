@@ -288,6 +288,7 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### À faire / pistes ouvertes (non traitées, non priorisées)
 
+- **Alerte de retour en stock** : n'existe pas. Plan prêt : `docs/plans/back-in-stock-alert.md` (job toutes les 10 min plutôt qu'un événement par chemin de stock ; 6 décisions à prendre avant de coder : déclenchement, canal, peu d'unités / beaucoup d'abonnés, alerte unique ou permanente, durée de vie, produit déjà en stock). Pour lancer : « Exécute `docs/plans/back-in-stock-alert.md` ».
 - **Email de suggestions produits (Gorse → utilisateur)** : n'existe pas (aucun job, type de notification, template ni consentement ; `recommendationTable` jamais utilisée). Plan prêt : `docs/plans/recommendation-digest-email.md` (4 décisions à prendre avant de coder : fréquence, consentement, utilisateur sans suggestion perso, nombre de produits). Pour lancer : « Exécute `docs/plans/recommendation-digest-email.md` ».
 - **Gorse — fenêtre du batch** (choix conservé, documenté) : `GorseSyncTasklet` relit les 20 dernières minutes (`cybertech.gorse.sync.job.lookback-minutes`). Un backend arrêté plus longtemps perd les événements écrits juste avant l'arrêt. Passer à un repère persistant (dernier timestamp synchronisé, par exemple dans Redis ou une table) si ça devient gênant.
 - **Gorse — commande annulée / remboursée** (à décider) : le `PURCHASE` reste dans MongoDB et dans Gorse. Le retirer demanderait `DELETE /api/feedback/PURCHASE/{user}/{item}` au remboursement / à l'annulation.
