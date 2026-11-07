@@ -31,6 +31,8 @@ public class TestDataCleaner {
             "bankCardTable",
             "notificationTable",
             "keycloak_outbox",
+            "stockAlertTable",
+            "recommendationTable",
             "productTable",
             "userTable"
     );

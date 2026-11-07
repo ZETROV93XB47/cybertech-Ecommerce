@@ -1,7 +1,7 @@
 # Alerte de retour en stock
 
 Plan d'origine : `docs/plans/back-in-stock-alert.md`. Livré le 2026-11-07 (backend + tests
-unitaires) ; l'IT et la vérification Mailpit / navigateur sont prévues à la session suivante.
+unitaires) ; IT `StockAlertFlowIT` ajoutée le même jour. Reste la vérification Mailpit / navigateur.
 
 ## Décisions (2026-11-07)
 

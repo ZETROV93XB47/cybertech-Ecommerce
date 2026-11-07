@@ -8,8 +8,9 @@
   - [x] Notification — type/sujet/template `stock-alert`, payload, handler, cas push.
   - [x] Job `STOCK_ALERT_JOB` + tasklet.
   - [x] Tests unitaires ; `mvnw test` vert ; docs (`docs/stock-alert.md`, OpenAPI) ; `progress.md` ; commit.
-  - [ ] **Session 2** — IT `StockAlertFlowIT` : produit à 0 → abonnement → l'admin remet du stock → job → 1 email, alerte `NOTIFIED` ; 2e passage → rien ; l'annulation d'une commande qui libère du stock déclenche aussi l'alerte ; abonnement concurrent → 409 (contrainte unique réelle) ; suppression d'un produit avec alertes OK.
-  - [ ] **Session 2** — Vérification manuelle Mailpit + push dans un navigateur abonné ; Postman (3 requêtes).
+  - [x] **Session 2** — IT `StockAlertFlowIT` (6/6, aussi : produit déjà en stock → 409, alerte annulée jamais envoyée) : produit à 0 → abonnement → l'admin remet du stock → job → 1 email, alerte `NOTIFIED` ; 2e passage → rien ; l'annulation d'une commande qui libère du stock déclenche aussi l'alerte ; abonnement concurrent → 409 (contrainte unique réelle) ; suppression d'un produit avec alertes OK.
+  - [x] **Session 2** — Postman : dossier « Stock alerts » (3 requêtes).
+  - [ ] **Session 2** — Vérification manuelle Mailpit + push dans un navigateur abonné (à faire par le propriétaire : ni backend ni Mailpit ne tournaient sur le poste, et le push demande un navigateur).
 
 - [ ] **Email quotidien de suggestions produits (Gorse)** (2026-11-07). Décisions du propriétaire : **quotidien**, **tous les utilisateurs actifs** (désinscription dans chaque email), **repli sur les meilleures ventes**, **6 produits**. Session 1 (≈ 2 h) : backend + tests unitaires. Session 2 : IT + vérification Mailpit.
   - [x] `UserEntity.recommendationEmailEnabled` (défaut `true`) + `recommendationEmailUnsubscribeToken` ; migration `sql/migrations/2026-11-07-recommendation-email.sql` + `databaseSchemaInitFile.sql` (colonnes + `recommendationTable`).
@@ -20,9 +21,9 @@
   - [x] Job `RECOMMENDATION_DIGEST_JOB` (10 h Paris, désactivé en local, activé en prod, ShedLock) + tasklet paginée, un échec n'arrête pas le lot.
   - [x] Tests unitaires (service, tasklet, job, handler, rendu du template, utils, controller, handler d'erreur, `updateMe`) ; `mvnw test` vert.
   - [x] Docs : `docs/recommendation-events.md`, `openapi.yaml` (à la main), `progress.md`.
-  - [ ] **Session 2** — IT `RecommendationDigestFlowIT` (Testcontainers + faux Gorse `MockRestServiceServer` comme `RecommendationSignalsFlowIT` + capture SMTP) : 1 email pour l'utilisateur inscrit, aucun pour le désinscrit, lignes `recommendationTable`, 2e passage le même jour sans email, désinscription par le token.
-  - [ ] **Session 2** — Vérification manuelle : `RECOMMENDATION_DIGEST_JOB_ACTIVATED=true` + cron rapproché, email lu dans Mailpit (produits, prix, images RustFS, liens).
-  - [ ] **Session 2** — Postman : requête de désinscription et champ `recommendationEmailEnabled` sur `/user/me`.
+  - [x] **Session 2** — IT `RecommendationDigestFlowIT` 3/3 (Testcontainers + faux Gorse `MockRestServiceServer` comme `RecommendationSignalsFlowIT` + capture SMTP) : 1 email pour l'utilisateur inscrit, aucun pour le désinscrit, lignes `recommendationTable`, 2e passage le même jour sans email, désinscription par le token.
+  - [ ] **Session 2** — Vérification manuelle (à faire par le propriétaire, Mailpit absent du poste) : `RECOMMENDATION_DIGEST_JOB_ACTIVATED=true` + cron rapproché, email lu dans Mailpit (produits, prix, images RustFS, liens).
+  - [x] **Session 2** — Postman : requête de désinscription et champ `recommendationEmailEnabled` sur `/user/me`.
 
 - [x] **Index Elasticsearch produit mis à jour après le commit MySQL** (2026-11-06, estimé ~45 min) :
   - [x] `ProductCatalogChangedEvent` publié par `create` / `createWithImage` / `update` / `deleteByUUID` au lieu d'écrire dans ES dans la transaction.

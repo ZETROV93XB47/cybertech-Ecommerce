@@ -245,9 +245,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"phoneNumber\": \"+33611111111\",\n  \"street\": \"42 rue Selfservice\",\n  \"city\": \"Lyon\",\n  \"zipCode\": \"69001\",\n  \"country\": \"France\"\n}"
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe-Smith\",\n  \"phoneNumber\": \"+33611111111\",\n  \"street\": \"42 rue Selfservice\",\n  \"city\": \"Lyon\",\n  \"zipCode\": \"69001\",\n  \"country\": \"France\",\n  \"recommendationEmailEnabled\": false\n}"
             },
-            "description": "Self-service profile patch (Frontend-gap #3). Only firstName/lastName/phoneNumber and the address (street/city/zipCode/country) are mutable here — email, role and status are Keycloak/admin-owned and off-limits by design (see UserSelfUpdateRequestDto). Caller identity is resolved from the JWT subject, not the body.\n\n- Roles: USER or ADMIN\n- Success: 200 with the refreshed `UserResponseDto`."
+            "description": "Self-service profile patch (Frontend-gap #3). Only firstName/lastName/phoneNumber and the address (street/city/zipCode/country) are mutable here — email, role and status are Keycloak/admin-owned and off-limits by design (see UserSelfUpdateRequestDto). Caller identity is resolved from the JWT subject, not the body.\n\n- Roles: USER or ADMIN\n- Success: 200 with the refreshed `UserResponseDto`.\n- `recommendationEmailEnabled`: false turns off the daily product-suggestion e-mail, true turns it back on (null = unchanged)."
           },
           "event": [
             {
@@ -2388,6 +2388,131 @@
               ]
             },
             "description": "Products recommended to the caller by Gorse, resolved to full product DTOs. `n` = how many (default 10).\n\n- Roles: any authenticated user\n- Success: 200 with a list of `ProductResponseDto` (possibly empty)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Unsubscribe from the suggestion e-mail (public, link of the e-mail)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/recommendations/unsubscribe/:token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "recommendations", "unsubscribe", ":token"],
+              "variable": [
+                { "key": "token", "value": "5f0c6a2e-9d41-4c8b-b7a3-2e1f0d9c8b7a" }
+              ]
+            },
+            "description": "Turns off the daily product-suggestion e-mail. Called by the front page behind the unsubscribe link of the e-mail (`/unsubscribe/recommendations?token=...`); the token identifies the user, no login.\n\n- Roles: public (no JWT)\n- Success: 204 (calling it again with the same token is also 204)\n- Unknown token: 404 RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND.\n- Turn the e-mails back on: `PATCH /user/me` with `recommendationEmailEnabled: true`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Stock alerts",
+      "description": "Back-in-stock alerts: e-mail + Web Push when an out-of-stock product is available again (docs/stock-alert.md).",
+      "item": [
+        {
+          "name": "Subscribe to a back-in-stock alert",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/stock-alerts/:productUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "stock-alerts", ":productUuid"],
+              "variable": [
+                { "key": "productUuid", "value": "11111111-2222-3333-4444-555555555555" }
+              ]
+            },
+            "description": "Ask to be e-mailed (and pushed on each subscribed browser) when an out-of-stock product can be ordered again. Checked every 10 min by STOCK_ALERT_JOB; one alert = one send.\n\n- Roles: any authenticated user\n- Success: 201 with `StockAlertResponseDto` (status PENDING)\n- 404 PRODUCT_NOT_FOUND\n- 409 PRODUCT_ALREADY_IN_STOCK (stock - reserved > 0) / STOCK_ALERT_ALREADY_EXISTS (already pending)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Alert is pending\", () => pm.expect(pm.response.json().status).to.eql(\"PENDING\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Cancel my back-in-stock alert",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/stock-alerts/:productUuid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "stock-alerts", ":productUuid"],
+              "variable": [
+                { "key": "productUuid", "value": "11111111-2222-3333-4444-555555555555" }
+              ]
+            },
+            "description": "Cancel the caller's pending alert on this product. Idempotent: no alert is also 204.\n\n- Roles: any authenticated user\n- Success: 204."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "My pending back-in-stock alerts (paged)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-VERSION", "value": "{{api_version}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/services/stock-alerts/mine",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "services", "stock-alerts", "mine"]
+            },
+            "description": "The caller's pending alerts, newest first (defaults `size=20`, `sort=requestedAt,desc`).\n\n- Roles: any authenticated user\n- Success: 200 with a page of `StockAlertResponseDto`."
           },
           "event": [
             {
