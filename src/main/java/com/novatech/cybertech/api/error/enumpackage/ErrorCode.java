@@ -70,6 +70,10 @@ public enum ErrorCode {
     REVIEW_ALREADY_EXISTS(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     /** The unsubscribe link of a suggestion e-mail carries a token no user owns. */
     RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL),
+    /** The user already has a pending back-in-stock alert for this product. */
+    STOCK_ALERT_ALREADY_EXISTS(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
+    /** A back-in-stock alert was requested for a product that can already be ordered. */
+    PRODUCT_ALREADY_IN_STOCK(HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL),
     /** A product/search request references a categoryKey with no registered schema. */
     UNKNOWN_PRODUCT_CATEGORY(HttpStatus.BAD_REQUEST, ErrorCodeType.FUNCTIONAL),
     /** Admin submitted a categoryKey/jsonSchema pair that fails to compile as a JSON Schema. */

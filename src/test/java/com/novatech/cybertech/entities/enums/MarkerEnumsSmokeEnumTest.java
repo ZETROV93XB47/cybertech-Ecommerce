@@ -42,13 +42,14 @@ class MarkerEnumsSmokeEnumTest {
     }
 
     @Test
-    void notificationTypeHasFiveConstants() {
+    void notificationTypeHasSixConstants() {
         assertThat(NotificationType.values()).containsExactly(
                 NotificationType.ORDER_CONFIRMATION,
                 NotificationType.ORDER_UPDATE,
                 NotificationType.SHIPPING_CONFIRMATION,
                 NotificationType.PAYMENT_CONFIRMATION,
-                NotificationType.RECOMMENDATION_DIGEST);
+                NotificationType.RECOMMENDATION_DIGEST,
+                NotificationType.STOCK_ALERT);
     }
 
     @Test

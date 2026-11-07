@@ -22,8 +22,8 @@ import java.util.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "productTable")
-@ToString(callSuper = true, exclude = {"orderItemEntities", "reviewEntities", "wishlistEntries", "recommendations"})
-@EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "reviewEntities", "wishlistEntries", "recommendations"})
+@ToString(callSuper = true, exclude = {"orderItemEntities", "reviewEntities", "wishlistEntries", "recommendations", "stockAlerts"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderItemEntities", "reviewEntities", "wishlistEntries", "recommendations", "stockAlerts"})
 public class ProductEntity extends BaseEntity<Long> {
 
     @Column(name = "name", nullable = false)
@@ -73,4 +73,7 @@ public class ProductEntity extends BaseEntity<Long> {
 
     @OneToMany(mappedBy = "product", /*cascade = CascadeType.ALL,*/ orphanRemoval = true)
     private Set<RecommendationEntity> recommendations = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", orphanRemoval = true)
+    private Set<StockAlertEntity> stockAlerts = new HashSet<>();
 }

@@ -12,7 +12,8 @@ public enum NotificationSubject {
     ORDER_UPDATE("Mise à jour de votre commande - Cybertech"),
     PAYMENT_CONFIRMATION("Paiement confirmé - Cybertech"),
     SHIPPING_CONFIRMATION("Votre commande a été expédiée !"),
-    RECOMMENDATION_DIGEST("Nos suggestions pour vous - Cybertech");
+    RECOMMENDATION_DIGEST("Nos suggestions pour vous - Cybertech"),
+    STOCK_ALERT("Un produit que vous attendiez est de nouveau disponible - Cybertech");
 
     private final String subject;
 }

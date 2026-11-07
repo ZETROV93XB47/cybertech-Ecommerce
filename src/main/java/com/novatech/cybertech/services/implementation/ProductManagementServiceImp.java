@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.utils.ProductStockUtils;
 import com.novatech.cybertech.dto.request.product.ProductCreateRequestDto;
 import com.novatech.cybertech.dto.request.product.ProductUpdateRequestDto;
 import com.novatech.cybertech.dto.request.search.ProductSearchRequestDto;
@@ -176,7 +177,7 @@ public class ProductManagementServiceImp implements ProductManagementService {
         // reservations are not sellable. Clamped at 0 so a transient over-reservation never shows as negative.
         return productRepository.findAllByUuidIn(productUuids).stream()
                 .map(product -> {
-                    final int available = Math.max(0, product.getStock() - product.getReservedStock());
+                    final int available = ProductStockUtils.availableStock(product);
                     return ProductAvailabilityDto.builder()
                             .productUuid(product.getUuid())
                             .availableStock(available)

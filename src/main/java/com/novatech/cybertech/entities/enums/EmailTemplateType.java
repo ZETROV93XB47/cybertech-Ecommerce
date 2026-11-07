@@ -13,7 +13,8 @@ public enum EmailTemplateType {
     ORDER_UPDATE(NotificationSubject.ORDER_UPDATE, "email/order-update"),
     PAYMENT_CONFIRMATION(NotificationSubject.PAYMENT_CONFIRMATION, "email/payment-confirmation"),
     SHIPPING_CONFIRMATION(NotificationSubject.SHIPPING_CONFIRMATION, "email/shipping-confirmation"),
-    RECOMMENDATION_DIGEST(NotificationSubject.RECOMMENDATION_DIGEST, "email/recommendation-digest");
+    RECOMMENDATION_DIGEST(NotificationSubject.RECOMMENDATION_DIGEST, "email/recommendation-digest"),
+    STOCK_ALERT(NotificationSubject.STOCK_ALERT, "email/stock-alert");
 
     private final NotificationSubject notificationSubject;
     private final String templatePath;

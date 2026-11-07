@@ -3,6 +3,7 @@ package com.novatech.cybertech.services.implementation;
 import com.novatech.cybertech.annotation.CommunicationTypeHandler;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
+import com.novatech.cybertech.dto.data.StockAlertPayload;
 import com.novatech.cybertech.entities.enums.CommunicationChanel;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
@@ -22,6 +23,8 @@ public class PushNotificationProcessor implements NotificationProcessor {
     private static final String PAYMENT_BODY = "Le paiement de votre commande a été confirmé.";
     private static final String SHIPPING_TITLE = "Commande expédiée";
     private static final String SHIPPING_BODY = "Votre commande a été remise au transporteur.";
+    private static final String STOCK_ALERT_TITLE = "De nouveau disponible";
+    private static final String STOCK_ALERT_BODY = "%s est de nouveau en stock.";
 
     private final WebPushDeliveryService webPushDeliveryService;
 
@@ -35,6 +38,16 @@ public class PushNotificationProcessor implements NotificationProcessor {
         final UUID subscriptionUuid = notificationContext.getPushSubscriptionUuid();
         if (subscriptionUuid == null) {
             throw new IllegalStateException("Web Push delivery targets one subscription; none was set on the context");
+        }
+
+        // Back-in-stock alert: the notification opens the product page, not an order.
+        if (notificationContext.getNotificationType() == NotificationType.STOCK_ALERT) {
+            if (!(notificationContext.getPayload() instanceof StockAlertPayload payload)) {
+                throw new NoStrategyFoundForProcessingTheRequest("Web Push STOCK_ALERT requires a StockAlertPayload");
+            }
+            webPushDeliveryService.sendProductToSubscription(keycloakId, subscriptionUuid, STOCK_ALERT_TITLE,
+                    STOCK_ALERT_BODY.formatted(payload.getProductName()), payload.getProductUuid());
+            return;
         }
 
         final UUID orderUuid = extractOrderUuid(notificationContext);

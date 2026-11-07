@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -93,6 +94,35 @@ class WebPushDeliveryServiceImpTest {
                 .contains("\"body\":\"" + BODY + "\"")
                 .contains("\"orderUuid\":\"" + ORDER_UUID + "\"")
                 .contains("\"url\":\"/account/orders/" + ORDER_UUID + "\"");
+    }
+
+    @Test
+    void sendProductBuildsProductPayloadWithoutOrderUuid() {
+        final UUID productUuid = UUID.randomUUID();
+        stubSubscription(subscription(SUBSCRIPTION_UUID, null));
+        when(properties.isConfigured()).thenReturn(true);
+        when(properties.getProductUrlTemplate()).thenReturn("/products/{productUuid}");
+        when(webPushGateway.send(anyString(), anyString(), anyString(), anyString())).thenReturn(201);
+
+        service.sendProductToSubscription(USER_ID, SUBSCRIPTION_UUID, "De nouveau disponible", "Laptop est de nouveau en stock.", productUuid);
+
+        final ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+        verify(webPushGateway).send(eq(ENDPOINT), eq("p256dh"), eq("auth"), payload.capture());
+        assertThat(payload.getValue())
+                .contains("\"title\":\"De nouveau disponible\"")
+                .contains("\"body\":\"Laptop est de nouveau en stock.\"")
+                .contains("\"productUuid\":\"" + productUuid + "\"")
+                .contains("\"url\":\"/products/" + productUuid + "\"")
+                .doesNotContain("orderUuid");
+    }
+
+    @Test
+    void sendProductIsNoOpWhenSubscriptionWasRemoved() {
+        when(subscriptionRepository.findByUuidAndUserEntity_KeycloakId(SUBSCRIPTION_UUID, USER_ID)).thenReturn(Optional.empty());
+
+        service.sendProductToSubscription(USER_ID, SUBSCRIPTION_UUID, TITLE, BODY, UUID.randomUUID());
+
+        verifyNoInteractions(webPushGateway);
     }
 
     @Test

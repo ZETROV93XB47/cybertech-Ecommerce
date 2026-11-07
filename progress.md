@@ -1,10 +1,12 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : email quotidien de suggestions produits (backend) — branche `develop_back`._
+_Dernière mise à jour : alerte de retour en stock (backend) — branche `develop_back`._
 
 ---
 
 ## 1. SITTREP
+
+**Session du 2026-11-07 (suite) — Alerte de retour en stock (session 1 sur 2).** Un utilisateur peut demander à être prévenu du retour en stock d'un produit en rupture (`POST /stock-alerts/{productUuid}`, `DELETE`, `GET /stock-alerts/mine`). Le job `STOCK_ALERT_JOB` passe toutes les 10 min. Pour chaque alerte en attente dont le produit est de nouveau disponible, il envoie un email et un Web Push par navigateur, puis clôt l'alerte. Les alertes non déclenchées expirent après 90 jours. La détection lit le stock courant : tous les chemins de remontée du stock sont couverts sans toucher à `StockServiceImp`. **Migration SQL à passer en prod** : `sql/migrations/2026-11-07-stock-alert.sql`. `mvnw test` 2 645 tests, 0 échec (17 ignorés). **Reste (session 2)** : IT `StockAlertFlowIT`, vérification Mailpit + navigateur, Postman. Doc : `docs/stock-alert.md`.
 
 **Session du 2026-11-07 — Email quotidien de suggestions produits (session 1 sur 2).** Nouveau job `RECOMMENDATION_DIGEST_JOB` (tous les jours à 10 h, Paris) : chaque utilisateur actif non désinscrit reçoit 6 produits. On prend d'abord les suggestions personnalisées de Gorse, complétées par les meilleures ventes ; on exclut les produits en rupture, déjà achetés, dans le panier ou envoyés les 7 derniers jours. Au plus un email par 20 h. Désinscription par lien (page front → `POST /recommendations/unsubscribe/{token}`, public) ou par `PATCH /user/me {"recommendationEmailEnabled": false}`. Désactivé en local, activé en `prod`. **Migration SQL à passer en prod** : `sql/migrations/2026-11-07-recommendation-email.sql`. `mvnw test` 2 571 tests, 0 échec (17 ignorés). **Reste (session 2)** : IT `RecommendationDigestFlowIT`, vérification dans Mailpit, Postman.
 
@@ -75,6 +77,15 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ## 2. Tâches faites / tâches suivantes
 
 ### Faites (cette phase de travail)
+
+- **2026-11-07 — Alerte de retour en stock (backend + tests unitaires).** Plan `docs/plans/back-in-stock-alert.md` exécuté avec les décisions proposées (bouton explicite, email + push, tout le monde prévenu, une alerte = un envoi, 90 jours, 409 si déjà en stock). Doc : `docs/stock-alert.md`.
+  - **Factorisation** : `ProductStockUtils.availableStock / isAvailable` remplace les 3 calculs « stock − réservé » (`StockServiceImp`, `ProductManagementServiceImp#getAvailability`, `RecommendationDigestServiceImp`).
+  - **Modèle** : `StockAlertEntity` (`stockAlertTable`, unique `(userId, productId)`, une ligne réutilisée à chaque réabonnement), `StockAlertStatus`, `StockAlertRepository` ; collections `stockAlerts` (`orphanRemoval`) sur `UserEntity` et `ProductEntity` pour que la suppression d'un produit ou d'un utilisateur ne bute pas sur la clé étrangère.
+  - **API** : `StockAlertController` + `StockAlertControllerApiSpec`, `StockAlertResponseDto`, `StockAlertMapper` ; `StockAlertAlreadyExistsException` / `ProductAlreadyInStockException` → 409 (`ErrorCode`, handlers).
+  - **Envoi** : `StockAlertServiceImp#prepareAlert` (REQUIRES_NEW, alerte `NOTIFIED` avant l'envoi), `StockAlertTasklet` + `StockAlertJob(Imp)` (ShedLock `stockAlertJob`), `NotificationType/Subject/EmailTemplateType.STOCK_ALERT`, `StockAlertPayload`, `StockAlertNotification`, template `email/stock-alert.html`. Web Push : nouvelle méthode `WebPushDeliveryService#sendProductToSubscription` (`{title, body, url, productUuid}`, `cybertech.web-push.product-url-template`), cas `STOCK_ALERT` dans `PushNotificationProcessor` ; le chemin commande est inchangé.
+  - **Tests** : `StockAlertServiceImpTest`, `StockAlertTaskletTest`, `StockAlertJobImpTest`, `StockAlertNotificationTest` (avec rendu réel du template), `StockAlertControllerTest`, `ProductStockUtilsTest`, cas produit dans `WebPushDeliveryServiceImpTest` / `PushNotificationProcessorTest`, handlers d'erreur, tests d'enum épinglés.
+  - **Côté front** (à transmettre) : bouton « M'alerter » sur une fiche en rupture, page « Mes alertes », `npm run gen:api` ; Service Worker : `tag: orderUuid ?? productUuid` (le push d'alerte n'a pas d'`orderUuid`).
+  - **Session 2** : IT `StockAlertFlowIT`, vérification Mailpit + navigateur, Postman (cases dans `PLAN.md`).
 
 - **2026-11-07 — Email quotidien de suggestions produits (backend + tests unitaires).** Décisions du propriétaire : quotidien, tous les utilisateurs actifs, repli sur les meilleures ventes, 6 produits. Plan : `docs/plans/recommendation-digest-email.md` ; fonctionnement : `docs/recommendation-events.md` (section « Email quotidien de suggestions »).
   - **Données** : `UserEntity.recommendationEmailEnabled` (vrai par défaut), `recommendationEmailUnsubscribeToken` (créé au premier email) ; `recommendationTable` enfin utilisée (une ligne par produit envoyé, écrite avant l'envoi) via `RecommendationRepository`. Requêtes ajoutées : produits achetés (`OrderItemRepository`), panier (`CartRepository`), destinataires par pages d'ids (`UserRepository`).
@@ -288,7 +299,6 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 
 ### À faire / pistes ouvertes (non traitées, non priorisées)
 
-- **Alerte de retour en stock** : n'existe pas. Plan prêt : `docs/plans/back-in-stock-alert.md` (job toutes les 10 min plutôt qu'un événement par chemin de stock ; 6 décisions à prendre avant de coder : déclenchement, canal, peu d'unités / beaucoup d'abonnés, alerte unique ou permanente, durée de vie, produit déjà en stock). Pour lancer : « Exécute `docs/plans/back-in-stock-alert.md` ».
 - **Email de suggestions produits (Gorse → utilisateur)** : n'existe pas (aucun job, type de notification, template ni consentement ; `recommendationTable` jamais utilisée). Plan prêt : `docs/plans/recommendation-digest-email.md` (4 décisions à prendre avant de coder : fréquence, consentement, utilisateur sans suggestion perso, nombre de produits). Pour lancer : « Exécute `docs/plans/recommendation-digest-email.md` ».
 - **Gorse — fenêtre du batch** (choix conservé, documenté) : `GorseSyncTasklet` relit les 20 dernières minutes (`cybertech.gorse.sync.job.lookback-minutes`). Un backend arrêté plus longtemps perd les événements écrits juste avant l'arrêt. Passer à un repère persistant (dernier timestamp synchronisé, par exemple dans Redis ou une table) si ça devient gênant.
 - **Gorse — commande annulée / remboursée** (à décider) : le `PURCHASE` reste dans MongoDB et dans Gorse. Le retirer demanderait `DELETE /api/feedback/PURCHASE/{user}/{item}` au remboursement / à l'annulation.
@@ -327,6 +337,8 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ---
 
 ## 3. Remarques
+
+- **Alerte de retour en stock (2026-11-07)** : (1) jusqu'à 10 min de délai ; un produit revenu puis reparti en rupture entre deux passages ne déclenche rien. (2) Tous les abonnés sont prévenus même s'il revient une seule unité : l'email le signale. (3) Le job est actif partout, y compris en local (l'utilisateur a demandé l'alerte) : les emails arrivent dans Mailpit. (4) `StockAlertServiceImp#toPayload` et `RecommendationDigestServiceImp#toRecommendedProduct` extraient tous deux « première photo ou null » : petite duplication restante, à factoriser si un 3e usage apparaît. (5) Abonnement concurrent : le 409 vient de la contrainte unique ; à couvrir par l'IT (H2/MySQL réels).
 
 - **Email de suggestions (2026-11-07)** : (1) envoi à tous les utilisateurs actifs par défaut, comptes existants compris (choix du propriétaire) ; c'est un email commercial, donc à faire valider côté RGPD / ePrivacy avant la mise en prod (opt-in normalement requis hors clients existants pour des produits similaires). (2) Activé par défaut en `prod` (`RECOMMENDATION_DIGEST_JOB_ACTIVATED`) : la migration SQL doit passer avant le déploiement (`ddl-auto=validate`). (3) Avec un petit catalogue, l'exclusion des produits envoyés sur 7 jours peut vider la sélection au bout de quelques jours : pas d'email dans ce cas (`exclude-sent-days` réglable). (4) Les lignes `recommendationTable` sont écrites avant l'envoi : si l'email échoue définitivement, l'utilisateur n'en reçoit pas d'autre avant 20 h. (5) Le job parcourt les utilisateurs un par un (un appel Gorse par utilisateur) : à revoir s'il y a beaucoup d'utilisateurs.
 

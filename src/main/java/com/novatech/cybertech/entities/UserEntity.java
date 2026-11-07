@@ -23,8 +23,8 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "userTable")
-@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntity", "wishlistItems", "recommendations"})
-@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntity", "wishlistItems", "recommendations"})
+@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntity", "wishlistItems", "recommendations", "stockAlerts"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntity", "wishlistItems", "recommendations", "stockAlerts"})
 public class UserEntity extends BaseEntity<Long> {
 
     @Column(name = "email", nullable = false, unique = true, length = 254)
@@ -126,4 +126,7 @@ public class UserEntity extends BaseEntity<Long> {
 
     @OneToMany(mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<PushSubscriptionEntity> pushSubscriptions = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<StockAlertEntity> stockAlerts = new HashSet<>();
 }

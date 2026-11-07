@@ -18,6 +18,7 @@ import static com.novatech.cybertech.constants.CyberTechAppConstants.CLEAN_UP_EX
 import static com.novatech.cybertech.constants.CyberTechAppConstants.GORSE_SYNC_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.KEYCLOAK_OUTBOX_RECONCILIATION_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.RECOMMENDATION_DIGEST_JOB;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.STOCK_ALERT_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REDELIVER_FAILED_NOTIFICATIONS_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB;
 
@@ -33,6 +34,7 @@ public class BatchConfig {
     private static final String KEYCLOAK_OUTBOX_RECONCILIATION_TASKLET = "KeycloakOutboxReconciliationTasklet";
     private static final String GORSE_SYNC_TASKLET = "GorseSyncTasklet";
     private static final String RECOMMENDATION_DIGEST_TASKLET = "RecommendationDigestTasklet";
+    private static final String STOCK_ALERT_TASKLET = "StockAlertTasklet";
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager platformTransactionManager;
@@ -46,6 +48,7 @@ public class BatchConfig {
     private final KeycloakOutboxReconciliationTasklet keycloakOutboxReconciliationTasklet;
     private final GorseSyncTasklet gorseSyncTasklet;
     private final RecommendationDigestTasklet recommendationDigestTasklet;
+    private final StockAlertTasklet stockAlertTasklet;
 
     @Value("${cybertech.scheduler.pool-size:4}")
     private int schedulerPoolSize;
@@ -162,6 +165,21 @@ public class BatchConfig {
     public Step recommendationDigestStep() {
         return new StepBuilder(RECOMMENDATION_DIGEST_TASKLET, jobRepository)
                 .tasklet(recommendationDigestTasklet, platformTransactionManager)
+                .allowStartIfComplete(true)
+                .build();
+    }
+
+    @Bean(STOCK_ALERT_JOB)
+    public Job stockAlertJob() {
+        return new JobBuilder(STOCK_ALERT_JOB, jobRepository)
+                .start(stockAlertStep())
+                .build();
+    }
+
+    @Bean(STOCK_ALERT_TASKLET)
+    public Step stockAlertStep() {
+        return new StepBuilder(STOCK_ALERT_TASKLET, jobRepository)
+                .tasklet(stockAlertTasklet, platformTransactionManager)
                 .allowStartIfComplete(true)
                 .build();
     }

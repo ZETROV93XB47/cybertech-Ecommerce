@@ -1,5 +1,16 @@
 # Plan
 
+- [ ] **Alerte de retour en stock** (2026-11-07, plan `docs/plans/back-in-stock-alert.md`). Décisions (propositions du plan) : bouton explicite, email + Web Push, tout le monde prévenu, une alerte = un envoi, expiration 90 jours, 409 si déjà en stock. Session 1 (≈ 2 h) : backend + tests unitaires. Session 2 : IT + vérification Mailpit/navigateur.
+  - [x] Étape 0 — `ProductStockUtils` (disponible = stock − réservé) et remplacement des 3 calculs existants.
+  - [x] Modèle — `StockAlertEntity`, `StockAlertStatus`, `StockAlertRepository`, migration SQL.
+  - [x] API — `StockAlertController` + spec (POST / DELETE / GET mine), exceptions 409 + handlers, `SecurityConfig`.
+  - [x] Service — `StockAlertService` (subscribe, unsubscribe, findMine, prepareAlert en REQUIRES_NEW, expiration).
+  - [x] Notification — type/sujet/template `stock-alert`, payload, handler, cas push.
+  - [x] Job `STOCK_ALERT_JOB` + tasklet.
+  - [x] Tests unitaires ; `mvnw test` vert ; docs (`docs/stock-alert.md`, OpenAPI) ; `progress.md` ; commit.
+  - [ ] **Session 2** — IT `StockAlertFlowIT` : produit à 0 → abonnement → l'admin remet du stock → job → 1 email, alerte `NOTIFIED` ; 2e passage → rien ; l'annulation d'une commande qui libère du stock déclenche aussi l'alerte ; abonnement concurrent → 409 (contrainte unique réelle) ; suppression d'un produit avec alertes OK.
+  - [ ] **Session 2** — Vérification manuelle Mailpit + push dans un navigateur abonné ; Postman (3 requêtes).
+
 - [ ] **Email quotidien de suggestions produits (Gorse)** (2026-11-07). Décisions du propriétaire : **quotidien**, **tous les utilisateurs actifs** (désinscription dans chaque email), **repli sur les meilleures ventes**, **6 produits**. Session 1 (≈ 2 h) : backend + tests unitaires. Session 2 : IT + vérification Mailpit.
   - [x] `UserEntity.recommendationEmailEnabled` (défaut `true`) + `recommendationEmailUnsubscribeToken` ; migration `sql/migrations/2026-11-07-recommendation-email.sql` + `databaseSchemaInitFile.sql` (colonnes + `recommendationTable`).
   - [x] `PATCH /user/me` + `GET /user/me` exposent `recommendationEmailEnabled` ; `POST /recommendations/unsubscribe/{token}` public ; `RecommendationUnsubscribeTokenNotFoundException` → 404 (ErrorCode, handler, OpenAPI).

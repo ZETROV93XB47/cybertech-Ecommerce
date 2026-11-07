@@ -17,6 +17,9 @@ public class WebPushProperties {
     /** Placeholder replaced by the order UUID in {@link #orderDetailsUrlTemplate}. */
     public static final String ORDER_UUID_PLACEHOLDER = "{orderUuid}";
 
+    /** Placeholder replaced by the product UUID in {@link #productUrlTemplate}. */
+    public static final String PRODUCT_UUID_PLACEHOLDER = "{productUuid}";
+
     private String publicKey;
     private String privateKey;
     private String subject;
@@ -30,6 +33,9 @@ public class WebPushProperties {
 
     /** Frontend page opened when the user clicks the notification. */
     private String orderDetailsUrlTemplate = "/account/orders/" + ORDER_UUID_PLACEHOLDER;
+
+    /** Frontend product page opened when the user clicks a back-in-stock notification. */
+    private String productUrlTemplate = "/products/" + PRODUCT_UUID_PLACEHOLDER;
 
     public boolean isConfigured() {
         return publicKey != null && !publicKey.isBlank()

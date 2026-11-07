@@ -2,6 +2,7 @@ package com.novatech.cybertech.services.implementation;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
+import com.novatech.cybertech.dto.data.StockAlertPayload;
 import com.novatech.cybertech.dto.data.UserContactDto;
 import com.novatech.cybertech.entities.enums.NotificationType;
 import com.novatech.cybertech.exceptions.NoStrategyFoundForProcessingTheRequest;
@@ -46,6 +47,36 @@ class PushNotificationProcessorTest {
                 "Paiement confirmé",
                 "Le paiement de votre commande a été confirmé.",
                 ORDER_UUID);
+    }
+
+    @Test
+    void sendsStockAlertWithProductLink() {
+        final UUID productUuid = UUID.randomUUID();
+        processor.sendMessage(NotificationContext.<StockAlertPayload>builder()
+                .user(UserContactDto.builder().keycloakId(USER_ID).build())
+                .notificationType(NotificationType.STOCK_ALERT)
+                .pushSubscriptionUuid(SUBSCRIPTION_UUID)
+                .payload(StockAlertPayload.builder().productUuid(productUuid).productName("Laptop Pro").build())
+                .build());
+
+        verify(deliveryService).sendProductToSubscription(
+                USER_ID,
+                SUBSCRIPTION_UUID,
+                "De nouveau disponible",
+                "Laptop Pro est de nouveau en stock.",
+                productUuid);
+    }
+
+    @Test
+    void rejectsStockAlertWithoutStockAlertPayload() {
+        assertThatThrownBy(() -> processor.sendMessage(NotificationContext.builder()
+                .user(UserContactDto.builder().keycloakId(USER_ID).build())
+                .notificationType(NotificationType.STOCK_ALERT)
+                .pushSubscriptionUuid(SUBSCRIPTION_UUID)
+                .payload(OrderConfirmationPayload.builder().orderUuid(ORDER_UUID).build())
+                .build()))
+                .isInstanceOf(NoStrategyFoundForProcessingTheRequest.class);
+        verifyNoInteractions(deliveryService);
     }
 
     @Test

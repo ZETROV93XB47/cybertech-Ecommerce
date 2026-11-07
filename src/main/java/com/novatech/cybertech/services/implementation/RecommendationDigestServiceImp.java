@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.utils.ProductStockUtils;
 import com.novatech.cybertech.clients.GorseClient;
 import com.novatech.cybertech.dto.data.NotificationContext;
 import com.novatech.cybertech.dto.data.RecommendationDigestPayload;
@@ -109,7 +110,7 @@ public class RecommendationDigestServiceImp implements RecommendationDigestServi
 
         final List<ProductEntity> selected = Stream.concat(personalizedCandidates(user), bestSellerCandidates(excluded.size()))
                 .filter(product -> !excluded.contains(product.getUuid()))
-                .filter(RecommendationDigestServiceImp::isInStock)
+                .filter(ProductStockUtils::isAvailable)
                 .filter(distinctByUuid())
                 .limit(productsPerEmail)
                 .toList();
@@ -207,12 +208,6 @@ public class RecommendationDigestServiceImp implements RecommendationDigestServi
                 .imageUrl(photos == null || photos.isEmpty() ? null : photos.getFirst())
                 .productUrl(frontendUrl + productPath + product.getUuid())
                 .build();
-    }
-
-    private static boolean isInStock(final ProductEntity product) {
-        final int stock = product.getStock() == null ? 0 : product.getStock();
-        final int reserved = product.getReservedStock() == null ? 0 : product.getReservedStock();
-        return stock - reserved > 0;
     }
 
     private static Predicate<ProductEntity> distinctByUuid() {

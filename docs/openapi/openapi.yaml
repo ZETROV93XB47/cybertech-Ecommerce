@@ -2296,6 +2296,153 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
       security:
       - keycloak: []
+  /api/v1/services/stock-alerts/{productUuid}:
+    post:
+      tags:
+      - Stock alerts
+      summary: Alert me when this product is back in stock
+      description: "Creates a back-in-stock alert for an out-of-stock product (available = stock - reserved = 0). Checked every 10 minutes: once the product can be ordered again, the user gets an e-mail plus a Web Push on each subscribed browser, and the alert is over (subscribe again for the next time). Every alerted user is notified, even when fewer units came back. An alert never triggered expires after 90 days."
+      operationId: subscribe
+      parameters:
+      - name: productUuid
+        in: path
+        description: UUID of the out-of-stock product
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      responses:
+        "201":
+          description: Alert pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockAlertResponseDto"
+        "401":
+          description: Unauthorized - User not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: PRODUCT_NOT_FOUND / USER_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: PRODUCT_ALREADY_IN_STOCK - the product can already be ordered; STOCK_ALERT_ALREADY_EXISTS - an alert is already pending for this product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      security:
+      - keycloak: []
+    delete:
+      tags:
+      - Stock alerts
+      summary: Remove my back-in-stock alert
+      description: "Cancels the connected user's pending alert for the product. Idempotent: 204 even without a pending alert."
+      operationId: unsubscribe_1
+      parameters:
+      - name: productUuid
+        in: path
+        description: UUID of the product
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      responses:
+        "204":
+          description: No pending alert left for this product
+        "401":
+          description: Unauthorized - User not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      security:
+      - keycloak: []
+  /api/v1/services/stock-alerts/mine:
+    get:
+      tags:
+      - Stock alerts
+      summary: My pending back-in-stock alerts (paginated)
+      description: "One page of the connected user's pending alerts, as a PagedModel ({content, page}). Defaults: page=0, size=20, sort=requestedAt,desc."
+      operationId: getMine
+      parameters:
+      - name: page
+        in: query
+        description: 0-based page index (default 0)
+        required: false
+        schema:
+          type: integer
+      - name: size
+        in: query
+        description: Page size (default 20, max 100)
+        required: false
+        schema:
+          type: integer
+      - name: sort
+        in: query
+        description: property,direction (default requestedAt,desc)
+        required: false
+        schema:
+          type: string
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      responses:
+        "200":
+          description: One page of pending alerts (possibly empty)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedModelStockAlertResponseDto"
+        "401":
+          description: Unauthorized - User not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      security:
+      - keycloak: []
   /api/v1/services/wishlist/my-wishlist:
     get:
       tags:
@@ -4320,6 +4467,8 @@ components:
           - ORDER_NOT_REVIEWABLE
           - REVIEW_ALREADY_EXISTS
           - RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND
+          - STOCK_ALERT_ALREADY_EXISTS
+          - PRODUCT_ALREADY_IN_STOCK
           - UNKNOWN_PRODUCT_CATEGORY
           - INVALID_PRODUCT_CATEGORY_SCHEMA
           - DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD
@@ -5769,6 +5918,33 @@ components:
           type: string
           format: date-time
           description: Last modification; null if never modified.
+    StockAlertResponseDto:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        product:
+          $ref: "#/components/schemas/ProductResponseDto"
+        status:
+          type: string
+          enum:
+          - PENDING
+          - NOTIFIED
+          - CANCELLED
+          - EXPIRED
+        requestedAt:
+          type: string
+          format: date-time
+    PagedModelStockAlertResponseDto:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockAlertResponseDto"
+        page:
+          $ref: "#/components/schemas/PageMetadata"
     PagedModelWishlistResponseDto:
       type: object
       properties:

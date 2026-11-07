@@ -20,9 +20,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.novatech.cybertech.config.WebPushProperties.ORDER_UUID_PLACEHOLDER;
+import static com.novatech.cybertech.config.WebPushProperties.PRODUCT_UUID_PLACEHOLDER;
 
 @Slf4j
 @Service
@@ -41,6 +43,7 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
     private static final String BODY_KEY = "body";
     private static final String URL_KEY = "url";
     private static final String ORDER_UUID_KEY = "orderUuid";
+    private static final String PRODUCT_UUID_KEY = "productUuid";
     private static final String SUBSCRIPTION_GONE_LOG = "Push subscription {} no longer exists, skipping delivery";
 
     private final PushSubscriptionRepository pushSubscriptionRepository;
@@ -66,6 +69,24 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
                                    final String title,
                                    final String body,
                                    final UUID orderUuid) {
+        deliver(keycloakId, subscriptionUuid, () -> serializePayload(title, body,
+                webPushProperties.getOrderDetailsUrlTemplate().replace(ORDER_UUID_PLACEHOLDER, orderUuid.toString()),
+                ORDER_UUID_KEY, orderUuid));
+    }
+
+    @Override
+    public void sendProductToSubscription(final String keycloakId,
+                                          final UUID subscriptionUuid,
+                                          final String title,
+                                          final String body,
+                                          final UUID productUuid) {
+        deliver(keycloakId, subscriptionUuid, () -> serializePayload(title, body,
+                webPushProperties.getProductUrlTemplate().replace(PRODUCT_UUID_PLACEHOLDER, productUuid.toString()),
+                PRODUCT_UUID_KEY, productUuid));
+    }
+
+    /** Shared delivery: subscription lookup, expiry, encryption and status-code handling. */
+    private void deliver(final String keycloakId, final UUID subscriptionUuid, final Supplier<String> payload) {
         final PushSubscriptionEntity subscription = pushSubscriptionRepository
                 .findByUuidAndUserEntity_KeycloakId(subscriptionUuid, keycloakId)
                 .orElse(null);
@@ -86,7 +107,7 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
                 encryptionService.decrypt(subscription.getEndpointEncrypted()),
                 encryptionService.decrypt(subscription.getP256dhEncrypted()),
                 encryptionService.decrypt(subscription.getAuthEncrypted()),
-                serializePayload(title, body, orderUuid));
+                payload.get());
         if (statusCode >= HTTP_SUCCESS_MIN && statusCode < HTTP_SUCCESS_MAX) {
             return;
         }
@@ -112,13 +133,13 @@ public class WebPushDeliveryServiceImp implements WebPushDeliveryService {
                 && !subscription.getExpirationTime().isAfter(Instant.now());
     }
 
-    private String serializePayload(final String title, final String body, final UUID orderUuid) {
+    private String serializePayload(final String title, final String body, final String url,
+                                    final String idKey, final UUID id) {
         final LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
         payload.put(TITLE_KEY, title);
         payload.put(BODY_KEY, body);
-        payload.put(URL_KEY, webPushProperties.getOrderDetailsUrlTemplate()
-                .replace(ORDER_UUID_PLACEHOLDER, orderUuid.toString()));
-        payload.put(ORDER_UUID_KEY, orderUuid);
+        payload.put(URL_KEY, url);
+        payload.put(idKey, id);
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (RuntimeException exception) {

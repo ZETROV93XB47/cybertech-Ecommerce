@@ -473,4 +473,24 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND);
         return new ResponseEntity<>(errorResponseDto, RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND.getResponseStatus());
     }
+
+    /**
+     * Maps {@link StockAlertAlreadyExistsException} to HTTP 409: the user already has a pending
+     * back-in-stock alert for this product.
+     */
+    @ExceptionHandler(StockAlertAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponseDto> handleStockAlertAlreadyExistsException(StockAlertAlreadyExistsException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), STOCK_ALERT_ALREADY_EXISTS);
+        return new ResponseEntity<>(errorResponseDto, STOCK_ALERT_ALREADY_EXISTS.getResponseStatus());
+    }
+
+    /**
+     * Maps {@link ProductAlreadyInStockException} to HTTP 409: a back-in-stock alert makes no sense
+     * for a product that can already be ordered.
+     */
+    @ExceptionHandler(ProductAlreadyInStockException.class)
+    public ResponseEntity<ErrorResponseDto> handleProductAlreadyInStockException(ProductAlreadyInStockException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), PRODUCT_ALREADY_IN_STOCK);
+        return new ResponseEntity<>(errorResponseDto, PRODUCT_ALREADY_IN_STOCK.getResponseStatus());
+    }
 }

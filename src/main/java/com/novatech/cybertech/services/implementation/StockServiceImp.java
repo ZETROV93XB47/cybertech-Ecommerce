@@ -1,5 +1,6 @@
 package com.novatech.cybertech.services.implementation;
 
+import com.novatech.cybertech.utils.ProductStockUtils;
 import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.StockEntity;
 import com.novatech.cybertech.exceptions.NotEnoughStockException;
@@ -333,7 +334,7 @@ public class StockServiceImp implements StockService {
 
         final ProductEntity product = productRepository.lockByUuid(productUuid).orElseThrow(() -> new ProductNotFoundException("Product " + productUuid + " not found"));
 
-        final int available = product.getStock() - product.getReservedStock();
+        final int available = ProductStockUtils.availableStock(product);
         if (available < qty) {
             return Optional.of(StockShortage.of(productUuid, qty, product.getStock(), product.getReservedStock()));
         }

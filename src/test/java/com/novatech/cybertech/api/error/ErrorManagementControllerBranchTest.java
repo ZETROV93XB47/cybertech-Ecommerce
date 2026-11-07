@@ -43,7 +43,9 @@ import com.novatech.cybertech.exceptions.ProductConstraintsViolationException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.ReviewNotFoundException;
 import com.novatech.cybertech.exceptions.UnauthorizedBankCardAccessException;
+import com.novatech.cybertech.exceptions.ProductAlreadyInStockException;
 import com.novatech.cybertech.exceptions.RecommendationUnsubscribeTokenNotFoundException;
+import com.novatech.cybertech.exceptions.StockAlertAlreadyExistsException;
 import com.novatech.cybertech.exceptions.ReviewAlreadyExistsException;
 import com.novatech.cybertech.exceptions.UserAlreadyExistsException;
 import com.novatech.cybertech.exceptions.UserNotActiveException;
@@ -429,6 +431,26 @@ class ErrorManagementControllerBranchTest {
 
         assertEnvelope(response, HttpStatus.NOT_FOUND, ErrorCodeType.FUNCTIONAL, "unknown token");
         assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("StockAlertAlreadyExistsException → 409 FUNCTIONAL with passthrough message")
+    void stockAlertAlreadyExistsReturns409() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleStockAlertAlreadyExistsException(new StockAlertAlreadyExistsException("pending"));
+
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "pending");
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.STOCK_ALERT_ALREADY_EXISTS);
+    }
+
+    @Test
+    @DisplayName("ProductAlreadyInStockException → 409 FUNCTIONAL with passthrough message")
+    void productAlreadyInStockReturns409() {
+        final ResponseEntity<ErrorResponseDto> response =
+                controller.handleProductAlreadyInStockException(new ProductAlreadyInStockException("in stock"));
+
+        assertEnvelope(response, HttpStatus.CONFLICT, ErrorCodeType.FUNCTIONAL, "in stock");
+        assertThat(response.getBody().getErrorCode()).isEqualTo(ErrorCode.PRODUCT_ALREADY_IN_STOCK);
     }
 
     @Test

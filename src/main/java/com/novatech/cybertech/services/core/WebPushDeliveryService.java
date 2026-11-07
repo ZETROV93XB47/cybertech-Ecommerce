@@ -19,4 +19,11 @@ public interface WebPushDeliveryService {
      * {@code PermanentNotificationFailureException} (recorded FAILED, never retried).
      */
     void sendToSubscription(String keycloakId, UUID subscriptionUuid, String title, String body, UUID orderUuid);
+
+    /**
+     * Same delivery contract as {@link #sendToSubscription}, for a notification about a product
+     * (back-in-stock alert): the message carries {@code {title, body, url, productUuid}}, the url
+     * being {@code cybertech.web-push.product-url-template}.
+     */
+    void sendProductToSubscription(String keycloakId, UUID subscriptionUuid, String title, String body, UUID productUuid);
 }

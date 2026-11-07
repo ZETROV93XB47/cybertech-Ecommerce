@@ -14,6 +14,7 @@ public class CyberTechAppConstants {
     /** Admin-only bank-card back-office. Mirrors the USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH convention. */
     public static final String BANK_CARD_ADMIN_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/admin/bank-card";
     public static final String USER_WISHLIST_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/wishlist";
+    public static final String STOCK_ALERT_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/stock-alerts";
     public static final String USER_EVENT_INGESTION_BASE_PATH = API_BASE_PATH + "/events";
     public static final String RECOMMENDATION_CONTROLLER_BASE_PATH = API_BASE_PATH + "/services/recommendations";
     public static final String STRIPE_WEBHOOKS_BASE_PATH = API_BASE_PATH + "/webhooks/stripe";
@@ -56,6 +57,7 @@ public class CyberTechAppConstants {
     public static final String KEYCLOAK_OUTBOX_RECONCILIATION_JOB = "KEYCLOAK_OUTBOX_RECONCILIATION_JOB";
     public static final String GORSE_SYNC_JOB = "GORSE_SYNC_JOB";
     public static final String RECOMMENDATION_DIGEST_JOB = "RECOMMENDATION_DIGEST_JOB";
+    public static final String STOCK_ALERT_JOB = "STOCK_ALERT_JOB";
     public static final String DISCOUNT_CAMPAIGNS_CACHE = "discountCampaigns";
 
 
@@ -84,6 +86,7 @@ public class CyberTechAppConstants {
     public static final int DEFAULT_PAGE_SIZE_ADMIN = 20;
     public static final int DEFAULT_PAGE_SIZE_BANK_CARD = 10;
     public static final int DEFAULT_PAGE_SIZE_WISHLIST = 20;
+    public static final int DEFAULT_PAGE_SIZE_STOCK_ALERT = 20;
     public static final int DEFAULT_PAGE_SIZE_BEST_SELLERS = 15;
     // Default page size of GET /review/product/{productUuid} (public reviews of a product page).
     public static final int DEFAULT_PAGE_SIZE_PRODUCT_REVIEWS = 10;
