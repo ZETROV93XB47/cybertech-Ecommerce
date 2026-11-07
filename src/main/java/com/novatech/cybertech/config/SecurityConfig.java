@@ -100,6 +100,8 @@ public class SecurityConfig {
             // Public reviews of a product page (GET only exists under this prefix).
             "/api/v1/services/review/product/**",
             "/api/v1/services/product-category-schemas/**",
+            // Unsubscribe link of the suggestion e-mail: the token identifies the user.
+            "/api/v1/services/recommendations/unsubscribe/**",
             "/api/v1/webhooks/**",
             // Kubelet probes + Spring Boot health groups (liveness/readiness).
             "/actuator/health",

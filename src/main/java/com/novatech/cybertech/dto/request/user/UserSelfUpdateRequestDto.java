@@ -39,4 +39,7 @@ public class UserSelfUpdateRequestDto {
     private String city;
     private String zipCode;
     private String country;
+
+    /** Daily product-suggestion e-mail: {@code false} unsubscribes, {@code true} subscribes again; null leaves it unchanged. */
+    private Boolean recommendationEmailEnabled;
 }

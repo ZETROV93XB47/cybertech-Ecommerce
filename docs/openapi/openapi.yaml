@@ -2707,6 +2707,49 @@ paths:
                 $ref: "#/components/schemas/ErrorResponseDto"
       security:
       - keycloak: []
+  /api/v1/services/recommendations/unsubscribe/{token}:
+    post:
+      tags:
+      - Recommendations
+      summary: Unsubscribe from the suggestion e-mails
+      description: "Stops the daily product-suggestion e-mails of the user owning the token. The token comes from the unsubscribe link of each e-mail, which opens a front page (application.frontend.url + /unsubscribe/recommendations?token=<token>) that calls this endpoint: a POST, so a mail client that prefetches links cannot unsubscribe the user. Public, no JWT. Idempotent: an already unsubscribed user gets 204 too. The user can subscribe again with PATCH /user/me {\"recommendationEmailEnabled\": true}."
+      operationId: unsubscribe
+      parameters:
+      - name: token
+        in: path
+        description: Token of the e-mail's unsubscribe link
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-API-VERSION
+        in: header
+        schema:
+          type: string
+          default: 1.0.0
+          enum:
+          - "1.0"
+      responses:
+        "204":
+          description: Unsubscribed
+        "400":
+          description: The token is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND - no user owns this token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
   /api/v1/services/product/get/{productUuid}:
     get:
       tags:
@@ -4276,6 +4319,7 @@ components:
           - UNAUTHORIZED_CART_ACCESS
           - ORDER_NOT_REVIEWABLE
           - REVIEW_ALREADY_EXISTS
+          - RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND
           - UNKNOWN_PRODUCT_CATEGORY
           - INVALID_PRODUCT_CATEGORY_SCHEMA
           - DISCOUNT_CAMPAIGN_MISSING_REQUIRED_FIELD
@@ -5057,6 +5101,9 @@ components:
           enum:
           - USER
           - ADMIN
+        recommendationEmailEnabled:
+          type: boolean
+          description: Whether the user receives the daily product-suggestion e-mail
     ProductCategorySchemaCreateRequestDto:
       type: object
       properties:
@@ -5359,6 +5406,9 @@ components:
           type: string
         country:
           type: string
+        recommendationEmailEnabled:
+          type: boolean
+          description: "Daily product-suggestion e-mail: false unsubscribes, true subscribes again; null leaves it unchanged."
     ReviewUpdateRequestDto:
       type: object
       properties:

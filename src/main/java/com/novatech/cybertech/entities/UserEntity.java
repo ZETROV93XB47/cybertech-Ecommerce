@@ -7,11 +7,14 @@ import com.novatech.cybertech.entities.valueObjects.Address;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -81,6 +84,22 @@ public class UserEntity extends BaseEntity<Long> {
 
     @Column(name = "numberOfHatefulComments", nullable = false)
     private int numberOfHatefulComments = 0;
+
+    /**
+     * Daily product-suggestion e-mail ({@code RECOMMENDATION_DIGEST_JOB}). Sent to every active
+     * user unless they unsubscribe (link in each e-mail, or {@code PATCH /user/me}).
+     */
+    @Builder.Default
+    @Column(name = "recommendationEmailEnabled", nullable = false)
+    private boolean recommendationEmailEnabled = true;
+
+    /**
+     * Secret carried by the unsubscribe link of the suggestion e-mail. Generated on the first
+     * e-mail sent to the user, then kept so older links keep working.
+     */
+    @JdbcTypeCode(SqlTypes.UUID)
+    @Column(name = "recommendationEmailUnsubscribeToken", unique = true)
+    private UUID recommendationEmailUnsubscribeToken;
 
     @OneToMany(fetch = FetchType.LAZY, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderEntity> orderEntities;

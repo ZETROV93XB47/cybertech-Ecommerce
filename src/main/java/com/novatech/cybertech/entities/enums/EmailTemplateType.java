@@ -12,7 +12,8 @@ public enum EmailTemplateType {
     ORDER_CONFIRMATION(NotificationSubject.ORDER_CONFIRMATION, "email/order-confirmation"),
     ORDER_UPDATE(NotificationSubject.ORDER_UPDATE, "email/order-update"),
     PAYMENT_CONFIRMATION(NotificationSubject.PAYMENT_CONFIRMATION, "email/payment-confirmation"),
-    SHIPPING_CONFIRMATION(NotificationSubject.SHIPPING_CONFIRMATION, "email/shipping-confirmation");
+    SHIPPING_CONFIRMATION(NotificationSubject.SHIPPING_CONFIRMATION, "email/shipping-confirmation"),
+    RECOMMENDATION_DIGEST(NotificationSubject.RECOMMENDATION_DIGEST, "email/recommendation-digest");
 
     private final NotificationSubject notificationSubject;
     private final String templatePath;

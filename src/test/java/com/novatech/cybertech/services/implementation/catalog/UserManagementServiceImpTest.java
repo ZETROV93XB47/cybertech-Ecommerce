@@ -654,6 +654,53 @@ class UserManagementServiceImpTest {
         }
 
         @Test
+        @DisplayName("recommendationEmailEnabled=false unsubscribes: entity saved, response reflects it")
+        void updateMe_unsubscribesFromSuggestionEmail() {
+            final String keycloakId = "kc-self-digest-off";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
+                    .thenReturn(UserDtoFixtures.aSampleUserResponse());
+
+            final UserResponseDto result = service.updateMe(keycloakId,
+                    UserSelfUpdateRequestDto.builder().recommendationEmailEnabled(false).build());
+
+            assertThat(user.isRecommendationEmailEnabled()).isFalse();
+            assertThat(result.getRecommendationEmailEnabled()).isFalse();
+            verify(userRepository).save(user);
+        }
+
+        @Test
+        @DisplayName("recommendationEmailEnabled=true subscribes again")
+        void updateMe_subscribesAgainToSuggestionEmail() {
+            final String keycloakId = "kc-self-digest-on";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).recommendationEmailEnabled(false).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
+                    .thenReturn(UserDtoFixtures.aSampleUserResponse());
+
+            service.updateMe(keycloakId, UserSelfUpdateRequestDto.builder().recommendationEmailEnabled(true).build());
+
+            assertThat(user.isRecommendationEmailEnabled()).isTrue();
+            verify(userRepository).save(user);
+        }
+
+        @Test
+        @DisplayName("recommendationEmailEnabled null leaves the choice unchanged")
+        void updateMe_nullSuggestionEmailChoiceUnchanged() {
+            final String keycloakId = "kc-self-digest-null";
+            final UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).recommendationEmailEnabled(false).build();
+            when(userRepository.findByKeycloakId(keycloakId)).thenReturn(Optional.of(user));
+            when(userPersistenceService.updateUser(any(UserUpdateRequestDto.class), eq(user)))
+                    .thenReturn(UserDtoFixtures.aSampleUserResponse());
+
+            service.updateMe(keycloakId, UserSelfUpdateRequestDto.builder().firstName("Alice").build());
+
+            assertThat(user.isRecommendationEmailEnabled()).isFalse();
+            verify(userRepository, never()).save(any(UserEntity.class));
+        }
+
+        @Test
         @DisplayName("missing user → UserNotFoundException; persistence service and Keycloak both untouched")
         void updateMe_missingUser_throws() {
             final String keycloakId = "kc-missing";

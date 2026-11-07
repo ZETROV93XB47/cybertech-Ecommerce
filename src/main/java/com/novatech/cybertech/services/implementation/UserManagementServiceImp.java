@@ -225,9 +225,17 @@ public class UserManagementServiceImp implements UserManagementService {
 
         // Phone number isn't on UserUpdateRequestDto — patch directly when supplied. No
         // Keycloak side effect: phone is not synced through KeycloakUserManagementService.
-        if (dto.getPhoneNumber() != null) {
-
+        // Same for the suggestion e-mail choice: a DB-only field.
+        final boolean phoneChanged = dto.getPhoneNumber() != null;
+        final boolean emailChoiceChanged = dto.getRecommendationEmailEnabled() != null;
+        if (phoneChanged) {
             loadedUser.setPhoneNumber(dto.getPhoneNumber());
+        }
+        if (emailChoiceChanged) {
+            loadedUser.setRecommendationEmailEnabled(dto.getRecommendationEmailEnabled());
+            saved.setRecommendationEmailEnabled(dto.getRecommendationEmailEnabled());
+        }
+        if (phoneChanged || emailChoiceChanged) {
             userRepository.save(loadedUser);
         }
 

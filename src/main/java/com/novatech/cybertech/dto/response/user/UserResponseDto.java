@@ -24,6 +24,8 @@ public class UserResponseDto {
     private String address;
     private Date birthDate;
     private Role role;
+    /** Whether the user receives the daily product-suggestion e-mail. */
+    private Boolean recommendationEmailEnabled;
 
     /**
      * Stop leaking the Keycloak subject on every user-fetch response.

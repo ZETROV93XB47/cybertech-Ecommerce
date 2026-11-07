@@ -17,6 +17,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.CLEAN_UP_EXPIRED_STOCK_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.GORSE_SYNC_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.KEYCLOAK_OUTBOX_RECONCILIATION_JOB;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RECOMMENDATION_DIGEST_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REDELIVER_FAILED_NOTIFICATIONS_JOB;
 import static com.novatech.cybertech.constants.CyberTechAppConstants.REPORT_FAILED_PAYMENT_AND_CANCELLED_ORDERS_JOB;
 
@@ -31,6 +32,7 @@ public class BatchConfig {
     private static final String REDELIVER_FAILED_NOTIFICATIONS_TASKLET = "RedeliverFailedNotificationsTasklet";
     private static final String KEYCLOAK_OUTBOX_RECONCILIATION_TASKLET = "KeycloakOutboxReconciliationTasklet";
     private static final String GORSE_SYNC_TASKLET = "GorseSyncTasklet";
+    private static final String RECOMMENDATION_DIGEST_TASKLET = "RecommendationDigestTasklet";
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager platformTransactionManager;
@@ -43,6 +45,7 @@ public class BatchConfig {
     private final RedeliverFailedNotificationsTasklet redeliverFailedNotificationsTasklet;
     private final KeycloakOutboxReconciliationTasklet keycloakOutboxReconciliationTasklet;
     private final GorseSyncTasklet gorseSyncTasklet;
+    private final RecommendationDigestTasklet recommendationDigestTasklet;
 
     @Value("${cybertech.scheduler.pool-size:4}")
     private int schedulerPoolSize;
@@ -144,6 +147,21 @@ public class BatchConfig {
     public Step gorseSyncStep() {
         return new StepBuilder(GORSE_SYNC_TASKLET, jobRepository)
                 .tasklet(gorseSyncTasklet, platformTransactionManager)
+                .allowStartIfComplete(true)
+                .build();
+    }
+
+    @Bean(RECOMMENDATION_DIGEST_JOB)
+    public Job recommendationDigestJob() {
+        return new JobBuilder(RECOMMENDATION_DIGEST_JOB, jobRepository)
+                .start(recommendationDigestStep())
+                .build();
+    }
+
+    @Bean(RECOMMENDATION_DIGEST_TASKLET)
+    public Step recommendationDigestStep() {
+        return new StepBuilder(RECOMMENDATION_DIGEST_TASKLET, jobRepository)
+                .tasklet(recommendationDigestTasklet, platformTransactionManager)
                 .allowStartIfComplete(true)
                 .build();
     }

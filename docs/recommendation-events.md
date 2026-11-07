@@ -52,6 +52,39 @@ Types acceptés (`UserEventType#isBrowserSignal`) : `VIEW`, `CLICK`, `COMPARE`,
 - Gorse v0.5 n'a pas de retour négatif : `REMOVE_FROM_CART`, `RATING_NEGATIVE`, `REVIEW_NEGATIVE`
   restent dans MongoDB mais Gorse les ignore (voulu, pas un oubli).
 
+## Email quotidien de suggestions (`RECOMMENDATION_DIGEST_JOB`)
+
+Décisions du propriétaire (2026-11-07) : quotidien, envoyé à **tous les utilisateurs actifs** qui
+ne se sont pas désinscrits, repli sur les meilleures ventes, 6 produits.
+
+- **Quand** : tous les jours à 10 h (`Europe/Paris`), `cybertech.recommendation.digest.job.cron`.
+  Désactivé en local (`RECOMMENDATION_DIGEST_JOB_ACTIVATED=true` pour l'essayer, les emails
+  arrivent dans Mailpit), activé en `prod`. Verrou ShedLock `recommendationDigestJob`.
+- **Qui** : `isActive = true` et `recommendationEmailEnabled = true` (vrai par défaut, y compris
+  pour les comptes existants via la migration `sql/migrations/2026-11-07-recommendation-email.sql`).
+  Pas d'email si l'utilisateur en a déjà reçu un dans les 20 dernières heures
+  (`min-hours-between-emails`).
+- **Quels produits** (`RecommendationDigestServiceImp`) : suggestions personnalisées Gorse
+  (`GET /api/recommend/{keycloakId}`, 18 demandées), complétées par les meilleures ventes. Exclus :
+  rupture (`stock - reservedStock <= 0`), déjà achetés (commandes `PAID`, `AWAITING_SHIPPING`,
+  `SHIPPED`, `DELIVERED`), dans le panier, envoyés dans les 7 derniers jours (`exclude-sent-days`).
+  Plus aucun produit après les exclusions : pas d'email. Gorse en panne : meilleures ventes seules.
+- **Mémoire des envois** : une ligne `recommendationTable` par produit envoyé (`generatedAt` = date
+  d'envoi, `score` = rang dans l'email), écrite **avant** l'envoi dans la même transaction que la
+  sélection : un job relancé ne renvoie pas l'email.
+- **Envoi** : `NotificationType.RECOMMENDATION_DIGEST`, template `email/recommendation-digest.html`,
+  toujours par email (jamais SMS ni push), via `NotificationRetryableDelivery` (retries, ligne
+  `NotificationEntity`, reprise par `REDELIVER_FAILED_NOTIFICATIONS_JOB`). Un utilisateur en échec
+  n'arrête pas le job.
+- **Liens** : fiche produit `application.frontend.url + /products/<uuid>` (`product-path`) ;
+  désinscription `application.frontend.url + /unsubscribe/recommendations?token=<token>`
+  (`unsubscribe-path`). La page front appelle `POST /api/v1/services/recommendations/unsubscribe/{token}`
+  (public, 204 ; 404 `RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND`). POST plutôt qu'un lien GET
+  direct : un client mail qui précharge les liens ne désinscrit pas l'utilisateur. Le token est
+  créé au premier email envoyé et ne change plus.
+- **Depuis le profil** : `GET /user/me` renvoie `recommendationEmailEnabled` ; `PATCH /user/me`
+  `{"recommendationEmailEnabled": false|true}` désinscrit ou réinscrit.
+
 ## Limites connues
 
 - Le batch relit les `cybertech.gorse.sync.job.lookback-minutes` (20) dernières minutes : un

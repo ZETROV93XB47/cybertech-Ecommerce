@@ -9,14 +9,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 class NotificationSubjectEnumTest {
 
     @Test
-    void hasFiveSubjects() {
+    void hasSevenSubjects() {
         assertThat(NotificationSubject.values()).containsExactly(
                 NotificationSubject.ORDER_CANCELLATION,
                 NotificationSubject.ORDER_PENDING_PAYMENT,
                 NotificationSubject.ORDER_CONFIRMATION,
                 NotificationSubject.ORDER_UPDATE,
                 NotificationSubject.PAYMENT_CONFIRMATION,
-                NotificationSubject.SHIPPING_CONFIRMATION);
+                NotificationSubject.SHIPPING_CONFIRMATION,
+                NotificationSubject.RECOMMENDATION_DIGEST);
     }
 
     @ParameterizedTest
@@ -38,5 +39,7 @@ class NotificationSubjectEnumTest {
                 .isEqualTo("Paiement confirmé - Cybertech");
         assertThat(NotificationSubject.SHIPPING_CONFIRMATION.getSubject())
                 .isEqualTo("Votre commande a été expédiée !");
+        assertThat(NotificationSubject.RECOMMENDATION_DIGEST.getSubject())
+                .isEqualTo("Nos suggestions pour vous - Cybertech");
     }
 }

@@ -2,9 +2,12 @@ package com.novatech.cybertech.repositories;
 
 import com.novatech.cybertech.entities.CartEntity;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Cart persistence.
@@ -32,4 +35,12 @@ public interface CartRepository extends CrudBaseRepository<CartEntity, Long> {
             LEFT   JOIN FETCH ci.productEntity
             """)
     List<CartEntity> findAllWithItemsAndProducts();
+
+    /** Products currently in the user's cart. */
+    @Query("""
+            SELECT DISTINCT ci.productEntity.uuid
+            FROM   CartItemEntity ci
+            WHERE  ci.cart.userEntity.id = :userId
+            """)
+    Set<UUID> findProductUuidsInCartOfUser(@Param("userId") Long userId);
 }

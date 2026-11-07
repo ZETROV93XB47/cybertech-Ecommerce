@@ -7,6 +7,7 @@ import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.mappers.entity.ProductMapper;
 import com.novatech.cybertech.repositories.ProductRepository;
 import com.novatech.cybertech.services.core.RecommendationService;
+import com.novatech.cybertech.utils.GorseItemUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -119,10 +120,7 @@ public class RecommendationServiceImp implements RecommendationService {
      * synced to Gorse) is silently skipped rather than failing the whole tier.
      */
     private List<ProductResponseDto> resolveProducts(final List<String> itemIdsInOrder) {
-        final List<UUID> uuids = itemIdsInOrder.stream()
-                .map(this::parseUuid)
-                .filter(Objects::nonNull)
-                .toList();
+        final List<UUID> uuids = GorseItemUtils.toProductUuids(itemIdsInOrder);
         final Map<UUID, ProductEntity> byUuid = productRepository.findAllByUuidIn(uuids).stream()
                 .collect(Collectors.toMap(ProductEntity::getUuid, Function.identity()));
         return uuids.stream()
@@ -130,15 +128,6 @@ public class RecommendationServiceImp implements RecommendationService {
                 .filter(Objects::nonNull)
                 .map(productMapper::mapFromEntityToResponseDto)
                 .toList();
-    }
-
-    private UUID parseUuid(final String raw) {
-        try {
-            return UUID.fromString(raw);
-        } catch (IllegalArgumentException e) {
-            log.warn("Gorse returned a non-UUID item id {} — skipping", raw);
-            return null;
-        }
     }
 
     @SuppressWarnings("unchecked")

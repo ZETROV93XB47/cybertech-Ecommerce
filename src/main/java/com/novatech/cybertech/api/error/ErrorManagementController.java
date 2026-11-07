@@ -463,4 +463,14 @@ public class ErrorManagementController {
         final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), PUSH_SUBSCRIPTION_NOT_OWNED);
         return new ResponseEntity<>(errorResponseDto, PUSH_SUBSCRIPTION_NOT_OWNED.getResponseStatus());
     }
+
+    /**
+     * Maps {@link RecommendationUnsubscribeTokenNotFoundException} to HTTP 404: the unsubscribe
+     * link of a suggestion e-mail carries a token no user owns (mistyped or forged link).
+     */
+    @ExceptionHandler(RecommendationUnsubscribeTokenNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleRecommendationUnsubscribeTokenNotFoundException(RecommendationUnsubscribeTokenNotFoundException exception) {
+        final ErrorResponseDto errorResponseDto = ErrorResponseDto.of(exception.getMessage(), RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND);
+        return new ResponseEntity<>(errorResponseDto, RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND.getResponseStatus());
+    }
 }

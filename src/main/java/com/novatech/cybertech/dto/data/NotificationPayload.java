@@ -38,7 +38,8 @@ import com.novatech.cybertech.services.implementation.ShippingConfirmationPayloa
 )
 @JsonSubTypes({
         @JsonSubTypes.Type(value = ShippingConfirmationPayload.class, name = "shipping-confirmation"),
-        @JsonSubTypes.Type(value = OrderConfirmationPayload.class, name = "order-confirmation")
+        @JsonSubTypes.Type(value = OrderConfirmationPayload.class, name = "order-confirmation"),
+        @JsonSubTypes.Type(value = RecommendationDigestPayload.class, name = "recommendation-digest")
 })
 public interface NotificationPayload {
 }

@@ -1,7 +1,13 @@
 # Plan à exécuter : email de suggestions produits (Gorse → utilisateur)
 
-> Pour lancer : « Exécute `docs/plans/recommendation-digest-email.md` ». Plan écrit le 2026-10-22,
-> pas encore commencé.
+> Plan écrit le 2026-10-22. **Backend livré le 2026-11-07** (voir `docs/recommendation-events.md`,
+> section « Email quotidien de suggestions ») ; restent l'IT, la vérification Mailpit et Postman
+> (cases « Session 2 » de `PLAN.md`).
+>
+> **Décisions prises le 2026-11-07** : (1) quotidien, 10 h Paris ; (2) envoi à tous les
+> utilisateurs actifs, désinscription dans chaque email (champ `recommendationEmailEnabled`, vrai
+> par défaut) ; (3) repli sur les meilleures ventes (complètent aussi des suggestions Gorse trop
+> peu nombreuses) ; (4) 6 produits. Désinscription par POST depuis une page front.
 
 ## Constat (2026-10-22)
 

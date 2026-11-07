@@ -1,5 +1,18 @@
 # Plan
 
+- [ ] **Email quotidien de suggestions produits (Gorse)** (2026-11-07). Décisions du propriétaire : **quotidien**, **tous les utilisateurs actifs** (désinscription dans chaque email), **repli sur les meilleures ventes**, **6 produits**. Session 1 (≈ 2 h) : backend + tests unitaires. Session 2 : IT + vérification Mailpit.
+  - [x] `UserEntity.recommendationEmailEnabled` (défaut `true`) + `recommendationEmailUnsubscribeToken` ; migration `sql/migrations/2026-11-07-recommendation-email.sql` + `databaseSchemaInitFile.sql` (colonnes + `recommendationTable`).
+  - [x] `PATCH /user/me` + `GET /user/me` exposent `recommendationEmailEnabled` ; `POST /recommendations/unsubscribe/{token}` public ; `RecommendationUnsubscribeTokenNotFoundException` → 404 (ErrorCode, handler, OpenAPI).
+  - [x] `RecommendationRepository` (garde « déjà envoyé dans les 20 h », produits envoyés les 7 derniers jours) ; requêtes produits achetés / panier / destinataires.
+  - [x] `RecommendationDigestService` : Gorse perso puis meilleures ventes ; exclut rupture, achetés, panier, envoyés récemment ; 6 produits ; lignes écrites avant l'envoi. `GorseItemUtils` partagé avec `RecommendationServiceImp`.
+  - [x] `NotificationType/Subject/EmailTemplateType.RECOMMENDATION_DIGEST`, payload, handler, template `recommendation-digest.html`.
+  - [x] Job `RECOMMENDATION_DIGEST_JOB` (10 h Paris, désactivé en local, activé en prod, ShedLock) + tasklet paginée, un échec n'arrête pas le lot.
+  - [x] Tests unitaires (service, tasklet, job, handler, rendu du template, utils, controller, handler d'erreur, `updateMe`) ; `mvnw test` vert.
+  - [x] Docs : `docs/recommendation-events.md`, `openapi.yaml` (à la main), `progress.md`.
+  - [ ] **Session 2** — IT `RecommendationDigestFlowIT` (Testcontainers + faux Gorse `MockRestServiceServer` comme `RecommendationSignalsFlowIT` + capture SMTP) : 1 email pour l'utilisateur inscrit, aucun pour le désinscrit, lignes `recommendationTable`, 2e passage le même jour sans email, désinscription par le token.
+  - [ ] **Session 2** — Vérification manuelle : `RECOMMENDATION_DIGEST_JOB_ACTIVATED=true` + cron rapproché, email lu dans Mailpit (produits, prix, images RustFS, liens).
+  - [ ] **Session 2** — Postman : requête de désinscription et champ `recommendationEmailEnabled` sur `/user/me`.
+
 - [x] **Index Elasticsearch produit mis à jour après le commit MySQL** (2026-11-06, estimé ~45 min) :
   - [x] `ProductCatalogChangedEvent` publié par `create` / `createWithImage` / `update` / `deleteByUUID` au lieu d'écrire dans ES dans la transaction.
   - [x] `ProductSearchIndexService.syncFromDatabase(uuid)` (REQUIRES_NEW, lecture seule) : produit présent → indexé, absent → document supprimé.

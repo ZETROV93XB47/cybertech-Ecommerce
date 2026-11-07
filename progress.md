@@ -1,10 +1,12 @@
 # Progress — Cybertech E-Commerce Backend
 
-_Dernière mise à jour : index Elasticsearch produit écrit après le commit MySQL — branche `develop_back`._
+_Dernière mise à jour : email quotidien de suggestions produits (backend) — branche `develop_back`._
 
 ---
 
 ## 1. SITTREP
+
+**Session du 2026-11-07 — Email quotidien de suggestions produits (session 1 sur 2).** Nouveau job `RECOMMENDATION_DIGEST_JOB` (tous les jours à 10 h, Paris) : chaque utilisateur actif non désinscrit reçoit 6 produits. On prend d'abord les suggestions personnalisées de Gorse, complétées par les meilleures ventes ; on exclut les produits en rupture, déjà achetés, dans le panier ou envoyés les 7 derniers jours. Au plus un email par 20 h. Désinscription par lien (page front → `POST /recommendations/unsubscribe/{token}`, public) ou par `PATCH /user/me {"recommendationEmailEnabled": false}`. Désactivé en local, activé en `prod`. **Migration SQL à passer en prod** : `sql/migrations/2026-11-07-recommendation-email.sql`. `mvnw test` 2 571 tests, 0 échec (17 ignorés). **Reste (session 2)** : IT `RecommendationDigestFlowIT`, vérification dans Mailpit, Postman.
 
 **Session du 2026-11-06 (suite 2) — Index Elasticsearch produit écrit après le commit MySQL.** `create` / `createWithImage` / `update` / `deleteByUUID` écrivaient dans Elasticsearch au milieu de la transaction MySQL : un rollback laissait un document de recherche pour un produit inexistant (ou faisait disparaître de la recherche un produit dont la suppression avait échoué). Le service publie maintenant `ProductCatalogChangedEvent` ; `ProductSearchIndexListener` (AFTER_COMMIT, synchrone) relit le produit en base et l'indexe, ou supprime son document s'il n'existe plus. **Changement de comportement** : une panne Elasticsearch ne fait plus échouer la requête admin (le produit est enregistré, ERROR dans les logs). `mvnw test` 2 515 tests, 0 échec ; `ProductSearchFlowIT` 20/20, `ProductSearchSortFlowIT` 7/7.
 
@@ -73,6 +75,14 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ## 2. Tâches faites / tâches suivantes
 
 ### Faites (cette phase de travail)
+
+- **2026-11-07 — Email quotidien de suggestions produits (backend + tests unitaires).** Décisions du propriétaire : quotidien, tous les utilisateurs actifs, repli sur les meilleures ventes, 6 produits. Plan : `docs/plans/recommendation-digest-email.md` ; fonctionnement : `docs/recommendation-events.md` (section « Email quotidien de suggestions »).
+  - **Données** : `UserEntity.recommendationEmailEnabled` (vrai par défaut), `recommendationEmailUnsubscribeToken` (créé au premier email) ; `recommendationTable` enfin utilisée (une ligne par produit envoyé, écrite avant l'envoi) via `RecommendationRepository`. Requêtes ajoutées : produits achetés (`OrderItemRepository`), panier (`CartRepository`), destinataires par pages d'ids (`UserRepository`).
+  - **Code** : `RecommendationDigestService(Imp)`, `RecommendationDigestTasklet`, `RecommendationDigestJob(Imp)` (ShedLock `recommendationDigestJob`), `RecommendationDigestNotification`, `RecommendationDigestPayload` / `RecommendedProductDto` (enregistré dans `NotificationPayload` pour la réémission), template `email/recommendation-digest.html`, `NotificationType/Subject/EmailTemplateType.RECOMMENDATION_DIGEST`, `RecommendationUnsubscribeTokenNotFoundException` → 404 `RECOMMENDATION_UNSUBSCRIBE_TOKEN_NOT_FOUND`. `GorseItemUtils.toProductUuids` remplace le parsing dupliqué dans `RecommendationServiceImp`.
+  - **API** : `POST /api/v1/services/recommendations/unsubscribe/{token}` (public, 204 / 400 / 404) ; `recommendationEmailEnabled` dans `UserResponseDto` (`GET /user/me`) et `UserSelfUpdateRequestDto` (`PATCH /user/me`). `openapi.yaml` modifié à la main.
+  - **Tests** : `RecommendationDigestServiceImpTest` (sélection, exclusions, garde 20 h, lignes, token, contexte), `RecommendationDigestTaskletTest`, `RecommendationDigestJobImpTest`, `RecommendationDigestNotificationTest`, `RecommendationDigestTemplateTest` (rendu réel Thymeleaf), `GorseItemUtilsTest`, controller, handler d'erreur, `updateMe`. Tests d'enum épinglés mis à jour.
+  - **Côté front** (à transmettre) : page `/unsubscribe/recommendations?token=…` qui appelle le POST ; case à cocher « Recevoir mes suggestions par email » dans le profil (`recommendationEmailEnabled`) ; route produit attendue `/products/<uuid>` (sinon changer `cybertech.recommendation.digest.product-path`) ; `npm run gen:api`.
+  - **Session 2** : IT `RecommendationDigestFlowIT`, vérification Mailpit, Postman (cases dans `PLAN.md`).
 
 - **2026-11-06 — Index Elasticsearch produit après commit.** Nouveaux : `events/ProductCatalogChangedEvent` (UUID du produit), `listener/ProductSearchIndexListener` (`@TransactionalEventListener(AFTER_COMMIT)`, sans `@Async` pour que le produit soit cherchable dès la réponse ; exception ES capturée et loguée en ERROR), `ProductSearchIndexService.syncFromDatabase(uuid)` (`REQUIRES_NEW`, lecture seule, obligatoire en AFTER_COMMIT : la transaction d'origine est terminée ; produit présent → `index`, absent → `deleteByUuid`). `ProductManagementServiceImp` ne dépend plus de `ProductSearchRepository` ni de `ProductSearchIndexService`, seulement d'`ApplicationEventPublisher`. Même schéma que `ProductRatingIndexListener` (notes). Tests : `ProductManagementServiceImpTest` (événement publié après save / delete ; rien de publié si la base échoue — remplace les tests qui figeaient « panne ES → exception »), `ProductSearchIndexServiceImpTest` (+2 : sync présent / absent), `ProductSearchIndexListenerTest` (2). `ProductSearchFlowIT` 20/20 (création, modification, suppression via l'API contre un vrai ES), `ProductSearchSortFlowIT` 7/7 ; `mvnw test` 2 515 tests, 0 échec, 17 ignorés.
 
@@ -316,6 +326,8 @@ Le focus explicite du propriétaire du projet : fiabiliser en priorité le parco
 ---
 
 ## 3. Remarques
+
+- **Email de suggestions (2026-11-07)** : (1) envoi à tous les utilisateurs actifs par défaut, comptes existants compris (choix du propriétaire) ; c'est un email commercial, donc à faire valider côté RGPD / ePrivacy avant la mise en prod (opt-in normalement requis hors clients existants pour des produits similaires). (2) Activé par défaut en `prod` (`RECOMMENDATION_DIGEST_JOB_ACTIVATED`) : la migration SQL doit passer avant le déploiement (`ddl-auto=validate`). (3) Avec un petit catalogue, l'exclusion des produits envoyés sur 7 jours peut vider la sélection au bout de quelques jours : pas d'email dans ce cas (`exclude-sent-days` réglable). (4) Les lignes `recommendationTable` sont écrites avant l'envoi : si l'email échoue définitivement, l'utilisateur n'en reçoit pas d'autre avant 20 h. (5) Le job parcourt les utilisateurs un par un (un appel Gorse par utilisateur) : à revoir s'il y a beaucoup d'utilisateurs.
 
 - **Index produit (2026-11-06)** : si Elasticsearch est en panne au moment d'un enregistrement admin, le produit est en base mais pas (ou pas à jour) dans la recherche. Le document est réparé à la prochaine modification du produit, ou au démarrage si l'index est vide. Il n'existe pas d'endpoint de réindexation complète (`ProductSearchIndexService.reindexAll()` existe mais n'est appelé qu'au démarrage) : à ajouter côté admin si ce cas devient gênant.
 

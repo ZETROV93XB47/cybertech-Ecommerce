@@ -9,14 +9,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 class EmailTemplateTypeEnumTest {
 
     @Test
-    void hasFiveTemplates() {
+    void hasSevenTemplates() {
         assertThat(EmailTemplateType.values()).containsExactly(
                 EmailTemplateType.ORDER_CANCELLATION,
                 EmailTemplateType.ORDER_PENDING_PAYMENT,
                 EmailTemplateType.ORDER_CONFIRMATION,
                 EmailTemplateType.ORDER_UPDATE,
                 EmailTemplateType.PAYMENT_CONFIRMATION,
-                EmailTemplateType.SHIPPING_CONFIRMATION);
+                EmailTemplateType.SHIPPING_CONFIRMATION,
+                EmailTemplateType.RECOMMENDATION_DIGEST);
     }
 
     @ParameterizedTest

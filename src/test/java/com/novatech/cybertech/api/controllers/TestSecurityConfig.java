@@ -40,6 +40,7 @@ public class TestSecurityConfig {
             // Public reviews of a product page (GET only exists under this prefix).
             "/api/v1/services/review/product/**",
             "/api/v1/services/product-category-schemas/**",
+            "/api/v1/services/recommendations/unsubscribe/**",
             "/api/v1/webhooks/**",
             "/actuator/health/**"
     };
