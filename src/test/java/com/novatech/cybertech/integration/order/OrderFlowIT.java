@@ -447,6 +447,54 @@ class OrderFlowIT {
         Mockito.verify(stripePaymentProcessor, Mockito.never()).refund(any(UUID.class), any(), anyString(), anyString());
     }
 
+    // A price change in the catalogue after the order does not move it: an address-only update
+    // keeps the lines at the price paid (no complement), raising a quantity reprices that line.
+    @Test
+    void updateOrderAfterPriceChangeKeepsThePricePaidUnlessTheQuantityGoesUp() throws Exception {
+        // 2 x 99.99 = 199.98 + DHL STANDARD 15 -> 214.98
+        addItemToCart(productUuid, 2);
+        final MvcResult placeResult = mockMvc.perform(post("/api/v1/services/management/order/place")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(OrderDtoFixtures.aValidPlaceOrderRequestBuilder().build())))
+                .andReturn();
+        assertThat(placeResult.getResponse().getStatus()).isEqualTo(201);
+        final OrderResponseDto placed = objectMapper.readValue(placeResult.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+        assertThat(placed.getTotalAmount()).isEqualByComparingTo("214.98");
+
+        transactionTemplate.executeWithoutResult(tx -> {
+            final ProductEntity product = productRepository.findByUuid(productUuid).orElseThrow();
+            product.setPrice(new BigDecimal("129.99"));
+            productRepository.save(product);
+        });
+
+        // Address only: same lines, still 214.98, nothing charged or refunded.
+        final OrderResponseDto addressOnly = update(placed.getUuid(), 2);
+        assertThat(addressOnly.getTotalAmount()).isEqualByComparingTo("214.98");
+        Mockito.verify(stripePaymentProcessor, Mockito.times(1)).processPayment(any(UUID.class), any(), anyString(), anyString());
+        Mockito.verify(stripePaymentProcessor, Mockito.never()).refund(any(UUID.class), any(), anyString(), anyString());
+
+        // Quantity 2 -> 3: the whole line at the current price, 3 x 129.99 + 15 = 404.97.
+        final OrderResponseDto moreUnits = update(placed.getUuid(), 3);
+        assertThat(moreUnits.getTotalAmount()).isEqualByComparingTo("404.97");
+        Mockito.verify(stripePaymentProcessor, Mockito.times(2)).processPayment(any(UUID.class), any(), anyString(), anyString());
+    }
+
+    private OrderResponseDto update(final UUID orderUuid, final int quantity) throws Exception {
+        final OrderUpdateRequestDto update = OrderDtoFixtures.aValidUpdateRequestBuilder()
+                .uuid(orderUuid)
+                .shippingStreet("42 avenue Nouvelle")
+                .itemUpdateRequestDtoList(List.of(OrderItemCreateRequestDto.builder().productUuid(productUuid).quantity(quantity).build()))
+                .build();
+        final MvcResult result = mockMvc.perform(post("/api/v1/services/management/order/update")
+                        .with(jwtUser(keycloakId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(update)))
+                .andReturn();
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        return objectMapper.readValue(result.getResponse().getContentAsByteArray(), OrderResponseDto.class);
+    }
+
     // 7) Cancel — places an order then cancels and asserts status flips to CANCELED.
     @Test
     void cancelOrderRestoresStockAndMovesStatusToCanceled() throws Exception {

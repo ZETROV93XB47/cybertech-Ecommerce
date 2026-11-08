@@ -83,6 +83,10 @@ import static org.mockito.Mockito.when;
  * the real {@link OrderMapper}; repositories, payment and stock are mocked. The reference order:
  * 2 x 100 EUR with BLACK_FRIDAY (20%, minimum 150), DHL STANDARD (15) → 200 - 40 + 15 = 175 EUR,
  * fully paid.
+ *
+ * <p>Also covers the unit price of the lines: a line keeps the price it was ordered at unless its
+ * quantity goes up (then the current price, whole line) — see
+ * {@code OrderPricingUtils#unitPricesForUpdate}.
  */
 @ExtendWith(MockitoExtension.class)
 class OrderUpdateKeepsDiscountTest {
@@ -301,5 +305,69 @@ class OrderUpdateKeepsDiscountTest {
 
         assertBreakdown(order, "200.00", "0.00", "15.00", "215.00");
         assertThat(order.getDiscountTerms().getCalculationType()).isEqualTo(DiscountCalculationType.NONE);
+    }
+
+    // ─── Unit price of the lines when the catalogue price changed since the order ──────────
+
+    @Test
+    @DisplayName("price raised 100 -> 120 since the order, address changed only -> line kept at 100, no complement")
+    void priceRaisedSinceOrder_addressOnly_keepsOrderedPrice() {
+        final OrderEntity order = paidBlackFridayOrder(true);
+        product.setPrice(new BigDecimal("120.00"));
+
+        service.updateOrder(update(order, 2, ShippingType.STANDARD), jwt);
+
+        assertBreakdown(order, "200.00", "40.00", "15.00", "175.00");
+        assertThat(order.getOrderItemEntities()).singleElement()
+                .satisfies(line -> assertThat(line.getUnitPrice()).isEqualByComparingTo("100.00"));
+        verify(paymentService, never()).processPayment(any(), any(), any(), anyString());
+        verify(paymentService, never()).refund(any(), any(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("price lowered 100 -> 80 since the order, address changed only -> line kept at 100, no refund")
+    void priceLoweredSinceOrder_addressOnly_noRefund() {
+        final OrderEntity order = paidBlackFridayOrder(true);
+        product.setPrice(new BigDecimal("80.00"));
+
+        service.updateOrder(update(order, 2, ShippingType.STANDARD), jwt);
+
+        assertBreakdown(order, "200.00", "40.00", "15.00", "175.00");
+        verify(paymentService, never()).refund(any(), any(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("price lowered to 80, quantity 2 -> 1 -> refund at the price paid: 175 - 115 = 60, not 175 - 95")
+    void priceLoweredSinceOrder_quantityReduced_refundAtPaidPrice() {
+        final OrderEntity order = paidBlackFridayOrder(true);
+        product.setPrice(new BigDecimal("80.00"));
+        when(paymentService.refund(any(), any(), any(), anyString())).thenReturn(accepted(TransactionType.REFUND, "60.00"));
+
+        service.updateOrder(update(order, 1, ShippingType.STANDARD), jwt);
+
+        assertBreakdown(order, "100.00", "0.00", "15.00", "115.00");
+        final ArgumentCaptor<Money> refunded = ArgumentCaptor.forClass(Money.class);
+        verify(paymentService).refund(any(), any(), refunded.capture(), anyString());
+        assertThat(refunded.getValue().getAmount()).isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    @DisplayName("price raised to 120, quantity 2 -> 3 -> whole line at 120: 360 - 72 + 15 = 303, complement 128")
+    void priceRaisedSinceOrder_quantityIncreased_wholeLineAtCurrentPrice() {
+        final OrderEntity order = paidBlackFridayOrder(true);
+        product.setPrice(new BigDecimal("120.00"));
+        when(paymentService.processPayment(any(), any(), any(), anyString())).thenReturn(accepted(TransactionType.PAYMENT, "128.00"));
+
+        service.updateOrder(update(order, 3, ShippingType.STANDARD), jwt);
+
+        assertBreakdown(order, "360.00", "72.00", "15.00", "303.00");
+        assertThat(order.getOrderItemEntities()).singleElement()
+                .satisfies(line -> {
+                    assertThat(line.getUnitPrice()).isEqualByComparingTo("120.00");
+                    assertThat(line.getSubtotal()).isEqualByComparingTo("360.00");
+                });
+        final ArgumentCaptor<Money> charged = ArgumentCaptor.forClass(Money.class);
+        verify(paymentService).processPayment(any(), any(), charged.capture(), anyString());
+        assertThat(charged.getValue().getAmount()).isEqualByComparingTo("128.00");
     }
 }

@@ -118,6 +118,7 @@ public interface OrderManagementControllerApiSpec {
             summary = "Update an existing Order by UUID",
             description = """
                     Updates an existing order's details based on their unique UUID. Fields not provided will not be updated.
+                    Prices: a line already in the order keeps the unit price it was ordered at when its quantity is unchanged or lower (a lower quantity is refunded at the price paid); a higher quantity reprices the whole line at the current price; a product added to the order is priced at the current price. The discount terms of the order are kept. The difference with what was paid is charged or refunded.
                     """,
             security = @SecurityRequirement(name = "keycloak"),
             requestBody = @RequestBody(

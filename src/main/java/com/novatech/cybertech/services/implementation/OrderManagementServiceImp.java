@@ -309,10 +309,13 @@ public class OrderManagementServiceImp implements OrderManagementService {
         if (products.isEmpty()) {
             throw new ProductNotFoundException("None of the requested products were found");
         }
+        // Ordered lines keep their price unless their quantity goes up (then the current price,
+        // whole line); new products at the current price. See OrderPricingUtils#unitPricesForUpdate.
+        final Map<UUID, BigDecimal> unitPrices = OrderPricingUtils.unitPricesForUpdate(order.getOrderItemEntities(), products, quantities);
         final List<OrderItemPriceDto> priceDtos = products.stream()
                 .map(p -> OrderItemPriceDto.builder()
                         .productUuid(p.getUuid())
-                        .unitPrice(p.getPrice())
+                        .unitPrice(unitPrices.get(p.getUuid()))
                         .quantity(quantities.get(p.getUuid()))
                         .build())
                 .toList();
@@ -357,7 +360,7 @@ public class OrderManagementServiceImp implements OrderManagementService {
 
         // 5) Overwrite des items (selon ton choix)
         //    Ici, je suppose que tu sais reconstruire la liste OrderItemEntity depuis dto + products
-        final List<OrderItemEntity> newItems = mapToOrderItems(quantities, products, order);
+        final List<OrderItemEntity> newItems = mapToOrderItems(quantities, unitPrices, products, order);
         order.getOrderItemEntities().clear();
         order.getOrderItemEntities().addAll(newItems);
 
@@ -853,12 +856,13 @@ public class OrderManagementServiceImp implements OrderManagementService {
         return deletableStates.contains(order.getStatus());
     }
 
-    private List<OrderItemEntity> mapToOrderItems(Map<UUID, Integer> quantities, List<ProductEntity> products, OrderEntity order) {
+    private List<OrderItemEntity> mapToOrderItems(Map<UUID, Integer> quantities, Map<UUID, BigDecimal> unitPrices,
+                                                  List<ProductEntity> products, OrderEntity order) {
         return products.stream()
                 .map(product -> OrderItemEntity.builder()
-                        .unitPrice(product.getPrice())
+                        .unitPrice(unitPrices.get(product.getUuid()))
                         .quantity(quantities.get(product.getUuid()))
-                        .subtotal(product.getPrice().multiply(BigDecimal.valueOf(quantities.get(product.getUuid()))))
+                        .subtotal(unitPrices.get(product.getUuid()).multiply(BigDecimal.valueOf(quantities.get(product.getUuid()))))
                         .orderEntity(order)
                         .productEntity(product)
                         .build())

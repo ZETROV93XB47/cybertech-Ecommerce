@@ -1,5 +1,10 @@
 # Plan
 
+- [x] **`updateOrder` : prix d'origine conservé** (2026-11-08, estimé ~1 h). Décision du propriétaire, ligne par ligne : quantité inchangée ou diminuée → prix d'origine (`OrderItemEntity.unitPrice`) ; quantité augmentée → prix du jour sur toute la ligne ; produit ajouté → prix du jour.
+  - [x] Règle dans `OrderPricingUtils`, utilisée par le calcul du total et par les nouvelles lignes de `updateOrder`.
+  - [x] Tests unitaires (utils + service) ; IT `OrderFlowIT` (prix changé puis simple changement d'adresse → ni débit ni remboursement) ; `mvnw test` vert.
+  - [x] Docs (OpenAPI / progress.md), commit.
+
 - [x] **Un seul avis par utilisateur et produit, garanti par la base** (2026-11-08, estimé ~45 min) :
   - [x] `ReviewEntity` : contrainte unique `uk_review_user_product (userId, reviewId)` ; migration SQL + `databaseSchemaInitFile.sql`.
   - [x] `ReviewManagementServiceImp#create` : `saveAndFlush` + `DataIntegrityViolationException` → `ReviewAlreadyExistsException` (409), comme la wishlist.

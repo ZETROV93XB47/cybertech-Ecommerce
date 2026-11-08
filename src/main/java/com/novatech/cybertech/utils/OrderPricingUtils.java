@@ -6,12 +6,21 @@ import com.novatech.cybertech.dto.response.order.PriceCalculationResultDto;
 import com.novatech.cybertech.entities.CartEntity;
 import com.novatech.cybertech.entities.CartItemEntity;
 import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.OrderItemEntity;
+import com.novatech.cybertech.entities.ProductEntity;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
 import com.novatech.cybertech.entities.valueObjects.CurrencyCode;
 import com.novatech.cybertech.exceptions.CartIsEmptyException;
 
+import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Order pricing helpers shared by order creation, {@code updateOrder} and the order quote, so a
@@ -61,6 +70,39 @@ public final class OrderPricingUtils {
                 .shippingProvider(shippingProvider)
                 .shippingType(shippingType)
                 .build();
+    }
+
+    /**
+     * Unit price of each line of a modified order ({@code updateOrder}), per product:
+     * <ul>
+     *   <li>already ordered, quantity unchanged or lower: the price of the order line
+     *       ({@link OrderItemEntity#getUnitPrice()}), so a price change in the catalogue since
+     *       the order never moves its total (no complement, no refund for an address change);</li>
+     *   <li>already ordered, quantity higher: the current price, for the whole line;</li>
+     *   <li>not in the order yet (or a line without a stored price): the current price.</li>
+     * </ul>
+     *
+     * @param orderedLines  the order lines BEFORE the modification.
+     * @param products      the products of the modified order.
+     * @param newQuantities the requested quantity per product UUID.
+     * @return the unit price to charge, per product UUID.
+     */
+    public static Map<UUID, BigDecimal> unitPricesForUpdate(final Collection<OrderItemEntity> orderedLines,
+                                                            final List<ProductEntity> products,
+                                                            final Map<UUID, Integer> newQuantities) {
+        final Map<UUID, OrderItemEntity> orderedByProduct = orderedLines.stream()
+                .filter(line -> line.getProductEntity() != null)
+                .collect(Collectors.toMap(line -> line.getProductEntity().getUuid(), Function.identity(), (first, second) -> first));
+        return products.stream().collect(Collectors.toMap(ProductEntity::getUuid, product -> {
+            final OrderItemEntity ordered = orderedByProduct.get(product.getUuid());
+            final Integer newQuantity = newQuantities.get(product.getUuid());
+            final boolean keepsOrderedPrice = ordered != null
+                    && ordered.getUnitPrice() != null
+                    && ordered.getQuantity() != null
+                    && newQuantity != null
+                    && newQuantity <= ordered.getQuantity();
+            return keepsOrderedPrice ? ordered.getUnitPrice() : Objects.requireNonNull(product.getPrice());
+        }));
     }
 
     /**
