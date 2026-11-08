@@ -840,6 +840,16 @@
                         <configuration>
                             <skipITs>false</skipITs>
                             <argLine>@{jacocoArgLine} --enable-preview</argLine>
+                            <!--
+                                Each Spring test context starts its own MySQL / Redis / Elasticsearch /
+                                MongoDB containers and keeps them while it stays in the context cache
+                                (32 contexts by default). Past a handful, Docker runs out of memory and
+                                kills the containers of older cached contexts. Capping the cache closes
+                                the least recently used context, which stops its containers.
+                            -->
+                            <systemPropertyVariables>
+                                <spring.test.context.cache.maxSize>4</spring.test.context.cache.maxSize>
+                            </systemPropertyVariables>
                             <includes>
                                 <include>**/*IT.java</include>
                                 <include>**/*IntegrationTest.java</include>

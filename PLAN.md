@@ -1,5 +1,15 @@
 # Plan
 
+- [x] **Un seul avis par utilisateur et produit, garanti par la base** (2026-11-08, estimé ~45 min) :
+  - [x] `ReviewEntity` : contrainte unique `uk_review_user_product (userId, reviewId)` ; migration SQL + `databaseSchemaInitFile.sql`.
+  - [x] `ReviewManagementServiceImp#create` : `saveAndFlush` + `DataIntegrityViolationException` → `ReviewAlreadyExistsException` (409), comme la wishlist.
+  - [x] Tests unitaires + IT (deux créations simultanées → un avis, un 409 ; la base refuse un 2e avis) ; `mvnw test` vert ; `ProductSearchSortFlowIT` corrigé (un auteur par avis).
+
+- [x] **Suite IT complète verte** (2026-11-08, estimé ~1 h) : `ProductSearchFlowIT` échoue (« Connection refused » vers un Elasticsearch Testcontainers déjà arrêté) quand toute la suite tourne.
+  - [x] Cause : chaque contexte Spring en cache garde ses propres conteneurs ; Elasticsearch sans limite de heap → Docker (10 Go) à court de mémoire, ES des contextes anciens tués (`Exited (137)`), Docker Desktop finit par ne plus répondre.
+  - [x] Heap ES des ITs à 512 Mo (`TestcontainersConfiguration`) + `spring.test.context.cache.maxSize=4` pour failsafe (`pom.xml`) ; 130 ITs, 0 échec.
+  - [x] `progress.md`, commit.
+
 - [ ] **Alerte de retour en stock** (2026-11-07, plan `docs/plans/back-in-stock-alert.md`). Décisions (propositions du plan) : bouton explicite, email + Web Push, tout le monde prévenu, une alerte = un envoi, expiration 90 jours, 409 si déjà en stock. Session 1 (≈ 2 h) : backend + tests unitaires. Session 2 : IT + vérification Mailpit/navigateur.
   - [x] Étape 0 — `ProductStockUtils` (disponible = stock − réservé) et remplacement des 3 calculs existants.
   - [x] Modèle — `StockAlertEntity`, `StockAlertStatus`, `StockAlertRepository`, migration SQL.

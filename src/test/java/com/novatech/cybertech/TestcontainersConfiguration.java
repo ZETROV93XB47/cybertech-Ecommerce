@@ -12,6 +12,9 @@ import org.testcontainers.utility.DockerImageName;
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
 
+    /** Elasticsearch JVM heap for the IT container: enough for the test indices, bounded for Docker. */
+    private static final String ES_HEAP = "-Xms512m -Xmx512m";
+
     @Bean
     @ServiceConnection
     MySQLContainer<?> mysqlContainer() {
@@ -38,11 +41,17 @@ public class TestcontainersConfiguration {
         // parity — tracked separately; it does not affect this test harness.)
         // ES 9.x still honours xpack.security.enabled=false for the single-node portfolio setup so
         // plain HTTP works without TLS/auth.
+        // Heap pinned: left alone, ES sizes it from the memory Docker shows (several GB). Each
+        // cached Spring context keeps its own containers, so a few contexts were enough for the
+        // OOM killer to stop the ES of an older cached context ("Exited (137)"), whose next test
+        // then failed with "Connection refused". See also spring.test.context.cache.maxSize in
+        // the integration-test profile of pom.xml.
         return new ElasticsearchContainer(
                 DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:9.2.6"))
                 .withEnv("xpack.security.enabled", "false")
                 .withEnv("xpack.security.http.ssl.enabled", "false")
-                .withEnv("discovery.type", "single-node");
+                .withEnv("discovery.type", "single-node")
+                .withEnv("ES_JAVA_OPTS", ES_HEAP);
     }
 
     @Bean
