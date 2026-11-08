@@ -167,6 +167,9 @@ CREATE TABLE reviewTable
     FOREIGN KEY (reviewId) REFERENCES productTable (id),
     FOREIGN KEY (userId) REFERENCES userTable (id),
 
+    -- Un seul avis par utilisateur et produit (ReviewManagementServiceImp#create)
+    CONSTRAINT uk_review_user_product UNIQUE (userId, reviewId),
+
      -- Contrainte pour valider le rating au niveau de la base de données
      CONSTRAINT chk_rating CHECK (rating >= 1 AND rating <= 5)
 );

@@ -10,10 +10,12 @@ import com.novatech.cybertech.entities.enums.OrderStatus;
 import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.OrderItemEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.ReviewEntityBuilder;
 import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
 import com.novatech.cybertech.fixtures.support.TestDataCleaner;
 import com.novatech.cybertech.repositories.OrderRepository;
 import com.novatech.cybertech.repositories.ProductRepository;
+import com.novatech.cybertech.repositories.ReviewRepository;
 import com.novatech.cybertech.repositories.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -32,9 +35,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static com.novatech.cybertech.fixtures.support.JwtTestUtils.jwtUser;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -72,6 +83,9 @@ class ReviewableOrderFlowIT {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private ReviewRepository reviewRepository;
 
     @Autowired
     private TestDataCleaner testDataCleaner;
@@ -164,6 +178,52 @@ class ReviewableOrderFlowIT {
         mockMvc.perform(get(MY_REVIEWS_ENDPOINT).with(jwtUser(keycloakId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(1));
+    }
+
+    @Test
+    @DisplayName("two simultaneous POST /review/create of the same product -> one 201, one 409, one review stored")
+    void simultaneousReviewsOfTheSameProductStoreOne() throws Exception {
+        final UUID orderUuid = seedOrder(OrderStatus.DELIVERED);
+        final byte[] body = ratingOnlyReview(orderUuid);
+        final CountDownLatch start = new CountDownLatch(1);
+        final Callable<Integer> create = () -> {
+            start.await();
+            return mockMvc.perform(post(CREATE_ENDPOINT)
+                            .with(jwtUser(keycloakId))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andReturn().getResponse().getStatus();
+        };
+
+        final List<Integer> statuses;
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            final Future<Integer> first = pool.submit(create);
+            final Future<Integer> second = pool.submit(create);
+            start.countDown();
+            statuses = List.of(first.get(), second.get());
+        }
+
+        assertThat(statuses).containsExactlyInAnyOrder(201, 409);
+        assertThat(reviewRepository.existsByUserEntity_KeycloakIdAndProductEntity_Uuid(keycloakId, productUuid)).isTrue();
+        assertThat(reviewRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("uk_review_user_product: the database itself refuses a second review of the same product by the same user")
+    void databaseRefusesASecondReviewOfTheSameProduct() {
+        seedOrder(OrderStatus.DELIVERED);
+        insertReviewDirectly();
+
+        // Straight to the repository: no service pre-check, only the constraint stands in the way.
+        assertThatThrownBy(this::insertReviewDirectly).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(reviewRepository.count()).isEqualTo(1);
+    }
+
+    private void insertReviewDirectly() {
+        transactionTemplate.executeWithoutResult(tx -> reviewRepository.saveAndFlush(ReviewEntityBuilder.aValidReviewBuilder()
+                .userEntity(userRepository.findByKeycloakId(keycloakId).orElseThrow())
+                .productEntity(productRepository.findByUuid(productUuid).orElseThrow())
+                .build()));
     }
 
     @ParameterizedTest(name = "{0}: not listed, create -> 409 ORDER_NOT_REVIEWABLE")

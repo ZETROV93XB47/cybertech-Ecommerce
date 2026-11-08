@@ -30,6 +30,7 @@ import com.novatech.cybertech.utils.RecommendationSignalUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -138,7 +139,17 @@ public class ReviewManagementServiceImp implements ReviewManagementService {
         reviewEntity.setProductEntity(product);
         reviewEntity.setOrderUuid(order.getUuid());
 
-        final ReviewEntity saved = reviewRepository.save(reviewEntity);
+        final ReviewEntity saved;
+        try {
+            saved = reviewRepository.saveAndFlush(reviewEntity);
+        } catch (DataIntegrityViolationException e) {
+            // The exists check above has no lock: two simultaneous requests (double click, two
+            // tabs) can both pass it. The uk_review_user_product constraint stops the second
+            // insert; surface it as the same 409 as the pre-check, as the wishlist does.
+            log.info("Concurrent review creation for user {} / product {} — caught by the DB constraint",
+                    LogSafetyUtils.maskUuid(keycloakId), reviewCreateRequestDto.getProductUuid());
+            throw new ReviewAlreadyExistsException(REVIEW_ALREADY_EXISTS_MESSAGE + reviewCreateRequestDto.getProductUuid());
+        }
         publishReviewsChanged(product.getUuid());
         publishRecommendationSignal(keycloakId, reviewEntity, product);
         return reviewMapper.mapFromEntityToResponseDto(saved);

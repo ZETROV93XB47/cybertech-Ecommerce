@@ -23,6 +23,7 @@ import com.novatech.cybertech.exceptions.OrderNotFoundException;
 import com.novatech.cybertech.exceptions.OrderNotReviewableException;
 import com.novatech.cybertech.exceptions.ProductNotFoundException;
 import com.novatech.cybertech.exceptions.ReviewAlreadyExistsException;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.novatech.cybertech.exceptions.ReviewNotFoundException;
 import com.novatech.cybertech.exceptions.UserNotAuthorOfReviewException;
 import com.novatech.cybertech.exceptions.UserNotFoundException;
@@ -224,7 +225,7 @@ class ReviewManagementServiceImpTest {
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
             when(moderationService.checkIfIsHateful("Excellent"))
                     .thenReturn(ModerationResponseDto.builder().label("not_toxic").score(0.95).isHateful(false).build());
-            when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
+            when(reviewRepository.saveAndFlush(reviewEntity)).thenReturn(reviewEntity);
             when(reviewMapper.mapFromEntityToResponseDto(reviewEntity)).thenReturn(responseDto);
 
             ReviewResponseDto result = service.create(dto, keycloakId);
@@ -255,7 +256,30 @@ class ReviewManagementServiceImpTest {
                     .hasMessageContaining(productUuid.toString());
 
             verifyNoInteractions(moderationService);
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
+        }
+
+        @Test
+        @DisplayName("concurrent creation caught by uk_review_user_product -> ReviewAlreadyExistsException (409), no event published")
+        void concurrentDuplicateCaughtByConstraint() {
+            ReviewCreateRequestDto dto = createDto();
+            UserEntity user = UserEntityBuilder.aValidUserBuilder().keycloakId(keycloakId).build();
+            OrderEntity order = callerOrderContainingProduct(productUuid);
+            ReviewEntity reviewEntity = entityFromDto(dto);
+
+            when(userRepository.findByKeycloakIdAndIsActive(keycloakId, true)).thenReturn(Optional.of(user));
+            when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
+            when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
+            when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(productWith(productUuid)));
+            when(moderationService.checkIfIsHateful("Excellent"))
+                    .thenReturn(ModerationResponseDto.builder().label("not_toxic").score(0.95).isHateful(false).build());
+            when(reviewRepository.saveAndFlush(reviewEntity)).thenThrow(new DataIntegrityViolationException("uk_review_user_product"));
+
+            assertThatThrownBy(() -> service.create(dto, keycloakId))
+                    .isInstanceOf(ReviewAlreadyExistsException.class)
+                    .hasMessageContaining(productUuid.toString());
+
+            verify(eventPublisher, never()).publishEvent(any());
         }
 
         @ParameterizedTest(name = "comment = [{0}]")
@@ -278,7 +302,7 @@ class ReviewManagementServiceImpTest {
             when(orderRepository.findByUuid(orderUuid)).thenReturn(Optional.of(order));
             when(reviewMapper.mapFromCreationRequestToEntity(dto)).thenReturn(reviewEntity);
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
-            when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
+            when(reviewRepository.saveAndFlush(reviewEntity)).thenReturn(reviewEntity);
 
             service.create(dto, keycloakId);
 
@@ -286,7 +310,7 @@ class ReviewManagementServiceImpTest {
             assertThat(reviewEntity.getComment()).isNull();
             assertThat(reviewEntity.getIsHateful()).isFalse();
             verifyNoInteractions(moderationService);
-            verify(reviewRepository).save(reviewEntity);
+            verify(reviewRepository).saveAndFlush(reviewEntity);
             assertRecommendationSignal(UserEventType.RATING_POSITIVE, product.getUuid());
         }
 
@@ -299,7 +323,7 @@ class ReviewManagementServiceImpTest {
             assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(UserNotFoundException.class);
 
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
         }
 
         @Test
@@ -339,7 +363,7 @@ class ReviewManagementServiceImpTest {
             assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(ProductNotFoundException.class);
 
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
         }
 
         @Test
@@ -372,7 +396,7 @@ class ReviewManagementServiceImpTest {
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
             when(moderationService.checkIfIsHateful("Excellent"))
                     .thenReturn(ModerationResponseDto.builder().label("not_toxic").score(0.1).isHateful(false).build());
-            when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
+            when(reviewRepository.saveAndFlush(reviewEntity)).thenReturn(reviewEntity);
             when(reviewMapper.mapFromEntityToResponseDto(reviewEntity))
                     .thenReturn(ReviewResponseDto.builder().build());
 
@@ -418,7 +442,7 @@ class ReviewManagementServiceImpTest {
                     .isInstanceOf(OrderDoesntBelongsToUserException.class);
 
             // Verify no review was saved
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
         }
 
         @Test
@@ -457,7 +481,7 @@ class ReviewManagementServiceImpTest {
             assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(CommentPostNotAllowedException.class);
 
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
             assertNoRecommendationSignal();
         }
 
@@ -480,7 +504,7 @@ class ReviewManagementServiceImpTest {
             assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(CommentPostNotAllowedException.class);
 
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
         }
 
         @Test
@@ -502,7 +526,7 @@ class ReviewManagementServiceImpTest {
             assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(ModerationUnavailableException.class);
 
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
         }
 
         @Test
@@ -524,7 +548,7 @@ class ReviewManagementServiceImpTest {
             assertThatThrownBy(() -> service.create(dto, keycloakId))
                     .isInstanceOf(ModerationUnavailableException.class);
 
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
             verifyNoInteractions(eventPublisher);
         }
 
@@ -600,7 +624,7 @@ class ReviewManagementServiceImpTest {
                     .isInstanceOf(OrderNotReviewableException.class)
                     .hasMessageContaining(status.name());
 
-            verify(reviewRepository, never()).save(any());
+            verify(reviewRepository, never()).saveAndFlush(any());
         }
 
         /**
@@ -621,13 +645,13 @@ class ReviewManagementServiceImpTest {
             when(productRepository.findByUuid(productUuid)).thenReturn(Optional.of(product));
             when(moderationService.checkIfIsHateful("Excellent"))
                     .thenReturn(ModerationResponseDto.builder().label("not_toxic").score(0.1).isHateful(false).build());
-            when(reviewRepository.save(reviewEntity)).thenReturn(reviewEntity);
+            when(reviewRepository.saveAndFlush(reviewEntity)).thenReturn(reviewEntity);
             when(reviewMapper.mapFromEntityToResponseDto(reviewEntity)).thenReturn(responseDto);
 
             final ReviewResponseDto result = service.create(dto, keycloakId);
 
             assertThat(result).isSameAs(responseDto);
-            verify(reviewRepository).save(reviewEntity);
+            verify(reviewRepository).saveAndFlush(reviewEntity);
         }
     }
 

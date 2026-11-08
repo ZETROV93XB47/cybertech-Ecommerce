@@ -154,12 +154,10 @@ class ProductSearchSortFlowIT {
     @Test
     @DisplayName("RATING_DESC: best average first, then most reviews; hidden reviews ignored; unrated products last")
     void ratingDesc() throws Exception {
-        final UserEntity author = userRepository.save(UserEntityBuilder.aValidUserBuilder()
-                .keycloakId("kc-author-" + UUID.randomUUID()).email("author+" + UUID.randomUUID() + "@example.com").build());
-        saveReviews(samsung, author, 5, 5);            // 5.0, 2 reviews
-        saveReviews(dell, author, 5);                  // 5.0, 1 review
-        saveReviews(hp, author, 5, 4);                 // 4.5, 2 reviews
-        saveHiddenReview(hp, author, 1);               // hateful: not published, not counted
+        saveReviews(samsung, 5, 5);            // 5.0, 2 reviews
+        saveReviews(dell, 5);                  // 5.0, 1 review
+        saveReviews(hp, 5, 4);                 // 4.5, 2 reviews
+        saveHiddenReview(hp, 1);               // hateful: not published, not counted
         Stream.of(samsung, dell, hp).forEach(this::reviewsChanged);
 
         await().pollInterval(AWAIT_POLL).atMost(AWAIT_AT_MOST).untilAsserted(() -> {
@@ -211,17 +209,20 @@ class ProductSearchSortFlowIT {
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    private void saveReviews(final UUID productUuid, final UserEntity author, final int... ratings) {
+    private void saveReviews(final UUID productUuid, final int... ratings) {
         for (final int rating : ratings) {
-            saveReview(productUuid, author, rating, false);
+            saveReview(productUuid, rating, false);
         }
     }
 
-    private void saveHiddenReview(final UUID productUuid, final UserEntity author, final int rating) {
-        saveReview(productUuid, author, rating, true);
+    private void saveHiddenReview(final UUID productUuid, final int rating) {
+        saveReview(productUuid, rating, true);
     }
 
-    private void saveReview(final UUID productUuid, final UserEntity author, final int rating, final boolean hateful) {
+    /** One author per review: a user can review a product only once (uk_review_user_product). */
+    private void saveReview(final UUID productUuid, final int rating, final boolean hateful) {
+        final UserEntity author = userRepository.save(UserEntityBuilder.aValidUserBuilder()
+                .keycloakId("kc-author-" + UUID.randomUUID()).email("author+" + UUID.randomUUID() + "@example.com").build());
         // One transaction: ReviewEntity cascades PERSIST to its product, which must still be managed.
         transactionTemplate.executeWithoutResult(tx -> reviewRepository.save(ReviewEntity.builder()
                 .uuid(UUID.randomUUID())

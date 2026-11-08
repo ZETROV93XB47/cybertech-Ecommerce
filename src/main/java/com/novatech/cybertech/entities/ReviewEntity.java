@@ -18,7 +18,7 @@ import java.util.UUID;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "reviewTable")
+@Table(name = "reviewTable", uniqueConstraints = @UniqueConstraint(name = "uk_review_user_product", columnNames = {"userId", "reviewId"}))
 @ToString(callSuper = true, exclude = {"productEntity", "userEntity"})
 @EqualsAndHashCode(callSuper = true, exclude = {"productEntity", "userEntity"})
 public class ReviewEntity extends BaseEntity<Long> {
