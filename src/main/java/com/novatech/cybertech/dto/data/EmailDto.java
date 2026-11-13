@@ -11,5 +11,6 @@ public class EmailDto {
     private String to;
     private String from;
     private String subject;
-    private Map<String, Object> context;
+    private String templatePath;
+    private Map<String, Object> templateVariables;
 }

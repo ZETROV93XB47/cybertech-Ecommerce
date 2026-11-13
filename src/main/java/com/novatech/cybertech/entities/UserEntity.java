@@ -7,22 +7,27 @@ import com.novatech.cybertech.entities.valueObjects.Address;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 @Entity
-@Setter
 @Getter
+@Setter
 @SuperBuilder
+@NoArgsConstructor
 @AllArgsConstructor
-@RequiredArgsConstructor
 @Table(name = "userTable")
-@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntities"})
-@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntities"})
-public class UserEntity extends BaseEntity {
+@ToString(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntity", "wishlistItems", "recommendations", "stockAlerts"})
+@EqualsAndHashCode(callSuper = true, exclude = {"orderEntities", "reviewEntities", "bankCardEntity", "cartEntity", "wishlistItems", "recommendations", "stockAlerts"})
+public class UserEntity extends BaseEntity<Long> {
 
-    @Column(name = "email", nullable = false, unique = true, length = 50)
+    @Column(name = "email", nullable = false, unique = true, length = 254)
     private String email;
 
     @Column(name = "firstName", length = 50)
@@ -51,6 +56,18 @@ public class UserEntity extends BaseEntity {
     @Column(unique = true, nullable = false)
     private String keycloakId;
 
+    /**
+     * <b>NON-AUTHORITATIVE — informational copy only.</b> Runtime authorization is decided
+     * exclusively from the JWT realm roles issued by Keycloak (see
+     * {@code KeycloakRoleConverter} + {@code @PreAuthorize("hasRole(...)")}): Keycloak is the
+     * single source of truth for authorization. This column exists for display/reporting and
+     * data-generation purposes only.
+     *
+     * <p><b>Never</b> branch security decisions on this field and <b>never</b> "promote" a user
+     * by flipping it — doing either creates an authorization split-brain with the realm roles.
+     * A role change must go through Keycloak (realm role mapping); this column may then be
+     * refreshed as a cosmetic mirror.
+     */
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)
     private Role role;
@@ -68,15 +85,48 @@ public class UserEntity extends BaseEntity {
     @Column(name = "numberOfHatefulComments", nullable = false)
     private int numberOfHatefulComments = 0;
 
-    @OneToMany(fetch = FetchType.EAGER, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    /**
+     * Daily product-suggestion e-mail ({@code RECOMMENDATION_DIGEST_JOB}). Sent to every active
+     * user unless they unsubscribe (link in each e-mail, or {@code PATCH /user/me}).
+     */
+    @Builder.Default
+    @Column(name = "recommendationEmailEnabled", nullable = false)
+    private boolean recommendationEmailEnabled = true;
+
+    /**
+     * Secret carried by the unsubscribe link of the suggestion e-mail. Generated on the first
+     * e-mail sent to the user, then kept so older links keep working.
+     */
+    @JdbcTypeCode(SqlTypes.UUID)
+    @Column(name = "recommendationEmailUnsubscribeToken", unique = true)
+    private UUID recommendationEmailUnsubscribeToken;
+
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderEntity> orderEntities;
 
-    @OneToMany(fetch = FetchType.EAGER, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ReviewEntity> reviewEntities;
 
-    @OneToMany(fetch = FetchType.EAGER, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<BankCardEntity> bankCardEntities;
-}
+    // fetch = LAZY is advisory only on the non-owning side of a bidirectional @OneToOne: without
+    // bytecode enhancement, Hibernate cannot proxy it (no way to know if a row exists without a
+    // query) and always loads it eagerly regardless of this annotation. Bytecode enhancement was
+    // tried to fix this for real (see pom.xml) and reverted — broken on this Java 26 / Hibernate
+    // 7.2.7 combination. Kept anyway to document intent; costs nothing today.
+    @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private BankCardEntity bankCardEntity;
 
-//@OneToMany(fetch = FetchType.EAGER, mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
-//private List<CartEntity> cartEntities;
+    @OneToOne(mappedBy = "userEntity", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private CartEntity cartEntity;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<WishlistEntity> wishlistItems = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<RecommendationEntity> recommendations = new HashSet<>();
+
+    @OneToMany(mappedBy = "userEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<PushSubscriptionEntity> pushSubscriptions = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<StockAlertEntity> stockAlerts = new HashSet<>();
+}

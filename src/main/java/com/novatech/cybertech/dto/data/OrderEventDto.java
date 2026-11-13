@@ -1,7 +1,9 @@
 package com.novatech.cybertech.dto.data;
 
 import com.novatech.cybertech.entities.enums.OrderStatus;
-import com.novatech.cybertech.entities.enums.PaymentStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -18,9 +20,10 @@ public class OrderEventDto implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private UUID orderUuid;
-    private UserContactDto userContactDto;
     private BigDecimal totalAmount;
     private OrderStatus orderStatus;
-    private PaymentStatus paymentStatus;
-    private Map<UUID, Integer> productsByQuantityMap;
+    private ShippingType shippingType;
+    private UserContactDto userContactDto;
+    private ShippingProvider shippingProvider;
+    private PaymentAttemptStatus paymentAttemptStatus;
 }

@@ -1,19 +1,32 @@
 package com.novatech.cybertech.dto.request.cart;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.UUID;
+import java.util.List;
 
+/**
+ * Update DTO for the cart resource.
+ * <p>
+ * Carries the changeable fields of a cart (currently the list of items to add /
+ * replace). Replaces the previous misuse of {@code CartItemRemoveRequestDto} as
+ * the update payload, which was semantically wrong because that DTO carries a
+ * single product UUID + a quantity to remove and cannot describe a bulk update.
+ *
+ * <p>Nested {@code @Valid} ensures each {@link CartItemAddRequestDto} respects its
+ * own constraints ({@code @Min(1)} on quantity).
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class CartUpdateRequestDto {
 
-    @NotNull(message = "Cart UUID cannot be null")
-    private UUID cartUuid;
-
-    @NotNull(message = "Order UUID cannot be null")
-    private UUID orderUuid;
-
-    //TODO: remplir ce dto plus tard ou même le supprimer
-    // parce qu'un panier est lié à une commande et une fois
-    // la commande validée, le panier n'a plis lieu d'être modifié
-    // et on vuet faire simplei ici, donc,
+    @Valid
+    @NotNull(message = "Cart items cannot be null")
+    private List<CartItemAddRequestDto> cartItemAddRequestDtos;
 }

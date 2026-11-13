@@ -17,12 +17,45 @@ public enum Brand {
     MSI(6),
     ACER(7),
     TOSHIBA(8),
-    ALIENWARE(9);
+    ALIENWARE(9),
+    MICROSOFT(10),
+    ALTYK(11),
+    GIGABYTE(12),
+    SAMSUNG(13),
+    // Monitor brands (LDLC catalog)
+    LG(14),
+    AOC(15),
+    IIYAMA(16),
+    BENQ(17),
+    PHILIPS(18),
+    VIEWSONIC(19),
+    EIZO(20),
+    CORSAIR(21),
+    LDLC(22),
+    XIAOMI(23),
+    // Smartwatch brands (LDLC catalog)
+    APPLE(24),
+    GARMIN(25),
+    HUAWEI(26),
+    AMAZFIT(27),
+    WITHINGS(28),
+    GOOGLE(29),
+    POLAR(30),
+    SUUNTO(31),
+    COROS(32),
+    FITBIT(33),
+    // Smartphone brands (LDLC catalog)
+    MOTOROLA(34),
+    ONEPLUS(35),
+    OPPO(36),
+    HONOR(37),
+    NOTHING(38),
+    SONY(39),
+    CROSSCALL(40),
+    REALME(41),
+    FAIRPHONE(42),
+    NOKIA(43);
 
     private final Integer code;
-
-    public static Brand getByCode(int code) {
-        return stream(values()).filter(marque -> marque.getCode() == code).findFirst().orElseThrow(IllegalArgumentException::new);
-    }
 
 }

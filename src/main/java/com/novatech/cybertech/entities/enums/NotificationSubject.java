@@ -1,0 +1,19 @@
+package com.novatech.cybertech.entities.enums;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
+public enum NotificationSubject {
+    ORDER_CANCELLATION("Annulation de commande - Cybertech"),
+    ORDER_PENDING_PAYMENT("Action requise : Paiement en attente"),
+    ORDER_CONFIRMATION("Confirmation de votre commande"),
+    ORDER_UPDATE("Mise à jour de votre commande - Cybertech"),
+    PAYMENT_CONFIRMATION("Paiement confirmé - Cybertech"),
+    SHIPPING_CONFIRMATION("Votre commande a été expédiée !"),
+    RECOMMENDATION_DIGEST("Nos suggestions pour vous - Cybertech"),
+    STOCK_ALERT("Un produit que vous attendiez est de nouveau disponible - Cybertech");
+
+    private final String subject;
+}

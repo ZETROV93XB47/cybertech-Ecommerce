@@ -1,9 +1,20 @@
+{{/*
+ConfigMap kept for parity with other charts and for ad-hoc reference. The
+Deployment sources its env directly from values + the keycloak-secret; this
+ConfigMap is NOT consumed by the pod, but exposes the same KC_* settings as
+data so operators can `kubectl get cm keycloak-config -o yaml` to debug.
+*/}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: keycloak-config
+  name: {{ include "keycloak.fullname" . }}-config
+  labels:
+    {{- include "keycloak.labels" . | nindent 4 }}
 data:
   KC_DB: "mysql"
-  KC_DB_URL: "jdbc:mysql://{{ .Values.mysql.host }}:{{ .Values.mysql.port }}/{{ .Values.mysql.database }}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
-  KC_DB_USERNAME: "{{ .Values.mysql.user }}"
-  KEYCLOAK_ADMIN: "{{ .Values.admin.user }}"
+  KC_DB_URL: "jdbc:mysql://{{ .Values.keycloak.database.host }}:{{ .Values.keycloak.database.port }}/{{ .Values.keycloak.database.name }}?{{ .Values.keycloak.jdbcParams }}"
+  KC_DB_USERNAME: {{ .Values.keycloak.database.username | quote }}
+  KC_HOSTNAME: {{ .Values.keycloak.hostname | quote }}
+  KC_HOSTNAME_STRICT: {{ .Values.keycloak.hostnameStrict | quote }}
+  KC_HTTP_ENABLED: {{ .Values.keycloak.httpEnabled | quote }}
+  KC_PROXY_HEADERS: {{ .Values.keycloak.proxyHeaders | quote }}

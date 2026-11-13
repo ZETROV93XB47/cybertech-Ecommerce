@@ -4,8 +4,10 @@ import com.novatech.cybertech.dto.request.orderItem.OrderItemCreateRequestDto;
 import com.novatech.cybertech.entities.enums.PaymentType;
 import com.novatech.cybertech.entities.enums.ShippingProvider;
 import com.novatech.cybertech.entities.enums.ShippingType;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,7 +23,7 @@ import java.util.UUID;
 public class OrderUpdateRequestDto {
 
     @NotNull(message = "Order UUID cannot be null")
-    private UUID orderUuid;
+    private UUID uuid;
 
     @NotNull(message = "The payment Method Type cannot be null")
     private PaymentType paymentType;
@@ -32,8 +34,25 @@ public class OrderUpdateRequestDto {
     @NotNull(message = "Shipping Provider cannot be null")
     private ShippingProvider shippingProvider;
 
-    @Size(max = 255, message = "Shipping address must be at most 255 characters")
-    private String shippingAddress;
+    @NotBlank(message = "Shipping Street cannot be blank")
+    private String shippingStreet;
 
+    @NotBlank(message = "Shipping City cannot be blank")
+    private String shippingCity;
+
+    @NotBlank(message = "Shipping Zip code cannot be blank")
+    private String shippingZipCode;
+
+    @NotBlank(message = "Shipping Country cannot be blank")
+    private String shippingCountry;
+
+    // An empty list made updateOrder() compute a zero-amount difference and flip the
+    // order to PAID with no payment ever processed (see OrderManagementServiceImp#updateOrder).
+    // @Valid cascades into each OrderItemCreateRequestDto so its own @NotNull/@Min(1) constraints
+    // are actually enforced — without it a zero/negative quantity skipped Bean Validation entirely
+    // and only got caught deep in StockServiceImp's defensive qty<=0 check, as a raw 400
+    // IllegalArgumentException instead of a clean field-level validation error.
+    @Valid
+    @NotEmpty(message = "At least one item is required to update an order")
     private List<OrderItemCreateRequestDto> itemUpdateRequestDtoList;
 }

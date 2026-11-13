@@ -1,0 +1,595 @@
+package com.novatech.cybertech.integration.payment;
+
+import com.novatech.cybertech.TestcontainersConfiguration;
+import com.novatech.cybertech.entities.OrderEntity;
+import com.novatech.cybertech.entities.PaymentEntity;
+import com.novatech.cybertech.entities.UserEntity;
+import com.novatech.cybertech.entities.enums.NotificationType;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.events.PaymentFailedEvent;
+import com.novatech.cybertech.events.PaymentRefundedEvent;
+import com.novatech.cybertech.events.PaymentSucceededEvent;
+import com.novatech.cybertech.fixtures.builders.OrderEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.PaymentEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.UserEntityBuilder;
+import com.novatech.cybertech.fixtures.support.stubs.StripeEventBuilder;
+import com.novatech.cybertech.repositories.NotificationRepository;
+import com.novatech.cybertech.repositories.OrderRepository;
+import com.novatech.cybertech.repositories.PaymentAttemptRepository;
+import com.novatech.cybertech.repositories.UserRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
+import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.time.Duration;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * End-to-end Stripe webhook flow IT against the real Testcontainers stack
+ * (MySQL + Redis + Elasticsearch + MongoDB) wired through the public
+ * {@link TestcontainersConfiguration}.
+ *
+ * <p>The endpoint {@code POST /api/v1/webhooks/stripe} is publicly reachable per
+ * {@code SecurityConfig.PUBLIC_URLS} (and mirrored in {@code TestSecurityConfig} via
+ * {@code "/api/v1/webhooks/**"}). All requests are signed with the test secret using the
+ * shared {@link StripeEventBuilder} fixture.
+ *
+ * <p><b>Fixes verified end-to-end here:</b>
+ * <ul>
+ *   <li>Dedup ledger ({@code ProcessedWebhookEventEntity}) short-circuits replays.</li>
+ *   <li>A paid order is NOT shipped on the spot: it stays PAID (paidAt stamped) for its
+ *       modification window.</li>
+ *   <li>{@link PaymentFailedEvent} published from {@code handlePaymentFailed}.</li>
+ *   <li>Terminal-state guard prevents SUCCESS→FAILED row regression.</li>
+ *   <li>Livemode mismatch silently drops the event.</li>
+ *   <li>Controller 200-ACKs non-retriable downstream failures.</li>
+ *   <li>Controller returns 400 on signed-but-malformed JSON.</li>
+ *   <li>{@code metadata.order_uuid} fixture key matches the listener.</li>
+ * </ul>
+ */
+@Slf4j
+@Testcontainers
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@RecordApplicationEvents
+@Import(TestcontainersConfiguration.class)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@TestPropertySource(properties = {
+        // Production reads `stripe.webhook.secret` (with a dot) — matches the slice test as well.
+        // The brief mentioned `stripe.webhook-secret`; using the actual production key is required.
+        "stripe.webhook.secret=" + PaymentWebhookFlowIT.WEBHOOK_SECRET
+})
+class PaymentWebhookFlowIT {
+
+    static final String WEBHOOK_SECRET = "whsec_test_sa_w53_secret";
+
+    private static final String STRIPE_WEBHOOK_ENDPOINT = "/api/v1/webhooks/stripe";
+    private static final String STRIPE_SIGNATURE_HEADER = "Stripe-Signature";
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
+    private PaymentAttemptRepository paymentAttemptRepository;
+
+    @Autowired
+    private NotificationRepository notificationRepository;
+
+    @Autowired
+    private ApplicationEvents applicationEvents;
+
+    private UUID orderUuid;
+    private String stripePaymentId;
+    private String idempotencyKey;
+
+    @BeforeEach
+    void seed() {
+        // Distinct identifiers per test for isolation (no @Transactional rollback because
+        // the webhook path opens its own transactions on AFTER_COMMIT listener side).
+        stripePaymentId = "pi_test_" + UUID.randomUUID().toString().replace("-", "");
+        idempotencyKey = "idem-" + UUID.randomUUID();
+
+        final UserEntity user = UserEntityBuilder.aValidUserBuilder()
+                .email("user-" + UUID.randomUUID() + "@example.com")
+                .keycloakId("kc-" + UUID.randomUUID())
+                .build();
+        userRepository.save(user);
+
+        final OrderEntity order = OrderEntityBuilder.aValidOrderBuilder()
+                .userEntity(user)
+                .status(OrderStatus.AWAITING_PAYMENT)
+                .build();
+        orderRepository.save(order);
+        orderUuid = order.getUuid();
+
+        // Seed the PaymentEntity that the webhook will look up by stripePaymentID. PaymentAttemptStatus
+        // does not declare a PENDING constant — the closest non-terminal value is PROCESSING.
+        final PaymentEntity payment = PaymentEntityBuilder.aValidPaymentBuilder()
+                .orderEntity(order)
+                .stripePaymentID(stripePaymentId)
+                .status(PaymentAttemptStatus.PROCESSING)
+                .idempotencyKey(idempotencyKey)
+                .build();
+        paymentAttemptRepository.save(payment);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 1) Valid-signature happy path — service ACKs 200 + PaymentSucceededEvent published
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * The webhook accepts a signed {@code payment_intent.succeeded} event, the controller ACKs
+     * 200, and the service publishes {@link PaymentSucceededEvent} so the
+     * {@code OrderPaymentConfirmationEventListener} (AFTER_COMMIT, async) can flip the order.
+     */
+    @Test
+    void validSignatureHappyPathReturns200AndPublishesPaymentSucceededEvent() throws Exception {
+        final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        // The controller's transaction commits before returning; the event is published synchronously
+        // by the service, so it must be observable on the recorder immediately.
+        Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(applicationEvents.stream(PaymentSucceededEvent.class).count())
+                        .as("exactly one PaymentSucceededEvent should be published on a valid SUCCESS webhook")
+                        .isEqualTo(1L)
+        );
+
+        // Payment row updated in DB
+        final PaymentEntity reloaded = paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
+        assertThat(reloaded.getProviderEventId()).isNotBlank();
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 2) Replay / idempotency — still open (ProcessedWebhookEventEntity NOT in tree)
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Fix verification — sending the SAME signed event twice now publishes
+     * {@link PaymentSucceededEvent} exactly ONCE. The dedup ledger
+     * ({@code ProcessedWebhookEventEntity}) records the {@code event.getId()} after the first
+     * successful processing; the second delivery short-circuits at the top of
+     * {@code handleEvent}.
+     */
+    @Test
+    void replayOfSameEventShouldPublishOnlyOnce_BUG_170() throws Exception {
+        final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        assertThat(applicationEvents.stream(PaymentSucceededEvent.class).count()).isEqualTo(1L);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 3) Tampered signature → 400
+    // ---------------------------------------------------------------------------------
+
+    @Test
+    void tamperedSignatureReturns400() throws Exception {
+        final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        // Flip the last hex char of the v1= digest
+        final String tamperedHeader = signed.header().substring(0, signed.header().length() - 1)
+                + (signed.header().endsWith("a") ? "b" : "a");
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, tamperedHeader)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isBadRequest());
+
+        // No event should be published because the service is never invoked.
+        assertThat(applicationEvents.stream(PaymentSucceededEvent.class).count()).isZero();
+
+        // Payment row untouched
+        final PaymentEntity reloaded = paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(PaymentAttemptStatus.PROCESSING);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 4) Malformed JSON with valid signature — still broken
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Fix verification — a valid HMAC over a malformed JSON body now returns 400. The
+     * controller catches the {@code JsonSyntaxException} (RuntimeException) thrown by
+     * {@code constructEvent} before signature verification.
+     */
+    @Test
+    void malformedJsonWithValidSignatureShouldReturn400_BUG_2502() throws Exception {
+        final String malformed = "{\"id\":\"evt_test\",\"this is not valid JSON";
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, malformed);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 5) payment_intent.payment_failed — (new) no PaymentFailedEvent was published
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Fix verification — {@code handlePaymentFailed} now publishes
+     * {@link PaymentFailedEvent} after flipping the payment row to FAILED. The order-confirmation
+     * listener can therefore release the held stock and flip the order to {@code PAYMENT_FAILED}.
+     */
+    @Test
+    void paymentIntentFailedShouldPublishFailedEvent_BUG_520() throws Exception {
+        final String payload = paymentIntentFailedJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(applicationEvents.stream(PaymentFailedEvent.class).count()).isEqualTo(1L)
+        );
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 6) Out-of-order regression — SUCCESS then FAILED for same payment intent
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Fix verification — once a payment row is in {@link PaymentAttemptStatus#SUCCESS},
+     * a subsequent {@code payment_intent.payment_failed} (out-of-order Stripe delivery) is
+     * dropped. The terminal-state guard in {@code handlePaymentFailed} short-circuits the row
+     * regression.
+     */
+    @Test
+    void outOfOrderSuccessThenFailedShouldKeepSuccessTerminal_BUG_521() throws Exception {
+        final String successPayload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed1 = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, successPayload);
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed1.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed1.payload()))
+                .andExpect(status().isOk());
+
+        final String failedPayload = paymentIntentFailedJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed2 = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, failedPayload);
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed2.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed2.payload()))
+                .andExpect(status().isOk());
+
+        assertThat(paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow().getStatus())
+                .isEqualTo(PaymentAttemptStatus.SUCCESS);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 7) Orphan PaymentIntent — still open (controller has no try/catch)
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Fix verification — an orphan {@code pi_*} with no matching payment row no longer
+     * leaks as a 404/5xx. The controller catches the {@link com.novatech.cybertech.exceptions.PaymentNotFoundException}
+     * (and any other service exception) and ACKs 200, preventing a Stripe retry storm.
+     */
+    @Test
+    void orphanPaymentIntentShouldAck200_BUG_2501() throws Exception {
+        final String orphanPi = "pi_orphan_" + UUID.randomUUID().toString().replace("-", "");
+        final String payload = paymentIntentSucceededJson(orphanPi, orderUuid, "idem-" + UUID.randomUUID());
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 8) livemode=true mismatch in a test environment
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Fix verification — a {@code livemode=true} event delivered to a test deployment
+     * (where {@code stripe.livemode=false}) is silently dropped: the controller still 200-ACKs
+     * (so Stripe stops re-delivering) but the service short-circuits before any side-effect, so
+     * the payment row stays {@link PaymentAttemptStatus#PROCESSING}.
+     */
+    @Test
+    void livemodeTrueShouldBeIgnoredInTestEnvironment_BUG_522() throws Exception {
+        final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey)
+                .replace("\"livemode\": false", "\"livemode\": true");
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        // Service short-circuits → payment row untouched, no domain event published.
+        final PaymentEntity reloaded = paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow();
+        assertThat(reloaded.getStatus())
+                .as("livemode mismatch must NOT mutate the payment row")
+                .isEqualTo(PaymentAttemptStatus.PROCESSING);
+        assertThat(applicationEvents.stream(PaymentSucceededEvent.class).count())
+                .as("livemode mismatch must NOT publish PaymentSucceededEvent")
+                .isZero();
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 9) Fixture metadata key matches consumer; happy path flips order to PAID
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Direct source-read of {@code OrderPaymentConfirmationEventListener#handlePaymentSuccess} (line
+     * 39) confirms the listener reads {@code metadata.get("order_uuid")}. Direct source-read of
+     * {@code PaymentDtoFixtures#aValidPaymentIntentPayload} (line 42) confirms the fixture writes
+     * {@code metadata.put("order_uuid", ...)}. Keys MATCH today — this is closed by the wiring.
+     *
+     * <p>This test signs a payload using the SAME production key, posts it, and waits for the
+     * AFTER_COMMIT async listener to flip {@link OrderStatus#AWAITING_PAYMENT} → {@link OrderStatus#PAID}.
+     */
+    @Test
+    void productionMetadataKeyOrderUuidFlipsOrderStatusToPaid_BUG_172() throws Exception {
+        final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
+        // Source-read sanity assertion (would also fail-compile if the JSON shape regressed)
+        assertThat(payload).contains("\"order_uuid\": \"" + orderUuid + "\"");
+
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        // Async + AFTER_COMMIT: poll the order status. Stock commit + cart-clear may also run,
+        // but only the order status is asserted to keep the test focused on the metadata key.
+        Awaitility.await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(200)).untilAsserted(() -> {
+            final OrderEntity reloaded = orderRepository.findByUuid(orderUuid).orElseThrow();
+            assertThat(reloaded.getStatus())
+                    .as("with metadata.order_uuid the listener flips the order to PAID")
+                    .isEqualTo(OrderStatus.PAID);
+        });
+    }
+
+    /**
+     * Once the async listener has moved the order to PAID, a PAYMENT_CONFIRMATION notification is
+     * attempted for that order: the order-confirmation email sent at placeOrder usually still says
+     * "payment pending", since Stripe confirms asynchronously. The NotificationEntity audit row is
+     * written whether the SMTP send succeeds or not, so it is asserted on rather than the mailbox.
+     */
+    @Test
+    void paymentSucceededWebhookTriggersPaymentConfirmationNotification() throws Exception {
+        final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        Awaitility.await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(250)).untilAsserted(() ->
+                assertThat(notificationRepository.findAll())
+                        .filteredOn(n -> orderUuid.equals(n.getOrderUuid()))
+                        .extracting(n -> n.getNotificationType())
+                        .contains(NotificationType.PAYMENT_CONFIRMATION));
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 10) A paid order stays PAID — and modifiable — for its modification window
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Shipping used to follow the payment within milliseconds, leaving the customer no time to
+     * {@code updateOrder}. It is now done only by {@code ShipAllPaidOrdersTasklet}, once
+     * {@code cybertech.shipping.grace-period} has elapsed since {@code paidAt}.
+     */
+    @Test
+    void succeededWebhookLeavesTheOrderPaidAndModifiable() throws Exception {
+        final String payload = paymentIntentSucceededJson(stripePaymentId, orderUuid, idempotencyKey);
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        Awaitility.await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(200)).untilAsserted(() ->
+                assertThat(orderRepository.findByUuid(orderUuid).orElseThrow().getStatus()).isEqualTo(OrderStatus.PAID));
+
+        // ... and nothing ships it in the meantime.
+        Awaitility.await().during(Duration.ofSeconds(2)).atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            final OrderEntity reloaded = orderRepository.findByUuid(orderUuid).orElseThrow();
+            assertThat(reloaded.getStatus()).isEqualTo(OrderStatus.PAID);
+            assertThat(reloaded.getPaidAt()).isNotNull();
+            assertThat(reloaded.getShippedAt()).isNull();
+        });
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 11) Refund event publishes PaymentRefundedEvent (sanity)
+    // ---------------------------------------------------------------------------------
+
+    @Test
+    void chargeRefundedEventPublishesPaymentRefundedEvent() throws Exception {
+        // Pre-condition: a captured (SUCCESS) payment being refunded.
+        final PaymentEntity payment = paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow();
+        payment.setStatus(PaymentAttemptStatus.SUCCESS);
+        paymentAttemptRepository.save(payment);
+
+        final String payload = chargeRefundedJson(stripePaymentId, orderUuid);
+        final StripeEventBuilder.Signed signed = StripeEventBuilder.signedPayloadNow(WEBHOOK_SECRET, payload);
+
+        mockMvc.perform(post(STRIPE_WEBHOOK_ENDPOINT)
+                        .header(STRIPE_SIGNATURE_HEADER, signed.header())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(signed.payload()))
+                .andExpect(status().isOk());
+
+        Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(applicationEvents.stream(PaymentRefundedEvent.class).count()).isEqualTo(1L)
+        );
+
+        // The original payment row stays SUCCESS: refunds live in their own REFUND rows, and this
+        // event also fires for PARTIAL refunds — downgrading the payment row made a partial
+        // refund look like a full one to every "amount paid" computation.
+        final PaymentEntity reloaded = paymentAttemptRepository.findByStripePaymentID(stripePaymentId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
+    }
+
+    // ===== JSON helpers — minimal Stripe-compatible event envelopes ===================
+
+    private static String paymentIntentSucceededJson(final String paymentIntentId,
+                                                     final UUID orderUuid,
+                                                     final String idempotencyKey) {
+        return """
+                {
+                  "id": "evt_%s",
+                  "object": "event",
+                  "api_version": "2024-04-10",
+                  "created": %d,
+                  "type": "payment_intent.succeeded",
+                  "livemode": false,
+                  "pending_webhooks": 0,
+                  "request": {"id": null, "idempotency_key": null},
+                  "data": {
+                    "object": {
+                      "id": "%s",
+                      "object": "payment_intent",
+                      "amount": 10000,
+                      "amount_received": 10000,
+                      "currency": "eur",
+                      "status": "succeeded",
+                      "metadata": {
+                        "order_uuid": "%s",
+                        "idempotency_key": "%s"
+                      }
+                    }
+                  }
+                }
+                """.formatted(
+                UUID.randomUUID().toString().replace("-", ""),
+                System.currentTimeMillis() / 1000L,
+                paymentIntentId,
+                orderUuid,
+                idempotencyKey
+        );
+    }
+
+    private static String paymentIntentFailedJson(final String paymentIntentId,
+                                                  final UUID orderUuid,
+                                                  final String idempotencyKey) {
+        return """
+                {
+                  "id": "evt_%s",
+                  "object": "event",
+                  "api_version": "2024-04-10",
+                  "created": %d,
+                  "type": "payment_intent.payment_failed",
+                  "livemode": false,
+                  "pending_webhooks": 0,
+                  "request": {"id": null, "idempotency_key": null},
+                  "data": {
+                    "object": {
+                      "id": "%s",
+                      "object": "payment_intent",
+                      "amount": 10000,
+                      "currency": "eur",
+                      "status": "requires_payment_method",
+                      "metadata": {
+                        "order_uuid": "%s",
+                        "idempotency_key": "%s"
+                      }
+                    }
+                  }
+                }
+                """.formatted(
+                UUID.randomUUID().toString().replace("-", ""),
+                System.currentTimeMillis() / 1000L,
+                paymentIntentId,
+                orderUuid,
+                idempotencyKey
+        );
+    }
+
+    private static String chargeRefundedJson(final String paymentIntentId, final UUID orderUuid) {
+        return """
+                {
+                  "id": "evt_%s",
+                  "object": "event",
+                  "api_version": "2024-04-10",
+                  "created": %d,
+                  "type": "charge.refunded",
+                  "livemode": false,
+                  "pending_webhooks": 0,
+                  "request": {"id": null, "idempotency_key": null},
+                  "data": {
+                    "object": {
+                      "id": "ch_%s",
+                      "object": "charge",
+                      "payment_intent": "%s",
+                      "amount": 10000,
+                      "amount_refunded": 10000,
+                      "currency": "eur",
+                      "refunded": true,
+                      "metadata": {
+                        "order_uuid": "%s"
+                      }
+                    }
+                  }
+                }
+                """.formatted(
+                UUID.randomUUID().toString().replace("-", ""),
+                System.currentTimeMillis() / 1000L,
+                UUID.randomUUID().toString().replace("-", ""),
+                paymentIntentId,
+                orderUuid
+        );
+    }
+}

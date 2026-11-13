@@ -10,22 +10,37 @@ import lombok.experimental.SuperBuilder;
 @Getter
 @Setter
 @SuperBuilder
+@NoArgsConstructor
 @AllArgsConstructor
-@RequiredArgsConstructor
 @Table(name = "bankCardTable")
-@ToString(callSuper = true, exclude = {"userEntity"})
+@ToString(callSuper = true, exclude = {"userEntity", "encryptedNumber"})
 @EqualsAndHashCode(callSuper = true, exclude = {"userEntity"})
-public class BankCardEntity extends BaseEntity {
+public class BankCardEntity extends BaseEntity<Long> {
 
-    @ManyToOne(fetch = FetchType.EAGER,cascade=CascadeType.ALL)
+    @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private UserEntity userEntity;
 
     @Column(name = "cardHolderName", nullable = false, length = 100)
     private String cardHolderName;
 
-    @Column(name = "cardNumber", nullable = false, length = 19) // Longueur typique avec espaces/tirets
-    private String cardNumber; // Stocker comme String pour gérer les zéros initiaux et le formatage
+    /**
+     * At-rest AES/GCM ciphertext of the PAN (base64-encoded IV + ciphertext + tag).
+     *
+     * <p>Length is generous (512) because the envelope includes a random per-record IV and a
+     * GCM authentication tag — see {@code AesCardEncryptionService} for the full rationale.
+     * Never returned in any response DTO.</p>
+     */
+    @Column(name = "encryptedNumber", length = 512)
+    private String encryptedNumber;
+
+    /**
+     * Last four digits of the PAN, cached for display. This is the ONLY PAN-derived
+     * value that may ever appear in a response, and only embedded in a masked form
+     * ({@code "**** **** **** 4242"}).
+     */
+    @Column(name = "lastFourDigits", length = 4)
+    private String lastFourDigits;
 
     @Column(name = "expiryDate", nullable = false, length = 7) // Format MM/YYYY
     private String expiryDate;
@@ -33,7 +48,4 @@ public class BankCardEntity extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "cardType", nullable = false)
     private BankCardType cardType;
-
-    @Column(name = "isDefault", nullable = false)
-    private Boolean isDefault = false;
 }

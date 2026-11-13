@@ -1,0 +1,126 @@
+package com.novatech.cybertech.listener;
+
+import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
+import com.novatech.cybertech.dto.data.OrderEventDto;
+import com.novatech.cybertech.dto.data.UserContactDto;
+import com.novatech.cybertech.entities.enums.CommunicationChanel;
+import com.novatech.cybertech.entities.enums.NotificationType;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.events.OrderCreatedEvent;
+import com.novatech.cybertech.events.OrderUpdatedEvent;
+import com.novatech.cybertech.services.core.NotificationRetryableDelivery;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+
+import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+
+/**
+ * Unit tests for {@link OrderEventListener}.
+ *
+ * <p>Phase 2: dispatch + retry + audit-row persistence are all delegated to
+ * {@link NotificationRetryableDelivery}. The listener's job is to build the
+ * context and hand it off. These tests assert that one delegate call happens
+ * with a correctly populated context for each event type. Retry semantics live
+ * in {@code NotificationRetryableDeliveryImpTest}.
+ */
+@ExtendWith(MockitoExtension.class)
+class OrderEventListenerTest {
+
+    @Mock
+    private NotificationRetryableDelivery retryableDelivery;
+
+    @InjectMocks
+    private OrderEventListener listener;
+
+    private OrderEventDto sample() {
+        return OrderEventDto.builder()
+                .orderUuid(UUID.randomUUID())
+                .totalAmount(new BigDecimal("100.00"))
+                .orderStatus(OrderStatus.CREATED)
+                .shippingType(ShippingType.STANDARD)
+                .shippingProvider(ShippingProvider.DHL)
+                .userContactDto(UserContactDto.builder()
+                        .name("Jane").email("jane@example.com").phoneNumber("+33600000000")
+                        .defaultCommunicationChanel(CommunicationChanel.EMAIL).build())
+                .paymentAttemptStatus(PaymentAttemptStatus.CREATED)
+                .build();
+    }
+
+    @Test
+    void onOrderCreatedIsAnnotatedTransactionalEventListenerAfterCommit() throws NoSuchMethodException {
+        Method m = OrderEventListener.class.getMethod("onOrderCreated", OrderCreatedEvent.class);
+        TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
+        // placeOrder publishes OrderCreatedEvent OUTSIDE any transaction (order creation commits
+        // on OrderCreationTransactionalDelegate first) — without fallbackExecution Spring silently
+        // drops the event and the confirmation email is never sent.
+        assertThat(ann.fallbackExecution()).isTrue();
+    }
+
+    @Test
+    void onOrderUpdatedIsAnnotatedTransactionalEventListenerAfterCommit() throws NoSuchMethodException {
+        Method m = OrderEventListener.class.getMethod("onOrderUpdated", OrderUpdatedEvent.class);
+        TransactionalEventListener ann = m.getAnnotation(TransactionalEventListener.class);
+        assertThat(ann).isNotNull();
+        assertThat(ann.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
+    }
+
+    @Test
+    void onOrderCreatedShouldDelegateExactlyOnceWithOrderConfirmationContext() {
+        OrderEventDto dto = sample();
+
+        listener.onOrderCreated(new OrderCreatedEvent(this, dto));
+
+        ArgumentCaptor<NotificationContext> cap = ArgumentCaptor.forClass(NotificationContext.class);
+        verify(retryableDelivery, times(1)).deliver(cap.capture());
+        verifyNoMoreInteractions(retryableDelivery);
+
+        NotificationContext ctx = cap.getValue();
+        assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.ORDER_CONFIRMATION);
+        assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
+
+        assertThat(ctx.getPayload()).isInstanceOf(OrderConfirmationPayload.class);
+        OrderConfirmationPayload payload = (OrderConfirmationPayload) ctx.getPayload();
+        assertThat(payload.getOrderUuid()).isEqualTo(dto.getOrderUuid());
+        assertThat(payload.getTotalAmount()).isEqualByComparingTo(dto.getTotalAmount());
+        assertThat(payload.getOrderStatus()).isEqualTo(dto.getOrderStatus());
+        assertThat(payload.getPaymentAttemptStatus()).isEqualTo(dto.getPaymentAttemptStatus());
+    }
+
+    @Test
+    void onOrderUpdatedShouldDelegateExactlyOnceWithOrderUpdateContext() {
+        OrderEventDto dto = sample();
+
+        listener.onOrderUpdated(new OrderUpdatedEvent(this, dto));
+
+        ArgumentCaptor<NotificationContext> cap = ArgumentCaptor.forClass(NotificationContext.class);
+        verify(retryableDelivery, times(1)).deliver(cap.capture());
+        verifyNoMoreInteractions(retryableDelivery);
+
+        NotificationContext ctx = cap.getValue();
+        assertThat(ctx.getNotificationType()).isEqualTo(NotificationType.ORDER_UPDATE);
+        assertThat(ctx.getUser()).isSameAs(dto.getUserContactDto());
+
+        assertThat(ctx.getPayload()).isInstanceOf(OrderConfirmationPayload.class);
+        OrderConfirmationPayload payload = (OrderConfirmationPayload) ctx.getPayload();
+        assertThat(payload.getOrderUuid()).isEqualTo(dto.getOrderUuid());
+    }
+}

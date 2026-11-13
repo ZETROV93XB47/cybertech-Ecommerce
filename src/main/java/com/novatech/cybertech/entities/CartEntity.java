@@ -3,40 +3,36 @@ package com.novatech.cybertech.entities;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.BatchSize;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
-//@Entity
+@Entity
 @Getter
 @SuperBuilder
-//@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-//@Table(name = "cartTable")
-@ToString(callSuper = true)
-public class CartEntity  {
+// UNIQUE(userId) — declarative "one cart per user" data invariant, created by Hibernate's
+// `ddl-auto=update` from JPA metadata (e.g. for Testcontainers integration tests) and also
+// declared explicitly in src/main/resources/sql/databaseSchemaInitFile.sql for the production
+// init path. NOTE: this constraint used to back the first-insert-race retry (layer 3,
+// the SELECT ... FOR UPDATE + DataIntegrityViolationException one-shot retry). That layer was
+// removed — the per-user Redis lock now serialises the cart-add read-modify-write, including the
+// first insert — so this constraint is no longer load-bearing for concurrency; it is kept purely
+// as a cheap integrity guard. See CartServiceImp.addItemsToCart for the rationale.
+@Table(name = "cartTable", uniqueConstraints = @UniqueConstraint(name = "uk_cart_user", columnNames = "userId"))
+@ToString(callSuper = true, exclude = {"cartItems", "userEntity"})
+@EqualsAndHashCode(callSuper = true, exclude = {"cartItems", "userEntity"})
+public class CartEntity extends BaseEntity<Long> {
 
-    @ManyToOne
-    @JoinColumn(name = "userId", nullable = false)
+    @Setter // only settable field on this entity — needed to bind a freshly-mapped cart to its owner (see CartServiceImp#create)
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "userId", nullable = false, unique = true) // C'est Cart qui porte la clé étrangère (voir SQL)
     private UserEntity userEntity;
 
-    @CreationTimestamp
-    @Column(name = "createdAt", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updatedAt")
-    private LocalDateTime updatedAt;
-
-    @Column(name = "isCheckedOut", nullable = false)
-    private Boolean isCheckedOut = false;
-
-    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    // Batches lazy collection initialization across multiple carts loaded in the same session
+    // (see CartServiceImp#getAll) instead of one SELECT per cart.
+    @BatchSize(size = 20)
+    @OneToMany(mappedBy = "cart", orphanRemoval = true, cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<CartItemEntity> cartItems;
-
-    //@OneToOne(mappedBy = "cartEntity")
-    //private OrderEntity orderEntity;
 }

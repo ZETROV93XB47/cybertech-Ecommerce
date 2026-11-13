@@ -1,0 +1,6 @@
+1. Stripe CLI is running and listening for webhook events
+2. Verify the API key and webhook URL are correctly configured
+3. Check logs with: kubectl logs -l app=stripe
+
+Note: Make sure your webhook URL ({{ .Values.stripe.webhookUrl }}) is accessible from the pod.
+

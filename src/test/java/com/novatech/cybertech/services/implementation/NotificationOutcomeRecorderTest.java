@@ -1,0 +1,308 @@
+package com.novatech.cybertech.services.implementation;
+
+import com.novatech.cybertech.dto.data.NotificationContext;
+import com.novatech.cybertech.dto.data.OrderConfirmationPayload;
+import com.novatech.cybertech.dto.data.UserContactDto;
+import com.novatech.cybertech.entities.NotificationEntity;
+import com.novatech.cybertech.entities.enums.CommunicationChanel;
+import com.novatech.cybertech.entities.enums.NotificationStatus;
+import com.novatech.cybertech.entities.enums.NotificationType;
+import com.novatech.cybertech.entities.enums.OrderStatus;
+import com.novatech.cybertech.entities.enums.PaymentAttemptStatus;
+import com.novatech.cybertech.entities.enums.ShippingProvider;
+import com.novatech.cybertech.entities.enums.ShippingType;
+import com.novatech.cybertech.repositories.NotificationRepository;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
+
+/**
+ * Unit tests for {@link NotificationOutcomeRecorder}.
+ *
+ * <p>The recorder is the single point of truth for {@link NotificationEntity}
+ * audit rows; these tests pin the three contracts called out in the Phase 1
+ * spec: happy SENT row, FAILED row carrying the error message, and the
+ * defensive "swallow serialization failure but still persist" path.
+ */
+@ExtendWith(MockitoExtension.class)
+class NotificationOutcomeRecorderTest {
+
+    @Mock
+    private NotificationRepository notificationRepository;
+
+    // Use a real Jackson 3 mapper so polymorphic round-trip is actually
+    // exercised. The defensive-path test below substitutes a sabotaged
+    // mapper via an explicit constructor call.
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
+
+    private NotificationContext<ShippingConfirmationPayload> shippingContext(final UUID orderUuid) {
+        return NotificationContext.<ShippingConfirmationPayload>builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChanel(CommunicationChanel.EMAIL)
+                .subject("Your order has shipped")
+                .templatePath("email/shipping-confirmation")
+                .user(UserContactDto.builder()
+                        .name("Jane")
+                        .email("jane@example.com")
+                        .phoneNumber("+33600000000")
+                        .defaultCommunicationChanel(CommunicationChanel.EMAIL)
+                        .build())
+                .payload(ShippingConfirmationPayload.builder()
+                        .orderUuid(orderUuid)
+                        .userName("Jane")
+                        .shippingType(ShippingType.STANDARD)
+                        .shippingProvider(ShippingProvider.DHL)
+                        .build())
+                .build();
+    }
+
+    private NotificationContext<OrderConfirmationPayload> orderConfirmationContext(final UUID orderUuid) {
+        return NotificationContext.<OrderConfirmationPayload>builder()
+                .notificationType(NotificationType.ORDER_CONFIRMATION)
+                .user(UserContactDto.builder()
+                        .name("Bob").email("bob@example.com")
+                        .defaultCommunicationChanel(CommunicationChanel.EMAIL).build())
+                .payload(OrderConfirmationPayload.builder()
+                        .orderUuid(orderUuid)
+                        .totalAmount(new BigDecimal("100.00"))
+                        .orderStatus(OrderStatus.CREATED)
+                        .paymentAttemptStatus(PaymentAttemptStatus.CREATED)
+                        .userContactDto(UserContactDto.builder()
+                                .name("Bob").email("bob@example.com")
+                                .defaultCommunicationChanel(CommunicationChanel.EMAIL).build())
+                        .build())
+                .build();
+    }
+
+    private NotificationOutcomeRecorder makeRecorder(final ObjectMapper mapper) {
+        return new NotificationOutcomeRecorder(notificationRepository, mapper);
+    }
+
+    @Test
+    @DisplayName("happy: persists SENT row with payload populated and sentAt set")
+    void happyPathPersistsSentRowWithPayload() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final UUID orderUuid = UUID.randomUUID();
+        final NotificationContext<ShippingConfirmationPayload> ctx = shippingContext(orderUuid);
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        final NotificationEntity persisted = recorder.recordOutcome(ctx, NotificationStatus.SENT, 0, null);
+
+        final ArgumentCaptor<NotificationEntity> cap = ArgumentCaptor.forClass(NotificationEntity.class);
+        org.mockito.Mockito.verify(notificationRepository).save(cap.capture());
+        final NotificationEntity saved = cap.getValue();
+
+        assertThat(saved).isSameAs(persisted);
+        assertThat(saved.getOrderUuid()).isEqualTo(orderUuid);
+        assertThat(saved.getNotificationType()).isEqualTo(NotificationType.SHIPPING_CONFIRMATION);
+        assertThat(saved.getCommunicationChannel()).isEqualTo(CommunicationChanel.EMAIL);
+        assertThat(saved.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(saved.getRecipient()).isEqualTo("jane@example.com");
+        assertThat(saved.getRetryCount()).isZero();
+        assertThat(saved.getLastAttemptAt()).isNotNull();
+        assertThat(saved.getSentAt()).isNotNull();
+        assertThat(saved.getErrorHistory()).isEmpty();
+        assertThat(saved.getPayload())
+                .as("payload column carries the JSON-serialised redrive snapshot")
+                .isNotBlank()
+                .contains("SHIPPING_CONFIRMATION")
+                .contains("jane@example.com");
+    }
+
+    @Test
+    @DisplayName("happy: order-confirmation context extracts orderUuid from the typed payload")
+    void orderConfirmationContextExtractsOrderUuidFromTypedPayload() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final UUID orderUuid = UUID.randomUUID();
+        final NotificationContext<OrderConfirmationPayload> ctx = orderConfirmationContext(orderUuid);
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        recorder.recordOutcome(ctx, NotificationStatus.SENT, 0, null);
+
+        final ArgumentCaptor<NotificationEntity> cap = ArgumentCaptor.forClass(NotificationEntity.class);
+        org.mockito.Mockito.verify(notificationRepository).save(cap.capture());
+        assertThat(cap.getValue().getOrderUuid()).isEqualTo(orderUuid);
+    }
+
+    @Test
+    @DisplayName("failure: persists FAILED row with a formatted, truncated errorHistory entry and payload populated")
+    void failurePathPersistsFailedRowWithErrorAndPayload() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final UUID orderUuid = UUID.randomUUID();
+        final NotificationContext<ShippingConfirmationPayload> ctx = shippingContext(orderUuid);
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        // Build a message longer than the 500-char per-entry cap.
+        final String longMessage = "x".repeat(1500);
+        final RuntimeException failure = new RuntimeException(longMessage);
+
+        recorder.recordOutcome(ctx, NotificationStatus.FAILED, 3, failure);
+
+        final ArgumentCaptor<NotificationEntity> cap = ArgumentCaptor.forClass(NotificationEntity.class);
+        org.mockito.Mockito.verify(notificationRepository).save(cap.capture());
+        final NotificationEntity saved = cap.getValue();
+
+        assertThat(saved.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(saved.getRetryCount()).isEqualTo(3);
+        assertThat(saved.getSentAt()).as("sentAt is null on FAILED").isNull();
+        assertThat(saved.getLastAttemptAt()).isNotNull();
+        assertThat(saved.getErrorHistory()).hasSize(1);
+        assertThat(saved.getErrorHistory().get(0))
+                .as("first entry: [RETRY_1_FAILED_AT:<timestamp>]: <message truncated to 500 chars>")
+                .startsWith("[RETRY_1_FAILED_AT:")
+                .contains("x".repeat(500))
+                .doesNotContain("x".repeat(501));
+        assertThat(saved.getPayload()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("defensive: serialization failure is swallowed; row is still persisted with payload=null and the call does not throw")
+    void serializationFailureStillPersistsRow() {
+        // Sabotage the mapper so writeValueAsString throws.
+        final ObjectMapper sabotaged = spy(objectMapper);
+        when(sabotaged.writeValueAsString(any())).thenThrow(new RuntimeException("simulated jackson failure"));
+
+        final NotificationOutcomeRecorder recorder = makeRecorder(sabotaged);
+        final NotificationContext<ShippingConfirmationPayload> ctx = shippingContext(UUID.randomUUID());
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        assertThatCode(() -> recorder.recordOutcome(ctx, NotificationStatus.SENT, 0, null))
+                .doesNotThrowAnyException();
+
+        final ArgumentCaptor<NotificationEntity> cap = ArgumentCaptor.forClass(NotificationEntity.class);
+        org.mockito.Mockito.verify(notificationRepository).save(cap.capture());
+        final NotificationEntity saved = cap.getValue();
+        // Row persisted, but payload column is null because we lost the trace.
+        assertThat(saved.getPayload()).isNull();
+        assertThat(saved.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(saved.getRecipient()).isEqualTo("jane@example.com");
+    }
+
+    @Test
+    @DisplayName("updateOutcome: mutates and saves the SAME row in place (no new row inserted)")
+    void updateOutcome_mutatesSameEntityInPlace() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final NotificationEntity existing = NotificationEntity.builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChannel(CommunicationChanel.EMAIL)
+                .status(NotificationStatus.PENDING_RETRY)
+                .recipient("jane@example.com")
+                .retryCount(3)
+                .payload("{\"original\":\"snapshot\"}")
+                .build();
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        final NotificationEntity result = recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException("still down"));
+
+        assertThat(result).isSameAs(existing);
+        final ArgumentCaptor<NotificationEntity> cap = ArgumentCaptor.forClass(NotificationEntity.class);
+        org.mockito.Mockito.verify(notificationRepository).save(cap.capture());
+        assertThat(cap.getValue()).isSameAs(existing);
+        assertThat(existing.getRetryCount()).isEqualTo(6);
+        assertThat(existing.getStatus()).isEqualTo(NotificationStatus.PENDING_RETRY);
+        // First entry on a row with no prior history — numbered 1.
+        assertThat(existing.getErrorHistory()).hasSize(1);
+        assertThat(existing.getErrorHistory().get(0))
+                .startsWith("[RETRY_1_FAILED_AT:")
+                .contains("still down");
+        assertThat(existing.getLastAttemptAt()).isNotNull();
+        assertThat(existing.getSentAt()).as("sentAt stays null on PENDING_RETRY").isNull();
+        // payload column untouched — still the original redrive snapshot.
+        assertThat(existing.getPayload()).isEqualTo("{\"original\":\"snapshot\"}");
+    }
+
+    @Test
+    @DisplayName("updateOutcome: a second failure appends a NEW entry numbered 2, keeping the first")
+    void updateOutcome_appendsSecondEntryWithIncrementedNumber() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final NotificationEntity existing = NotificationEntity.builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChannel(CommunicationChanel.EMAIL)
+                .status(NotificationStatus.PENDING_RETRY)
+                .recipient("jane@example.com")
+                .retryCount(3)
+                .errorHistory(List.of("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: connection refused"))
+                .build();
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException("timeout"));
+
+        assertThat(existing.getErrorHistory())
+                .as("two distinct entries, first one kept as-is")
+                .hasSize(2)
+                .first().isEqualTo("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: connection refused");
+        assertThat(existing.getErrorHistory().get(1))
+                .as("second entry numbered 2")
+                .startsWith("[RETRY_2_FAILED_AT:")
+                .contains("timeout");
+    }
+
+    @Test
+    @DisplayName("updateOutcome: SENT leaves the prior errorHistory untouched — a notification that eventually sends still shows how many times it failed first")
+    void updateOutcome_sentPreservesPriorHistory() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final NotificationEntity existing = NotificationEntity.builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChannel(CommunicationChanel.EMAIL)
+                .status(NotificationStatus.PENDING_RETRY)
+                .recipient("jane@example.com")
+                .retryCount(6)
+                .errorHistory(List.of("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: previous failure"))
+                .payload("{\"original\":\"snapshot\"}")
+                .build();
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        recorder.updateOutcome(existing, NotificationStatus.SENT, 6, null);
+
+        assertThat(existing.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(existing.getSentAt()).isNotNull();
+        assertThat(existing.getErrorHistory())
+                .as("history is preserved, not cleared, on eventual success")
+                .containsExactly("[RETRY_1_FAILED_AT:2026-01-01T00:00:00]: previous failure");
+    }
+
+    @Test
+    @DisplayName("updateOutcome: each entry's message is truncated to 500 chars, independent of prior history length")
+    void updateOutcome_truncatesLongErrorMessage() {
+        final NotificationOutcomeRecorder recorder = makeRecorder(objectMapper);
+        final NotificationEntity existing = NotificationEntity.builder()
+                .notificationType(NotificationType.SHIPPING_CONFIRMATION)
+                .communicationChannel(CommunicationChanel.EMAIL)
+                .status(NotificationStatus.PENDING_RETRY)
+                .recipient("jane@example.com")
+                .retryCount(3)
+                .build();
+        when(notificationRepository.save(any(NotificationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        final String longMessage = "x".repeat(1500);
+        recorder.updateOutcome(existing, NotificationStatus.PENDING_RETRY, 6, new RuntimeException(longMessage));
+
+        assertThat(existing.getErrorHistory()).hasSize(1);
+        assertThat(existing.getErrorHistory().get(0))
+                .contains("x".repeat(500))
+                .doesNotContain("x".repeat(501));
+    }
+}

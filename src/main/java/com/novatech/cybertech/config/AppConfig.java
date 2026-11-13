@@ -2,39 +2,64 @@ package com.novatech.cybertech.config;
 
 import com.novatech.cybertech.annotation.*;
 import com.novatech.cybertech.entities.enums.*;
+import com.novatech.cybertech.listener.ProductCategorySchemaCacheInvalidationListener;
 import com.novatech.cybertech.listener.RedisExpirationListener;
-import com.novatech.cybertech.repositories.ProductRepository;
-import com.novatech.cybertech.repositories.StockRepository;
 import com.novatech.cybertech.services.core.AbstractNotification;
 import com.novatech.cybertech.services.core.NotificationProcessor;
-import com.novatech.cybertech.services.core.PaymentProcessor;
+import com.novatech.cybertech.services.core.PaymentAttemptProcessor;
 import com.novatech.cybertech.services.core.ShippingProviderService;
 import com.novatech.cybertech.strategy.discount.DiscountStrategy;
 import com.novatech.cybertech.validator.core.OrderValidator;
 import com.novatech.cybertech.validator.implementation.ActiveUserValidator;
 import com.novatech.cybertech.validator.implementation.BankCardValidityValidator;
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.ClientBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
+import org.slf4j.MDC;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CachingConfigurer;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.listener.PatternTopic;
+import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.util.EnumMap;
-import java.util.Map;
+import java.lang.annotation.Annotation;
+import java.util.*;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APPLICATION_ASYNC_TASK_EXECUTOR;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL;
 
 @Slf4j
 @Configuration
+@EnableCaching
 @EnableJpaAuditing
 @RequiredArgsConstructor
-public class AppConfig {
+public class AppConfig implements CachingConfigurer {
+
+    /**
+     * A cache failure (unreadable entry, Redis unreachable) degrades to an uncached call instead of
+     * a 500 — see {@link SelfHealingCacheErrorHandler}.
+     */
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return new SelfHealingCacheErrorHandler();
+    }
 
     @Value("${keycloak.client.user.management.server.url}")
     private String serverUrl;
@@ -44,6 +69,10 @@ public class AppConfig {
     private String clientId;
     @Value("${keycloak.client.user.management.client.secret}")
     private String clientSecret;
+    @Value("${keycloak.client.user.management.connect-timeout-ms:5000}")
+    private long keycloakConnectTimeoutMs;
+    @Value("${keycloak.client.user.management.read-timeout-ms:10000}")
+    private long keycloakReadTimeoutMs;
 
     private final ActiveUserValidator activeUserValidator;
     private final BankCardValidityValidator bankCardValidityValidator;
@@ -56,30 +85,45 @@ public class AppConfig {
         return activeUserValidator;
     }
 
+    /**
+     * Reads a strategy's handler annotation from the bean's <em>target</em> class. Any bean that
+     * carries AOP advice (Resilience4j {@code @Retry} / {@code @CircuitBreaker}, {@code @Transactional},
+     * the request trace aspect...) is a CGLIB subclass at runtime, and {@code bean.getClass().getAnnotation(..)}
+     * on that subclass returns {@code null} for a non-{@code @Inherited} annotation — the strategy would
+     * then silently be missing from its map.
+     */
+    private static <A extends Annotation> A handlerAnnotation(final Object bean, final Class<A> annotationType) {
+        return AnnotationUtils.findAnnotation(AopUtils.getTargetClass(bean), annotationType);
+    }
+
     @Bean
-    public Map<PaymentType, PaymentProcessor> paymentServiceMap(final ApplicationContext context) {
-        final Map<PaymentType, PaymentProcessor> serviceMap = new EnumMap<>(PaymentType.class);
+    public Map<Set<PaymentType>, PaymentAttemptProcessor> paymentServiceMap(final @NonNull ApplicationContext context) {
+        final Map<Set<PaymentType>, PaymentAttemptProcessor> serviceMap = new HashMap<Set<PaymentType>, PaymentAttemptProcessor>();
 
-        final Map<String, PaymentProcessor> beans = context.getBeansOfType(PaymentProcessor.class);
+        final Map<String, PaymentAttemptProcessor> beans = context.getBeansOfType(PaymentAttemptProcessor.class);
 
-        for (PaymentProcessor service : beans.values()) {
-            final PaymentTypeHandler annotation = service.getClass().getAnnotation(PaymentTypeHandler.class);
+        for (PaymentAttemptProcessor service : beans.values()) {
+            final PaymentTypeHandler annotation = handlerAnnotation(service, PaymentTypeHandler.class);
             if (annotation != null) {
-                serviceMap.put(annotation.value(), service);
+                serviceMap.put((new HashSet<>(Arrays.asList(annotation.value()))), service);
             }
         }
+
+        log.info("payment service map : {}", serviceMap);
 
         return serviceMap;
     }
 
 
     @Bean
-    public Map<DiscountType, DiscountStrategy> discountStrategyMap(ApplicationContext context) {
-        Map<DiscountType, DiscountStrategy> map = new EnumMap<>(DiscountType.class);
+    public Map<DiscountCalculationType, DiscountStrategy> discountStrategyMap(ApplicationContext context) {
+        Map<DiscountCalculationType, DiscountStrategy> map = new EnumMap<>(DiscountCalculationType.class);
         context.getBeansOfType(DiscountStrategy.class).forEach((name, bean) -> {
-            DiscountTypeHandler annotation = bean.getClass().getAnnotation(DiscountTypeHandler.class);
+            DiscountTypeHandler annotation = handlerAnnotation(bean, DiscountTypeHandler.class);
             if (annotation != null) {
-                map.put(annotation.value(), bean);
+                for (DiscountCalculationType calcType : annotation.value()) {
+                    map.put(calcType, bean);
+                }
             }
         });
         return map;
@@ -89,7 +133,7 @@ public class AppConfig {
     public Map<NotificationType, AbstractNotification> getNotificationStrategies(final ApplicationContext context) {
         Map<NotificationType, AbstractNotification> map = new EnumMap<>(NotificationType.class);
         context.getBeansOfType(AbstractNotification.class).forEach((name, bean) -> {
-            NotificationTypeHandler annotation = bean.getClass().getAnnotation(NotificationTypeHandler.class);
+            NotificationTypeHandler annotation = handlerAnnotation(bean, NotificationTypeHandler.class);
             if (annotation != null) {
                 map.put(annotation.value(), bean);
             }
@@ -101,7 +145,7 @@ public class AppConfig {
     public Map<CommunicationChanel, NotificationProcessor> getNotificationProcessorStrategies(final ApplicationContext context) {
         Map<CommunicationChanel, NotificationProcessor> map = new EnumMap<>(CommunicationChanel.class);
         context.getBeansOfType(NotificationProcessor.class).forEach((name, bean) -> {
-            CommunicationTypeHandler annotation = bean.getClass().getAnnotation(CommunicationTypeHandler.class);
+            CommunicationTypeHandler annotation = handlerAnnotation(bean, CommunicationTypeHandler.class);
             if (annotation != null) {
                 map.put(annotation.value(), bean);
             }
@@ -114,7 +158,7 @@ public class AppConfig {
     public Map<ShippingProvider, ShippingProviderService> getShippingProviderStrategies(final ApplicationContext applicationContext) {
         Map<ShippingProvider, ShippingProviderService> map = new EnumMap<>(ShippingProvider.class);
         applicationContext.getBeansOfType(ShippingProviderService.class).forEach((name, bean) -> {
-            ShippingProviderHandler annotation = bean.getClass().getAnnotation(ShippingProviderHandler.class);
+            ShippingProviderHandler annotation = handlerAnnotation(bean, ShippingProviderHandler.class);
             if (annotation != null) {
                 map.put(annotation.value(), bean);
             }
@@ -122,25 +166,88 @@ public class AppConfig {
         return map;
     }
 
+    /**
+     * Named {@code redisMessageListenerContainer} on purpose: from Spring Boot 4.1, with
+     * {@code spring.threads.virtual.enabled=true}, {@code DataRedisAnnotationDrivenConfiguration}
+     * registers its own virtual-thread container unless a bean with THAT NAME already exists (its
+     * {@code @ConditionalOnMissingBean} matches by name, not by type). Under any other name both
+     * containers coexist and the context fails to start ({@code NoUniqueBeanDefinitionException}
+     * injecting {@link RedisExpirationListener}) — seen during an accidental 4.1.1 bump.
+     */
     @Bean
-    public RedisMessageListenerContainer redisContainer(RedisConnectionFactory connectionFactory, StockRepository reservationRepository, ProductRepository productRepository) {
+    public RedisMessageListenerContainer redisMessageListenerContainer(RedisConnectionFactory connectionFactory,
+                                                                       ProductCategorySchemaCacheInvalidationListener productCategorySchemaCacheInvalidationListener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        // Listen to EXPIRED events
-        container.addMessageListener(new RedisExpirationListener(container, reservationRepository, productRepository), new PatternTopic("__keyevent@*__:expired"));
+        // Reservation-expiry events: NOT registered here — RedisExpirationListener (a @Component)
+        // subscribes itself on startup. Adding it here too made every expiry run twice.
+        // Cross-instance product-category-schema cache invalidation (see ProductCategorySchemaServiceImp, the publisher)
+        container.addMessageListener(productCategorySchemaCacheInvalidationListener, new ChannelTopic(PRODUCT_CATEGORY_SCHEMA_CHANGED_CHANNEL));
 
         return container;
     }
 
     @Bean
     public Keycloak keycloakAdminClient() {
+        // The admin client has no timeout by default, so a stalled Keycloak would block a
+        // user-provisioning request thread indefinitely without this.
+        Client resteasyClient = ClientBuilder.newBuilder()
+                .connectTimeout(keycloakConnectTimeoutMs, TimeUnit.MILLISECONDS)
+                .readTimeout(keycloakReadTimeoutMs, TimeUnit.MILLISECONDS)
+                .build();
+
         return KeycloakBuilder.builder()
                 .serverUrl(serverUrl)
                 .realm(realm)
                 .clientId(clientId)
                 .clientSecret(clientSecret)
                 .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
+                .resteasyClient(resteasyClient)
                 .build();
+    }
+
+
+    @Bean(name = APPLICATION_ASYNC_TASK_EXECUTOR)
+    public Executor applicationTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("async-");
+        executor.setTaskDecorator(new MdcTaskDecorator());
+        executor.initialize();
+        return executor;
+    }
+
+    static class MdcTaskDecorator implements TaskDecorator {
+
+        @Override
+        public @NonNull Runnable decorate(@NonNull Runnable runnable) {
+            final Map<String, String> contextMap = MDC.getCopyOfContextMap();
+
+            return () -> {
+
+                final Map<String, String> previous = MDC.getCopyOfContextMap();
+
+                try {
+                    if (contextMap != null) {
+                        MDC.setContextMap(contextMap);
+                    }
+                    else {
+                        MDC.clear();
+                    }
+                    runnable.run();
+                }
+                finally {
+                    if (previous != null) {
+                        MDC.setContextMap(previous);
+                    }
+                    else {
+                        MDC.clear();
+                    }
+                }
+            };
+        }
     }
 }
 

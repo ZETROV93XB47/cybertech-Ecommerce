@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Confirmation de paiement</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 0;
+            color: #333333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #27ae60; /* Vert pour le succès */
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 16px;
+            line-height: 1.5;
+            margin: 16px 0;
+        }
+        .payment-info {
+            background-color: #eafaf1;
+            border: 1px solid #27ae60;
+            border-radius: 6px;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        .info-item {
+            font-weight: 600;
+            color: #1e8449;
+            padding: 5px 0;
+            border-bottom: 1px solid #d5f5e3;
+        }
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        .footer {
+            font-size: 12px;
+            color: #999999;
+            text-align: center;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Paiement confirmé</h1>
+    <p>Bonjour <strong th:text="${userName}">Nom</strong>,</p>
+    <p>Nous avons bien reçu le paiement de votre commande <strong>#<span th:text="${orderId}">0000</span></strong>.</p>
+
+    <div class="payment-info">
+        <div class="info-item">
+            Montant total : <span th:text="${amount}">0.00</span>
+        </div>
+    </div>
+
+    <p>Votre commande est en cours de préparation. Vous recevrez un email dès son expédition.</p>
+
+    <div class="footer">
+        Cybertech - Merci de votre confiance
+    </div>
+</div>
+</body>
+</html>

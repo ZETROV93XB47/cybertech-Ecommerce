@@ -4,4 +4,8 @@ public class BankCardExpiredException extends RuntimeException {
   public BankCardExpiredException(String message) {
     super(message);
   }
+
+  public BankCardExpiredException(String message, Throwable cause) {
+    super(message, cause);
+  }
 }

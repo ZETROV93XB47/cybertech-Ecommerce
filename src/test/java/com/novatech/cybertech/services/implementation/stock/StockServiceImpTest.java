@@ -1,0 +1,1309 @@
+package com.novatech.cybertech.services.implementation.stock;
+
+import com.novatech.cybertech.entities.ProductEntity;
+import com.novatech.cybertech.entities.StockEntity;
+import com.novatech.cybertech.entities.enums.ReservationStatus;
+import com.novatech.cybertech.exceptions.NotEnoughStockException;
+import com.novatech.cybertech.exceptions.ProductNotFoundException;
+import com.novatech.cybertech.exceptions.StockShortage;
+import com.novatech.cybertech.fixtures.builders.ProductEntityBuilder;
+import com.novatech.cybertech.fixtures.builders.StockEntityBuilder;
+import com.novatech.cybertech.repositories.ProductRepository;
+import com.novatech.cybertech.repositories.StockRepository;
+import com.novatech.cybertech.services.implementation.StockServiceImp;
+import org.assertj.core.api.InstanceOfAssertFactories;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
+
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * Mockito unit tests for {@link StockServiceImp}.
+ *
+ * <p>Covers services/stock. The previously tracked stock-service defects are now closed; the previously
+ * {@code @Disabled} pinning tests are re-enabled and verify the fixed contract (no test in
+ * this class is currently disabled).
+ */
+@ExtendWith(MockitoExtension.class)
+class StockServiceImpTest {
+
+    @Mock
+    private ProductRepository productRepository;
+
+    @Mock
+    private StockRepository stockRepository;
+
+    @Mock
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Mock
+    private ValueOperations<String, Object> valueOps;
+
+    private StockServiceImp service;
+
+    private static final Duration EXPECTED_TTL = Duration.ofMinutes(5);
+    private static final String KEY_PREFIX = "reservation:order:";
+
+    @BeforeEach
+    void setUp() {
+        // Lenient because some tests (release/commit/missing-product) don't touch opsForValue.
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        service = new StockServiceImp(stockRepository, productRepository, redisTemplate);
+    }
+
+    private ProductEntity productWithStock(final UUID uuid, final int stock, final int reserved) {
+        return ProductEntityBuilder.aValidProductBuilder()
+                .uuid(uuid)
+                .stock(stock)
+                .reservedStock(reserved)
+                .build();
+    }
+
+    private StockEntity reservation(final UUID orderUuid, final UUID productUuid, final int qty) {
+        return StockEntityBuilder.aValidStockBuilder()
+                .orderUuid(orderUuid)
+                .productUuid(productUuid)
+                .quantity(qty)
+                .reservationStatus(ReservationStatus.ACTIVE)
+                .build();
+    }
+
+    // ---------------------------------------------------------------------
+    // reserveStock — single-product happy + edges
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("reserveStock: single product happy path — locks, reserves, persists Redis with TTL/key/value")
+    void reserveStock_singleProductHappyPath() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        ProductEntity product = productWithStock(productUuid, 10, 0);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 3));
+
+        ArgumentCaptor<StockEntity> reservationCaptor = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository).save(reservationCaptor.capture());
+        StockEntity savedReservation = reservationCaptor.getValue();
+        assertThat(savedReservation.getOrderUuid()).isEqualTo(orderUuid);
+        assertThat(savedReservation.getProductUuid()).isEqualTo(productUuid);
+        assertThat(savedReservation.getQuantity()).isEqualTo(3);
+        assertThat(savedReservation.getReservationStatus()).isEqualTo(ReservationStatus.ACTIVE);
+
+        ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
+        verify(productRepository).save(productCaptor.capture());
+        assertThat(productCaptor.getValue().getReservedStock()).isEqualTo(3);
+
+        verify(valueOps).set(eq(KEY_PREFIX + orderUuid), eq(ReservationStatus.ACTIVE.name()), eq(EXPECTED_TTL));
+    }
+
+    @Test
+    @DisplayName("reserveStock: shortfall raises NotEnoughStockException — message must be actionable (verify)")
+    void reserveStock_notEnough_messageIsActionable_bug061Verify() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        ProductEntity product = productWithStock(productUuid, 5, 3); // available = 2
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        // Message MUST include productUuid + requested + available.
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, 5)))
+                .isInstanceOf(NotEnoughStockException.class)
+                .hasMessageContaining(productUuid.toString())
+                .hasMessageContaining("5")  // requested
+                .hasMessageContaining("2"); // available
+
+        verify(stockRepository, never()).save(any());
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("reserveStock: respects pre-existing reservedStock when computing availability")
+    void reserveStock_respectsExistingReservedStock() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        // stock 10, already reserved 4 ⇒ available = 6
+        ProductEntity product = productWithStock(productUuid, 10, 4);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 6));
+
+        ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
+        verify(productRepository).save(productCaptor.capture());
+        assertThat(productCaptor.getValue().getReservedStock()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("reserveStock: requesting exactly the available stock succeeds (boundary)")
+    void reserveStock_exactBoundarySucceeds() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        ProductEntity product = productWithStock(productUuid, 7, 2); // available = 5
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 5));
+
+        verify(stockRepository).save(any(StockEntity.class));
+        verify(valueOps).set(eq(KEY_PREFIX + orderUuid), eq(ReservationStatus.ACTIVE.name()), eq(EXPECTED_TTL));
+    }
+
+    @Test
+    @DisplayName("reserveStock: missing product raises ProductNotFoundException with productUuid in message")
+    void reserveStock_missingProduct_throwsProductNotFound() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, 1)))
+                .isInstanceOf(ProductNotFoundException.class)
+                .hasMessageContaining(productUuid.toString());
+
+        verify(stockRepository, never()).save(any());
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("reserveStock: re-reserve when reservation already exists — refresh TTL only, no double-reserve")
+    void reserveStock_idempotentRefreshTtlOnly() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        StockEntity existing = reservation(orderUuid, productUuid, 3);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(existing));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 3));
+
+        verify(redisTemplate).expire(KEY_PREFIX + orderUuid, EXPECTED_TTL);
+        verify(productRepository, never()).lockByUuid(any());
+        verify(stockRepository, never()).save(any());
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("reserveStock: partial batch failure (second product short) — Redis ACTIVE key NOT written")
+    void reserveStock_partialBatchFailure_doesNotWriteRedisKey() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productOk = UUID.randomUUID();
+        UUID productShort = UUID.randomUUID();
+        ProductEntity okProduct = productWithStock(productOk, 100, 0);
+        ProductEntity shortProduct = productWithStock(productShort, 1, 0);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        // HashMap iteration order is non-deterministic, so either lock may or may not be hit
+        // before the NotEnoughStock short-circuit. Use lenient stubs to tolerate either order.
+        lenient().when(productRepository.lockByUuid(productOk)).thenReturn(Optional.of(okProduct));
+        lenient().when(productRepository.lockByUuid(productShort)).thenReturn(Optional.of(shortProduct));
+
+        Map<UUID, Integer> qty = new HashMap<>();
+        qty.put(productOk, 1);
+        qty.put(productShort, 5);
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, qty))
+                .isInstanceOf(NotEnoughStockException.class);
+
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("reserveStock: every short line is reported in one exception, with requested and available")
+    void reserveStock_reportsEveryShortage() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productOk = UUID.randomUUID();
+        UUID productShortA = UUID.randomUUID();
+        UUID productShortB = UUID.randomUUID();
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productOk)).thenReturn(Optional.of(productWithStock(productOk, 100, 0)));
+        when(productRepository.lockByUuid(productShortA)).thenReturn(Optional.of(productWithStock(productShortA, 5, 4)));
+        when(productRepository.lockByUuid(productShortB)).thenReturn(Optional.of(productWithStock(productShortB, 2, 0)));
+
+        Map<UUID, Integer> qty = new HashMap<>();
+        qty.put(productOk, 1);
+        qty.put(productShortA, 3);
+        qty.put(productShortB, 4);
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, qty))
+                .isInstanceOf(NotEnoughStockException.class)
+                .extracting(e -> ((NotEnoughStockException) e).getShortages())
+                .asInstanceOf(InstanceOfAssertFactories.list(StockShortage.class))
+                .containsExactlyInAnyOrder(new StockShortage(productShortA, 3, 1), new StockShortage(productShortB, 4, 2));
+
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("reserveStock: available is 0, never negative, when reservedStock exceeds stock")
+    void reserveStock_availableFlooredAtZero() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(productWithStock(productUuid, 2, 5)));
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, 1)))
+                .isInstanceOf(NotEnoughStockException.class)
+                .extracting(e -> ((NotEnoughStockException) e).getShortages())
+                .asInstanceOf(InstanceOfAssertFactories.list(StockShortage.class))
+                .containsExactly(new StockShortage(productUuid, 1, 0));
+    }
+
+    @Test
+    @DisplayName("resizeReservation: a raised quantity beyond the stock is reported with requested and available")
+    void resizeReservation_reportsShortage() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        StockEntity oldReservation = reservation(orderUuid, productUuid, 2);
+        ProductEntity product = productWithStock(productUuid, 3, 2);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(oldReservation));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        // The order's own 2 units are released first: 3 in stock, 5 asked -> 3 available.
+        assertThatThrownBy(() -> service.resizeReservation(orderUuid, Map.of(productUuid, 5)))
+                .isInstanceOf(NotEnoughStockException.class)
+                .extracting(e -> ((NotEnoughStockException) e).getShortages())
+                .asInstanceOf(InstanceOfAssertFactories.list(StockShortage.class))
+                .containsExactly(new StockShortage(productUuid, 5, 3));
+
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("qty=-5 rejected with IllegalArgumentException (verify F2 fix)")
+    void reserveStock_negativeQty_rejected_bug062Verify() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        ProductEntity product = productWithStock(productUuid, 10, 0);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        // lockByUuid is invoked AFTER qty validation in the source we read — so it must NOT be called
+        // for qty<=0. We don't stub it; if invoked Mockito returns Optional.empty() and ProductNotFound
+        // would be thrown instead — which would still fail this test (wrong type).
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, -5)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(productUuid.toString())
+                .hasMessageContaining("-5");
+
+        verify(stockRepository, never()).save(any());
+        verify(productRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("qty=0 rejected with IllegalArgumentException (verify F2 fix)")
+    void reserveStock_zeroQty_rejected_bug062Verify() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, 0)))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(stockRepository, never()).save(any());
+        verify(productRepository, never()).save(any());
+    }
+
+    // ---------------------------------------------------------------------
+    // resizeReservation
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("resizeReservation: happy path — releases old row(s), reserves new product, single Redis SET at the end (no delete)")
+    void resizeReservation_happyPath_singleRedisSetAtEnd() {
+        final UUID orderUuid = UUID.randomUUID();
+        final UUID oldProductUuid = UUID.randomUUID();
+        final UUID newProductUuid = UUID.randomUUID();
+
+        final StockEntity oldReservation = reservation(orderUuid, oldProductUuid, 2);
+        final ProductEntity oldProduct = productWithStock(oldProductUuid, 10, 2);
+        final ProductEntity newProduct = productWithStock(newProductUuid, 10, 0);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(oldReservation));
+        when(productRepository.lockByUuid(oldProductUuid)).thenReturn(Optional.of(oldProduct));
+        when(productRepository.lockByUuid(newProductUuid)).thenReturn(Optional.of(newProduct));
+
+        service.resizeReservation(orderUuid, Map.of(newProductUuid, 5));
+
+        // Old reservation released: reservedStock reverted, row flipped RELEASED.
+        assertThat(oldProduct.getReservedStock()).isZero();
+        assertThat(oldReservation.getReservationStatus()).isEqualTo(ReservationStatus.RELEASED);
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+
+        // New reservation created. stockRepository.save is also called once for the released old
+        // row (status flip to RELEASED), so capture every invocation and find the new one.
+        final ArgumentCaptor<StockEntity> savedRowsCaptor = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository, times(2)).save(savedRowsCaptor.capture());
+        final StockEntity newRow = savedRowsCaptor.getAllValues().stream()
+                .filter(r -> r.getProductUuid().equals(newProductUuid))
+                .findFirst()
+                .orElseThrow();
+        assertThat(newRow.getQuantity()).isEqualTo(5);
+        assertThat(newProduct.getReservedStock()).isEqualTo(5);
+
+        // Redis touched exactly once, a SET (refresh/create) — never a delete.
+        verify(valueOps, times(1)).set(eq(KEY_PREFIX + orderUuid), eq(ReservationStatus.ACTIVE.name()), eq(EXPECTED_TTL));
+        verify(redisTemplate, never()).delete(anyString());
+    }
+
+    @Test
+    @DisplayName("resizeReservation: old rows are deleted AND flushed before the new rows are saved (same product kept -> no unique-key clash)")
+    void resizeReservation_sameProduct_flushesDeleteBeforeReinsert() {
+        final UUID orderUuid = UUID.randomUUID();
+        final UUID productUuid = UUID.randomUUID();
+        final StockEntity oldReservation = reservation(orderUuid, productUuid, 2);
+        final ProductEntity product = productWithStock(productUuid, 10, 2);
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(oldReservation));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.resizeReservation(orderUuid, Map.of(productUuid, 2));
+
+        // Hibernate orders INSERTs before DELETEs at flush: the explicit flush is what keeps the
+        // re-inserted (orderUuid, productUuid) row from hitting the still-present old one.
+        final InOrder inOrder = inOrder(stockRepository);
+        inOrder.verify(stockRepository).deleteByOrderUuid(orderUuid);
+        inOrder.verify(stockRepository).flush();
+        inOrder.verify(stockRepository).save(argThat(row -> row.getProductUuid().equals(productUuid) && row != oldReservation));
+        assertThat(product.getReservedStock()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("resizeReservation: insufficient stock on the new product — rolls back before touching Redis at all")
+    void resizeReservation_newProductShortfall_neverTouchesRedis() {
+        final UUID orderUuid = UUID.randomUUID();
+        final UUID oldProductUuid = UUID.randomUUID();
+        final UUID newProductUuid = UUID.randomUUID();
+
+        final StockEntity oldReservation = reservation(orderUuid, oldProductUuid, 2);
+        final ProductEntity oldProduct = productWithStock(oldProductUuid, 10, 2);
+        final ProductEntity shortProduct = productWithStock(newProductUuid, 3, 0); // available = 3
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(oldReservation));
+        when(productRepository.lockByUuid(oldProductUuid)).thenReturn(Optional.of(oldProduct));
+        when(productRepository.lockByUuid(newProductUuid)).thenReturn(Optional.of(shortProduct));
+
+        assertThatThrownBy(() -> service.resizeReservation(orderUuid, Map.of(newProductUuid, 5)))
+                .isInstanceOf(NotEnoughStockException.class);
+
+        // This is the whole point of the fix: on failure, Redis must not have been touched at
+        // all (no premature delete of the old TTL sentinel, no partial set) — the caller's
+        // transaction rollback alone is enough to fully undo the attempt.
+        verifyNoInteractions(valueOps);
+        verify(redisTemplate, never()).delete(anyString());
+    }
+
+    // ---------------------------------------------------------------------
+    // commitStock
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("commitStock: happy — decrements stock + reservedStock, flips reservation to COMMITTED (kept, not deleted)")
+    void commitStock_happyPath_inOrderAcrossRepoAndRedis() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        StockEntity res = reservation(orderUuid, productUuid, 4);
+        ProductEntity product = productWithStock(productUuid, 10, 4);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(res));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.commitStock(orderUuid);
+
+        ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
+        verify(productRepository).save(productCaptor.capture());
+        ProductEntity saved = productCaptor.getValue();
+        assertThat(saved.getStock()).isEqualTo(6);          // 10 - 4
+        assertThat(saved.getReservedStock()).isEqualTo(0);  // 4 - 4
+
+        // The reservation row is KEPT (flipped to COMMITTED, not deleted) so a later
+        // cancel/refund can still restore stock via releaseStock().
+        ArgumentCaptor<StockEntity> reservationCaptor = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository).save(reservationCaptor.capture());
+        assertThat(reservationCaptor.getValue().getReservationStatus()).isEqualTo(ReservationStatus.COMMITTED);
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+
+        InOrder inOrder = inOrder(productRepository, stockRepository, redisTemplate);
+        inOrder.verify(productRepository).save(any(ProductEntity.class));
+        inOrder.verify(stockRepository).save(any(StockEntity.class));
+        inOrder.verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("commitStock: missing product on commit raises ProductNotFoundException")
+    void commitStock_missingProduct_throwsProductNotFound() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        StockEntity res = reservation(orderUuid, productUuid, 2);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(res));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.commitStock(orderUuid))
+                .isInstanceOf(ProductNotFoundException.class)
+                .hasMessageContaining(productUuid.toString());
+    }
+
+    @Test
+    @DisplayName("commitStock: empty reservation set — no spurious stockRepository delete, redis sentinel still cleared")
+    void commitStock_emptyReservations_noSpuriousDelete() {
+        UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+
+        service.commitStock(orderUuid);
+
+        verify(productRepository, never()).save(any());
+        verify(productRepository, never()).lockByUuid(any());
+        verify(stockRepository, never()).save(any());
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+        verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("commitStock with no reservation logs a WARN (signal for upstream double-commit)")
+    void commitStock_emptyReservations_logsWarn_bug064() {
+        // Behaviour preserved (no throw), but a WARN is emitted naming the orderUuid
+        // so a double-commit / replayed webhook is observable in logs.
+        final UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+
+        final ch.qos.logback.classic.Logger stockLogger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(StockServiceImp.class);
+        final ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        stockLogger.addAppender(appender);
+        try {
+            service.commitStock(orderUuid);
+        } finally {
+            stockLogger.detachAppender(appender);
+        }
+
+        assertThat(appender.list)
+                .anyMatch(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN
+                        && e.getFormattedMessage().contains(orderUuid.toString())
+                        && e.getFormattedMessage().contains("commitStock"));
+    }
+
+    // ---------------------------------------------------------------------
+    // expireReservation (Redis TTL fired, payment never confirmed)
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("expireReservation: ACTIVE rows give their units back to reservedStock, rows flipped EXPIRED then deleted, Redis untouched")
+    void expireReservation_activeRows_releasesReservedStockAndDeletes() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        ProductEntity product = productWithStock(productUuid, 10, 5);
+        StockEntity row = reservation(orderUuid, productUuid, 3);
+        when(stockRepository.lockByOrderUuid(orderUuid)).thenReturn(List.of(row));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.expireReservation(orderUuid);
+
+        assertThat(product.getReservedStock()).isEqualTo(2);
+        assertThat(product.getStock()).isEqualTo(10);
+        assertThat(row.getReservationStatus()).isEqualTo(ReservationStatus.EXPIRED);
+        final InOrder ord = inOrder(productRepository, stockRepository);
+        ord.verify(productRepository).save(product);
+        ord.verify(stockRepository).save(row);
+        ord.verify(stockRepository).deleteByOrderUuid(orderUuid);
+        // The key already expired — nothing to delete or refresh in Redis.
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    @DisplayName("expireReservation: rows already COMMITTED/RELEASED by a competing path are not given back again")
+    void expireReservation_nonActiveRows_notReleasedTwice() {
+        UUID orderUuid = UUID.randomUUID();
+        StockEntity committed = reservation(orderUuid, UUID.randomUUID(), 2);
+        committed.setReservationStatus(ReservationStatus.COMMITTED);
+        when(stockRepository.lockByOrderUuid(orderUuid)).thenReturn(List.of(committed));
+
+        service.expireReservation(orderUuid);
+
+        verifyNoInteractions(productRepository);
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+    }
+
+    @Test
+    @DisplayName("expireReservation: nothing left (second handler after the first one deleted the rows) -> no-op")
+    void expireReservation_noRows_isNoOp() {
+        UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.lockByOrderUuid(orderUuid)).thenReturn(List.of());
+
+        service.expireReservation(orderUuid);
+
+        verifyNoInteractions(productRepository);
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+    }
+
+    @Test
+    @DisplayName("expireReservation: product missing -> ProductNotFoundException (whole transaction rolls back)")
+    void expireReservation_productMissing_throws() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.lockByOrderUuid(orderUuid)).thenReturn(List.of(reservation(orderUuid, productUuid, 1)));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.expireReservation(orderUuid))
+                .isInstanceOf(ProductNotFoundException.class)
+                .hasMessageContaining(productUuid.toString());
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+    }
+
+    // ---------------------------------------------------------------------
+    // releaseStock
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("releaseStock: idempotent no-op when reservation is missing")
+    void releaseStock_missingReservation_isNoOp() {
+        UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+
+        service.releaseStock(orderUuid);
+
+        verify(productRepository, never()).lockByUuid(any());
+        verify(productRepository, never()).save(any());
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+        verify(redisTemplate, never()).delete(anyString());
+    }
+
+    @Test
+    @DisplayName("releaseStock: multi-product — restores reservedStock for each, deletes reservations + Redis key")
+    void releaseStock_multiProduct_restoresEach() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        StockEntity r1 = reservation(orderUuid, p1, 2);
+        StockEntity r2 = reservation(orderUuid, p2, 5);
+        ProductEntity prod1 = productWithStock(p1, 10, 2);
+        ProductEntity prod2 = productWithStock(p2, 20, 5);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(r1, r2));
+        when(productRepository.lockByUuid(p1)).thenReturn(Optional.of(prod1));
+        when(productRepository.lockByUuid(p2)).thenReturn(Optional.of(prod2));
+
+        service.releaseStock(orderUuid);
+
+        ArgumentCaptor<ProductEntity> savedProducts = ArgumentCaptor.forClass(ProductEntity.class);
+        verify(productRepository, times(2)).save(savedProducts.capture());
+        List<ProductEntity> saved = savedProducts.getAllValues();
+        assertThat(saved).extracting(ProductEntity::getReservedStock).containsExactlyInAnyOrder(0, 0);
+        // Stock untouched by release.
+        assertThat(saved).extracting(ProductEntity::getStock).containsExactlyInAnyOrder(10, 20);
+
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+        verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("releaseStock: COMMITTED reservation (order already PAID) restores product.stock, not reservedStock")
+    void releaseStock_committedReservation_restoresStockNotReservedStock() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        // Order was committed: stock already decremented by 4, reservedStock already back to 0.
+        StockEntity committed = StockEntityBuilder.aValidStockBuilder()
+                .orderUuid(orderUuid)
+                .productUuid(productUuid)
+                .quantity(4)
+                .reservationStatus(ReservationStatus.COMMITTED)
+                .build();
+        ProductEntity product = productWithStock(productUuid, 6, 0);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(committed));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(product));
+
+        service.releaseStock(orderUuid);
+
+        ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
+        verify(productRepository).save(productCaptor.capture());
+        ProductEntity saved = productCaptor.getValue();
+        assertThat(saved.getStock()).isEqualTo(10);          // 6 + 4 restored
+        assertThat(saved.getReservedStock()).isZero();       // untouched — commit already zeroed it
+
+        ArgumentCaptor<StockEntity> reservationCaptor = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository).save(reservationCaptor.capture());
+        assertThat(reservationCaptor.getValue().getReservationStatus()).isEqualTo(ReservationStatus.RELEASED);
+
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+        verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("releaseStock: skips a reservation already RELEASED — no double-decrement of reservedStock")
+    void releaseStock_skipsAlreadyReleasedReservation_noDoubleDecrement() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        StockEntity active = reservation(orderUuid, p1, 2);
+        StockEntity alreadyReleased = StockEntityBuilder.aValidStockBuilder()
+                .orderUuid(orderUuid)
+                .productUuid(p2)
+                .quantity(5)
+                .reservationStatus(ReservationStatus.RELEASED)
+                .build();
+        ProductEntity prod1 = productWithStock(p1, 10, 2);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(active, alreadyReleased));
+        when(productRepository.lockByUuid(p1)).thenReturn(Optional.of(prod1));
+
+        service.releaseStock(orderUuid);
+
+        // Only the ACTIVE row is processed — the already-RELEASED one is skipped entirely,
+        // so its product is never locked/saved and its reservedStock is not touched again.
+        verify(productRepository, never()).lockByUuid(p2);
+        verify(productRepository, times(1)).save(any(ProductEntity.class));
+        assertThat(prod1.getReservedStock()).isZero();
+
+        verify(stockRepository).deleteByOrderUuid(orderUuid);
+        verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("releaseStock with missing product throws domain ProductNotFoundException (verify F2 fix)")
+    void releaseStock_missingProduct_throwsDomainException_bug063Verify() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        StockEntity res = reservation(orderUuid, productUuid, 1);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(res));
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
+
+        // Throws domain ProductNotFoundException (not raw NoSuchElementException).
+        assertThatThrownBy(() -> service.releaseStock(orderUuid))
+                .isInstanceOf(ProductNotFoundException.class)
+                .isNotInstanceOf(NoSuchElementException.class);
+    }
+
+    // ---------------------------------------------------------------------
+    // Multi-product canonical lock order
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("HashMap input — productRepository.lockByUuid called in canonical (sorted) UUID order")
+    void reserveStock_multiProduct_canonicalLockOrder_bug060Verify() {
+        UUID orderUuid = UUID.randomUUID();
+        // Two UUIDs whose toString() ordering is unambiguous and stable.
+        UUID lower = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID higher = UUID.fromString("ffffffff-ffff-ffff-ffff-fffffffffffe");
+
+        ProductEntity p1 = productWithStock(lower, 10, 0);
+        ProductEntity p2 = productWithStock(higher, 10, 0);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(lower)).thenReturn(Optional.of(p1));
+        when(productRepository.lockByUuid(higher)).thenReturn(Optional.of(p2));
+
+        // HashMap insertion order intentionally REVERSE of canonical sort.
+        Map<UUID, Integer> qty = new HashMap<>();
+        qty.put(higher, 1);
+        qty.put(lower, 1);
+
+        service.reserveStock(orderUuid, qty);
+
+        ArgumentCaptor<UUID> uuidCaptor = ArgumentCaptor.forClass(UUID.class);
+        verify(productRepository, times(2)).lockByUuid(uuidCaptor.capture());
+        List<UUID> lockOrder = uuidCaptor.getAllValues();
+        // Canonical order = sorted ascending by UUID.toString()
+        assertThat(lockOrder).containsExactly(lower, higher);
+    }
+
+    @Test
+    @DisplayName("reserveStock: LinkedHashMap with REVERSE canonical insertion order — still locks in canonical order")
+    void reserveStock_linkedHashMap_reverseInsertion_stillCanonical() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID a = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+        UUID b = UUID.fromString("00000000-0000-0000-0000-0000000000bb");
+        UUID c = UUID.fromString("00000000-0000-0000-0000-0000000000cc");
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(a)).thenReturn(Optional.of(productWithStock(a, 5, 0)));
+        when(productRepository.lockByUuid(b)).thenReturn(Optional.of(productWithStock(b, 5, 0)));
+        when(productRepository.lockByUuid(c)).thenReturn(Optional.of(productWithStock(c, 5, 0)));
+
+        Map<UUID, Integer> qty = new LinkedHashMap<>();
+        qty.put(c, 1);
+        qty.put(b, 1);
+        qty.put(a, 1);
+
+        service.reserveStock(orderUuid, qty);
+
+        ArgumentCaptor<UUID> uuidCaptor = ArgumentCaptor.forClass(UUID.class);
+        verify(productRepository, times(3)).lockByUuid(uuidCaptor.capture());
+        assertThat(uuidCaptor.getAllValues()).containsExactly(a, b, c);
+    }
+
+    // ---------------------------------------------------------------------
+    // Concurrency — ReentrantLock simulating DB pessimistic lock
+    // ---------------------------------------------------------------------
+
+    /**
+     * Wraps {@link ProductRepository#lockByUuid(UUID)} so two concurrent reserves on the same
+     * product serialize through a single {@link ReentrantLock} that mirrors the DB row-level lock.
+     * The lock is released through a SAVE-time hook attached to the productRepository mock.
+     */
+    @Test
+    @DisplayName("Concurrency: two threads race for limited stock — exactly one success, exactly one NotEnoughStockException")
+    void concurrency_twoThreadsRace_oneWinsOneFails() throws Exception {
+        UUID p = UUID.randomUUID();
+        UUID order1 = UUID.randomUUID();
+        UUID order2 = UUID.randomUUID();
+        // stock=3, available=3; each thread asks for 2 ⇒ only one can win
+        ProductEntity sharedProduct = productWithStock(p, 3, 0);
+
+        ReentrantLock dbLock = new ReentrantLock();
+
+        when(stockRepository.findByOrderUuid(any(UUID.class))).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(p)).thenAnswer(inv -> {
+            dbLock.lock();
+            return Optional.of(sharedProduct);
+        });
+        // Mock save to unlock — mirrors transaction commit releasing row lock.
+        when(productRepository.save(any(ProductEntity.class))).thenAnswer(inv -> {
+            if (dbLock.isHeldByCurrentThread()) {
+                dbLock.unlock();
+            }
+            return inv.getArgument(0);
+        });
+
+        runRaceAndAssertOneWinner(order1, order2, p, dbLock);
+    }
+
+    private void runRaceAndAssertOneWinner(UUID order1, UUID order2, UUID p, ReentrantLock dbLock) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicInteger successes = new AtomicInteger();
+            AtomicInteger notEnoughStockFailures = new AtomicInteger();
+            AtomicReference<Throwable> unexpected = new AtomicReference<>();
+
+            Runnable task1 = () -> runReserve(order1, p, 2, start, dbLock, successes, notEnoughStockFailures, unexpected);
+            Runnable task2 = () -> runReserve(order2, p, 2, start, dbLock, successes, notEnoughStockFailures, unexpected);
+
+            executor.submit(task1);
+            executor.submit(task2);
+
+            start.countDown();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(unexpected.get()).isNull();
+            assertThat(successes.get()).isEqualTo(1);
+            assertThat(notEnoughStockFailures.get()).isEqualTo(1);
+        } finally {
+            if (!executor.isTerminated()) executor.shutdownNow();
+            // Defensive cleanup — release lock if a thread died holding it.
+            while (dbLock.isHeldByCurrentThread()) dbLock.unlock();
+        }
+    }
+
+    private void runReserve(UUID orderUuid, UUID p, int qty, CountDownLatch start,
+                            ReentrantLock dbLock, AtomicInteger successes,
+                            AtomicInteger notEnoughStockFailures, AtomicReference<Throwable> unexpected) {
+        try {
+            start.await();
+            try {
+                service.reserveStock(orderUuid, Map.of(p, qty));
+                successes.incrementAndGet();
+            } catch (NotEnoughStockException ex) {
+                notEnoughStockFailures.incrementAndGet();
+            } finally {
+                // If the service threw before save() was called, the dbLock is still held.
+                if (dbLock.isHeldByCurrentThread()) dbLock.unlock();
+            }
+        } catch (Throwable t) {
+            unexpected.set(t);
+        }
+    }
+
+    @Test
+    @DisplayName("Concurrency: two threads with enough headroom — both succeed, additive reservation")
+    void concurrency_bothSucceed_withHeadroom() throws Exception {
+        UUID p = UUID.randomUUID();
+        UUID order1 = UUID.randomUUID();
+        UUID order2 = UUID.randomUUID();
+        ProductEntity shared = productWithStock(p, 100, 0);
+
+        ReentrantLock dbLock = new ReentrantLock();
+
+        when(stockRepository.findByOrderUuid(any(UUID.class))).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(p)).thenAnswer(inv -> {
+            dbLock.lock();
+            return Optional.of(shared);
+        });
+        when(productRepository.save(any(ProductEntity.class))).thenAnswer(inv -> {
+            if (dbLock.isHeldByCurrentThread()) dbLock.unlock();
+            return inv.getArgument(0);
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicInteger successes = new AtomicInteger();
+            AtomicReference<Throwable> unexpected = new AtomicReference<>();
+
+            Runnable r1 = () -> runReserve(order1, p, 10, start, dbLock, successes, new AtomicInteger(), unexpected);
+            Runnable r2 = () -> runReserve(order2, p, 20, start, dbLock, successes, new AtomicInteger(), unexpected);
+            executor.submit(r1);
+            executor.submit(r2);
+
+            start.countDown();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(unexpected.get()).isNull();
+            assertThat(successes.get()).isEqualTo(2);
+            // Serialized additive: both reservations applied
+            assertThat(shared.getReservedStock()).isEqualTo(30);
+        } finally {
+            if (!executor.isTerminated()) executor.shutdownNow();
+            while (dbLock.isHeldByCurrentThread()) dbLock.unlock();
+        }
+    }
+
+    @Test
+    @DisplayName("Concurrency: release+reserve race — invariant holds (no oversubscription)")
+    void concurrency_releaseAndReserveRace_invariantHolds() throws Exception {
+        UUID p = UUID.randomUUID();
+        UUID releaseOrder = UUID.randomUUID();
+        UUID reserveOrder = UUID.randomUUID();
+        // Initial: stock=10, reserved=8 by releaseOrder.
+        ProductEntity shared = productWithStock(p, 10, 8);
+
+        ReentrantLock dbLock = new ReentrantLock();
+
+        when(stockRepository.findByOrderUuid(reserveOrder)).thenReturn(Collections.emptyList());
+        when(stockRepository.findByOrderUuid(releaseOrder))
+                .thenReturn(List.of(reservation(releaseOrder, p, 8)));
+        when(productRepository.lockByUuid(p)).thenAnswer(inv -> {
+            dbLock.lock();
+            return Optional.of(shared);
+        });
+        when(productRepository.save(any(ProductEntity.class))).thenAnswer(inv -> {
+            if (dbLock.isHeldByCurrentThread()) dbLock.unlock();
+            return inv.getArgument(0);
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicReference<Throwable> unexpected = new AtomicReference<>();
+            AtomicInteger reserveSuccesses = new AtomicInteger();
+            AtomicInteger reserveFailures = new AtomicInteger();
+
+            Runnable releaser = () -> {
+                try {
+                    start.await();
+                    try {
+                        service.releaseStock(releaseOrder);
+                    } finally {
+                        if (dbLock.isHeldByCurrentThread()) dbLock.unlock();
+                    }
+                } catch (Throwable t) { unexpected.set(t); }
+            };
+            Runnable reserver = () -> runReserve(reserveOrder, p, 5, start, dbLock,
+                    reserveSuccesses, reserveFailures, unexpected);
+
+            executor.submit(releaser);
+            executor.submit(reserver);
+            start.countDown();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(unexpected.get()).isNull();
+            // Invariant: at the end, reserved cannot exceed stock (10), regardless of interleave.
+            assertThat(shared.getReservedStock()).isLessThanOrEqualTo(shared.getStock());
+            // Either reserve succeeded (release ran first → reserved=5) or released-only (reserved=0 + reserve fail)
+            assertThat(reserveSuccesses.get() + reserveFailures.get()).isEqualTo(1);
+        } finally {
+            if (!executor.isTerminated()) executor.shutdownNow();
+            while (dbLock.isHeldByCurrentThread()) dbLock.unlock();
+        }
+    }
+
+    @Test
+    @DisplayName("Concurrency sanity: WITHOUT lock, both threads see stale availability — proves prod lock is load-bearing")
+    void concurrency_noLocking_provesProductionLockIsLoadBearing() throws Exception {
+        UUID p = UUID.randomUUID();
+        UUID order1 = UUID.randomUUID();
+        UUID order2 = UUID.randomUUID();
+
+        when(stockRepository.findByOrderUuid(any(UUID.class))).thenReturn(Collections.emptyList());
+
+        // Barrier so both threads READ a fresh, independent copy of the product simultaneously.
+        // This simulates the absence of pessimistic locking: each transaction sees a consistent
+        // snapshot taken before either has written. Both copies have stock=3, reserved=0.
+        CountDownLatch barrier = new CountDownLatch(2);
+        when(productRepository.lockByUuid(p)).thenAnswer(inv -> {
+            barrier.countDown();
+            barrier.await(2, TimeUnit.SECONDS);
+            // Fresh copy per call → simulates snapshot-isolation WITHOUT serialization.
+            return Optional.of(productWithStock(p, 3, 0));
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicInteger successes = new AtomicInteger();
+            AtomicReference<Throwable> err = new AtomicReference<>();
+
+            Runnable t1 = () -> {
+                try {
+                    start.await();
+                    try {
+                        service.reserveStock(order1, Map.of(p, 2));
+                        successes.incrementAndGet();
+                    } catch (NotEnoughStockException ignored) { /* expected for at most one */ }
+                } catch (Throwable th) { err.set(th); }
+            };
+            Runnable t2 = () -> {
+                try {
+                    start.await();
+                    try {
+                        service.reserveStock(order2, Map.of(p, 2));
+                        successes.incrementAndGet();
+                    } catch (NotEnoughStockException ignored) { /* expected for at most one */ }
+                } catch (Throwable th) { err.set(th); }
+            };
+
+            executor.submit(t1);
+            executor.submit(t2);
+            start.countDown();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(err.get()).isNull();
+            // Without serialized locking BOTH pass the availability check on their independent snapshots.
+            // This proves the production pessimistic lock is load-bearing — without it, oversubscription occurs.
+            assertThat(successes.get()).isEqualTo(2);
+        } finally {
+            if (!executor.isTerminated()) executor.shutdownNow();
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Redis-specific assertions
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Redis: reservation key uses 'reservation:order:<uuid>' format")
+    void redis_reservationKeyFormat() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(productWithStock(productUuid, 10, 0)));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 1));
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(valueOps).set(keyCaptor.capture(), any(), any(Duration.class));
+        assertThat(keyCaptor.getValue()).isEqualTo("reservation:order:" + orderUuid);
+    }
+
+    @Test
+    @DisplayName("Redis: TTL value equals Duration.ofMinutes(5)")
+    void redis_ttlIsFiveMinutes() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(productWithStock(productUuid, 10, 0)));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 1));
+
+        ArgumentCaptor<Duration> ttlCaptor = ArgumentCaptor.forClass(Duration.class);
+        verify(valueOps).set(anyString(), any(), ttlCaptor.capture());
+        assertThat(ttlCaptor.getValue()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
+    @DisplayName("Redis: stored value equals ACTIVE.name()")
+    void redis_valueIsActiveEnumName() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.of(productWithStock(productUuid, 10, 0)));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 1));
+
+        ArgumentCaptor<Object> valueCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(valueOps).set(anyString(), valueCaptor.capture(), any(Duration.class));
+        assertThat(valueCaptor.getValue()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    @DisplayName("Redis: releaseStock does NOT call opsForValue() (only delete)")
+    void redis_releaseStock_doesNotUseOpsForValue() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid))
+                .thenReturn(List.of(reservation(orderUuid, productUuid, 1)));
+        when(productRepository.lockByUuid(productUuid))
+                .thenReturn(Optional.of(productWithStock(productUuid, 10, 1)));
+
+        service.releaseStock(orderUuid);
+
+        // valueOps must never be touched; we use verifyNoInteractions on the mock itself.
+        verifyNoInteractions(valueOps);
+        verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("Redis: refresh-TTL path on idempotent re-reserve uses expire(key, TTL) with the canonical key")
+    void redis_refreshTtl_usesCanonicalKey() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid))
+                .thenReturn(List.of(reservation(orderUuid, productUuid, 1)));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 1));
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Duration> ttlCaptor = ArgumentCaptor.forClass(Duration.class);
+        verify(redisTemplate).expire(keyCaptor.capture(), ttlCaptor.capture());
+        assertThat(keyCaptor.getValue()).isEqualTo("reservation:order:" + orderUuid);
+        assertThat(ttlCaptor.getValue()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    // ---------------------------------------------------------------------
+    // Additional edge cases
+    // ---------------------------------------------------------------------
+
+    @Test
+    @DisplayName("reserveStock: empty quantities map — no products locked, but Redis ACTIVE key is still set")
+    void reserveStock_emptyQuantitiesMap_pinsCurrentBehaviour() {
+        UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+
+        service.reserveStock(orderUuid, new HashMap<>());
+
+        verify(productRepository, never()).lockByUuid(any());
+        verify(stockRepository, never()).save(any());
+        // Redis sentinel still written — pinned current behaviour.
+        verify(valueOps).set(eq(KEY_PREFIX + orderUuid), eq("ACTIVE"), eq(EXPECTED_TTL));
+    }
+
+    @Test
+    @DisplayName("commitStock: multi-product happy — each product saved, stock+reserved decremented, reservations flipped to COMMITTED")
+    void commitStock_multiProduct_decrementsBoth() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        StockEntity r1 = reservation(orderUuid, p1, 3);
+        StockEntity r2 = reservation(orderUuid, p2, 7);
+        ProductEntity prod1 = productWithStock(p1, 10, 3);
+        ProductEntity prod2 = productWithStock(p2, 20, 7);
+
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(List.of(r1, r2));
+        when(productRepository.lockByUuid(p1)).thenReturn(Optional.of(prod1));
+        when(productRepository.lockByUuid(p2)).thenReturn(Optional.of(prod2));
+
+        service.commitStock(orderUuid);
+
+        ArgumentCaptor<ProductEntity> savedCap = ArgumentCaptor.forClass(ProductEntity.class);
+        verify(productRepository, times(2)).save(savedCap.capture());
+        List<ProductEntity> saved = new ArrayList<>(savedCap.getAllValues());
+        assertThat(saved).extracting(ProductEntity::getStock).containsExactlyInAnyOrder(7, 13);
+        assertThat(saved).extracting(ProductEntity::getReservedStock).containsExactlyInAnyOrder(0, 0);
+
+        ArgumentCaptor<StockEntity> reservationCap = ArgumentCaptor.forClass(StockEntity.class);
+        verify(stockRepository, times(2)).save(reservationCap.capture());
+        assertThat(reservationCap.getAllValues())
+                .extracting(StockEntity::getReservationStatus)
+                .containsOnly(ReservationStatus.COMMITTED);
+
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+        verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("releaseStock: InOrder over per-product save then deleteByOrderUuid then redis.delete")
+    void releaseStock_inOrderAcrossRepoAndRedis() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid))
+                .thenReturn(List.of(reservation(orderUuid, productUuid, 2)));
+        when(productRepository.lockByUuid(productUuid))
+                .thenReturn(Optional.of(productWithStock(productUuid, 10, 2)));
+
+        service.releaseStock(orderUuid);
+
+        InOrder inOrder = inOrder(productRepository, stockRepository, redisTemplate);
+        inOrder.verify(productRepository).save(any(ProductEntity.class));
+        inOrder.verify(stockRepository).deleteByOrderUuid(orderUuid);
+        inOrder.verify(redisTemplate).delete(KEY_PREFIX + orderUuid);
+    }
+
+    @Test
+    @DisplayName("reserveStock: idempotent path does NOT delete or re-save reservations")
+    void reserveStock_idempotent_noDeleteNoResave() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid))
+                .thenReturn(List.of(reservation(orderUuid, productUuid, 1)));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 1));
+
+        verify(stockRepository, never()).deleteByOrderUuid(any());
+        verify(stockRepository, never()).save(any());
+        verify(productRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("reserveStock: ProductNotFoundException message matches F2 contract (\"Product <uuid> not found\")")
+    void reserveStock_productNotFound_messageContainsLiteralProductPrefix_bug061Sibling() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, 1)))
+                .isInstanceOf(ProductNotFoundException.class)
+                .hasMessageContaining("Product")
+                .hasMessageContaining(productUuid.toString())
+                .hasMessageContaining("not found");
+    }
+
+    @Test
+    @DisplayName("commitStock: Redis delete key uses canonical 'reservation:order:<uuid>' format")
+    void commitStock_redisDeleteUsesCanonicalKey() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid))
+                .thenReturn(List.of(reservation(orderUuid, productUuid, 1)));
+        when(productRepository.lockByUuid(productUuid))
+                .thenReturn(Optional.of(productWithStock(productUuid, 10, 1)));
+
+        service.commitStock(orderUuid);
+
+        ArgumentCaptor<String> keyCap = ArgumentCaptor.forClass(String.class);
+        verify(redisTemplate).delete(keyCap.capture());
+        assertThat(keyCap.getValue()).isEqualTo("reservation:order:" + orderUuid);
+    }
+
+    @Test
+    @DisplayName("reserveStock: locks product BEFORE saving the StockEntity (InOrder)")
+    void reserveStock_lockOccursBeforeSave() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid))
+                .thenReturn(Optional.of(productWithStock(productUuid, 10, 0)));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 1));
+
+        InOrder inOrder = inOrder(productRepository, stockRepository, valueOps);
+        inOrder.verify(productRepository).lockByUuid(productUuid);
+        inOrder.verify(stockRepository).save(any(StockEntity.class));
+        inOrder.verify(productRepository).save(any(ProductEntity.class));
+        inOrder.verify(valueOps).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("reserveStock: redisTemplate.opsForValue() is NOT invoked when shortfall raises NotEnoughStock")
+    void reserveStock_shortfall_doesNotCallOpsForValueSet() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid))
+                .thenReturn(Optional.of(productWithStock(productUuid, 1, 0)));
+
+        assertThatThrownBy(() -> service.reserveStock(orderUuid, Map.of(productUuid, 5)))
+                .isInstanceOf(NotEnoughStockException.class);
+
+        verify(valueOps, never()).set(anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("releaseStock: when reservation is missing, redis.delete is NOT called")
+    void releaseStock_missingReservation_noRedisDelete() {
+        UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+
+        service.releaseStock(orderUuid);
+
+        verify(redisTemplate, never()).delete(anyString());
+    }
+
+    @Test
+    @DisplayName("commitStock: empty reservations — opsForValue() is NOT invoked (only delete + redis.delete)")
+    void commitStock_empty_doesNotUseOpsForValue() {
+        UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+
+        service.commitStock(orderUuid);
+
+        verifyNoInteractions(valueOps);
+    }
+
+    @Test
+    @DisplayName("commitStock: stockRepository.findByOrderUuid called exactly once")
+    void commitStock_findByOrderUuid_calledOnce() {
+        UUID orderUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+
+        service.commitStock(orderUuid);
+
+        verify(stockRepository, times(1)).findByOrderUuid(orderUuid);
+    }
+
+    @Test
+    @DisplayName("reserveStock: stockRepository.findByOrderUuid called exactly once before locking")
+    void reserveStock_findByOrderUuid_calledOnce() {
+        UUID orderUuid = UUID.randomUUID();
+        UUID productUuid = UUID.randomUUID();
+        when(stockRepository.findByOrderUuid(orderUuid)).thenReturn(Collections.emptyList());
+        when(productRepository.lockByUuid(productUuid))
+                .thenReturn(Optional.of(productWithStock(productUuid, 5, 0)));
+
+        service.reserveStock(orderUuid, Map.of(productUuid, 1));
+
+        verify(stockRepository, times(1)).findByOrderUuid(orderUuid);
+        verify(productRepository, atLeastOnce()).lockByUuid(productUuid);
+    }
+}

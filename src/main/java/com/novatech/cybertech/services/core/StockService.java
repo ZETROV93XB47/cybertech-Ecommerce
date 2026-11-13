@@ -9,4 +9,28 @@ public interface StockService {
     void commitStock(UUID orderUuid);
 
     void releaseStock(UUID orderUuid);
+
+    /**
+     * Unwinds an order's still-{@code ACTIVE} reservation after its Redis TTL sentinel expired
+     * (the payment never got confirmed in time): gives the units back to the available stock
+     * ({@code reservedStock -= qty}) and deletes the reservation rows. Rows no longer
+     * {@code ACTIVE} (already committed/released by a competing path) are left untouched. Does not
+     * touch Redis — the key is already gone. Called by
+     * {@code RedisExpirationListener}, which must go through this transactional proxy.
+     */
+    void expireReservation(UUID orderUuid);
+
+    /**
+     * Atomically swaps an order's existing reservation for a new set of quantities: releases
+     * every existing row and reserves fresh ones for {@code newQuantities}, deferring every
+     * Redis write until all DB-level changes have succeeded. Used by {@code updateOrder}, which
+     * must resize a reservation in place rather than call {@code reserveStock} directly — that
+     * method's own idempotent short-circuit (an existing reservation just gets its TTL
+     * refreshed) would not pick up the new item/quantity composition.
+     *
+     * @throws com.novatech.cybertech.exceptions.NotEnoughStockException when any new product
+     *         no longer has enough available stock — the whole swap (including the release of
+     *         the old reservation) rolls back with the transaction.
+     */
+    void resizeReservation(UUID orderUuid, Map<UUID, Integer> newQuantities);
 }

@@ -1,0 +1,95 @@
+package com.novatech.cybertech.api.controllers.implementation;
+
+
+import com.novatech.cybertech.api.controllers.spec.UserManagementAdminApiSpec;
+import com.novatech.cybertech.dto.request.user.UserCreateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserRoleUpdateRequestDto;
+import com.novatech.cybertech.dto.request.user.UserUpdateRequestDto;
+import com.novatech.cybertech.dto.response.user.UserResponseDto;
+import com.novatech.cybertech.services.core.UserManagementService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+import java.util.UUID;
+
+import static com.novatech.cybertech.constants.CyberTechAppConstants.APP_API_VERSION;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_PAGE_SIZE_ADMIN;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.DEFAULT_SORT_FIELD;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESPONSE_KEY_EMAIL;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESPONSE_KEY_ID;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESPONSE_KEY_KEYCLOAK_ID;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.RESPONSE_KEY_USERNAME;
+import static com.novatech.cybertech.constants.CyberTechAppConstants.USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH;
+import static com.novatech.cybertech.utils.DataGenerator.generateUserCreateRequestDto;
+import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
+
+@Slf4j
+@RestController
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
+@RequestMapping(version = APP_API_VERSION, value = USER_MANAGEMENT_ADMIN_CONTROLLER_BASE_PATH)
+public class UserManagementAdminController implements UserManagementAdminApiSpec {
+
+    // Inject service interface instead of concrete impl per project convention
+    private final UserManagementService userManagementServiceImp;
+
+    @Override
+    @GetMapping(value = "/get/all", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Page<UserResponseDto>> getAllUsers(
+            @PageableDefault(size = DEFAULT_PAGE_SIZE_ADMIN, sort = DEFAULT_SORT_FIELD, direction = Sort.Direction.DESC) final Pageable pageable
+    ) {
+        return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.getAll(pageable));
+    }
+
+    @Override
+    @PostMapping(value = "/create", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<UserResponseDto> createUser(@Valid @RequestBody UserCreateRequestDto userCreateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(userManagementServiceImp.create(userCreateRequestDto, jwt.getSubject()));
+    }
+
+    @Override
+    @PatchMapping(value = "/update", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<UserResponseDto> updateUser(@Valid @RequestBody final UserUpdateRequestDto userUpdateRequestDto, @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.OK).body(userManagementServiceImp.update(userUpdateRequestDto, jwt.getSubject()));
+    }
+
+    @Override
+    @PatchMapping(value = "/update-role/{userUuid}", consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<UserResponseDto> updateUserRole(@PathVariable final UUID userUuid,
+                                                            @Valid @RequestBody final UserRoleUpdateRequestDto userRoleUpdateRequestDto,
+                                                            @AuthenticationPrincipal final Jwt jwt) {
+        return ResponseEntity.status(HttpStatus.OK).body(
+                userManagementServiceImp.updateRole(userUuid, userRoleUpdateRequestDto.getRole(), jwt.getSubject()));
+    }
+
+    @Override
+    @DeleteMapping(value = "/delete/{userUuid}", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> deleteUserByUuid(@PathVariable final UUID userUuid, @AuthenticationPrincipal final Jwt jwt) {
+        userManagementServiceImp.deleteByUUID(userUuid, jwt.getSubject());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    @PostMapping(value = "/register/auto/single", produces = APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> registerAuto(@AuthenticationPrincipal final Jwt jwt) {
+        final UserResponseDto created = userManagementServiceImp.create(generateUserCreateRequestDto(), jwt.getSubject());
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                RESPONSE_KEY_ID, created.getUuid(),
+                RESPONSE_KEY_KEYCLOAK_ID, created.getKeycloakId(),
+                RESPONSE_KEY_EMAIL, created.getEmail(),
+                RESPONSE_KEY_USERNAME, created.getUsername()
+        ));
+    }
+}

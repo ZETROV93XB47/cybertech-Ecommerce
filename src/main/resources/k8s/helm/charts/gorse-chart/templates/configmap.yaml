@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gorse-config
+  labels:
+    {{- include "gorse.labels" . | nindent 4 }}
+data:
+  config.toml: |
+    [recommend.data_source]
+    positive_feedback_types = ["PURCHASE", "ADD_TO_CART", "WISHLIST_ADD", "COMPARE", "RATING_POSITIVE", "REVIEW_POSITIVE"]
+    read_feedback_types = ["VIEW", "CLICK", "SEARCH_RESULT_CLICK"]

@@ -1,9 +1,10 @@
-FROM eclipse-temurin:25-jdk AS builder
+FROM eclipse-temurin:26-jdk AS builder
 WORKDIR /app
 COPY . .
 RUN ./mvnw -DskipTests package
 
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:26-jre
 WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# FIX(JAVA-PREVIEW): --enable-preview required at runtime because the project compiles with Java 26 preview features (--enable-preview is set in pom.xml)
+ENTRYPOINT ["java", "--enable-preview", "-jar", "app.jar"]

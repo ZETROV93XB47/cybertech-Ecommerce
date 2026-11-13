@@ -1,24 +1,18 @@
 package com.novatech.cybertech.services.core;
 
 import com.novatech.cybertech.dto.data.NotificationContext;
-import lombok.AllArgsConstructor;
-import lombok.Setter;
 
-@Setter
-@AllArgsConstructor
 public abstract class AbstractNotification {
 
-    protected NotificationProcessor notificationProcessor;
-
-    public AbstractNotification setNotificationProcessorAndRun(final NotificationProcessor notificationProcessor) {
-        this.notificationProcessor = notificationProcessor;
-        return this;
+    public final void sendNotification(final NotificationContext<?> context, final NotificationProcessor processor) {
+        prepareContext(context);
+        processor.sendMessage(context);
     }
 
-    public AbstractNotification withNotificationProcessor(final NotificationProcessor notificationProcessor) {
-        this.notificationProcessor = notificationProcessor;
-        return this;
-    }
-
-    public abstract void sendNotification(final NotificationContext notificationContext);
+    /**
+     * Implementors set {@code context.subject}, {@code context.templatePath} (when dynamic), and
+     * {@code context.templateVariables} by calling {@code context.setTemplateVariables(Map.of(...))}.
+     * No mutation of other fields is expected.
+     */
+    protected abstract void prepareContext(NotificationContext<?> context);
 }

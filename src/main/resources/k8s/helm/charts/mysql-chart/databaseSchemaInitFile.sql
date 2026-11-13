@@ -1,5 +1,18 @@
-CREATE DATABASE IF NOT EXISTS cybertechDB;
-CREATE DATABASE IF NOT EXISTS keycloakDB;
+-- ============================================================
+-- Database bootstrap (executed before any cybertech schema)
+-- ------------------------------------------------------------
+-- Two databases share this MySQL instance:
+--   * cybertechDB — Spring Boot backend (tables defined below)
+--   * keycloakDB  — Keycloak 26.0.4 OAuth2 / OIDC store
+-- Both are owned by the `rookie` MySQL user provisioned by
+-- mysql-chart's Secret. Keycloak auto-migrates its own schema on
+-- first start; we just need the empty database + grants here.
+-- ============================================================
+CREATE DATABASE IF NOT EXISTS cybertechDB
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS keycloakDB
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON cybertechDB.* TO 'rookie'@'%';
 GRANT ALL PRIVILEGES ON keycloakDB.* TO 'rookie'@'%';
 
 FLUSH PRIVILEGES;
@@ -14,7 +27,7 @@ CREATE TABLE userTable
     version                    BIGINT       NOT NULL,
 
     -- Champs spécifiques à UserEntity
-    email                      VARCHAR(50)  NOT NULL UNIQUE,
+    email                      VARCHAR(254) NOT NULL UNIQUE,
     firstName                  VARCHAR(50),
     lastName                   VARCHAR(50),
     sex                        VARCHAR(255) NOT NULL, -- EnumType.STRING
@@ -105,10 +118,8 @@ CREATE TABLE bankCardTable
 
     -- Champs spécifiques à BankCardEntity
     cardHolderName VARCHAR(100) NOT NULL,
-    cardNumber     VARCHAR(19)  NOT NULL,
     expiryDate     VARCHAR(7)   NOT NULL, -- MM/YYYY
     cardType       VARCHAR(255) NOT NULL, -- EnumType.STRING
-    isDefault      BOOLEAN      NOT NULL,
 
     -- Relation ManyToOne vers UserEntity
     user_id        BIGINT       NOT NULL,
@@ -203,3 +214,25 @@ CREATE TABLE orderItemTable
     -- On suppose l'existence de la table productTable
     FOREIGN KEY (productEntity) REFERENCES productTable (id)
 );
+CREATE TABLE discount_campaign
+(
+    id                 BIGINT        NOT NULL AUTO_INCREMENT,
+    uuid               BINARY(16)    NOT NULL UNIQUE,
+    version            BIGINT        NOT NULL,
+    createdAt          DATETIME(6)   NOT NULL,
+    updatedAt          DATETIME(6),
+    discountType       VARCHAR(50)   NOT NULL UNIQUE,
+    calculationType    VARCHAR(50)   NOT NULL,
+    enabled            BOOLEAN       NOT NULL DEFAULT FALSE,
+    percentage         DECIMAL(5, 2),
+    fixedAmount        DECIMAL(10, 2),
+    minOrderAmount     DECIMAL(10, 2),
+    maxDiscountAmount  DECIMAL(10, 2),
+    startsAt           DATETIME(6),
+    endsAt             DATETIME(6),
+    priority           INT,
+    PRIMARY KEY (id),
+    INDEX idx_discount_campaign_type (discountType),
+    INDEX idx_discount_campaign_enabled (enabled)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4;

@@ -3,4 +3,4 @@ name: redis
 description: Redis chart using official redis image and custom config
 type: application
 version: 0.1.0
-appVersion: "7.2"
+appVersion: "8.10.2"
