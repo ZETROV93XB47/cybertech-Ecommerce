@@ -7,7 +7,7 @@
         <artifactId>spring-boot-starter-parent</artifactId>
         <!-- Keep on 4.0.x: Spring Cloud 2025.1.x only supports Boot 4.0.x — its compatibility
              verifier refuses to start the context on 4.1.x. Bump together with spring-cloud.version. -->
-        <version>4.0.4</version>
+        <version>4.1.2</version>
     </parent>
     <groupId>com.novatech.cybertech</groupId>
     <artifactId>Cybertech</artifactId>
@@ -29,7 +29,7 @@
     </scm>
     <properties>
         <java.version>26</java.version>
-        <spring-cloud.version>2025.1.1</spring-cloud.version>
+        <spring-cloud.version>2025.1.4</spring-cloud.version>
         <spring-restdocs.version>4.0.0</spring-restdocs.version>
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <shedlock.version>6.6.0</shedlock.version>
@@ -297,6 +297,7 @@
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-contract-stub-runner</artifactId>
+            <version>5.0.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>
